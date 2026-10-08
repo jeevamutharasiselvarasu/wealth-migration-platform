@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl">
+    <!-- Step Banner -->
+    <div class="flex justify-between items-center bg-[#161f30] p-4 rounded-xl border border-indigo-500/30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <span class="h-8 w-8 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm">1</span>
+            <div>
+                <h1 class="text-lg font-bold text-white">Step 1: Firm Knowledge Studio & Discovery Form</h1>
+                <p class="text-xs text-slate-400">Complete the acquisition questionnaire form to generate program metrics and wave strategy.</p>
+            </div>
+        </div>
+        <div class="text-right text-[11px] font-mono text-slate-400">
+            Last Saved: <span class="text-indigo-400 font-semibold">{{ form.last_updated }}</span>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Built-In Core Wealth Kernel Panel -->
+        <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-6 space-y-4 shadow-xl">
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Built-In Wealth Kernel</h2>
+                <span class="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">FIXED</span>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div class="bg-[#0f172a] p-3 rounded-lg border border-slate-700/50">
+                    <div class="font-bold text-white">Canonical Entities</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Account, Transaction, Position, Model, Sleeve, Household, Party, Custodian[cite: 1].</div>
+                </div>
+                <div class="bg-[#0f172a] p-3 rounded-lg border border-slate-700/50">
+                    <div class="font-bold text-white">Sleeve Invariant Engine</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">UMA sleeve target weights under model aggregate must sum to 100.00%[cite: 4].</div>
+                </div>
+                <div class="bg-[#0f172a] p-3 rounded-lg border border-slate-700/50">
+                    <div class="font-bold text-white">Reconciliation Gate</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Post-load market value variance strictly <= 0.5000%[cite: 4].</div>
+                </div>
+            </div>
+
+            <!-- Supplementary Document Attachments Area -->
+            <div class="border-t border-slate-700/60 pt-4 space-y-3">
+                <h3 class="text-xs font-bold uppercase text-slate-300">Supplementary Files</h3>
+                <form action="/api/knowledge/file-upload" method="POST" enctype="multipart/form-data" class="space-y-2">
+                    <select name="category" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] text-white">
+                        <option value="data_dictionary">Source Data Dictionary / Schema</option>
+                        <option value="transformation_rule">Custom Markdown Rule (.md)</option>
+                    </select>
+                    <input type="file" name="file" required class="block w-full text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-700 file:text-white">
+                    <button type="submit" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-1.5 rounded text-xs transition border border-slate-700">
+                        Attach File
+                    </button>
+                </form>
+
+                <div class="space-y-1.5 max-h-32 overflow-y-auto">
+                    {% for doc in docs %}
+                    <div class="bg-[#0f172a] p-2 rounded border border-slate-700/50 text-[10px] flex justify-between items-center">
+                        <span class="font-mono text-indigo-300 font-semibold truncate max-w-[140px]">{{ doc.filename }}</span>
+                        <span class="text-slate-400">{{ doc.category }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Acquisition Discovery Form -->
+        <div class="lg:col-span-2 bg-[#161f30] rounded-xl border border-slate-700/60 p-6 space-y-6 shadow-xl">
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Acquisition Discovery Questionnaire Form</h2>
+                <span class="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">
+                    Interactive Input Mode
+                </span>
+            </div>
+
+            <form action="/api/knowledge/submit-questionnaire" method="POST" class="space-y-6">
+                
+                <!-- Section 1: Firm Context & Advisor Population -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Acquired Firm Profile</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Acquired Firm Name</label>
+                            <input type="text" name="firm_name" value="{{ form.firm_name }}" required
+                                   class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-medium">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Total Advisor Population (Reps)</label>
+                            <input type="number" name="advisor_count" value="{{ form.advisor_count }}" required
+                                   class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Platform Architecture & Custody -->
+                <div class="space-y-3 border-t border-slate-700/60 pt-4">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">2. System Architecture & Custody</h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Advisor Portfolio Operating Model</label>
+                            <select name="operating_model" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                                <option value="Rep-as-PM" {% if form.operating_model == 'Rep-as-PM' %}selected{% endif %}>Rep-as-PM (Custom Advisor UMA Sleeves)</option>
+                                <option value="Home-Office-Centralized" {% if form.operating_model == 'Home-Office-Centralized' %}selected{% endif %}>Home Office Centralized Models</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Primary Custodian Constraint</label>
+                            <select name="primary_custodian" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                                <option value="Charles Schwab (Retained)" {% if 'Schwab' in form.primary_custodian %}selected{% endif %}>Charles Schwab (Retained — No Asset Transfer)</option>
+                                <option value="Fidelity Institutional" {% if 'Fidelity' in form.primary_custodian %}selected{% endif %}>Fidelity Institutional</option>
+                                <option value="BNY Mellon Pershing" {% if 'Pershing' in form.primary_custodian %}selected{% endif %}>BNY Mellon Pershing</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Source TAMP Platform</label>
+                            <input type="text" name="source_tamp" value="{{ form.source_tamp }}" required
+                                   class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-medium">
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Performance Reporting Source</label>
+                            <input type="text" name="performance_source" value="{{ form.performance_source }}" required
+                                   class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-medium">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Risk Controls & Drift Gates -->
+                <div class="space-y-3 border-t border-slate-700/60 pt-4">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">3. Risk Controls & Drift Gates</h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">AUM Drift Gate Threshold (%)</label>
+                            <input type="text" name="aum_drift_gate" value="{{ form.aum_drift_gate }}" required
+                                   class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500">
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">Restricted Security/Model Overlays</label>
+                            <input type="text" name="restricted_models" value="{{ form.restricted_models }}"
+                                   class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Action Button -->
+                <div class="flex justify-between items-center border-t border-slate-700/60 pt-4">
+                    <div class="text-[11px] text-slate-400">
+                        Submitting updates the state store and generates the Dashboard Overview[cite: 2].
+                    </div>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg flex items-center space-x-2">
+                        <span>Save & Generate Dashboard Overview</span>
+                        <span>→</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

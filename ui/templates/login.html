@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Data Migration Workbench</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 font-sans min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-md w-full bg-[#161f30] rounded-2xl border border-slate-700/60 p-8 space-y-6 shadow-2xl">
+        <!-- Workbench Logo & Header -->
+        <div class="text-center space-y-2">
+            <div class="h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-white text-xl shadow-lg mx-auto">MW</div>
+            <h1 class="text-2xl font-extrabold text-white tracking-tight">Data Migration Workbench</h1>
+            <p class="text-xs text-slate-400">Core Cap to Simplicity Wealth Acquisition Pipeline</p>
+        </div>
+
+        <!-- Login Form -->
+        <form action="/login" method="POST" class="space-y-4">
+            {% if error %}
+            <div class="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-medium text-center">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+                <input type="email" name="email" value="jeeva@simplicitywealth.com" required 
+                       class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                <input type="password" name="password" value="password123" required 
+                       class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Select Active Role</label>
+                <select name="role" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-indigo-300 font-semibold focus:outline-none focus:border-indigo-500">
+                    <option value="Platform Admin" selected>Platform Admin</option>
+                    <option value="Migration Analyst">Migration Analyst</option>
+                    <option value="Domain SME">Domain SME</option>
+                    <option value="Validation Specialist">Validation Specialist</option>
+                </select>
+            </div>
+
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg mt-2">
+                Sign In to Migration Workspace
+            </button>
+        </form>
+
+        <div class="text-center text-[11px] text-slate-500">
+            Protected Platform • Session-Based Control Plane Auth
+        </div>
+    </div>
+
+</body>
+</html>

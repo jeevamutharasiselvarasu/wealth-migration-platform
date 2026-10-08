@@ -1,0 +1,25 @@
+{
+  "package_id": "pkg_MIG-CORECAP-2026_WAVE-01_20261008_091730",
+  "migration_id": "MIG-CORECAP-2026",
+  "wave_id": "WAVE-01",
+  "created_at_utc": "20261008_091730",
+  "artifact_count": 4,
+  "manifest": [
+    {
+      "file": "config\\config.yaml",
+      "sha256": "ed29784bea31b1e1ce2d314f85d5864c90c06cd126c7301e7be2e190cfc995ba"
+    },
+    {
+      "file": "control_plane\\metadata\\canonical_entity_catalog.json",
+      "sha256": "238e199add8f142a9594b3c569e49f01d21a424b7800bd894eb4fa52062b714b"
+    },
+    {
+      "file": "knowledge\\migration\\MIG-CORECAP-2026\\mappings\\MAP-SLEEVE-001.md",
+      "sha256": "69e0727ea3d550f9f3dc2208fb788704275220741b51c3a1b8c2ab9251988a4d"
+    },
+    {
+      "file": "knowledge\\migration\\MIG-CORECAP-2026\\validations\\VAL-AUM-DRIFT-001.md",
+      "sha256": "53215c5128dbcf9ec30813d8bf107d018190261655e166c42619a44c5224e681"
+    }
+  ]
+}

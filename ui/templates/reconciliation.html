@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl">
+    <h1 class="text-2xl font-bold text-white">Reconciliation & Drift</h1>
+
+    <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-6">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-300">
+                <thead class="bg-[#0f172a] text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700/60">
+                    <tr>
+                        <th class="p-3">Advisor Code</th>
+                        <th class="p-3">Source AUM ($)</th>
+                        <th class="p-3">Orion Staged AUM ($)</th>
+                        <th class="p-3">Variance %</th>
+                        <th class="p-3">Gate Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50">
+                    {% for rec in records %}
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="p-3 font-mono font-medium text-indigo-400">{{ rec.rep_code }}</td>
+                        <td class="p-3 font-mono text-slate-200">${{ "{:,.2f}".format(rec.source_aum) }}</td>
+                        <td class="p-3 font-mono text-slate-200">${{ "{:,.2f}".format(rec.target_aum) }}</td>
+                        <td class="p-3 font-mono text-emerald-400 font-medium">{{ rec.drift_pct }}%</td>
+                        <td class="p-3">
+                            <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded text-xs font-medium">
+                                {{ rec.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

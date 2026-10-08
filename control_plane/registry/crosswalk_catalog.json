@@ -1,0 +1,10 @@
+{
+  "crosswalk_version": "1.0.0",
+  "rep_code_crosswalk": [
+    {"source_rep_code": "REP-9981", "target_advisor_id": "ADV-SPARC-001", "advisor_name": "John Doe"},
+    {"source_rep_code": "REP-1001", "target_advisor_id": "ADV-SPARC-002", "advisor_name": "Jane Smith"}
+  ],
+  "custodian_crosswalk": [
+    {"source_custodian_code": "SWB", "canonical_custodian": "SCHWAB", "target_code": "SCHWAB_INST"}
+  ]
+}

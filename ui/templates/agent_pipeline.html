@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl">
+    <!-- Header Banner -->
+    <div class="flex justify-between items-center bg-[#161f30] p-4 rounded-xl border border-indigo-500/30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <span class="h-8 w-8 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm">5</span>
+            <div>
+                <h1 class="text-lg font-bold text-white">Agent Pipeline Execution Studio</h1>
+                <p class="text-xs text-slate-400">Click any agent card to inspect raw source inputs, transformation SQL, target outputs, and apply human overrides.</p>
+            </div>
+        </div>
+        
+        <button type="button" onclick="runPipelineTrigger('REP-9981', 'WAVE-01')" 
+                class="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg flex items-center space-x-2">
+            <span>▶ Execute 9-Agent Pipeline (REP-9981)</span>
+        </button>
+    </div>
+
+    <!-- Live Execution Alert Box -->
+    <div id="pipeline-status-alert" class="hidden p-4 rounded-xl text-xs font-mono font-semibold transition-all"></div>
+
+    <!-- 3-Phase Interactive Agent Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Phase 1: Discovery Agents -->
+        <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-5 space-y-4 shadow-xl">
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-2">
+                <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Phase 1: Discovery Agents</h2>
+                <span class="text-[10px] text-slate-400 font-mono">3 Agents</span>
+            </div>
+
+            <!-- Agent 1 -->
+            <div onclick="openAgentInspector('extractor')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">1. Extractor Agent</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">EXECUTED</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Pulls per-advisor extracts from Amplify and Black Diamond.</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>OUT: Sleeves & Positions</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+
+            <!-- Agent 2 -->
+            <div onclick="openAgentInspector('schema_mapper')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">2. Schema Mapper Agent</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">EXECUTED</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Applies catalog field mapping to canonical attribute taxonomy[cite: 2, 4].</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>IN: Raw Headers → OUT: Canonical</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+
+            <!-- Agent 3 -->
+            <div onclick="openAgentInspector('ai_foundry')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">3. AI Foundry Mapper</span>
+                    <span class="bg-indigo-500/10 text-indigo-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">GPT-4o ACTIVE</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Uses Azure AI Foundry models to infer unmapped field logic[cite: 2, 4].</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>Confidence: 0.98</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Phase 2: Business Logic Agents -->
+        <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-5 space-y-4 shadow-xl">
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-2">
+                <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Phase 2: Business Logic</h2>
+                <span class="text-[10px] text-slate-400 font-mono">3 Agents</span>
+            </div>
+
+            <!-- Agent 4 -->
+            <div onclick="openAgentInspector('sleeve_math')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">4. Sleeve Math Agent</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">INVARIANT 1.0000</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Enforces UMA sleeve decomposition and 100% allocation sum invariant.</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>Sum: 70% + 30% = 1.0000</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+
+            <!-- Agent 5 -->
+            <div onclick="openAgentInspector('compliance')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">5. Compliance Validator</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">APPROVED</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Re-applies Home Office overlays and restricted model checks.</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>Restricted Models: 0 Flagged</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+
+            <!-- Agent 6 -->
+            <div onclick="openAgentInspector('data_quality')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">6. Data Quality Agent</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">PASS</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Audits referential integrity across Household, Account, and Sleeves[cite: 1, 4].</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>Orphaned Accounts: 0</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Phase 3: Operational Agents -->
+        <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-5 space-y-4 shadow-xl">
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-2">
+                <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Phase 3: Operational Execution</h2>
+                <span class="text-[10px] text-slate-400 font-mono">3 Agents</span>
+            </div>
+
+            <!-- Agent 7 -->
+            <div onclick="openAgentInspector('loader')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">7. Loader Agent</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">STAGED</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Writes approved packages to SPARC and Orion staging schemas.</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>SPARC: 1 | Orion: 2 Staged</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+
+            <!-- Agent 8 -->
+            <div onclick="openAgentInspector('reconciler')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">8. Reconciler Agent</span>
+                    <span class="bg-emerald-500/10 text-emerald-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">DRIFT 0.00%</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Compares target post-load market values against source extracts[cite: 4].</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>0.0000% <= 0.5000% (PASS)</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+
+            <!-- Agent 9 -->
+            <div onclick="openAgentInspector('cutover')" class="bg-[#0f172a] hover:bg-slate-800/80 p-4 rounded-xl border border-slate-700/50 hover:border-indigo-500 cursor-pointer transition space-y-2 group">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-xs text-white group-hover:text-indigo-300">9. Cutover & Audit Agents</span>
+                    <span class="bg-amber-500/10 text-amber-400 text-[9px] px-2 py-0.5 rounded font-mono font-semibold">PENDING_APPROVAL</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Executes T+0 trade re-routing and generates evidence packs[cite: 2, 4].</p>
+                <div class="text-[10px] font-mono text-slate-400 bg-[#161f30] p-2 rounded flex justify-between items-center">
+                    <span>Action: Step 6 Sign-off</span>
+                    <span class="text-indigo-400 font-bold">Inspect Trace →</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================= AGENT DEEP DIVE INSPECTOR MODAL ================= -->
+<div id="agent-inspector-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-end transition-all">
+    <div class="bg-[#161f30] w-full max-w-4xl h-full border-l border-slate-700 p-6 overflow-y-auto space-y-6 flex flex-col justify-between shadow-2xl">
+        
+        <div class="space-y-6">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-start border-b border-slate-700/80 pb-4">
+                <div>
+                    <div class="flex items-center space-x-3">
+                        <h2 id="modal-agent-name" class="text-xl font-bold text-white">Agent Deep Dive Inspector</h2>
+                        <span id="modal-agent-status" class="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-xs px-2.5 py-0.5 rounded font-mono font-semibold">
+                            ACTIVE
+                        </span>
+                    </div>
+                    <p id="modal-agent-phase" class="text-xs text-slate-400 mt-1 font-mono">Phase 1: Discovery Agents</p>
+                </div>
+                <button type="button" onclick="closeAgentInspector()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+            </div>
+
+            <!-- Discrepancies & Alert Banner -->
+            <div id="modal-warnings-box" class="hidden bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-xl text-xs text-amber-300 space-y-1">
+                <div class="font-bold flex items-center space-x-2">
+                    <span>⚠️ Discrepancy / Human Intervention Flag:</span>
+                </div>
+                <div id="modal-warnings-list" class="font-mono text-[11px] text-amber-200"></div>
+            </div>
+
+            <!-- Side-by-Side 3-Pane Inspection Views -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                
+                <!-- Pane 1: Source Input Data -->
+                <div class="bg-[#0f172a] p-4 rounded-xl border border-slate-700/50 space-y-2 flex flex-col">
+                    <div class="font-bold text-indigo-400 uppercase tracking-wider text-[11px] border-b border-slate-700/50 pb-1">
+                        1. Raw Source Input Data
+                    </div>
+                    <pre id="modal-source-input" class="bg-[#0b0f19] p-3 rounded-lg font-mono text-[10px] text-slate-300 overflow-x-auto flex-1 max-h-80"></pre>
+                </div>
+
+                <!-- Pane 2: Applied Transformation SQL & Mapping Logic (Editable) -->
+                <div class="bg-[#0f172a] p-4 rounded-xl border border-slate-700/50 space-y-2 flex flex-col">
+                    <div class="flex justify-between items-center border-b border-slate-700/50 pb-1">
+                        <span class="font-bold text-indigo-400 uppercase tracking-wider text-[11px]">2. Transformation Logic / SQL</span>
+                        <span class="text-[9px] text-emerald-400 font-mono font-semibold">EDITABLE</span>
+                    </div>
+                    <textarea id="modal-transform-logic" rows="12" 
+                              class="w-full bg-[#0b0f19] border border-slate-700 rounded-lg p-3 font-mono text-[10px] text-emerald-300 focus:outline-none focus:border-indigo-500 flex-1 resize-none"></textarea>
+                </div>
+
+                <!-- Pane 3: Target Staged Output Payload -->
+                <div class="bg-[#0f172a] p-4 rounded-xl border border-slate-700/50 space-y-2 flex flex-col">
+                    <div class="font-bold text-indigo-400 uppercase tracking-wider text-[11px] border-b border-slate-700/50 pb-1">
+                        3. Target Staged Output Payload
+                    </div>
+                    <pre id="modal-target-output" class="bg-[#0b0f19] p-3 rounded-lg font-mono text-[10px] text-slate-300 overflow-x-auto flex-1 max-h-80"></pre>
+                </div>
+            </div>
+
+            <!-- Intervention Reason / Notes -->
+            <div class="space-y-1">
+                <label class="block text-xs font-semibold text-slate-300">Human Override Reason / Analyst Note</label>
+                <input type="text" id="modal-override-notes" value="Adjusted target mapping rule for custom TAMP sleeve header."
+                       class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500">
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex justify-between items-center border-t border-slate-700/80 pt-4 mt-6">
+            <button type="button" onclick="closeAgentInspector()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold">
+                Cancel
+            </button>
+
+            <div class="flex items-center space-x-3">
+                <button type="button" onclick="saveAgentOverride()" 
+                        class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-5 py-2 rounded-xl text-xs transition shadow-lg">
+                    ✍️ Apply Transformation Override
+                </button>
+                <button type="button" onclick="closeAgentInspector()" 
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl text-xs transition shadow-lg">
+                    ✓ Approve Agent Step
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentInspectedAgent = null;
+
+async function openAgentInspector(agentId) {
+    currentInspectedAgent = agentId;
+    const modal = document.getElementById('agent-inspector-modal');
+    modal.classList.remove('hidden');
+
+    try {
+        const response = await fetch(`/api/pipeline/agent-detail/${agentId}`);
+        const result = await response.json();
+        
+        if (result.status === 'SUCCESS') {
+            const d = result.detail;
+            document.getElementById('modal-agent-name').textContent = d.name;
+            document.getElementById('modal-agent-phase').textContent = d.phase;
+            document.getElementById('modal-agent-status').textContent = d.status;
+
+            document.getElementById('modal-source-input').textContent = JSON.stringify(d.inputs, null, 2);
+            document.getElementById('modal-transform-logic').value = d.transformation_logic;
+            document.getElementById('modal-target-output').textContent = JSON.stringify(d.outputs, null, 2);
+
+            const warnBox = document.getElementById('modal-warnings-box');
+            const warnList = document.getElementById('modal-warnings-list');
+            if (d.warnings && d.warnings.length > 0) {
+                warnList.textContent = d.warnings.join('\n');
+                warnBox.classList.remove('hidden');
+            } else {
+                warnBox.classList.add('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load agent trace detail:', error);
+    }
+}
+
+function closeAgentInspector() {
+    document.getElementById('agent-inspector-modal').classList.add('hidden');
+}
+
+async function saveAgentOverride() {
+    if (!currentInspectedAgent) return;
+
+    const newLogic = document.getElementById('modal-transform-logic').value;
+    const notes = document.getElementById('modal-override-notes').value;
+
+    const formData = new FormData();
+    formData.append('agent_id', currentInspectedAgent);
+    formData.append('new_logic', newLogic);
+    formData.append('override_notes', notes);
+
+    try {
+        const response = await fetch('/api/pipeline/override-agent', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+
+        if (result.status === 'SUCCESS') {
+            alert(`Human override saved for Agent '${currentInspectedAgent}'!`);
+            closeAgentInspector();
+            window.location.reload();
+        }
+    } catch (error) {
+        console.error('Override error:', error);
+    }
+}
+
+async function runPipelineTrigger(repCode, waveId) {
+    const alertBox = document.getElementById('pipeline-status-alert');
+    alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-indigo-500/10 border border-indigo-500/30 text-indigo-300";
+    alertBox.textContent = `Executing 9-Agent Pipeline for Advisor ${repCode} (${waveId})...`;
+    alertBox.classList.remove('hidden');
+
+    try {
+        const formData = new FormData();
+        formData.append('rep_code', repCode);
+        formData.append('wave_id', waveId);
+
+        const response = await fetch('/api/pipeline/run', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+
+        if (result.status === 'SUCCESS') {
+            alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400";
+            alertBox.textContent = `All 9 Agents Executed Successfully! Invariant: 1.0000 PASS | AUM Drift: ${result.result.reconciliation_summary.variance_pct}% | Status: PENDING HITL APPROVAL`;
+            setTimeout(() => { window.location.href = '/hitl'; }, 1800);
+        }
+    } catch (error) {
+        console.error('Pipeline execution error:', error);
+    }
+}
+</script>
+{% endblock %}

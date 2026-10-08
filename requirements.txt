@@ -1,0 +1,17 @@
+# Universal Wealth-Management Acquisition Data Migration Platform
+# Core Dependencies
+
+pydantic>=2.5.0
+pyyaml>=6.0.1
+pandas>=2.1.0
+sqlalchemy>=2.0.25
+psycopg2-binary>=2.9.9
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+jinja2>=3.1.3
+python-multipart>=0.0.9
+pytest>=8.0.0
+requests>=2.31.0
+jsonschema>=4.21.0
+opentelemetry-api>=1.22.0
+opentelemetry-sdk>=1.22.0

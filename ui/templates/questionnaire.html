@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6 max-w-5xl">
+    <div>
+        <h1 class="text-2xl font-bold text-white">Acquisition Discovery Questionnaire</h1>
+        <p class="text-xs text-slate-400 mt-1">Fill out or update the acquired firm operating discovery context directly inside the platform.</p>
+    </div>
+
+    <form action="/api/knowledge/submit-questionnaire" method="POST" class="bg-[#161f30] rounded-xl border border-slate-700/60 p-6 space-y-6 shadow-xl">
+        
+        <!-- Section 1: Firm & Advisor Scope -->
+        <div class="space-y-4 border-b border-slate-700/60 pb-5">
+            <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">1. Operating & Advisor Scope</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Acquired Firm Name</label>
+                    <input type="text" name="firm_name" value="{{ answers.firm_name or 'Core Cap Wealth Management' }}" required
+                           class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Total Advisor Population (Reps)</label>
+                    <input type="number" name="advisor_count" value="{{ answers.advisor_count or 120 }}" required
+                           class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono">
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: TAMP & Trading Model -->
+        <div class="space-y-4 border-b border-slate-700/60 pb-5">
+            <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">2. Trading & Portfolio Model</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Advisors Operating Model</label>
+                    <select name="rep_pm_model" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <option value="Rep-as-PM" {% if answers.rep_pm_model == 'Rep-as-PM' or not answers.rep_pm_model %}selected{% endif %}>Rep-as-PM (Custom Advisor UMA Sleeves)</option>
+                        <option value="Home-Office">Home Office Centralized Models</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Primary Custodian Constraint</label>
+                    <select name="custodian" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <option value="Charles Schwab" {% if answers.custodian == 'Charles Schwab' or not answers.custodian %}selected{% endif %}>Charles Schwab (Retained — No Asset Transfer)</option>
+                        <option value="Fidelity">Fidelity Institutional</option>
+                        <option value="Pershing">BNY Mellon Pershing</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Risk & Drift Control -->
+        <div class="space-y-4 border-b border-slate-700/60 pb-5">
+            <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">3. Risk & Drift Controls</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">AUM Variance Gate Threshold (%)</label>
+                    <input type="text" name="aum_drift_gate" value="{{ answers.aum_drift_gate or '0.50%' }}" required
+                           class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">Restricted Model Overlays (Comma separated)</label>
+                    <input type="text" name="restricted_models" value="{{ answers.restricted_models or 'MOD-RESTRICTED-01, MOD-RESTRICTED-02' }}"
+                           class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Buttons -->
+        <div class="flex justify-between items-center pt-2">
+            <span class="text-xs text-slate-400">Submitting updates active context and regenerates Dashboard Overview[cite: 2].</span>
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg">
+                Save & Regenerate Dashboard Overview →
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

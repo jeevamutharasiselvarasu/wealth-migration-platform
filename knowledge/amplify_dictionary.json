@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "source_system": "AMPLIFY",
+  "version": "1.0.0",
+  "entities": [
+    {
+      "source_table": "amplify_sleeves",
+      "canonical_entity": "Sleeve/Allocation",
+      "primary_key": ["ACCT_NUM", "sleeve_id"],
+      "fields": [
+        {"name": "REP_CODE", "type": "string", "required": true, "maps_to": "Advisor.rep_code"},
+        {"name": "ACCT_NUM", "type": "string", "required": true, "maps_to": "Account.account_number"},
+        {"name": "sleeve_id", "type": "string", "required": true, "maps_to": "Sleeve.sleeve_id"},
+        {"name": "model_code", "type": "string", "required": true, "maps_to": "Model.model_code"},
+        {"name": "target_pct", "type": "decimal", "required": true, "maps_to": "Sleeve.target_weight"}
+      ]
+    }
+  ]
+}

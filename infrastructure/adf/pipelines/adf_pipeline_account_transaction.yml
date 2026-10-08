@@ -1,0 +1,72 @@
+name: adf_pipe_account_transaction_migration
+properties:
+  description: "End-to-end ingestion and transformation for Account and Transaction entities."
+  parameters:
+    migration_id:
+      type: string
+      defaultValue: "MIG-CORECAP-2026"
+    wave_id:
+      type: string
+      defaultValue: "WAVE-01"
+    run_id:
+      type: string
+    rep_code:
+      type: string
+    source_storage_container:
+      type: string
+      defaultValue: "migration-data-plane"
+
+  activities:
+    - name: Validate_Source_Arrival
+      type: Validation
+      typeProperties:
+        dataset:
+          referenceName: ds_source_csv_landing
+          type: DatasetReference
+          parameters:
+            container: "@pipeline().parameters.source_storage_container"
+            directory: "@concat('landing/', pipeline().parameters.rep_code)"
+        timeout: "00:05:00"
+        sleep: 10
+
+    - name: Execute_Account_Transaction_Transform
+      type: DatabricksNotebook
+      dependsOn:
+        - activity: Validate_Source_Arrival
+          dependencyConditions: ["Succeeded"]
+      typeProperties:
+        notebookPath: "/data_plane/notebooks/transform_account_transaction"
+        baseParameters:
+          run_id: "@pipeline().parameters.run_id"
+          migration_id: "@pipeline().parameters.migration_id"
+          rep_code: "@pipeline().parameters.rep_code"
+
+    - name: Stage_To_Target_Orion_SPARC
+      type: Copy
+      dependsOn:
+        - activity: Execute_Account_Transaction_Transform
+          dependencyConditions: ["Succeeded"]
+      typeProperties:
+        source:
+          type: DelimitedTextSource
+          storeSettings:
+            type: AzureBlobStorageReadSettings
+            recursive: true
+        sink:
+          type: SqlDWSink
+          allowPolyBase: true
+
+    - name: Emit_Telemetry_To_Control_Plane
+      type: WebActivity
+      dependsOn:
+        - activity: Stage_To_Target_Orion_SPARC
+          dependencyConditions: ["Succeeded"]
+      typeProperties:
+        method: POST
+        url: "https://controlplane-api.azurewebsites.net/api/telemetry/adf-callback"
+        headers:
+          Content-Type: "application/json"
+        body:
+          run_id: "@pipeline().parameters.run_id"
+          status: "SUCCESS"
+          pipeline_name: "@pipeline().Pipeline"

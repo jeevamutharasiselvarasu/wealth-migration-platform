@@ -1,0 +1,29 @@
+{
+  "migration_id": "MIG-CORECAP-2026",
+  "source_assets": [
+    {
+      "asset_id": "ASSET-AMP-SLEEVE",
+      "asset_name": "Amplify Sleeve Allocations Extract",
+      "source_system": "AMPLIFY",
+      "file_format": "CSV",
+      "expected_grain": "Sleeve Allocation per Account",
+      "file_pattern": "amplify_sleeves.csv"
+    },
+    {
+      "asset_id": "ASSET-AMP-POS",
+      "asset_name": "Amplify Account Positions Snapshot",
+      "source_system": "AMPLIFY",
+      "file_format": "CSV",
+      "expected_grain": "Position Snapshot per Account & Security",
+      "file_pattern": "amplify_positions.csv"
+    },
+    {
+      "asset_id": "ASSET-BD-PERF",
+      "asset_name": "Black Diamond Historical Performance",
+      "source_system": "BLACK_DIAMOND",
+      "file_format": "CSV",
+      "expected_grain": "Monthly Performance Period per Account",
+      "file_pattern": "blackdiamond_performance.csv"
+    }
+  ]
+}
