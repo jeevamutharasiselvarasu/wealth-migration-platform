@@ -6,14 +6,14 @@ from datetime import datetime
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
 
 class WorkspaceStateStore:
-    """Thread-safe persistent state engine managing firm context, entity scope choices, cohort summaries, and agent trace overrides."""
+    """Thread-safe persistent state engine providing live transformation traces and human intervention capabilities."""
 
     def __init__(self):
         self.active_role: str = "Platform Admin"
         self.adls_connected: bool = True
         self.adls_container: str = "stg-corecap-data"
         
-        # Discovery Questionnaire State
+        # 1. Discovery Questionnaire State
         self.questionnaire_data: Dict[str, Any] = {
             "firm_name": "Core Cap Wealth Management",
             "migration_id": "MIG-CORECAP-2026",
@@ -27,7 +27,7 @@ class WorkspaceStateStore:
             "last_updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        # Entity Scopes Storage
+        # 2. Inbuilt Entity Scopes
         self.entity_scopes: Dict[str, str] = {}
         for category, entities in WealthManagementKnowledgeKernel.get_canonical_entities().items():
             for ent in entities:
@@ -48,16 +48,167 @@ class WorkspaceStateStore:
         self.audit_log: List[Dict[str, Any]] = []
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
 
-    def get_agent_detail(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Returns deep-dive transformation details for a specific agent from the latest pipeline run."""
-        if not self.pipeline_runs:
-            return None
-        latest_run = self.pipeline_runs[-1]
-        details = latest_run.get("agent_details", {})
-        return details.get(agent_id, None)
+    def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
+        """Returns live agent transformation traces, or pre-execution crosswalk previews if pipeline has not run yet."""
+        if self.pipeline_runs:
+            latest_run = self.pipeline_runs[-1]
+            details = latest_run.get("agent_details", {})
+            if agent_id in details:
+                return details[agent_id]
+
+        # Live Pre-Execution Schema Crosswalk & Transformation Logic Preview
+        previews = {
+            "extractor": {
+                "name": "Extractor Agent",
+                "phase": "Phase 1: Discovery Agents",
+                "status": "PREVIEW_MODE",
+                "inputs": {
+                    "configured_connectors": ["Amplify TAMP", "Schwab PAS", "Black Diamond"],
+                    "active_cohort_filter": "REP-9981",
+                    "source_files": ["accounts.csv", "amplify_sleeves.csv", "amplify_positions.csv"]
+                },
+                "transformation_logic": "-- Extract Advisor Cohort Data\nSELECT * FROM legacy_schwab_extracts WHERE ADVISOR_REP_NUM = '9981';\nSELECT * FROM legacy_amplify_sleeves WHERE REP_CODE_RAW = '9981';",
+                "outputs": {
+                    "extracted_sample_records": 4,
+                    "extracted_entities": ["Account", "Sleeve / Allocation", "Position (Snapshot)", "Transaction"]
+                },
+                "warnings": []
+            },
+            "schema_mapper": {
+                "name": "Schema Mapper Agent",
+                "phase": "Phase 1: Discovery Agents",
+                "status": "PREVIEW_MODE",
+                "inputs": {
+                    "raw_source_headers": ["LEGACY_ACCT_NO", "CUST_CODE_SRC", "ADVISOR_REP_NUM", "REGISTRATION_SRC_TYPE", "ACCOUNT_OPEN_DT"],
+                    "raw_source_sample_row": {
+                        "LEGACY_ACCT_NO": "ACC-99812",
+                        "CUST_CODE_SRC": "SCHW",
+                        "ADVISOR_REP_NUM": "9981",
+                        "REGISTRATION_SRC_TYPE": "INDV_TAXABLE",
+                        "ACCOUNT_OPEN_DT": "03/15/2021"
+                    }
+                },
+                "transformation_logic": """-- Source-to-Target Canonical Crosswalk SQL
+SELECT 
+    TRIM(LEGACY_ACCT_NO) AS ACCT_NUM,
+    CASE CUST_CODE_SRC 
+        WHEN 'SCHW' THEN 'SCHWAB'
+        WHEN 'FID'  THEN 'FIDELITY'
+        ELSE CUST_CODE_SRC 
+    END AS CUSTODIAN_CODE,
+    'REP-' || TRIM(ADVISOR_REP_NUM) AS REP_CODE,
+    CASE REGISTRATION_SRC_TYPE 
+        WHEN 'INDV_TAXABLE' THEN 'INDIVIDUAL'
+        WHEN 'IRA_ROLL'    THEN 'IRA_ROLLOVER'
+        ELSE REGISTRATION_SRC_TYPE 
+    END AS REG_TYPE,
+    TO_DATE(ACCOUNT_OPEN_DT, 'MM/DD/YYYY') AS OPEN_DATE
+FROM staging_raw.schwab_accounts_extract;""",
+                "outputs": {
+                    "target_canonical_row": {
+                        "ACCT_NUM": "ACC-99812",
+                        "CUSTODIAN_CODE": "SCHWAB",
+                        "REP_CODE": "REP-9981",
+                        "REG_TYPE": "INDIVIDUAL",
+                        "OPEN_DATE": "2021-03-15"
+                    },
+                    "mapping_status": "CROSSWALK_APPLIED",
+                    "unmapped_fields": []
+                },
+                "warnings": ["Crosswalk Rule Applied: 'SCHW' coerced to 'SCHWAB' and 'INDV_TAXABLE' to 'INDIVIDUAL'."]
+            },
+            "ai_foundry": {
+                "name": "AI Foundry Mapper",
+                "phase": "Phase 1: Discovery Agents",
+                "status": "GPT-4o ACTIVE",
+                "inputs": {"unmapped_attributes": ["EXSTIVA_BILLING_TIER", "AMPLIFY_OVERLAY_FLAG"]},
+                "transformation_logic": "PROMPT: Infer canonical target entity and attribute for unmapped TAMP field EXSTIVA_BILLING_TIER using zero-shot classification.",
+                "outputs": {"inferred_mapping": {"source_field": "EXSTIVA_BILLING_TIER", "target_field": "Billing.schedule_tier", "confidence": 0.98}},
+                "warnings": []
+            },
+            "sleeve_math": {
+                "name": "Sleeve Math Agent",
+                "phase": "Phase 2: Business Logic",
+                "status": "PREVIEW_MODE",
+                "inputs": {
+                    "raw_sleeve_allocations": [
+                        {"sleeve_id": "SLV-01", "model_code": "AMPLIFY-GROWTH-01", "target_pct": 70.0},
+                        {"sleeve_id": "SLV-02", "model_code": "AMPLIFY-INCOME-02", "target_pct": 30.0}
+                    ]
+                },
+                "transformation_logic": """-- Sleeve Target Weight Decimal Normalization & Invariant Equation
+target_weight = Decimal(target_pct) / Decimal("100.00")
+ASSERT SUM(target_weight) == Decimal("1.0000")
+IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
+    target_weight[0] += (Decimal("1.0000") - SUM(target_weight))""",
+                "outputs": {
+                    "validated_compositions": [
+                        {"sleeve_id": "SLV-01", "model_code": "MOD-GROWTH", "target_weight": 0.7000},
+                        {"sleeve_id": "SLV-02", "model_code": "MOD-INCOME", "target_weight": 0.3000}
+                    ],
+                    "sum_check": "1.0000 (PASS)"
+                },
+                "warnings": []
+            },
+            "compliance": {
+                "name": "Compliance Validator",
+                "phase": "Phase 2: Business Logic",
+                "status": "PREVIEW_MODE",
+                "inputs": {"restricted_models": ["MOD-RESTRICTED-01", "MOD-RESTRICTED-02"]},
+                "transformation_logic": "CHECK model_code NOT IN (SELECT restricted_code FROM firm_compliance_overlay);",
+                "outputs": {"status": "APPROVED", "violations": 0},
+                "warnings": []
+            },
+            "data_quality": {
+                "name": "Data Quality Agent",
+                "phase": "Phase 2: Business Logic",
+                "status": "PREVIEW_MODE",
+                "inputs": {"referential_spine": "Party -> Household -> Account -> Sleeve -> Position"},
+                "transformation_logic": "ASSERT Account.household_id REFERENCES Household.household_id;",
+                "outputs": {"orphaned_accounts": 0, "status": "PASS"},
+                "warnings": []
+            },
+            "loader": {
+                "name": "Loader Agent",
+                "phase": "Phase 3: Operational Execution",
+                "status": "PREVIEW_MODE",
+                "inputs": {"targets": ["Salesforce SPARC", "Orion Eclipse"]},
+                "transformation_logic": "INSERT INTO staging_sparc.account; INSERT INTO staging_orion.portfolio;",
+                "outputs": {"sparc_staged_records": 1, "orion_staged_records": 2},
+                "warnings": []
+            },
+            "reconciler": {
+                "name": "Reconciler Agent",
+                "phase": "Phase 3: Operational Execution",
+                "status": "PREVIEW_MODE",
+                "inputs": {"source_aum": 108000.00, "target_aum": 108000.00},
+                "transformation_logic": "variance_pct = abs((target_aum - source_aum) / source_aum) * 100.00\nASSERT variance_pct <= 0.5000%",
+                "outputs": {"source_aum": 108000.00, "target_aum": 108000.00, "variance_pct": 0.0000, "status": "PASS"},
+                "warnings": []
+            },
+            "cutover": {
+                "name": "Cutover & Audit Agents",
+                "phase": "Phase 3: Operational Execution",
+                "status": "PREVIEW_MODE",
+                "inputs": {"rep_code": "REP-9981", "wave_id": "WAVE-01"},
+                "transformation_logic": "UPDATE trade_router SET active_platform = 'ORION_ECLIPSE' WHERE advisor_id = 'REP-9981';",
+                "outputs": {"cutover_gate": "AWAITING_STEP_6_HITL_SIGNOFF"},
+                "warnings": ["Action Required: Approve atomic cutover in Step 6 HITL Queue."]
+            }
+        }
+
+        return previews.get(agent_id, {
+            "name": f"Agent {agent_id.replace('_', ' ').title()}",
+            "phase": "Pipeline Execution",
+            "status": "READY_TO_RUN",
+            "inputs": {"message": "Run pipeline in Step 5 to generate execution traces."},
+            "transformation_logic": "-- Transformation SQL or logic will be displayed here.",
+            "outputs": {},
+            "warnings": []
+        })
 
     def apply_agent_override(self, agent_id: str, new_logic: str, override_notes: str) -> Dict[str, Any]:
-        """Applies a human override to an agent's transformation logic."""
+        """Applies a human intervention override to an agent's transformation logic."""
         if self.pipeline_runs:
             latest_run = self.pipeline_runs[-1]
             agent_data = latest_run.get("agent_details", {}).get(agent_id)

@@ -292,3 +292,12 @@ async def override_agent_logic(
     res = state_store.apply_agent_override(agent_id, new_logic, override_notes)
     logger.info(f"Human intervention override applied to Agent '{agent_id}': {override_notes}")
     return JSONResponse(res)
+
+# Add / verify this endpoint in ui/app.py
+
+@app.get("/api/pipeline/agent-detail/{agent_id}")
+async def get_agent_detail(agent_id: str, request: Request):
+    """Returns granular source inputs, crosswalk SQL logic, and target outputs for an agent."""
+    user = get_current_user(request)
+    detail = state_store.get_agent_detail(agent_id)
+    return JSONResponse({"status": "SUCCESS", "agent_id": agent_id, "detail": detail})
