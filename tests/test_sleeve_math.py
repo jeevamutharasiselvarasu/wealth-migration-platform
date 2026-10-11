@@ -1,6 +1,6 @@
 import pytest
 from decimal import Decimal
-from data_plane.src.core.sleeve_engine import SleeveMathEngine
+from data_plane.core.sleeve_engine import SleeveMathEngine
 
 def test_sleeve_math_exact_hundred_percent():
     raw_sleeves = [

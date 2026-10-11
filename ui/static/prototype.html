@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Migration Workbench · Control Plane</title>
+  <link rel="stylesheet" href="/static/prototype.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button id="navToggleBtn" class="navtoggle" title="Toggle sidebar">«</button>
+      <div class="mono-logo">XA</div>
+      <div>
+        <div class="ttl">XODUS<b>-AMP</b></div>
+        <div class="sub">Data Migration Workbench</div>
+      </div>
+      <div id="personaSwitcher" class="persona-switcher"></div>
+      <button id="configBtn" class="topbtn">⚙ Configuration</button>
+      <button id="resetBtn" class="topbtn">↺ Reset Demo</button>
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <nav id="sidebar" class="sidebar"></nav>
+
+    <!-- Main Workspace -->
+    <main id="mainWorkspace" class="main"></main>
+
+    <!-- HITL Side Panel -->
+    <aside id="hitlPanel" class="hitl"></aside>
+  </div>
+
+  <!-- Dynamic Modals Container -->
+  <div id="modalContainer"></div>
+
+  <!-- ES Modules Entrypoint -->
+  <script type="module" src="/static/prototype.js"></script>
+</body>
+</html>

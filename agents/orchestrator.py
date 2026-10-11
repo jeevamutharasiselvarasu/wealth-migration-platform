@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from agents.discovery.extractor_agent import ExtractorAgent
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
@@ -126,7 +126,7 @@ ASSERT SUM(target_weight) == 1.0000""",
             "run_id": f"RUN-{rep_code}-{wave_id}",
             "rep_code": rep_code,
             "wave_id": wave_id,
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "extracted_sleeve_count": extracted_data["sleeve_count"],
             "extracted_position_count": extracted_data["position_count"],
             "compliance_status": compliance_result["status"],

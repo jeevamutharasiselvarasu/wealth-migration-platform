@@ -1,5 +1,5 @@
 import pytest
-from data_plane.src.validation.reconciler import ReconciliationEngine
+from data_plane.validation.reconciler import ReconciliationEngine
 
 def test_reconciliation_pass_within_tolerance():
     reconciler = ReconciliationEngine(tolerance_pct=0.5)

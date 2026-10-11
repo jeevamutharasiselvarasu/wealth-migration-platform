@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Migration Workbench — Detailed Module Workflow Specification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Space Grotesk', sans-serif; background-color: #0b0f19; color: #f1f5f9; }
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+        .code-block { background-color: #050811; border: 1px solid #1e293b; }
+        .step-line { position: absolute; left: 1.25rem; top: 3rem; bottom: -2rem; width: 2px; background: linear-gradient(to bottom, #4f46e5, #0b0f19); z-index: 0; }
+        .last-step .step-line { display: none; }
+        .node-card:hover { border-color: #6366f1; box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.2); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-6 space-y-8 max-w-7xl mx-auto">
+
+    <!-- TOP HEADER -->
+    <header class="bg-[#111827] border border-slate-800 rounded-2xl p-6 flex flex-wrap justify-between items-center gap-4 shadow-2xl">
+        <div class="flex items-center space-x-4">
+            <div class="h-12 w-12 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-xl flex items-center justify-center font-bold text-white text-xl shadow-indigo-500/20 shadow-lg">MW</div>
+            <div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Step-by-Step Module Workflow</h1>
+                <p class="text-sm text-slate-400 mt-1">Detailed Technical Specification for User Journey & Data Mutations</p>
+            </div>
+        </div>
+        <button onclick="downloadHtml()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2">
+            <span>⬇ Download Workflow Spec</span>
+        </button>
+    </header>
+
+    <!-- TIMELINE CONTAINER -->
+    <div class="relative space-y-10 pl-2">
+        
+        <!-- MODULE 1: LOGIN & ROLE SELECTION -->
+        <div class="relative pl-12 group">
+            <div class="absolute left-0 top-0 h-10 w-10 bg-slate-800 border-2 border-indigo-500 rounded-full flex items-center justify-center font-bold text-indigo-400 z-10 shadow-[0_0_15px_rgba(99,102,241,0.4)]">1</div>
+            <div class="step-line"></div>
+            
+            <div class="bg-[#111827] p-6 rounded-2xl border border-slate-800 node-card transition-all">
+                <div class="flex justify-between items-start border-b border-slate-800 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Authentication & Role Selection</h2>
+                        <p class="text-xs text-slate-400 mt-1">Session instantiation and Role-Based Access Control (RBAC) initialization.</p>
+                    </div>
+                    <span class="mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded">Route: /login &rarr; auth.py</span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-indigo-400 uppercase tracking-wider text-[10px]">User Interface Flow</h3>
+                        <ul class="list-disc pl-4 space-y-2 text-slate-300">
+                            <li>User accesses the root application and is intercepted by the FastApi session middleware.</li>
+                            <li>Presents login form requiring: <strong>Email</strong>, <strong>Password</strong>, and a <strong>Role Dropdown</strong>.</li>
+                            <li><strong>Available Roles:</strong> Platform Admin, Migration Analyst, Domain SME, Validation Specialist.</li>
+                        </ul>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">Backend Data Mutation</h3>
+                        <div class="code-block p-3 rounded-xl mono text-slate-400 overflow-x-auto">
+[POST] /login
+Payload: {
+  "email": "jeeva@simplicitywealth.com",
+  "role": "Domain SME"
+}
+&rarr; session_mgr.authenticate()
+&rarr; Sets HttpOnly Cookie: session_id
+&rarr; Redirects to /firm-knowledge
+                        </div>
+                        <p class="text-[10px] text-slate-500 italic mt-1">* Note: The selected role governs downstream approvals (e.g., Only "Domain SME" or "Platform Admin" can sign off in Step 6 HITL queue).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 2: KNOWLEDGE BASE LOADING -->
+        <div class="relative pl-12 group">
+            <div class="absolute left-0 top-0 h-10 w-10 bg-slate-800 border-2 border-indigo-500 rounded-full flex items-center justify-center font-bold text-indigo-400 z-10 shadow-[0_0_15px_rgba(99,102,241,0.4)]">2</div>
+            <div class="step-line"></div>
+            
+            <div class="bg-[#111827] p-6 rounded-2xl border border-slate-800 node-card transition-all">
+                <div class="flex justify-between items-start border-b border-slate-800 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Firm Knowledge Base Instantiation</h2>
+                        <p class="text-xs text-slate-400 mt-1">Capturing the Discovery Questionnaire to dynamically generate cohort execution waves.</p>
+                    </div>
+                    <span class="mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded">Route: /firm-knowledge &rarr; ui/state.py</span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-indigo-400 uppercase tracking-wider text-[10px]">User Interface Flow</h3>
+                        <ul class="list-disc pl-4 space-y-2 text-slate-300">
+                            <li>Interactive web form replaces traditional file-based discovery.</li>
+                            <li>Captures core migration attributes: Target Firm Name, Total Advisor Population, Operating Model (Rep-as-PM), Source Platforms (Amplify/Schwab), and strictly enforced AUM Drift Gate (e.g., 0.50%).</li>
+                            <li>File drop zone for uploading supplementary data dictionaries (.json) and transformation rules (.md).</li>
+                        </ul>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">Backend Data Mutation</h3>
+                        <div class="code-block p-3 rounded-xl mono text-slate-400 overflow-x-auto">
+[POST] /api/knowledge/submit-questionnaire
+&rarr; state_store.update_questionnaire_from_form()
+
+// Dynamic Wave Calculation Triggered:
+Total Reps: 120
+Pilot Wave: MIN(5, Total) = 5
+Wave 1 (25%): 28
+Wave 2 (35%): 40
+Wave 3 (Rem): 47
+
+&rarr; State generates Dashboard Overview context.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 3: ENTITY SCOPE SELECTION -->
+        <div class="relative pl-12 group">
+            <div class="absolute left-0 top-0 h-10 w-10 bg-slate-800 border-2 border-indigo-500 rounded-full flex items-center justify-center font-bold text-indigo-400 z-10 shadow-[0_0_15px_rgba(99,102,241,0.4)]">3</div>
+            <div class="step-line"></div>
+            
+            <div class="bg-[#111827] p-6 rounded-2xl border border-slate-800 node-card transition-all">
+                <div class="flex justify-between items-start border-b border-slate-800 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Canonical Entity Scope Selection</h2>
+                        <p class="text-xs text-slate-400 mt-1">Decoupling the 15 fixed platform taxonomy elements from migration-specific profiles.</p>
+                    </div>
+                    <span class="mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded">Route: /entity-selection &rarr; kernel/wealth_kernel.py</span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-indigo-400 uppercase tracking-wider text-[10px]">User Interface Flow</h3>
+                        <ul class="list-disc pl-4 space-y-2 text-slate-300">
+                            <li>System loads the immutable <strong>Wealth Kernel Taxonomy</strong>: 15 fixed entities (e.g., Account, Sleeve, Position, Documents).</li>
+                            <li>User interacts with a toggle-based Menu Card to classify each entity's scope for the current migration: <br>
+                            <span class="text-emerald-400 mono">IN_SCOPE</span>, <span class="text-amber-400 mono">PHASE_2</span>, <span class="text-blue-400 mono">ARCHIVE_ONLY</span>, <span class="text-slate-500 mono">OUT_OF_SCOPE</span>.</li>
+                            <li>User clicks "Save Scope Configuration".</li>
+                        </ul>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">Backend Data Mutation</h3>
+                        <div class="code-block p-3 rounded-xl mono text-slate-400 overflow-x-auto">
+[POST] /api/entities/save-scopes
+Payload: {
+  "scope_Account": "IN_SCOPE",
+  "scope_Terminated Accounts": "ARCHIVE_ONLY",
+  "scope_Tax Lot": "PHASE_2"
+}
+&rarr; state_store.save_entity_scopes(scopes_map)
+&rarr; Downstream modules now strictly filter by IN_SCOPE or ARCHIVE_ONLY.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 4: SAMPLE FILE UPLOADS -->
+        <div class="relative pl-12 group">
+            <div class="absolute left-0 top-0 h-10 w-10 bg-slate-800 border-2 border-indigo-500 rounded-full flex items-center justify-center font-bold text-indigo-400 z-10 shadow-[0_0_15px_rgba(99,102,241,0.4)]">4</div>
+            <div class="step-line"></div>
+            
+            <div class="bg-[#111827] p-6 rounded-2xl border border-slate-800 node-card transition-all">
+                <div class="flex justify-between items-start border-b border-slate-800 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Entity Sample File Ingestion</h2>
+                        <p class="text-xs text-slate-400 mt-1">Collecting raw legacy data samples formatted to expected canonical schemas.</p>
+                    </div>
+                    <span class="mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded">Route: /entity-sample-files &rarr; storage/</span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-indigo-400 uppercase tracking-wider text-[10px]">User Interface Flow</h3>
+                        <ul class="list-disc pl-4 space-y-2 text-slate-300">
+                            <li>UI dynamically renders file upload blocks <em>only</em> for entities marked <code class="mono text-emerald-300">IN_SCOPE</code> or <code class="mono text-blue-300">ARCHIVE_ONLY</code> in Step 3.</li>
+                            <li>Displays expected canonical schema headers (e.g., <code class="mono text-slate-400">ACCT_NUM, CUSTODIAN_CODE, OPEN_DATE</code>) for visual reference.</li>
+                            <li>User uploads raw legacy extracts (e.g., `amplify_sleeves.csv`, `accounts.csv`).</li>
+                            <li>File card updates to green "PARSED" status showing exact row counts.</li>
+                        </ul>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">Backend Data Mutation</h3>
+                        <div class="code-block p-3 rounded-xl mono text-slate-400 overflow-x-auto">
+[POST] /api/entities/upload-sample-file
+&rarr; Reads file into Memory (BytesIO)
+&rarr; Uses Pandas to parse CSV & count rows
+&rarr; state_store.attach_entity_sample_file()
+   {
+     "filename": "amplify_sleeves.csv",
+     "row_count": 4,
+     "status": "PARSED"
+   }
+&rarr; Connector classes fall back to these local `test_files/` if Azure storage is disconnected.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 5: CANONICAL MODEL BUILDING -->
+        <div class="relative pl-12 group last-step">
+            <div class="absolute left-0 top-0 h-10 w-10 bg-slate-800 border-2 border-indigo-500 rounded-full flex items-center justify-center font-bold text-indigo-400 z-10 shadow-[0_0_15px_rgba(99,102,241,0.4)]">5</div>
+            <div class="step-line"></div>
+            
+            <div class="bg-[#111827] p-6 rounded-2xl border border-slate-800 node-card transition-all">
+                <div class="flex justify-between items-start border-b border-slate-800 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Canonical Model Building (Agent Pipeline)</h2>
+                        <p class="text-xs text-slate-400 mt-1">Crosswalk mapping, AI inference, and business logic execution to construct target schemas.</p>
+                    </div>
+                    <span class="mono text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded">Route: /agent-pipeline &rarr; agents/orchestrator.py</span>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-indigo-400 uppercase tracking-wider text-[10px]">User Interface Flow</h3>
+                        <ul class="list-disc pl-4 space-y-2 text-slate-300">
+                            <li>User enters <strong>Agent Pipeline Studio</strong> and clicks "Execute 9-Agent Pipeline".</li>
+                            <li>The master orchestrator runs the pipeline. Statuses flip to <code class="mono text-emerald-400">EXECUTED</code> or <code class="mono text-emerald-400">PASS</code>.</li>
+                            <li><strong>Deep Dive Inspection:</strong> User clicks the "Schema Mapper Agent" card to open the slide-out inspector drawer.</li>
+                            <li>Inspector shows side-by-side: Raw Source JSON &rarr; Editable SQL Crosswalk &rarr; Target Canonical Payload.</li>
+                        </ul>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">Backend Data Mutation</h3>
+                        <div class="code-block p-3 rounded-xl mono text-slate-400 overflow-x-auto">
+[POST] /api/pipeline/run
+&rarr; orchestrator.run_cohort_pipeline()
+
+// Sub-Module: SchemaMapperAgent
+Input (Raw): {"CUST_CODE_SRC": "SCHW"}
+Logic Applied: VALUE_TRANSFORMS["SCHW" -> "SCHWAB"]
+Output (Target): {"CUSTODIAN_CODE": "SCHWAB"}
+
+// Sub-Module: AzureAIFoundryMapper
+Input: Unmapped field "EXSTIVA_BILLING_TIER"
+Call: GPT-4o Zero-shot ChatCompletion
+Output: Target inferred as "SPARC_Billing__c"
+
+&rarr; Outputs staged to target data plane adapters.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function downloadHtml() {
+            const htmlContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'module_workflow_spec.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

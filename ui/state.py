@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
 
 class WorkspaceStateStore:
@@ -24,7 +24,7 @@ class WorkspaceStateStore:
             "primary_custodian": "Charles Schwab (Retained)",
             "aum_drift_gate": "0.50%",
             "restricted_models": "MOD-RESTRICTED-01, MOD-RESTRICTED-02",
-            "last_updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
         # 2. Inbuilt Entity Scopes
@@ -38,7 +38,7 @@ class WorkspaceStateStore:
                 "id": "DOC-001",
                 "filename": "amplify_data_dictionary.json",
                 "category": "data_dictionary",
-                "uploaded_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "uploaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "parsed_summary": "Amplify UMA Sleeve and Holding Schema Contract"
             }
         ]
@@ -49,14 +49,12 @@ class WorkspaceStateStore:
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
 
     def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
-        """Returns live agent transformation traces, or pre-execution crosswalk previews if pipeline has not run yet."""
         if self.pipeline_runs:
             latest_run = self.pipeline_runs[-1]
             details = latest_run.get("agent_details", {})
             if agent_id in details:
                 return details[agent_id]
 
-        # Live Pre-Execution Schema Crosswalk & Transformation Logic Preview
         previews = {
             "extractor": {
                 "name": "Extractor Agent",
@@ -208,7 +206,6 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
         })
 
     def apply_agent_override(self, agent_id: str, new_logic: str, override_notes: str) -> Dict[str, Any]:
-        """Applies a human intervention override to an agent's transformation logic."""
         if self.pipeline_runs:
             latest_run = self.pipeline_runs[-1]
             agent_data = latest_run.get("agent_details", {}).get(agent_id)
@@ -222,7 +219,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             "rep_code": "REP-9981",
             "approver": "Platform Admin (Human Intervention)",
             "decision": f"OVERRIDE_AGENT_{agent_id.upper()}: {override_notes}",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         self.audit_log.append(entry)
         return {"status": "SUCCESS", "agent_id": agent_id, "updated_logic": new_logic}
@@ -249,7 +246,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
 
     def update_questionnaire_from_form(self, form_payload: Dict[str, Any]) -> Dict[str, Any]:
         self.questionnaire_data.update(form_payload)
-        self.questionnaire_data["last_updated"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        self.questionnaire_data["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         self.generated_dashboard = self._build_dashboard_from_form()
         return self.generated_dashboard
 
@@ -281,7 +278,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
         return in_scope_list
 
     def add_firm_file(self, filename: str, category: str, content_bytes: bytes) -> Dict[str, Any]:
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         doc_record = {
             "id": f"DOC-{len(self.firm_knowledge_docs) + 1:03d}",
             "filename": filename,
@@ -304,7 +301,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
 
         record = {
             "filename": filename,
-            "uploaded_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "uploaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "size_bytes": len(content_bytes),
             "row_count": row_count,
             "status": "PARSED"
@@ -322,7 +319,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             "rep_code": rep_code,
             "approver": approver,
             "decision": decision,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         self.audit_log.append(entry)
         self.generated_dashboard = self._build_dashboard_from_form()
@@ -374,7 +371,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             "operating_model": self.questionnaire_data.get("operating_model", "Rep-as-PM"),
             "program_status": program_status,
             "waves": waves,
-            "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
 state_store = WorkspaceStateStore()
