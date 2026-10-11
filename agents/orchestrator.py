@@ -16,8 +16,9 @@ from data_plane.adapters.orion_eclipse_adapter import OrionEclipseAdapter
 
 logger = logging.getLogger("AgenticOrchestrator")
 
+
 class AgenticOrchestrator:
-    """Orchestrates all 9 specialized agents across schema translation, sleeve math, and staging."""
+    """Orchestrates all 9 specialized agents across schema translation, sleeve math, and staging[cite: 23]."""
 
     def __init__(self, source_dir: str):
         self.extractor = ExtractorAgent(source_dir)
@@ -33,14 +34,14 @@ class AgenticOrchestrator:
     def run_cohort_pipeline(self, rep_code: str, wave_id: str) -> Dict[str, Any]:
         logger.info(f"=== Starting Pipeline Run for Advisor {rep_code} ({wave_id}) ===")
 
-        # 1. Extractor Agent (Extract Raw Legacy Data)
+        # 1. Extractor Agent
         extracted_data = self.extractor.extract_advisor_cohort(rep_code)
-        
-        # 2. Schema Mapper Agent (Translate Legacy Headers & Values to Canonical Model)
+
+        # 2. Schema Mapper Agent
         mapped_sleeves = self.schema_mapper.map_source_schema(extracted_data["sleeves"])
         mapped_positions = self.schema_mapper.map_source_schema(extracted_data["positions"])
 
-        # 3. Sleeve Math Agent (Operate on Transformed Canonical Payload)
+        # 3. Sleeve Math Agent
         sleeve_payload = {
             "rep_code": rep_code,
             "sleeves": mapped_sleeves["mapped_records"]
@@ -55,7 +56,7 @@ class AgenticOrchestrator:
 
         # 5. Data Quality Agent
         dummy_households = [{"household_id": "HH-1001"}]
-        dummy_accounts = [{"account_id": acct["account_id"], "household_id": "HH-1001"} 
+        dummy_accounts = [{"account_id": acct["account_id"], "household_id": "HH-1001"}
                           for acct in validated_sleeve_models["validated_accounts"]]
         dq_result = self.data_quality.audit_integrity(dummy_accounts, dummy_households)
 
@@ -77,7 +78,7 @@ class AgenticOrchestrator:
             target_positions=mapped_positions["mapped_records"]
         )
 
-        # Build Tracing Metadata for Deep Dive Inspector
+        # Agent Details for Inspection
         agent_details = {
             "extractor": {
                 "name": "Extractor Agent",
@@ -122,7 +123,7 @@ ASSERT SUM(target_weight) == 1.0000""",
             }
         }
 
-        pipeline_run_summary = {
+        return {
             "run_id": f"RUN-{rep_code}-{wave_id}",
             "rep_code": rep_code,
             "wave_id": wave_id,
@@ -136,5 +137,3 @@ ASSERT SUM(target_weight) == 1.0000""",
             "hitl_status": "PENDING_APPROVAL" if reconcil_result["status"] == "PASS" else "HOLD_VARIANCE",
             "agent_details": agent_details
         }
-
-        return pipeline_run_summary

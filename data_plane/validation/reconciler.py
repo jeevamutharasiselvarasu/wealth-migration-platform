@@ -3,15 +3,16 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger("ReconciliationEngine")
 
+
 class ReconciliationEngine:
-    """Calculates AUM market value variance and checks against tolerance thresholds."""
+    """Calculates AUM market value variance and checks against tolerance thresholds[cite: 40]."""
 
     def __init__(self, tolerance_pct: float = 0.5):
         self.tolerance_pct = tolerance_pct
 
     def reconcile_aum(self, source_positions: List[Dict[str, Any]], target_positions: List[Dict[str, Any]]) -> Dict[str, Any]:
-        source_aum = sum(float(p.get("market_value", 0)) for p in source_positions)
-        target_aum = sum(float(p.get("market_value", 0)) for p in target_positions)
+        source_aum = sum(float(p.get("market_value", p.get("mkt_val", 0))) for p in source_positions)
+        target_aum = sum(float(p.get("market_value", p.get("mkt_val", 0))) for p in target_positions)
 
         if source_aum == 0:
             variance_pct = 0.0

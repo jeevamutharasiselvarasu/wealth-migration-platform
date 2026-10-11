@@ -3,15 +3,15 @@
 {% block content %}
 <div class="space-y-6 max-w-6xl">
     <!-- Header Banner -->
-    <div class="flex justify-between items-center bg-[#161f30] p-4 rounded-xl border border-indigo-500/30 shadow-lg">
+    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
         <div class="flex items-center space-x-3">
-            <span class="h-8 w-8 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm">6</span>
+            <span class="h-9 w-9 rounded-xl bg-teal-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">06</span>
             <div>
-                <h1 class="text-lg font-bold text-white">Human-in-the-Loop (HITL) Approval Queue</h1>
-                <p class="text-xs text-slate-400">Review Rep-as-PM sleeve math invariants and authorize atomic cutovers.</p>
+                <h1 class="text-lg font-bold text-[#152c6b]">Human-in-the-Loop (HITL) Approval Queue</h1>
+                <p class="text-xs text-[#5a6a88]">Review Rep-as-PM sleeve math invariants and authorize atomic cutovers.</p>
             </div>
         </div>
-        <span class="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs px-3 py-1 rounded-full font-mono font-semibold">
+        <span class="bg-amber-50 text-amber-700 border border-amber-200 text-xs px-3 py-1 rounded-full font-mono font-bold">
             PENDING SME SIGN-OFF
         </span>
     </div>
@@ -21,23 +21,23 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Cohort Review Form & Sleeve Decomposition Table -->
-        <div class="lg:col-span-2 bg-[#161f30] rounded-xl border border-slate-700/60 p-6 space-y-6 shadow-xl">
-            <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-6 shadow-sm">
+            <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
                 <div>
-                    <h2 class="text-base font-bold text-white">Advisor Cohort: {{ cohort.rep_code }}</h2>
-                    <p class="text-xs text-slate-400 font-mono">Wave ID: {{ cohort.wave_id }} | Account: {{ cohort.account_id }}</p>
+                    <h2 class="text-base font-bold text-[#152c6b]">Advisor Cohort: {{ cohort.rep_code }}</h2>
+                    <p class="text-xs text-[#5a6a88] font-mono">Wave ID: {{ cohort.wave_id }} | Account: {{ cohort.account_id }}</p>
                 </div>
-                <span class="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-xs px-2.5 py-1 rounded font-mono font-bold">
+                <span class="bg-teal-50 text-teal-700 border border-teal-200 text-xs px-2.5 py-1 rounded-lg font-mono font-bold">
                     Sum Check: {{ cohort.sum_check }}
                 </span>
             </div>
 
             <!-- Sleeve Decomposition Invariant Table -->
             <div class="space-y-3">
-                <h3 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Rep-as-PM UMA Sleeve Allocations</h3>
+                <h3 class="text-xs font-bold uppercase text-teal-700 tracking-wider">Rep-as-PM UMA Sleeve Allocations</h3>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs text-slate-300">
-                        <thead class="bg-[#0f172a] text-slate-400 uppercase font-mono border-b border-slate-700/60">
+                    <table class="w-full text-left text-xs text-[#1c2a4a]">
+                        <thead class="bg-[#f8fafc] text-[#5a6a88] uppercase font-mono border-b border-[#e2e8f0]">
                             <tr>
                                 <th class="p-2.5">Sleeve ID</th>
                                 <th class="p-2.5">Model Code</th>
@@ -45,13 +45,13 @@
                                 <th class="p-2.5">Decimal Fraction</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-700/50 font-mono">
+                        <tbody class="divide-y divide-[#e9eff9] font-mono">
                             {% for sleeve in cohort.allocations %}
                             <tr>
-                                <td class="p-2.5 text-indigo-300 font-semibold">{{ sleeve.sleeve_id|default('SLV-' ~ loop.index) }}</td>
-                                <td class="p-2.5 font-bold text-white">{{ sleeve.model_code }}</td>
-                                <td class="p-2.5 text-slate-200">{{ sleeve.target_pct }}%</td>
-                                <td class="p-2.5 text-emerald-400">{{ '%.4f'|format(sleeve.target_pct / 100.0) }}</td>
+                                <td class="p-2.5 text-blue-700 font-bold">{{ sleeve.sleeve_id|default('SLV-' ~ loop.index) }}</td>
+                                <td class="p-2.5 font-bold text-[#152c6b]">{{ sleeve.model_code }}</td>
+                                <td class="p-2.5 text-[#1c2a4a]">{{ sleeve.target_pct }}%</td>
+                                <td class="p-2.5 text-teal-700 font-bold">{{ '%.4f'|format(sleeve.target_pct / 100.0) }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -60,18 +60,18 @@
             </div>
 
             <!-- Approval Action Form -->
-            <form id="hitl-form" class="space-y-4 border-t border-slate-700/60 pt-4">
+            <form id="hitl-form" class="space-y-4 border-t border-[#e9eff9] pt-4">
                 <input type="hidden" name="rep_code" value="{{ cohort.rep_code }}">
                 <input type="hidden" name="approver" value="{{ user_name }} ({{ user_role }})">
 
                 <div class="flex justify-between items-center space-x-4">
                     <button type="button" onclick="submitHitlAction('reject')"
-                            class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-5 py-2.5 rounded-xl text-xs font-bold transition">
+                            class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-5 py-2.5 rounded-xl text-xs font-bold transition">
                         Reject Cohort (Return to Analyst)
                     </button>
 
                     <button type="button" onclick="submitHitlAction('approve')"
-                            class="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg flex items-center space-x-2">
+                            class="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
                         <span>Approve Atomic Cutover</span>
                         <span>✓</span>
                     </button>
@@ -80,27 +80,27 @@
         </div>
 
         <!-- Audit Trail & Signoff History -->
-        <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-6 space-y-4 shadow-xl">
-            <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider border-b border-slate-700/60 pb-2">
+        <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
+            <h2 class="text-xs font-bold uppercase text-teal-700 tracking-wider border-b border-[#e9eff9] pb-2">
                 Audit Trail & Signoff History
             </h2>
 
             <div class="space-y-3 max-h-96 overflow-y-auto">
                 {% if audit_log %}
                     {% for entry in audit_log %}
-                    <div class="bg-[#0f172a] p-3 rounded-lg border border-slate-700/50 space-y-1 text-xs">
+                    <div class="bg-[#f8fafc] p-3 rounded-xl border border-[#e2e8f0] space-y-1 text-xs">
                         <div class="flex justify-between items-center font-mono">
-                            <span class="text-indigo-400 font-bold">{{ entry.audit_id }}</span>
-                            <span class="text-[10px] {% if 'APPROVED' in entry.decision %}text-emerald-400{% else %}text-amber-400{% endif %} font-bold">
+                            <span class="text-blue-700 font-bold">{{ entry.audit_id }}</span>
+                            <span class="text-[10px] {% if 'APPROVED' in entry.decision %}text-teal-700{% else %}text-amber-700{% endif %} font-bold">
                                 {{ entry.decision }}
                             </span>
                         </div>
-                        <div class="text-slate-300 font-medium">Rep: {{ entry.rep_code }}</div>
-                        <div class="text-[10px] text-slate-400">{{ entry.approver }} • {{ entry.timestamp }}</div>
+                        <div class="text-[#1c2a4a] font-medium">Rep: {{ entry.rep_code }}</div>
+                        <div class="text-[10px] text-[#8a97b2]">{{ entry.approver }} • {{ entry.timestamp }}</div>
                     </div>
                     {% endfor %}
                 {% else %}
-                    <div class="text-xs text-slate-500 italic p-4 text-center">No signoff actions recorded yet.</div>
+                    <div class="text-xs text-[#8a97b2] italic p-4 text-center">No signoff actions recorded yet.</div>
                 {% endif %}
             </div>
         </div>
@@ -131,11 +131,11 @@ async function submitHitlAction(action) {
         alertBox.classList.remove('hidden');
 
         if (result.status === 'SUCCESS') {
-            alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400";
+            alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-teal-50 border border-teal-200 text-teal-800";
             alertBox.textContent = result.message;
             setTimeout(() => { window.location.href = '/'; }, 1500);
         } else {
-            alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-400";
+            alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-amber-50 border border-amber-200 text-amber-800";
             alertBox.textContent = result.message;
         }
     } catch (error) {

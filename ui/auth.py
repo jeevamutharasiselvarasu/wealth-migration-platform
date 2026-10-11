@@ -3,7 +3,7 @@ from typing import Dict, Optional
 from fastapi import Request, HTTPException, status
 
 class SessionManager:
-    """Manages active user sessions, role permissions, and logins."""
+    """Manages active user sessions, role permissions, and logins across RBAC personas."""
 
     def __init__(self):
         self.active_sessions: Dict[str, Dict[str, str]] = {}
@@ -23,6 +23,11 @@ class SessionManager:
                 "password": "password123",
                 "name": "Sarah Domain SME",
                 "default_role": "Domain SME"
+            },
+            "specialist@simplicitywealth.com": {
+                "password": "password123",
+                "name": "Marcus Validation Specialist",
+                "default_role": "Validation Specialist"
             }
         }
 

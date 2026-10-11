@@ -3,55 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Data Migration Workbench</title>
+    <title>Login - XODUS-AMP Data Migration Workbench</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Space Grotesk', sans-serif; background-color: #f4f7fc; color: #1c2a4a; }
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+    </style>
 </head>
-<body class="bg-[#0b0f19] text-slate-100 font-sans min-h-screen flex items-center justify-center p-4">
+<body class="bg-[#f4f7fc] text-[#1c2a4a] min-h-screen flex items-center justify-center p-4">
 
-    <div class="max-w-md w-full bg-[#161f30] rounded-2xl border border-slate-700/60 p-8 space-y-6 shadow-2xl">
-        <!-- Workbench Logo & Header -->
+    <div class="max-w-md w-full bg-white rounded-2xl border border-[#d9e3f5] p-8 space-y-6 shadow-xl">
+        <!-- Logo & Title Header -->
         <div class="text-center space-y-2">
-            <div class="h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-white text-xl shadow-lg mx-auto">MW</div>
-            <h1 class="text-2xl font-extrabold text-white tracking-tight">Data Migration Workbench</h1>
-            <p class="text-xs text-slate-400">Core Cap to Simplicity Wealth Acquisition Pipeline</p>
+            <div class="h-12 w-12 bg-gradient-to-br from-blue-600 to-teal-500 rounded-xl flex items-center justify-center font-mono font-bold text-white text-base shadow mx-auto">
+                XA
+            </div>
+            <h1 class="text-2xl font-extrabold text-[#152c6b] tracking-tight">XODUS<b class="text-teal-600">-AMP</b></h1>
+            <p class="text-xs text-[#5a6a88] font-semibold">Data Migration Workbench Control Plane</p>
         </div>
 
         <!-- Login Form -->
         <form action="/login" method="POST" class="space-y-4">
             {% if error %}
-            <div class="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg font-medium text-center">
+            <div class="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium text-center">
                 {{ error }}
             </div>
             {% endif %}
 
             <div>
-                <label class="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+                <label class="block text-xs font-bold text-[#41506b] mb-1 font-mono uppercase">Email Address</label>
                 <input type="email" name="email" value="jeeva@simplicitywealth.com" required 
-                       class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono">
+                       class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-xl px-3.5 py-2.5 text-xs text-[#1c2a4a] focus:outline-none focus:border-blue-500 font-mono">
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                <label class="block text-xs font-bold text-[#41506b] mb-1 font-mono uppercase">Password</label>
                 <input type="password" name="password" value="password123" required 
-                       class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono">
+                       class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-xl px-3.5 py-2.5 text-xs text-[#1c2a4a] focus:outline-none focus:border-blue-500 font-mono">
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-300 mb-1">Select Active Role</label>
-                <select name="role" class="w-full bg-[#0f172a] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-indigo-300 font-semibold focus:outline-none focus:border-indigo-500">
-                    <option value="Platform Admin" selected>Platform Admin</option>
-                    <option value="Migration Analyst">Migration Analyst</option>
-                    <option value="Domain SME">Domain SME</option>
-                    <option value="Validation Specialist">Validation Specialist</option>
+                <label class="block text-xs font-bold text-[#41506b] mb-1 font-mono uppercase">Select Active Persona Role</label>
+                <select name="role" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-xl px-3.5 py-2.5 text-xs text-blue-700 font-bold focus:outline-none focus:border-blue-500">
+                    <option value="Platform Admin" selected>Platform Admin (Full Control & Interventions)</option>
+                    <option value="Migration Analyst">Migration Analyst (Scope & Mapping Authoring)</option>
+                    <option value="Domain SME">Domain SME (HITL & Cutover Signoff)</option>
+                    <option value="Validation Specialist">Validation Specialist (AUM Drift & Audit Check)</option>
                 </select>
             </div>
 
-            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg mt-2">
-                Sign In to Migration Workspace
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl text-xs transition shadow-md mt-2">
+                Sign In to Migration Workspace →
             </button>
         </form>
 
-        <div class="text-center text-[11px] text-slate-500">
+        <div class="text-center text-[11px] text-[#8a97b2] font-mono">
             Protected Platform • Session-Based Control Plane Auth
         </div>
     </div>

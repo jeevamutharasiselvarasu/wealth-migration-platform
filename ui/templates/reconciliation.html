@@ -2,12 +2,21 @@
 
 {% block content %}
 <div class="space-y-6 max-w-6xl">
-    <h1 class="text-2xl font-bold text-white">Reconciliation & Drift</h1>
+    <!-- Header Banner -->
+    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
+        <div class="flex items-center space-x-3">
+            <span class="h-9 w-9 rounded-xl bg-teal-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">07</span>
+            <div>
+                <h1 class="text-lg font-bold text-[#152c6b]">Reconciliation & AUM Drift Gate</h1>
+                <p class="text-xs text-[#5a6a88]">Post-load market value reconciliation audit against the gate tolerance ({{ drift_gate }}).</p>
+            </div>
+        </div>
+    </div>
 
-    <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-6">
+    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 shadow-sm">
         <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-slate-300">
-                <thead class="bg-[#0f172a] text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700/60">
+            <table class="w-full text-left text-sm text-[#1c2a4a]">
+                <thead class="bg-[#f8fafc] text-[#5a6a88] text-xs uppercase font-mono border-b border-[#e2e8f0]">
                     <tr>
                         <th class="p-3">Advisor Code</th>
                         <th class="p-3">Source AUM ($)</th>
@@ -16,20 +25,34 @@
                         <th class="p-3">Gate Status</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-700/50">
-                    {% for rec in records %}
-                    <tr class="hover:bg-slate-800/40 transition">
-                        <td class="p-3 font-mono font-medium text-indigo-400">{{ rec.rep_code }}</td>
-                        <td class="p-3 font-mono text-slate-200">${{ "{:,.2f}".format(rec.source_aum) }}</td>
-                        <td class="p-3 font-mono text-slate-200">${{ "{:,.2f}".format(rec.target_aum) }}</td>
-                        <td class="p-3 font-mono text-emerald-400 font-medium">{{ rec.drift_pct }}%</td>
-                        <td class="p-3">
-                            <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded text-xs font-medium">
-                                {{ rec.status }}
-                            </span>
-                        </td>
-                    </tr>
-                    {% endfor %}
+                <tbody class="divide-y divide-[#e9eff9] text-xs">
+                    {% if pipeline_runs %}
+                        {% for run in pipeline_runs %}
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-mono font-bold text-blue-700">{{ run.rep_code }}</td>
+                            <td class="p-3 font-mono text-[#1c2a4a]">${{ "{:,.2f}".format(run.reconciliation_summary.source_aum) }}</td>
+                            <td class="p-3 font-mono text-[#1c2a4a]">${{ "{:,.2f}".format(run.reconciliation_summary.target_aum) }}</td>
+                            <td class="p-3 font-mono text-teal-700 font-bold">{{ run.reconciliation_summary.variance_pct }}%</td>
+                            <td class="p-3">
+                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold">
+                                    {{ run.reconciliation_summary.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-mono font-bold text-blue-700">REP-9981</td>
+                            <td class="p-3 font-mono text-[#1c2a4a]">$108,000.00</td>
+                            <td class="p-3 font-mono text-[#1c2a4a]">$108,000.00</td>
+                            <td class="p-3 font-mono text-teal-700 font-bold">0.0000%</td>
+                            <td class="p-3">
+                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold">
+                                    PASS
+                                </span>
+                            </td>
+                        </tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>

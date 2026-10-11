@@ -3,58 +3,58 @@
 {% block content %}
 <div class="space-y-6 max-w-6xl">
     <!-- Header Banner -->
-    <div class="flex justify-between items-center bg-[#161f30] p-4 rounded-xl border border-indigo-500/30 shadow-lg">
+    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
         <div class="flex items-center space-x-3">
-            <span class="h-8 w-8 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm">4</span>
+            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">04</span>
             <div>
-                <h1 class="text-lg font-bold text-white">Entity Sample File Uploads & Ingestion Specs</h1>
-                <p class="text-xs text-slate-400">Specify and upload sample data files for entities marked as In-Scope.</p>
+                <h1 class="text-lg font-bold text-[#152c6b]">Entity Sample File Uploads & Ingestion Specs</h1>
+                <p class="text-xs text-[#5a6a88]">Upload sample data files for entities marked as In-Scope or Archive-Only.</p>
             </div>
         </div>
         
-        <a href="/agent-pipeline" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg flex items-center space-x-2">
+        <a href="/agent-pipeline" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
             <span>Proceed to Agent Pipeline Studio</span>
             <span>→</span>
         </a>
     </div>
 
     <!-- Active In-Scope Entity Sample Upload Cards -->
-    <div class="bg-[#161f30] rounded-xl border border-slate-700/60 p-6 space-y-4 shadow-xl">
-        <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
-            <h2 class="text-xs font-bold uppercase text-indigo-400 tracking-wider">Required Entity Sample Data Files</h2>
-            <span class="text-xs text-slate-400 font-mono">{{ selected_entities|length }} Entities Selected</span>
+    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
+        <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
+            <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Required Entity Sample Data Files</h2>
+            <span class="text-xs text-[#5a6a88] font-mono">{{ selected_entities|length }} In-Scope / Archival Entities</span>
         </div>
 
         <div class="space-y-4">
             {% for ent in selected_entities %}
-            <div class="bg-[#0f172a] p-4 rounded-xl border border-slate-700/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div class="space-y-1">
                     <div class="flex items-center space-x-3">
-                        <span class="font-bold text-white text-sm">{{ ent.entity_name }}</span>
-                        <span class="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[10px] px-2 py-0.5 rounded font-mono font-semibold">
+                        <span class="font-bold text-[#152c6b] text-sm">{{ ent.entity_name }}</span>
+                        <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-0.5 rounded font-mono font-bold">
                             {{ ent.current_scope }}
                         </span>
-                        <span class="bg-slate-800 text-slate-300 border border-slate-700 text-[10px] px-2 py-0.5 rounded font-mono">
-                            Expected: {{ ent.expected_file }}
+                        <span class="bg-slate-200 text-[#1c2a4a] border border-slate-300 text-[10px] px-2 py-0.5 rounded font-mono font-semibold">
+                            Expected File: {{ ent.expected_file }}
                         </span>
                     </div>
-                    <div class="text-xs text-slate-400">{{ ent.grain }}</div>
-                    <div class="text-[11px] text-slate-500 font-mono">Required Schema: {{ ent.required_fields|join(', ') }}</div>
+                    <div class="text-xs text-[#5a6a88]">{{ ent.grain }}</div>
+                    <div class="text-[11px] text-[#8a97b2] font-mono">Required Canonical Schema: {{ ent.required_fields|join(', ') }}</div>
                 </div>
 
                 <!-- File Status / Upload Action -->
                 <div class="flex items-center space-x-3 min-w-[280px] justify-end">
                     {% if ent.sample_file_info %}
                         <div class="text-right">
-                            <div class="text-xs font-mono text-emerald-400 font-semibold">{{ ent.sample_file_info.filename }}</div>
-                            <div class="text-[10px] text-slate-400">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.status }}</div>
+                            <div class="text-xs font-mono text-teal-700 font-bold">{{ ent.sample_file_info.filename }}</div>
+                            <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.status }}</div>
                         </div>
-                        <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+                        <span class="h-2.5 w-2.5 rounded-full bg-teal-500"></span>
                     {% else %}
                         <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="flex items-center space-x-2">
                             <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
-                            <input type="file" name="file" required class="block w-48 text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 font-medium">
-                            <button type="submit" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold transition">
+                            <input type="file" name="file" required class="block w-48 text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 font-bold">
+                            <button type="submit" class="bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] px-3 py-1.5 rounded-lg border border-[#cbd5e1] text-xs font-bold transition">
                                 Upload
                             </button>
                         </form>

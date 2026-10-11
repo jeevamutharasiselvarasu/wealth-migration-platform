@@ -3,31 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ page_title }} - Data Migration Workbench</title>
+    <title>{{ page_title }} - XODUS-AMP Data Migration Workbench</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Space Grotesk', sans-serif; background-color: #f4f7fc; color: #1c2a4a; }
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+        .xodus-header { background-color: #152c6b; }
+        .xodus-sidebar { background-color: #eef3fb; border-color: #d9e3f5; }
+    </style>
 </head>
-<body class="bg-[#0b0f19] text-slate-100 font-sans min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
+<body class="min-h-screen flex flex-col bg-[#f4f7fc] text-[#1c2a4a]">
 
-    <!-- Top Header Bar -->
-    <header class="bg-[#111827] border-b border-slate-800 px-6 py-3 flex justify-between items-center">
+    <!-- XODUS-AMP Header Bar -->
+    <header class="xodus-header text-white px-6 py-3 flex justify-between items-center shadow-md">
         <div class="flex items-center space-x-3">
-            <div class="h-9 w-9 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white text-base shadow-sm">MW</div>
-            <span class="text-xl font-bold tracking-tight text-white">Data Migration Workbench</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded border border-slate-700 font-mono">MIG-CORECAP-2026</span>
+            <div class="h-9 w-10 bg-gradient-to-br from-blue-600 to-teal-500 rounded-lg flex items-center justify-center font-mono font-bold text-white text-xs shadow">
+                XA
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-base font-extrabold tracking-tight text-white">XODUS<b class="text-[#7fe3dd]">-AMP</b></span>
+                    <span class="text-xs text-slate-300 font-semibold">| Data Migration Workbench</span>
+                </div>
+                <p class="text-[10px] text-slate-300 uppercase tracking-wider font-mono">{{ firm_name|default('Acquisition Pipeline') }}</p>
+            </div>
+            <span class="ml-4 text-[11px] bg-[#1b3a8b] text-[#7fe3dd] px-2.5 py-0.5 rounded border border-[#33477e] font-mono">
+                {{ migration_id|default('MIG-ACTIVE-2026') }}
+            </span>
         </div>
 
         <div class="flex items-center space-x-5 text-xs">
-            <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-                <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span class="text-slate-300 font-mono">ADLS: connected (stg-corecap-data)</span>
+            <div class="flex items-center space-x-2 bg-[#1b3a8b] px-3 py-1.5 rounded-lg border border-[#33477e]">
+                <span class="h-2 w-2 rounded-full {% if adls_connected|default(true) %}bg-teal-400 animate-pulse{% else %}bg-amber-400{% endif %}"></span>
+                <span class="text-slate-200 font-mono text-[11px]">
+                    ADLS: {% if adls_connected|default(true) %}connected ({{ adls_container|default('stg-corecap-data') }}){% else %}disconnected{% endif %}
+                </span>
             </div>
 
-            <div class="flex items-center space-x-3 border-l border-slate-700 pl-4">
+            <div class="flex items-center space-x-3 border-l border-[#33477e] pl-4">
                 <div class="text-right">
-                    <div class="font-semibold text-white">{{ user_name }}</div>
-                    <div class="text-[10px] text-indigo-400 font-mono font-medium">{{ user_role }}</div>
+                    <div class="font-bold text-white text-xs">{{ user_name }}</div>
+                    <div class="text-[10px] text-[#7fe3dd] font-mono font-semibold">{{ user_role }}</div>
                 </div>
-                <a href="/logout" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold transition">
+                <a href="/logout" class="bg-[#1b3a8b] hover:bg-[#254ab2] text-white px-3 py-1.5 rounded-lg border border-[#33477e] text-xs font-semibold transition">
                     Logout
                 </a>
             </div>
@@ -35,44 +54,51 @@
     </header>
 
     <div class="flex flex-1">
-        <!-- Sidebar Lifecycle Steps -->
-        <aside class="w-64 bg-[#0d1322] border-r border-slate-800/80 p-4 space-y-4">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 xodus-sidebar border-r p-4 space-y-5">
             <div>
-                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 py-1">LIFECYCLE STEPS</div>
-                <nav class="space-y-1 mt-1">
-                    <a href="/firm-knowledge" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/firm-knowledge' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        1. Firm Knowledge Studio
+                <div class="text-[10px] font-bold text-[#8a97b2] uppercase tracking-wider px-2 py-1 font-mono">CONTROL PLANE (ANALYST)</div>
+                <nav class="space-y-1 mt-1.5">
+                    <a href="/firm-knowledge" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/firm-knowledge' %}bg-white text-blue-700 border border-blue-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">01</span>
+                        <span>Firm Knowledge Studio</span>
                     </a>
-                    <a href="/" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        2. Dashboard Overview
+                    <a href="/" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/' %}bg-white text-blue-700 border border-blue-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">02</span>
+                        <span>Dashboard Overview</span>
                     </a>
-                    <a href="/entity-selection" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/entity-selection' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        3. Entity Scope Selector
+                    <a href="/entity-selection" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/entity-selection' %}bg-white text-blue-700 border border-blue-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">03</span>
+                        <span>Entity Scope Selector</span>
                     </a>
-                    <a href="/entity-sample-files" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/entity-sample-files' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        4. Entity Sample Files
+                    <a href="/entity-sample-files" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/entity-sample-files' %}bg-white text-blue-700 border border-blue-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">04</span>
+                        <span>Entity Sample Files</span>
                     </a>
-                    <a href="/agent-pipeline" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/agent-pipeline' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        5. Agent Pipeline Studio
+                    <a href="/agent-pipeline" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/agent-pipeline' %}bg-white text-blue-700 border border-blue-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">05</span>
+                        <span>Agent Pipeline Studio</span>
                     </a>
                 </nav>
             </div>
 
             <div>
-                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 py-1">GATES & AUDIT</div>
-                <nav class="space-y-1 mt-1">
-                    <a href="/hitl" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/hitl' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        6. HITL Approval Queue
+                <div class="text-[10px] font-bold text-[#8a97b2] uppercase tracking-wider px-2 py-1 font-mono">DATA PLANE (SPECIALIST)</div>
+                <nav class="space-y-1 mt-1.5">
+                    <a href="/hitl" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/hitl' %}bg-white text-teal-700 border border-teal-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-teal-600 text-white px-1.5 py-0.5 rounded">06</span>
+                        <span>HITL Approval Queue</span>
                     </a>
-                    <a href="/reconciliation" class="block px-3 py-2 rounded-lg text-xs font-medium transition {% if request.url.path == '/reconciliation' %}bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold{% else %}text-slate-300 hover:bg-slate-800/60 hover:text-white{% endif %}">
-                        7. Reconciliation & Drift
+                    <a href="/reconciliation" class="flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition {% if request.url.path == '/reconciliation' %}bg-white text-teal-700 border border-teal-300 shadow-sm{% else %}text-[#41506b] hover:bg-white/60{% endif %}">
+                        <span class="font-mono text-[10px] bg-teal-600 text-white px-1.5 py-0.5 rounded">07</span>
+                        <span>Reconciliation & Drift</span>
                     </a>
                 </nav>
             </div>
         </aside>
 
         <!-- Main Content -->
-        <main class="flex-1 p-8 bg-[#0b0f19]">
+        <main class="flex-1 p-8 bg-[#f4f7fc]">
             {% block content %}{% endblock %}
         </main>
     </div>

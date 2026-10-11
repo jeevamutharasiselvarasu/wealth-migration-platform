@@ -1,0 +1,22 @@
+{
+  "system": "Amplify / Schwab PAS / Black Diamond",
+  "migration_id": "MIG-CORECAP-2026",
+  "custodians": [
+    "Charles Schwab",
+    "Fidelity Institutional"
+  ],
+  "domains": [
+    "households",
+    "accounts",
+    "sleeves",
+    "positions",
+    "transactions",
+    "performance"
+  ],
+  "delivery_phases": [
+    "WAVE-00 (Pilot)",
+    "WAVE-01 (Wave 1)",
+    "WAVE-02 (Wave 2)",
+    "WAVE-03 (Wave 3)"
+  ]
+}
