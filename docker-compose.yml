@@ -1,0 +1,32 @@
+services:
+  control_plane:
+    build:
+      context: .
+      dockerfile: Dockerfile.control_plane
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - CONTROL_PLANE_DB_PATH=App_Data/controlplane.db
+      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-00000000-0000-0000-0000-000000000000}
+      - AZURE_RESOURCE_GROUP=${AZURE_RESOURCE_GROUP:-rg-wealth-migration-dev}
+      - ADF_FACTORY_NAME=${ADF_FACTORY_NAME:-adf-wealth-migration-dev}
+      - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
+    volumes:
+      - ./App_Data:/app/App_Data
+      - ./data_plane/storage:/app/data_plane/storage
+    restart: unless-stopped
+
+  data_plane_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.data_plane
+    environment:
+      - EXECUTION_ENGINE=python_local
+      - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
+    volumes:
+      - ./data_plane/storage:/app/data_plane/storage
+      - ./App_Data:/app/App_Data
+    depends_on:
+      - control_plane
+    restart: unless-stopped

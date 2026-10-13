@@ -1,7 +1,10 @@
 import os
+import json
 import logging
-from typing import Dict, Any, List
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,6 +14,11 @@ from ui.state import state_store
 from agents.orchestrator import AgenticOrchestrator
 from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
+from data_plane.storage_manager import HybridStorageManager
+from control_plane.services.adf_client import AzureDataFactoryClient
+from control_plane.services.adf_exporter import ADFPackageExporter
+from control_plane.compiler.rulebook import RulebookCompiler
+from control_plane.compiler.inference import KnowledgeInferenceEngine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DataMigrationWorkbench")
@@ -33,6 +41,7 @@ templates = Jinja2Templates(directory=templates_dir)
 orchestrator = AgenticOrchestrator(source_dir=storage_dir)
 cutover_agent = CutoverAgent()
 audit_agent = AuditAgent()
+adf_client = AzureDataFactoryClient()
 
 def get_current_user(request: Request) -> Dict[str, str]:
     session = session_mgr.get_session(request)
@@ -47,6 +56,7 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         "firm_name": state_store.questionnaire_data.get("firm_name", "Core Cap Wealth Management"),
         "adls_connected": state_store.adls_connected,
         "adls_container": state_store.adls_container,
+        "kernel_specs": state_store.kernel_specs
     }
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
@@ -196,7 +206,105 @@ async def reconciliation_dashboard(request: Request):
         }
     )
 
+# --- ADLS & AZURE DATA FACTORY (ADF) ENDPOINTS ---
+
+@app.get("/api/adls/status")
+async def get_adls_status():
+    """Returns Azure Data Lake Storage Gen2 connection status."""
+    return {
+        "status": "CONNECTED" if state_store.adls_connected else "DISCONNECTED",
+        "account_name": os.getenv("AZURE_STORAGE_ACCOUNT", "stgcorecapdata"),
+        "container": state_store.adls_container,
+        "hybrid_mode": "ACTIVE"
+    }
+
+@app.post("/api/adls/upload")
+async def upload_to_adls_container(run_id: str = Form("RUN-001"), subfolder: str = Form("RAW"), file: UploadFile = File(...)):
+    """Uploads source extracts directly to ADLS Gen2 container and local fallback storage."""
+    content = await file.read()
+    rel_path, sha256_hash, size_bytes = HybridStorageManager.save_file(
+        run_id=run_id,
+        filename=file.filename,
+        content=content,
+        subfolder=subfolder,
+        adls_container=state_store.adls_container
+    )
+    return JSONResponse({
+        "status": "SUCCESS",
+        "file_name": file.filename,
+        "relative_path": rel_path,
+        "sha256": sha256_hash,
+        "size_bytes": size_bytes,
+        "adls_container": state_store.adls_container
+    })
+
+@app.post("/api/adf/trigger")
+async def trigger_adf_pipeline(rep_code: str = Form("REP-9981"), wave_id: str = Form("WAVE-01")):
+    """Triggers Azure Data Factory Account & Transaction migration pipeline."""
+    run_id = f"RUN-{rep_code}-{wave_id}"
+    adf_result = adf_client.trigger_entity_pipeline(
+        migration_id="MIG-CORECAP-2026",
+        wave_id=wave_id,
+        run_id=run_id,
+        rep_code=rep_code
+    )
+    return JSONResponse(adf_result)
+
+@app.get("/api/adf/status/{adf_run_id}")
+async def check_adf_pipeline_status(adf_run_id: str):
+    """Queries Azure Data Factory pipeline execution status."""
+    status_res = adf_client.get_pipeline_run_status(adf_run_id)
+    return JSONResponse(status_res)
+
+@app.get("/api/runs/{run_id}/export-package")
+async def export_package(run_id: str, mode: str = "local"):
+    """Generates SQL views and exports ADF deployment package to ADLS or local storage."""
+    transformation_sql = f"""-- ====================================================================
+-- XODUS-AMP Data Migration Control Plane · Transformation Rules Package
+-- Run ID: {run_id}
+-- Exported UTC: 2026-10-12
+-- ====================================================================
+
+CREATE OR REPLACE VIEW stg_accounts AS
+SELECT TRIM(LEGACY_ACCT_NO) AS ACCT_NUM, CUST_CODE_SRC AS CUSTODIAN_CODE FROM accounts;
+
+CREATE OR REPLACE VIEW stg_sleeves AS
+SELECT SUB_SLEEVE_ID AS SLEEVE_ID, TARGET_WEIGHT_PCT / 100.0 AS TARGET_WEIGHT FROM amplify_sleeves;
+"""
+
+    validation_plan = {
+        "sleeve_math_invariant": "SUM(target_weight) == 1.0000",
+        "aum_drift_gate": "variance_pct <= 0.5000%"
+    }
+
+    manifest = ADFPackageExporter.export_package(
+        run_id=run_id,
+        migration_id="MIG-CORECAP-2026",
+        transformation_sql=transformation_sql,
+        validation_plan=validation_plan
+    )
+    manifest["sqlContent"] = transformation_sql
+    return JSONResponse(manifest)
+
 # --- FORM SUBMISSIONS & API ENDPOINTS ---
+
+@app.post("/api/kernel/update")
+async def update_kernel_config(
+    request: Request,
+    sleeve_invariant: str = Form(...),
+    sleeve_tolerance: str = Form(...),
+    aum_drift_gate: str = Form(...)
+):
+    user = get_current_user(request)
+    if user["role"] not in ["Platform Admin", "Domain SME"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Kernel Configuration edits are strictly restricted to Platform Admin or Domain SME."
+        )
+    
+    state_store.update_kernel_specs(user["name"], sleeve_invariant, sleeve_tolerance, aum_drift_gate)
+    logger.info(f"Wealth Kernel specifications updated by {user['name']} ({user['role']})")
+    return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/api/knowledge/submit-questionnaire")
 async def submit_questionnaire(

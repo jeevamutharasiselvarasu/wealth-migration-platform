@@ -13,7 +13,7 @@ class WorkspaceStateStore:
         self.adls_connected: bool = True
         self.adls_container: str = "stg-corecap-data"
         
-        # 1. Discovery Questionnaire State (Configurable Acquisition Context)
+        # 1. Configurable Acquisition Discovery Context
         self.questionnaire_data: Dict[str, Any] = {
             "firm_name": "Core Cap Wealth Management",
             "migration_id": "MIG-CORECAP-2026",
@@ -27,7 +27,17 @@ class WorkspaceStateStore:
             "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        # 2. Entity Scopes Storage (Scope preferences on 15 fixed canonical entities)
+        # 2. Kernel Specs (Editable ONLY by Platform Admin / Domain SME)
+        self.kernel_specs: Dict[str, Any] = {
+            "canonical_entity_count": 15,
+            "sleeve_invariant": "1.0000 (100.00%)",
+            "sleeve_tolerance": "0.0005",
+            "aum_drift_gate": "0.5000%",
+            "last_modified_by": "System Default",
+            "last_modified_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        # 3. Entity Scopes Storage (Scope preferences on 15 fixed canonical entities)
         self.entity_scopes: Dict[str, str] = {}
         for category, entities in WealthManagementKnowledgeKernel.get_canonical_entities().items():
             for ent in entities:
@@ -48,8 +58,18 @@ class WorkspaceStateStore:
         self.audit_log: List[Dict[str, Any]] = []
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
 
+    def update_kernel_specs(self, updated_by: str, sleeve_invariant: str, sleeve_tolerance: str, aum_drift_gate: str) -> Dict[str, Any]:
+        """Updates Kernel invariants when executed by an authorized Platform Admin or Domain SME."""
+        self.kernel_specs.update({
+            "sleeve_invariant": sleeve_invariant,
+            "sleeve_tolerance": sleeve_tolerance,
+            "aum_drift_gate": aum_drift_gate,
+            "last_modified_by": updated_by,
+            "last_modified_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        })
+        return self.kernel_specs
+
     def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
-        """Returns live agent transformation traces or pre-execution crosswalk previews."""
         if self.pipeline_runs:
             latest_run = self.pipeline_runs[-1]
             details = latest_run.get("agent_details", {})
@@ -116,6 +136,15 @@ FROM staging_raw.schwab_accounts_extract;""",
                 },
                 "warnings": ["Crosswalk Rule Applied: 'SCHW' coerced to 'SCHWAB' and 'INDV_TAXABLE' to 'INDIVIDUAL'."]
             },
+            "ai_foundry": {
+                "name": "AI Foundry Mapper",
+                "phase": "Phase 1: Discovery Agents",
+                "status": "GPT-4o ACTIVE",
+                "inputs": {"unmapped_attributes": ["EXSTIVA_BILLING_TIER", "AMPLIFY_OVERLAY_FLAG"]},
+                "transformation_logic": "PROMPT: Infer canonical target entity and attribute for unmapped TAMP field EXSTIVA_BILLING_TIER using zero-shot classification.",
+                "outputs": {"inferred_mapping": {"source_field": "EXSTIVA_BILLING_TIER", "target_field": "Billing.schedule_tier", "confidence": 0.98}},
+                "warnings": []
+            },
             "sleeve_math": {
                 "name": "Sleeve Math Agent",
                 "phase": "Phase 2: Business Logic",
@@ -140,6 +169,33 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
                 },
                 "warnings": []
             },
+            "compliance": {
+                "name": "Compliance Validator",
+                "phase": "Phase 2: Business Logic",
+                "status": "PREVIEW_MODE",
+                "inputs": {"restricted_models": ["MOD-RESTRICTED-01", "MOD-RESTRICTED-02"]},
+                "transformation_logic": "CHECK model_code NOT IN (SELECT restricted_code FROM firm_compliance_overlay);",
+                "outputs": {"status": "APPROVED", "violations": 0},
+                "warnings": []
+            },
+            "data_quality": {
+                "name": "Data Quality Agent",
+                "phase": "Phase 2: Business Logic",
+                "status": "PREVIEW_MODE",
+                "inputs": {"referential_spine": "Party -> Household -> Account -> Sleeve -> Position"},
+                "transformation_logic": "ASSERT Account.household_id REFERENCES Household.household_id;",
+                "outputs": {"orphaned_accounts": 0, "status": "PASS"},
+                "warnings": []
+            },
+            "loader": {
+                "name": "Loader Agent",
+                "phase": "Phase 3: Operational Execution",
+                "status": "PREVIEW_MODE",
+                "inputs": {"targets": ["Salesforce SPARC", "Orion Eclipse"]},
+                "transformation_logic": "INSERT INTO staging_sparc.account; INSERT INTO staging_orion.portfolio;",
+                "outputs": {"sparc_staged_records": 1, "orion_staged_records": 2},
+                "warnings": []
+            },
             "reconciler": {
                 "name": "Reconciler Agent",
                 "phase": "Phase 3: Operational Execution",
@@ -148,6 +204,15 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
                 "transformation_logic": "variance_pct = abs((target_aum - source_aum) / source_aum) * 100.00\nASSERT variance_pct <= 0.5000%",
                 "outputs": {"source_aum": 108000.00, "target_aum": 108000.00, "variance_pct": 0.0000, "status": "PASS"},
                 "warnings": []
+            },
+            "cutover": {
+                "name": "Cutover & Audit Agents",
+                "phase": "Phase 3: Operational Execution",
+                "status": "PREVIEW_MODE",
+                "inputs": {"rep_code": "REP-9981", "wave_id": "WAVE-01"},
+                "transformation_logic": "UPDATE trade_router SET active_platform = 'ORION_ECLIPSE' WHERE advisor_id = 'REP-9981';",
+                "outputs": {"cutover_gate": "AWAITING_STEP_6_HITL_SIGNOFF"},
+                "warnings": ["Action Required: Approve atomic cutover in Step 6 HITL Queue."]
             }
         }
 

@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="space-y-6 max-w-6xl">
-    <!-- Header Banner -->
+    <!-- Step Banner -->
     <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
         <div class="flex items-center space-x-3">
             <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">01</span>
@@ -17,51 +17,89 @@
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Built-In Core Wealth Kernel Panel (READ-ONLY / FIXED / NON-EDITABLE) -->
+        <!-- Built-In Core Wealth Kernel Panel -->
         <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
             <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
                 <div>
                     <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Built-In Wealth Kernel</h2>
-                    <p class="text-[10px] text-[#8a97b2]">Immutable Platform Specifications</p>
+                    <p class="text-[10px] text-[#8a97b2]">Core Knowledge & Invariants</p>
                 </div>
-                <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
-                    READ-ONLY (FIXED)
+                {% if user_role in ['Platform Admin', 'Domain SME'] %}
+                <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
+                    EDITABLE (ADMIN/SME)
                 </span>
+                {% else %}
+                <span class="bg-slate-100 text-[#5a6a88] border border-slate-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
+                    READ-ONLY (ADMIN/SME ONLY)
+                </span>
+                {% endif %}
             </div>
 
+            {% if user_role in ['Platform Admin', 'Domain SME'] %}
+            <!-- ADMIN / SME EDITABLE KERNEL SPEC FORM -->
+            <form action="/api/kernel/update" method="POST" class="space-y-3 text-xs">
+                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-[#1c2a4a]">15 Canonical Entities</span>
+                        <span class="text-[9px] text-[#8a97b2] font-mono">FIXED TAXONOMY</span>
+                    </div>
+                    <div class="text-[11px] text-[#5a6a88]">Account, Household, Party, Advisor, Model, Security, Sleeve, Account Owner, Position, Transaction, Performance, Tax Lot, Documents, Terminated Accounts</div>
+                </div>
+
+                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2">
+                    <label class="block font-bold text-[#1c2a4a]">Sleeve Invariant Equation</label>
+                    <input type="text" name="sleeve_invariant" value="{{ kernel_specs.sleeve_invariant }}" required
+                           class="w-full bg-white border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-teal-800 focus:outline-none focus:border-blue-500">
+                    <div class="flex justify-between items-center text-[10px]">
+                        <span class="text-[#5a6a88]">Drift Tolerance (&Delta;):</span>
+                        <input type="text" name="sleeve_tolerance" value="{{ kernel_specs.sleeve_tolerance }}" required
+                               class="w-24 bg-white border border-[#cbd5e1] rounded px-1.5 py-0.5 font-mono text-right text-[10px] text-teal-800">
+                    </div>
+                </div>
+
+                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2">
+                    <label class="block font-bold text-[#1c2a4a]">Reconciliation Gate Standard</label>
+                    <input type="text" name="aum_drift_gate" value="{{ kernel_specs.aum_drift_gate }}" required
+                           class="w-full bg-white border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-amber-800 focus:outline-none focus:border-blue-500">
+                </div>
+
+                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-xl text-xs transition shadow-sm">
+                    Update Kernel Configuration →
+                </button>
+            </form>
+            {% else %}
+            <!-- READ-ONLY KERNEL SPEC DISPLAY -->
             <div class="space-y-3 text-xs">
-                <!-- Immutable Canonical Entities -->
                 <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
                     <div class="flex justify-between items-center">
                         <span class="font-bold text-[#1c2a4a]">15 Canonical Entities</span>
                         <span class="text-[9px] text-[#8a97b2] font-mono">NON-EDITABLE</span>
                     </div>
-                    <div class="text-[11px] text-[#5a6a88]">Account, Household, Party, Advisor, Model, Security, Sleeve, Account Owner, Position, Transaction, Performance, Tax Lot, Documents, Terminated Accounts[cite: 1, 5].</div>
+                    <div class="text-[11px] text-[#5a6a88]">Account, Household, Party, Advisor, Model, Security, Sleeve, Account Owner, Position, Transaction, Performance, Tax Lot, Documents, Terminated Accounts</div>
                 </div>
 
-                <!-- Immutable Invariant Equation -->
                 <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
                     <div class="flex justify-between items-center">
                         <span class="font-bold text-[#1c2a4a]">Sleeve Invariant Equation</span>
                         <span class="text-[9px] text-teal-700 font-mono font-semibold">LOCKED RULE</span>
                     </div>
                     <div class="text-[11px] font-mono bg-[#e2f4f3] text-[#0a6e69] p-2 rounded-lg border border-[#a6dbd7]">
-                        &sum; W_sleeve = 1.0000 (100.00%)<br/>
-                        Tolerance: &Delta; &le; 0.0005 (Rounding Drift)
+                        &sum; W_sleeve = {{ kernel_specs.sleeve_invariant }}<br/>
+                        Tolerance: &Delta; &le; {{ kernel_specs.sleeve_tolerance }} (Rounding Drift)
                     </div>
                 </div>
 
-                <!-- Immutable AUM Drift Gate -->
                 <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
                     <div class="flex justify-between items-center">
                         <span class="font-bold text-[#1c2a4a]">Reconciliation Gate Standard</span>
                         <span class="text-[9px] text-teal-700 font-mono font-semibold">LOCKED GATE</span>
                     </div>
                     <div class="text-[11px] font-mono bg-[#faf1e3] text-[#b4711f] p-2 rounded-lg border border-[#e6c79a]">
-                        AUM Drift Variance &le; 0.5000%
+                        AUM Drift Variance &le; {{ kernel_specs.aum_drift_gate }}
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Supplementary Data Attachments -->
             <div class="border-t border-[#e9eff9] pt-4 space-y-3">
@@ -178,7 +216,7 @@
                 <!-- Submit Action Button -->
                 <div class="flex justify-between items-center border-t border-[#e9eff9] pt-4">
                     <div class="text-[11px] text-[#5a6a88]">
-                        Submitting updates the state store and generates the Dashboard Overview[cite: 2].
+                        Submitting updates the state store and generates the Dashboard Overview.
                     </div>
                     <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
                         <span>Save & Generate Dashboard Overview</span>
