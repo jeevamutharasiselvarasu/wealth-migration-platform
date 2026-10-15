@@ -3,6 +3,7 @@ Supported inputs: CSV, TSV, XLSX, XLSM, XLS, and JSON. Values are returned as
 strings to preserve identifiers. Mapping and approval are intentionally separate.
 """
 from __future__ import annotations
+import csv
 import io
 import json
 from pathlib import PurePath
@@ -50,8 +51,18 @@ def read_source_records(file_name: str, content: bytes, *, sheet_name: str | int
                 raise SourceFileError("JSON input must resolve to an array of objects.")
             return [{str(k): _stringify(v) for k, v in row.items()} for row in payload]
         if suffix in {".csv", ".tsv"}:
-            frame = pd.read_csv(io.BytesIO(content), sep="\t" if suffix == ".tsv" else ",",
-                                dtype=str, keep_default_na=False, encoding="utf-8-sig")
+            separator = "\t" if suffix == ".tsv" else ","
+            try:
+                raw_header = next(csv.reader(io.StringIO(content.decode("utf-8-sig")), delimiter=separator))
+            except (UnicodeDecodeError, StopIteration) as exc:
+                raise SourceFileError("Source file has no readable header row.") from exc
+            normalized_header = [str(value).strip() for value in raw_header]
+            if len(set(normalized_header)) != len(normalized_header):
+                raise SourceFileError("Source file contains duplicate column headers.")
+            if any(not header for header in normalized_header):
+                raise SourceFileError("Source file contains an empty column header.")
+            frame = pd.read_csv(io.BytesIO(content), sep=separator, dtype=str,
+                                keep_default_na=False, encoding="utf-8-sig")
         else:
             frame = pd.read_excel(io.BytesIO(content), sheet_name=sheet_name, dtype=str,
                                   keep_default_na=False)
