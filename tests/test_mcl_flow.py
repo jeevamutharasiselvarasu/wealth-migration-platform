@@ -81,3 +81,55 @@ def test_mcl_validation_does_not_infer_absent_relationship_columns():
 
     assert result["status"] == "WARN"
     assert result["relationship_checks"][0]["status"] == "NOT_EVALUATED"
+
+def test_mcl_validation_flags_duplicate_canonical_keys():
+    result = validate_mcl_relationships({
+        "Account": {"mapped_records": [
+            {"ACCT_NUM": "0001"},
+            {"ACCT_NUM": "0001"},
+        ]},
+        "Household": {"mapped_records": [{"HH_ID": "HH-01"}]},
+        "Client": {"mapped_records": [{"PARTY_ID": "00017"}]},
+    })
+
+    account_key = result["key_checks"][0]
+    assert result["status"] == "FAIL"
+    assert account_key["status"] == "FAIL"
+    assert account_key["duplicate_values"] == ["0001"]
+
+
+def test_mapper_emits_lineage_for_unmapped_source_columns():
+    mapper = SchemaMapperAgent()
+    result = mapper.map_source_to_canonical(
+        "Client",
+        [{
+            "CLIENT_ID": "00017",
+            "FULL_LEGAL_NAME": "Sample Client",
+            "TAX_IDENTIFIER": "MASKED-TAX-ID",
+            "CLIENT_TYPE_RAW": "INDV",
+            "SOURCE_NOTE_UNKNOWN": "not silently dropped",
+        }],
+    )
+
+    lineage = {item["source_field"]: item for item in result["field_lineages"]}
+    assert lineage["CLIENT_ID"]["canonical_field"] == "PARTY_ID"
+    assert lineage["SOURCE_NOTE_UNKNOWN"]["canonical_field"] is None
+    assert lineage["SOURCE_NOTE_UNKNOWN"]["rule_applied"] == "UNRESOLVED_NO_CANONICAL_FIELD"
+
+
+def test_mapper_flags_two_source_columns_mapped_to_one_canonical_field():
+    mapper = SchemaMapperAgent()
+    result = mapper.map_source_to_canonical(
+        "Client",
+        [{
+            "CLIENT_ID": "00017",
+            "PARTY_ID": "00018",
+            "FULL_LEGAL_NAME": "Sample Client",
+            "TAX_IDENTIFIER": "MASKED-TAX-ID",
+            "CLIENT_TYPE_RAW": "INDV",
+        }],
+    )
+
+    assert result["status"] == "WARNING_INCOMPLETE"
+    assert result["field_collisions"]
+    assert any("Multiple source columns map" in warning for warning in result["warnings"])
