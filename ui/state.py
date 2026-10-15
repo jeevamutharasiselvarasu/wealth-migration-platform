@@ -26,19 +26,16 @@ class WorkspaceStateStore:
         self.questionnaire_data: Dict[str, Any] = {
             "firm_name": "Core Cap Wealth Management",
             "migration_id": "MIG-CORECAP-2026",
-            "advisor_count": 120,
-            "operating_model": "Rep-as-PM",
-            "source_tamp": "Amplify",
-            "performance_source": "Black Diamond",
-            "primary_custodian": "Charles Schwab (Retained)",
-            "aum_drift_gate": "0.50%",
-            "restricted_models": "MOD-RESTRICTED-01, MOD-RESTRICTED-02",
+            "source_systems": "Amplify; Black Diamond",
+            "business_data_owner": "",
+            "mapping_approver": "",
+            "identifier_relationship_notes": "",
             "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
         # 2. Kernel Specs (Editable ONLY by Platform Admin / Domain SME)
         self.kernel_specs: Dict[str, Any] = {
-            "canonical_entity_count": 15,
+            "canonical_entity_count": 3,
             "sleeve_invariant": "1.0000 (100.00%)",
             "sleeve_tolerance": "0.0005",
             "aum_drift_gate": "0.5000%",
