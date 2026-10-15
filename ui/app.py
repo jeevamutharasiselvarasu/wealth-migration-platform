@@ -478,7 +478,7 @@ async def upload_entity_sample_file(
     if scope != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
     allowed_roles = {
-        "Account": {"ACCOUNT_MASTER", "NAME_ADDRESS"},
+        "Account": {"ACCOUNT_MASTER", "NAME_ADDRESS", "ACCOUNT_TYPE"},
         "Client": {"ENTITY_MASTER"},
         "Household": {"ENTITY_MASTER"},
     }
