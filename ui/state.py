@@ -404,16 +404,57 @@ class WorkspaceStateStore:
         return result
 
     def add_firm_file(self, filename: str, category: str, content_bytes: bytes) -> Dict[str, Any]:
+        """Register a knowledge asset and extract lightweight schema/rule signals for review."""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        suffix = Path(filename).suffix.lower()
+        extracted_text = ""
+        columns = []
+        try:
+            if suffix in {".md", ".txt"}:
+                extracted_text = content_bytes.decode("utf-8-sig")
+            elif suffix == ".json":
+                payload = json.loads(content_bytes.decode("utf-8-sig"))
+                extracted_text = json.dumps(payload, ensure_ascii=False, indent=2)
+                if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+                    columns = list(payload[0].keys())
+                elif isinstance(payload, dict):
+                    fields = payload.get("columns") or payload.get("fields") or payload.get("records")
+                    if isinstance(fields, list) and fields and isinstance(fields[0], dict):
+                        columns = list(fields[0].keys())
+                    elif isinstance(fields, list) and all(isinstance(x, str) for x in fields):
+                        columns = fields
+            elif suffix in {".csv", ".tsv"}:
+                import csv
+                reader = csv.reader(content_bytes.decode("utf-8-sig").splitlines(), delimiter="\t" if suffix == ".tsv" else ",")
+                columns = next(reader, [])
+                extracted_text = "Columns: " + ", ".join(columns)
+            elif suffix in {".xlsx", ".xlsm", ".xls"}:
+                records = read_source_records(filename, content_bytes)
+                columns = list(records[0].keys()) if records else []
+                extracted_text = "Columns: " + ", ".join(columns)
+        except Exception as exc:
+            raise ValueError(f"Could not parse knowledge asset {filename}: {exc}") from exc
+        if not extracted_text.strip() and not columns:
+            raise ValueError("Knowledge asset is empty or contains no readable schema.")
+        if category not in {"data_dictionary", "transformation_rule", "source_analysis", "mapping_reference"}:
+            raise ValueError("Unsupported knowledge category.")
+        lines = [line.strip() for line in extracted_text.splitlines() if line.strip()]
+        summary = ("Extracted " + str(len(columns)) + " column names: " + ", ".join(map(str, columns[:20])) if columns else "Extracted " + str(len(lines)) + " non-empty knowledge lines.")
+        rules = [line for line in lines if any(token in line.lower() for token in ("mapping", "canonical", "transform", "rule:", "source field", "target field"))][:12]
         doc_record = {
             "id": f"DOC-{len(self.firm_knowledge_docs) + 1:03d}",
-            "filename": filename,
+            "filename": Path(filename).name,
             "category": category,
             "size_bytes": len(content_bytes),
             "uploaded_at": timestamp,
-            "parsed_summary": f"Supplementary asset '{filename}' ({len(content_bytes)} bytes)"
+            "parsed_summary": summary,
+            "extracted_columns": list(map(str, columns)),
+            "transferable_knowledge": rules,
+            "content_preview": "\n".join(lines[:30])[:5000],
+            "status": "REGISTERED_REVIEW_REQUIRED",
         }
         self.firm_knowledge_docs.append(doc_record)
+        self.generated_dashboard = self._build_dashboard_from_form()
         return doc_record
 
     def record_pipeline_run(self, pipeline_result: Dict[str, Any]):
