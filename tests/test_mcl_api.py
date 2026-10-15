@@ -261,3 +261,42 @@ def test_p0_scope_selector_and_upload_catalog_are_limited_to_three_entities(monk
     })
     uploads = {entity["entity_name"] for entity in state.get_source_upload_entities()}
     assert uploads == {"Account", "Client", "Household"}
+
+
+
+@pytest.mark.parametrize(
+    ("expression", "source_value", "expected"),
+    [
+        ("TRIM", "  legacy-123  ", "legacy-123"),
+        ("UPPERCASE", "abc-123", "ABC-123"),
+        ("LOWERCASE", "ABC-123", "abc-123"),
+        ("NORMALIZE_WHITESPACE", "  John   Smith  ", "John Smith"),
+        ("DIRECT_COPY", "000123", "000123"),
+        ("ALIAS", "000123", "000123"),
+    ],
+)
+def test_approved_mapping_transformations_execute_without_losing_identifier_strings(
+    expression, source_value, expected
+):
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    mapper = SchemaMapperAgent(
+        custom_catalog={"LEGACY_VALUE": "CLIENT_ID"},
+        approved_transformations={"LEGACY_VALUE": expression},
+    )
+    result = mapper.map_source_to_canonical(
+        "Client", [{"LEGACY_VALUE": source_value}]
+    )
+    assert result["mapped_records"][0]["CLIENT_ID"] == expected
+    lineage = next(item for item in result["field_lineages"] if item["source_field"] == "LEGACY_VALUE")
+    assert lineage["rule_applied"] == f"APPROVED_{expression}"
+
+
+def test_mapper_rejects_unapproved_transformation_expression():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    with pytest.raises(ValueError, match="Unsupported approved transformation"):
+        SchemaMapperAgent(
+            custom_catalog={"LEGACY_VALUE": "CLIENT_ID"},
+            approved_transformations={"LEGACY_VALUE": "__import__('os').system('echo unsafe')"},
+        )
