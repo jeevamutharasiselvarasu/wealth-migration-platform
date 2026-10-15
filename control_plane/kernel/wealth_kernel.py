@@ -26,11 +26,11 @@ class WealthManagementKnowledgeKernel:
             },
             {
                 "entity_id": "ENT-PARTY",
-                "entity_name": "Party",
+                "entity_name": "Client",
                 "entity_class": "MASTER",
                 "grain": "One person, trust, or legal participant in identity domain",
                 "expected_file": "parties.csv",
-                "required_fields": ["PARTY_ID", "LEGAL_NAME", "TAX_ID", "PARTY_TYPE"],
+                "required_fields": ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"],
                 "default_scope": "IN_SCOPE"
             },
             {
@@ -75,9 +75,9 @@ class WealthManagementKnowledgeKernel:
                 "entity_id": "ENT-ACCOUNT-OWNER",
                 "entity_name": "Account Owner",
                 "entity_class": "RELATIONSHIP",
-                "grain": "Party ownership/authority association on custodial account",
+                "grain": "Client ownership/authority association on custodial account",
                 "expected_file": "account_owners.csv",
-                "required_fields": ["ACCT_NUM", "PARTY_ID", "OWNERSHIP_ROLE_CODE"],
+                "required_fields": ["ACCT_NUM", "CLIENT_ID", "OWNERSHIP_ROLE_CODE"],
                 "default_scope": "IN_SCOPE"
             }
         ],
