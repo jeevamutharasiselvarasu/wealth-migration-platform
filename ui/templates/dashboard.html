@@ -35,11 +35,24 @@
         </div>
     </div>
 
-    <!-- P0 intentionally does not display or assign waves/cohorts. -->
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-5 shadow-sm">
-        <h2 class="text-sm font-bold text-[#152c6b]">P0 Scope Boundary</h2>
-        <p class="text-xs text-[#5a6a88] mt-1">This phase profiles source files and prepares reviewed mappings for Account, Client, and Household only. Wave/cohort planning, ADLS telemetry-driven actuation, and canonical-to-target mapping are deferred.</p>
+    <!-- Future cohort criteria are visible for planning, but deliberately not activated in P0. -->
+    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
+        <div class="flex items-start justify-between gap-4 border-b border-[#e9eff9] pb-3">
+            <div><h2 class="text-base font-bold text-[#152c6b]">Future Wave / Cohort Segregation Conditions</h2>
+            <p class="text-xs text-[#5a6a88] mt-1">Planning criteria for a later phase. No waves are assigned in P0; thresholds must be agreed with business owners and validated against source telemetry.</p></div>
+            <span class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-mono font-bold text-amber-700">NOT ACTIVE IN P0</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">1. Data-quality readiness</h3><p class="text-xs text-[#5a6a88]">Group records by validation status: critical keys present, required fields complete, duplicate checks passed, and documented relationships resolvable.</p><p class="text-[10px] font-mono text-teal-700">Evidence: profile + validation results</p></div>
+            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">2. AUM bands (if reliable)</h3><p class="text-xs text-[#5a6a88]">Use agreed AUM ranges only when a trusted, dated AUM field and its currency/valuation date are available. Business owner defines the bands.</p><p class="text-[10px] font-mono text-teal-700">Evidence: validated AUM + valuation date</p></div>
+            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">3. Source / custodian readiness</h3><p class="text-xs text-[#5a6a88]">Separate cohorts only where source systems or custodians require materially different mapping, operational handling, or validation.</p><p class="text-[10px] font-mono text-teal-700">Evidence: source profile + owner confirmation</p></div>
+            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">4. Relationship completeness</h3><p class="text-xs text-[#5a6a88]">Prioritize records with documented Account–Client and Client–Household links; isolate unresolved or orphan relationships for remediation.</p><p class="text-[10px] font-mono text-teal-700">Evidence: documented keys + MCL checks</p></div>
+            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">5. Complexity / exception load</h3><p class="text-xs text-[#5a6a88]">Keep records with unusual registrations, unsupported formats, or high exception counts in a separately managed remediation cohort.</p><p class="text-[10px] font-mono text-teal-700">Evidence: exception counts + reviewed rules</p></div>
+            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">6. Telemetry-driven readiness</h3><p class="text-xs text-[#5a6a88]">Later, read ADLS processing telemetry and update cohort eligibility from measured completion, validation, and reconciliation status—not arbitrary wave numbers.</p><p class="text-[10px] font-mono text-teal-700">Evidence: ADLS telemetry (future phase)</p></div>
+        </div>
+        <p class="text-[11px] text-[#5a6a88]">Guardrail: do not assign waves until source data is profiled, definitions are approved, thresholds are documented, and cohort decisions are auditable.</p>
     </div>
+    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-5 shadow-sm"><h2 class="text-sm font-bold text-[#152c6b]">P0 Scope Boundary</h2><p class="text-xs text-[#5a6a88] mt-1">This phase profiles source files and prepares reviewed mappings for Account, Client, and Household only. Wave assignment, ADLS telemetry-driven actuation, and canonical-to-target mapping remain deferred.</p></div>
 
     <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
         <div class="flex items-center justify-between border-b border-[#e9eff9] pb-3">
