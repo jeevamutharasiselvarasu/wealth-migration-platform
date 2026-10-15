@@ -1,9 +1,12 @@
 import io
 import pytest
 import pandas as pd
+from pathlib import Path
 from control_plane.services.profiler import SourceDataProfiler
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.db import init_db, get_db_connection
+import ui.state as state_module
+from ui.state import WorkspaceStateStore
 
 SAMPLE_CSV = b"""LEGACY_ACCT_NO,CUST_CODE_SRC,ADVISOR_REP_NUM,REGISTRATION_SRC_TYPE,ACCOUNT_OPEN_DT
 ACC-99812,SCHW,9981,INDV_TAXABLE,03/15/2021
@@ -51,3 +54,51 @@ ACC-101,SCHW,SOMETHING"""
     assert "OPEN_DATE" in res["missing_required"]
     assert res["confidence_score"] < 0.70
     assert any("Missing required canonical fields" in w for w in res["warnings"])
+
+
+def test_uploaded_source_file_is_persisted_and_reusable(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    record = store.attach_entity_sample_file("Account", "accounts.csv", SAMPLE_CSV)
+
+    stored_path = record["stored_path"]
+    assert record["status"] == "UPLOADED"
+    assert record["row_count"] == 3
+    assert record["column_count"] == 5
+    assert Path(stored_path).read_bytes() == SAMPLE_CSV
+    assert store.entity_sample_files["Account"]["stored_path"] == stored_path
+
+
+def test_uploaded_source_rejects_invalid_csv(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+
+    with pytest.raises(ValueError, match="Could not parse uploaded CSV"):
+        store.attach_entity_sample_file("Account", "accounts.csv", b"\\x00\\x01not-a-csv")
+
+
+def test_uploaded_source_rejects_non_csv(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+
+    with pytest.raises(ValueError, match="Only CSV"):
+        store.attach_entity_sample_file("Account", "accounts.xlsx", SAMPLE_CSV)
+
+
+def test_profile_persistence_failure_is_not_suppressed(monkeypatch):
+    store = WorkspaceStateStore()
+
+    class BrokenConnection:
+        def execute(self, *args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(state_module, "get_db_connection", lambda: BrokenConnection())
+    profile = SourceDataProfiler.profile_csv_content("accounts.csv", SAMPLE_CSV, "Account")
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        store.persist_source_profile(profile, run_id="TEST-PERSISTENCE-FAILURE")
