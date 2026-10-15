@@ -33,31 +33,14 @@ class WorkspaceStateStore:
             "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        # 2. Kernel Specs (Editable ONLY by Platform Admin / Domain SME)
-        self.kernel_specs: Dict[str, Any] = {
-            "canonical_entity_count": 3,
-            "sleeve_invariant": "1.0000 (100.00%)",
-            "sleeve_tolerance": "0.0005",
-            "aum_drift_gate": "0.5000%",
-            "last_modified_by": "System Default",
-            "last_modified_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        }
-
-        # 3. Entity Scopes Storage (In Scope vs Out of Scope)
+        # 2. Entity Scopes Storage (In Scope vs Out of Scope)
         self.entity_scopes: Dict[str, str] = {}
         for category, entities in WealthManagementKnowledgeKernel.get_canonical_entities().items():
             for ent in entities:
                 self.entity_scopes[ent["entity_name"]] = ent["default_scope"]
 
-        self.firm_knowledge_docs: List[Dict[str, Any]] = [
-            {
-                "id": "DOC-001",
-                "filename": "amplify_data_dictionary.json",
-                "category": "data_dictionary",
-                "uploaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                "parsed_summary": "Amplify UMA Sleeve and Holding Schema Contract"
-            }
-        ]
+        # Display only knowledge assets actually uploaded and parsed.
+        self.firm_knowledge_docs: List[Dict[str, Any]] = []
 
         self.entity_sample_files: Dict[str, Dict[str, Any]] = {}
         self.entity_source_files: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -529,35 +512,20 @@ class WorkspaceStateStore:
             pass
 
     def _build_dashboard_from_form(self) -> Dict[str, Any]:
-        from control_plane.services.wave_rules import CohortConditionEngine
-        advisor_count = int(self.questionnaire_data.get("advisor_count", 120))
-        custodian = self.questionnaire_data.get("primary_custodian", "Charles Schwab (Retained)")
-        aum_drift_gate = self.questionnaire_data.get("aum_drift_gate", "0.50%")
         firm_name = self.questionnaire_data.get("firm_name", "Core Cap Wealth Management")
-
-        cohort_conditions = CohortConditionEngine.get_condition_catalog()
         knowledge_assets = self.firm_knowledge_docs
         transferable_rules = [rule for doc in knowledge_assets for rule in doc.get("transferable_knowledge", [])]
-
         return {
             "firm_name": firm_name,
-            "advisor_count": advisor_count,
-            "primary_custodian": custodian,
-            "aum_drift_gate": aum_drift_gate,
-            "operating_model": self.questionnaire_data.get("operating_model", "Rep-as-PM"),
-            "program_status": "CONDITION_FRAMEWORK_ACTIVE",
-            "cohort_conditions": cohort_conditions,
+            "program_status": "P0_SOURCE_TO_CANONICAL",
+            "canonical_entities": ["Account", "Client", "Household"],
+            "mapping_direction": "source_to_canonical",
+            "target_mapping_status": "DEFERRED",
             "knowledge_asset_count": len(knowledge_assets),
             "knowledge_assets": [{"filename": doc.get("filename"), "category": doc.get("category"), "summary": doc.get("parsed_summary"), "columns": doc.get("extracted_columns", []), "status": doc.get("status", "REGISTERED_REVIEW_REQUIRED")} for doc in knowledge_assets],
             "knowledge_column_count": sum(len(doc.get("extracted_columns", [])) for doc in knowledge_assets),
             "transferable_knowledge": transferable_rules[:20],
-            "segregation_conditions": [
-                {"name": "AUM band", "rule": "Use only when a reliable account AUM field is available; thresholds require business-owner confirmation."},
-                {"name": "Data quality readiness", "rule": "Hold records with missing identifiers or unresolved critical mappings for remediation."},
-                {"name": "Custodian / source system", "rule": "Group by verified source only when operational handling differs."}
-            ],
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         }
-
 
 state_store = WorkspaceStateStore()
