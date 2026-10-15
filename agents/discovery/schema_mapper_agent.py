@@ -152,6 +152,8 @@ class SchemaMapperAgent:
         mapped_target_fields: Set[str] = set()
         unmapped_source_fields: Set[str] = set()
         field_lineages = []
+        lineage_fields_seen: Set[str] = set()
+        field_collisions: Set[str] = set()
 
         for raw_row in raw_records:
             canonical_row = {}
@@ -200,17 +202,30 @@ class SchemaMapperAgent:
                                 transformed_val = f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
                                 applied_rule = "DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)"
 
+                    if target_key in canonical_row:
+                        field_collisions.add(f"{target_key} <- {raw_key}")
                     canonical_row[target_key] = transformed_val
-                    field_lineages.append({
-                        "source_field": raw_key,
-                        "canonical_field": target_key,
-                        "rule_applied": applied_rule,
-                        "sample_value": str(transformed_val)
-                    })
+                    if raw_key not in lineage_fields_seen:
+                        field_lineages.append({
+                            "source_field": raw_key,
+                            "canonical_field": target_key,
+                            "rule_applied": applied_rule,
+                            "sample_value": str(transformed_val)
+                        })
+                        lineage_fields_seen.add(raw_key)
                 else:
                     unmapped_source_fields.add(raw_key)
 
             mapped_records.append(canonical_row)
+
+        for raw_key in sorted(unmapped_source_fields):
+            if raw_key not in lineage_fields_seen:
+                field_lineages.append({
+                    "source_field": raw_key,
+                    "canonical_field": None,
+                    "rule_applied": "UNRESOLVED_NO_CANONICAL_FIELD",
+                })
+                lineage_fields_seen.add(raw_key)
 
         required_fields = self.MANDATORY_CANONICAL_FIELDS.get(entity_name, [])
         missing_required = [req for req in required_fields if req not in mapped_target_fields]
@@ -220,12 +235,14 @@ class SchemaMapperAgent:
             warnings.append(f"Unmapped source columns: {', '.join(sorted(unmapped_source_fields))}")
         if missing_required:
             warnings.append(f"CRITICAL: Missing required canonical fields: {', '.join(missing_required)}")
+        if field_collisions:
+            warnings.append("Multiple source columns map to the same canonical field: " + ", ".join(sorted(field_collisions)))
 
         total_fields = len(source_fields_seen)
         mapped_count = len(source_fields_seen - unmapped_source_fields)
         base_confidence = (mapped_count / total_fields) if total_fields > 0 else 0.0
 
-        if missing_required:
+        if missing_required or field_collisions:
             confidence_score = round(max(0.0, base_confidence - 0.40), 2)
             status_val = "WARNING_INCOMPLETE"
         elif unmapped_source_fields:
@@ -243,7 +260,8 @@ class SchemaMapperAgent:
             "mapped_fields": sorted(list(mapped_target_fields)),
             "unmapped_fields": sorted(list(unmapped_source_fields)),
             "missing_required": missing_required,
+            "field_collisions": sorted(field_collisions),
             "confidence_score": confidence_score,
-            "field_lineages": field_lineages[:10],
+            "field_lineages": field_lineages,
             "warnings": warnings
         }
