@@ -4,7 +4,8 @@ import sqlite3
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services.mcl_validation import validate_mcl_relationships
 from control_plane.services.profiler import SourceDataProfiler
-import ui.state as state_module\nfrom ui.state import WorkspaceStateStore
+import ui.state as state_module
+from ui.state import WorkspaceStateStore
 
 
 def test_client_source_maps_to_party_canonical_fields():
