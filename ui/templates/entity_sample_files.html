@@ -52,11 +52,11 @@
                                     {% else %}
                                     <span class="text-[10px] text-[#5a6a88]">Mapping module not enabled in P0</span>
                                     {% endif %}
-                                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="inline-flex items-center gap-1">
+                                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_auto] items-center gap-2">
                                         <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
                                         <input type="hidden" name="source_role" value="{{ 'ACCOUNT_MASTER' if ent.entity_name == 'Account' else 'ENTITY_MASTER' }}">
                                         <label class="sr-only" for="replace-file-{{ loop.index }}">{{ 'Account Master source file' if ent.entity_name == 'Account' else ent.entity_name ~ ' source file' }}</label>
-                                        <input id="replace-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="w-36 text-[10px]">
+                                        <input id="replace-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="w-full min-w-0 text-xs">
                                         <button type="submit" class="bg-slate-200 hover:bg-slate-300 text-[#1c2a4a] px-2 py-1.5 rounded-lg text-xs font-bold">Replace</button>
                                     </form>
                                 </div>
@@ -67,7 +67,7 @@
                                 <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
                                 <input type="hidden" name="source_role" value="{{ 'ACCOUNT_MASTER' if ent.entity_name == 'Account' else 'ENTITY_MASTER' }}">
                                 <label for="upload-file-{{ loop.index }}" class="text-xs font-semibold text-[#152c6b]">{{ 'Account Master source file' if ent.entity_name == 'Account' else ent.entity_name ~ ' source file' }}</label>
-                                <input id="upload-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block max-w-64 text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white font-bold">
+                                <input id="upload-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block w-full min-w-0 text-xs text-[#5a6a88] file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-bold">
                                 <button type="submit" class="bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] px-3.5 py-1.5 rounded-lg border border-[#cbd5e1] text-xs font-bold transition">
                                     Upload & Profile
                                 </button>
