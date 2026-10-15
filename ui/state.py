@@ -190,8 +190,8 @@ class WorkspaceStateStore:
         finally:
             conn.close()
 
-    def attach_entity_sample_file(self, entity_name: str, filename: str, content_bytes: bytes) -> Dict[str, Any]:
-        """Validate and persist a supported sample file and retain its exact path."""
+    def attach_entity_sample_file(self, entity_name: str, filename: str, content_bytes: bytes, source_role: str = "ENTITY_MASTER") -> Dict[str, Any]:
+        """Validate and persist a supported sample file with source-role and lineage metadata."""
         if not content_bytes:
             raise ValueError("Uploaded file is empty.")
         try:
@@ -211,6 +211,9 @@ class WorkspaceStateStore:
 
         record = {
             "filename": Path(filename).name,
+            "source_role": str(source_role or "ENTITY_MASTER").strip().upper(),
+            "entity_name": entity_name,
+            "migration_id": self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
             "stored_path": str(stored_path.resolve()),
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(content_bytes),
