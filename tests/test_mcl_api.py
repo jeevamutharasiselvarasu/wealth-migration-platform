@@ -236,3 +236,29 @@ def test_pilot_mapping_apis_withhold_rows_and_raw_samples(endpoint, entity, monk
     assert "mapped_records" not in payload["mapping"]
     assert "relationship_candidates" not in payload["mapping"]
     assert raw_id not in response.body.decode("utf-8")
+
+
+
+def test_p0_scope_selector_and_upload_catalog_are_limited_to_three_entities(monkeypatch):
+    from ui.state import WorkspaceStateStore
+
+    state = WorkspaceStateStore()
+    menu = state.get_full_menu_card()
+    displayed = {
+        entity["entity_name"]
+        for entities in menu.values()
+        for entity in entities
+    }
+    assert displayed == {"Account", "Client", "Household"}
+
+    # Other canonical entities cannot be re-enabled through the P0 scope form.
+    state.save_entity_scopes({
+        "Account": "IN_SCOPE",
+        "Client": "IN_SCOPE",
+        "Household": "IN_SCOPE",
+        "Advisor / Rep": "IN_SCOPE",
+        "Party": "IN_SCOPE",
+    })
+    uploads = {entity["entity_name"] for entity in state.get_source_upload_entities()}
+    assert uploads == {"Account", "Client", "Household"}
+    assert "Advisor / Rep" not in state.entity_scopes or state.entity_scopes["Advisor / Rep"] != "IN_SCOPE"
