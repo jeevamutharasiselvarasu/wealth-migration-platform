@@ -48,5 +48,6 @@ P0 acceptance tests cover explicit scope gating, no synthetic source records, ma
 
 - Exercise the uploaded-file → profile → mapping path with a clean environment and verify lineage in the UI.
 - Expand UI progress states for `BLOCKED`, `NO_SOURCE_DATA`, `NEEDS_REMEDIATION`, `MAPPED`, `MOCKED`, and `FAILED`.
-- Confirm Simplicity field names, formats, code maps, and relationship semantics from actual sample CSVs and the data dictionary.\n- Extend the shared mapping registry and scope model to all configured entities.
+- Confirm Simplicity field names, formats, code maps, and relationship semantics from actual sample CSVs and the data dictionary.
+- Extend the shared mapping registry and scope model to all configured entities.
 - Add CI execution and test against a clean database/storage directory before merge.
