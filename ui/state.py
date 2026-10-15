@@ -272,26 +272,39 @@ class WorkspaceStateStore:
         self.generated_dashboard = self._build_dashboard_from_form()
         return self.generated_dashboard
 
+    P0_ENTITIES = {"Account", "Client", "Household"}
+
     def save_entity_scopes(self, scopes_map: Dict[str, str]):
-        self.entity_scopes.update(scopes_map)
+        """Persist only the three entities enabled in the P0 source-to-canonical workflow."""
+        allowed_scopes = {"IN_SCOPE", "PHASE_2", "ARCHIVE_ONLY", "OUT_OF_SCOPE"}
+        for entity_name, scope in scopes_map.items():
+            if entity_name in self.P0_ENTITIES and scope in allowed_scopes:
+                self.entity_scopes[entity_name] = scope
 
     def get_full_menu_card(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Expose only Account, Client, and Household in the P0 scope selector."""
         catalog = WealthManagementKnowledgeKernel.get_canonical_entities()
         result = {}
         for class_name, entities in catalog.items():
-            result[class_name] = []
+            scoped_entities = []
             for ent in entities:
+                if ent["entity_name"] not in self.P0_ENTITIES:
+                    continue
                 ent_copy = dict(ent)
                 ent_copy["current_scope"] = self.entity_scopes.get(ent["entity_name"], ent["default_scope"])
-                result[class_name].append(ent_copy)
+                scoped_entities.append(ent_copy)
+            if scoped_entities:
+                result[class_name] = scoped_entities
         return result
 
     def get_in_scope_entities(self) -> List[Dict[str, Any]]:
-        """Filters ONLY in-scope or archive-only entities, excluding out-of-scope."""
+        """Return only explicitly in-scope P0 entities; exclude all other canonical entities."""
         in_scope_list = []
         catalog = WealthManagementKnowledgeKernel.get_canonical_entities()
-        for class_name, entities in catalog.items():
+        for entities in catalog.values():
             for ent in entities:
+                if ent["entity_name"] not in self.P0_ENTITIES:
+                    continue
                 scope = self.entity_scopes.get(ent["entity_name"], ent["default_scope"])
                 if scope == "IN_SCOPE":
                     ent_copy = dict(ent)
