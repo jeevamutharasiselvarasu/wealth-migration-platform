@@ -128,7 +128,51 @@ def test_mapping_suggestion_review_lifecycle(tmp_path, monkeypatch):
         "FROM canonical_mappings WHERE source_field = 'LEGACY_ACCT_NO'"
     ).fetchone()
     assert tuple(reusable) == ("MIG-1", "Account", "LEGACY_ACCT_NO", "ACCT_NUM", 1)
+    # Rejected proposals are auditable but must never become reusable rules.
+    conn.execute(
+        "INSERT INTO mapping_suggestions "
+        "(suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, "
+        "proposed_rule, confidence_score, status, created_utc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)",
+        ("SUG-2", "RUN-2", "MIG-1", "Account", "BAD_ACCT_FIELD", "ACCT_NUM", "ALIAS", 0.5, "2026-10-15T00:00:00+00:00"),
+    )
+    conn.commit()
     conn.close()
+    rejected = asyncio.run(
+        app_module.review_source_mapping_suggestion(
+            "SUG-2", decision="REJECTED", reviewer="Domain SME", comments="Not supported by source dictionary"
+        )
+    )
+    assert json.loads(rejected.body)["suggestion"]["status"] == "REJECTED"
+
+    conn = db_module.get_db_connection()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM canonical_mappings WHERE source_field = 'BAD_ACCT_FIELD'"
+    ).fetchone()[0] == 0
+    # A confirmed rule is reusable only for its exact migration and entity.
+    conn.execute(
+        "INSERT INTO canonical_mappings "
+        "(mapping_id, migration_id, entity_name, source_field, canonical_field, mapping_type, "
+        "transformation_expression, confidence_score, is_confirmed, created_by, updated_utc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("MAP-OTHER", "MIG-OTHER", "Account", "OTHER_SOURCE", "ACCT_NUM", "APPROVED_ALIAS", "DIRECT_COPY", 1.0, 1, "SME", "2026-10-15T00:00:00+00:00"),
+    )
+    conn.execute(
+        "INSERT INTO canonical_mappings "
+        "(mapping_id, migration_id, entity_name, source_field, canonical_field, mapping_type, "
+        "transformation_expression, confidence_score, is_confirmed, created_by, updated_utc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("MAP-PENDING", "MIG-1", "Account", "UNAPPROVED_SOURCE", "ACCT_NUM", "ALIAS", "DIRECT_COPY", 0.9, 0, "System", "2026-10-15T00:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+    assert app_module._get_approved_mapping_catalog("MIG-1", "Account") == {
+        "LEGACY_ACCT_NO": "ACCT_NUM"
+    }
+    assert app_module._get_approved_mapping_catalog("MIG-OTHER", "Account") == {
+        "OTHER_SOURCE": "ACCT_NUM"
+    }
+    assert app_module._get_approved_mapping_catalog("MIG-1", "Household") == {}
 
 
 def test_single_entity_mapping_does_not_expose_unapproved_canonical_rows(monkeypatch):
