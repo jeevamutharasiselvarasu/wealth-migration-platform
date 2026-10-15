@@ -45,7 +45,7 @@
                             <div class="text-right">
                                 <div class="text-xs font-mono text-teal-700 font-bold">{{ ent.sample_file_info.filename }}</div>
                                 <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.column_count }} Columns • {{ ent.sample_file_info.status }}</div>
-                                <button type="button" class="map-uploaded-file mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold" data-entity="{{ ent.entity_name }}">Profile & Map Uploaded File</button>
+                                <button type="button" class="map-uploaded-file mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold" data-entity="{{ ent.entity_name }}" data-result-id="mapping-result-{{ loop.index }}">Profile & Map Uploaded File</button>
                             </div>
                             <span class="h-3 w-3 rounded-full bg-teal-500"></span>
                         {% else %}
@@ -88,8 +88,7 @@
 document.querySelectorAll('.map-uploaded-file').forEach((button) => {
   button.addEventListener('click', async () => {
     const entity = button.dataset.entity;
-    const card = button.closest('.bg-\\[\\#f8fafc\\]');
-    const result = card ? card.querySelector('[id^="mapping-result-"]') : null;
+    const result = document.getElementById(button.dataset.resultId);
     const originalLabel = button.textContent;
     button.disabled = true;
     button.textContent = 'Mapping…';
