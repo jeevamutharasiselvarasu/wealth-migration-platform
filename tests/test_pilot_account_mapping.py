@@ -73,7 +73,7 @@ def test_uploaded_source_rejects_invalid_csv(tmp_path, monkeypatch):
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     store = WorkspaceStateStore()
 
-    with pytest.raises(ValueError, match="Could not parse uploaded CSV"):
+    with pytest.raises(ValueError, match="Uploaded file is empty"):
         store.attach_entity_sample_file("Account", "accounts.csv", b"")
 
 
