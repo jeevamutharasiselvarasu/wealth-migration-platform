@@ -541,6 +541,13 @@ async def map_uploaded_entity_file(entity_name: str = Form(...)):
     except Exception as exc:
         logger.exception("Uploaded-file mapping failed for %s", entity_name)
         raise HTTPException(status_code=500, detail=f"Mapping failed; no success was reported: {type(exc).__name__}: {exc}") from exc
+    # Keep generated canonical-shaped rows inside the workflow for validation only.
+    # The API never exposes them as reusable/approved output.
+    mapping_preview = result.get("mapping", {})
+    mapping_preview["preview_record_count"] = len(mapping_preview.pop("mapped_records", []))
+    mapping_preview["mapped_records_withheld"] = True
+    for lineage in mapping_preview.get("field_lineages", []):
+        lineage.pop("sample_value", None)
     result["execution_boundary"] = {
         "source_to_canonical_only": True,
         "target_loading": "NOT_RUN",
@@ -604,6 +611,18 @@ async def map_mcl_uploaded_files():
     except Exception as exc:
         logger.exception("Could not persist MCL execution summary for %s", mcl_run_id)
         raise HTTPException(status_code=500, detail=f"MCL results were produced but batch lineage could not be persisted for {mcl_run_id}: {type(exc).__name__}: {exc}") from exc
+
+    # Relationship checks use in-memory preview rows above. Never return
+    # canonical-shaped source records or raw identifier values from this API.
+    for result in entity_results.values():
+        mapping_preview = result.get("mapping", {})
+        mapping_preview["preview_record_count"] = len(mapping_preview.pop("mapped_records", []))
+        mapping_preview["mapped_records_withheld"] = True
+        mapping_preview.pop("relationship_candidates", None)
+        for lineage in mapping_preview.get("field_lineages", []):
+            lineage.pop("sample_value", None)
+    for check in relationship_validation.get("relationship_checks", []):
+        check.pop("orphan_values", None)
 
     return JSONResponse({
         "status": overall_status,
