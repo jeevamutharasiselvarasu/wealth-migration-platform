@@ -515,6 +515,8 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     mapping["entity"] = entity_name
     mapping["canonical_entity"] = "Party" if entity_name == "Client" else entity_name
     mapping["run_id"] = run_id
+    # Mapper output is a preview; suggestions require human approval before canonical use.
+    mapping["approval_status"] = "PENDING_REVIEW" if mapping.get("field_lineages") else "NO_PROPOSALS"
     state_store.persist_mapping_lineage(mapping, run_id=run_id, actor=actor)
     return {
         "status": mapping.get("status", "UNKNOWN"),
@@ -543,6 +545,7 @@ async def map_uploaded_entity_file(entity_name: str = Form(...)):
         "source_to_canonical_only": True,
         "target_loading": "NOT_RUN",
         "wave_assignment": "DISABLED",
+        "canonical_output_status": "PREVIEW_ONLY_PENDING_APPROVAL",
     }
     return JSONResponse(result)
 
@@ -579,15 +582,16 @@ async def map_mcl_uploaded_files():
     if relationship_validation["status"] == "FAIL" or "WARNING_INCOMPLETE" in mapping_statuses or "NO_SOURCE_RECORDS" in mapping_statuses:
         overall_status = "NEEDS_REMEDIATION"
     elif relationship_validation["status"] == "WARN" or mapping_statuses - {"SUCCESS"}:
-        overall_status = "MAPPED_WITH_WARNINGS"
+        overall_status = "NEEDS_REVIEW_WITH_WARNINGS"
     else:
-        overall_status = "MAPPED"
+        overall_status = "NEEDS_REVIEW"
 
     execution_boundary = {
         "source_to_canonical_only": True,
         "target_loading": "NOT_RUN",
         "wave_assignment": "DISABLED",
         "target_adapter": "NOT_SELECTED_IN_P0",
+        "canonical_output_status": "PREVIEW_ONLY_PENDING_APPROVAL",
     }
     try:
         state_store.persist_mcl_execution_summary(
