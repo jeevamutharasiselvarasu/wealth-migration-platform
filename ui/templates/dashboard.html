@@ -16,24 +16,22 @@
         </span>
     </div>
 
-    <!-- Dynamically Rendered Metrics Grid -->
+    <!-- P0 metrics: entity scope and mapping boundary only -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Primary Custodian Rails</div>
-            <div class="text-xl font-extrabold text-[#152c6b]">{{ dashboard.primary_custodian }}</div>
-            <div class="text-xs text-[#5a6a88] font-mono">Retained · Direct Custody API</div>
+            <div class="text-xs text-[#5a6a88] font-medium">P0 Canonical Entities</div>
+            <div class="text-xl font-extrabold text-[#152c6b]">Account, Client, Household</div>
+            <div class="text-xs text-blue-600 font-mono font-semibold">Only supported entity scope</div>
         </div>
-
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Mapping Scope Boundary</div>
-            <div class="text-xl font-extrabold text-teal-700">Source ➔ Canonical</div>
-            <div class="text-xs text-teal-700 font-mono font-semibold">Target Mapping Decoupled</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Mapping Direction</div>
+            <div class="text-xl font-extrabold text-teal-700">Source → Canonical</div>
+            <div class="text-xs text-teal-700 font-mono font-semibold">Target mapping deferred</div>
         </div>
-
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Future Segregation Model</div>
-            <div class="text-xl font-extrabold text-blue-700">Criteria Catalogued</div>
-            <div class="text-xs text-[#5a6a88] font-mono">No P0 Wave Assignment</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Review Governance</div>
+            <div class="text-xl font-extrabold text-blue-700">Human Approval</div>
+            <div class="text-xs text-[#5a6a88] font-mono">No automatic canonical output</div>
         </div>
     </div>
 
