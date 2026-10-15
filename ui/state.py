@@ -1,4 +1,7 @@
 import os
+import re
+import uuid
+from pathlib import Path
 import json
 import pandas as pd
 from typing import Dict, Any, List, Optional
@@ -73,79 +76,131 @@ class WorkspaceStateStore:
         self._record_metadata_audit("KERNEL_SPEC_UPDATE", updated_by, f"Invariant: {sleeve_invariant}, Gate: {aum_drift_gate}")
         return self.kernel_specs
 
-    def persist_source_profile(self, profile: Dict[str, Any], run_id: str = "PILOT-RUN-001") -> Optional[str]:
-        """Persists source file profiling metrics into source_file_profiles SQLite table."""
+    def persist_source_profile(self, profile: Dict[str, Any], run_id: str) -> str:
+        """Persist source profiling metrics; fail loudly if metadata cannot be stored."""
+        if profile.get("status") != "PROFILED":
+            raise ValueError(f"Cannot persist unsuccessful profile: {profile.get('status')}")
+        conn = get_db_connection()
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            profile_id = f"PROF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-            cursor.execute("""
-                INSERT OR REPLACE INTO source_file_profiles 
+            profile_id = f"PROF-{uuid.uuid4().hex}"
+            conn.execute(
+                """
+                INSERT INTO source_file_profiles
                 (profile_id, run_id, entity_name, file_name, row_count, column_count, profile_summary_json, created_utc)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                profile_id,
-                run_id,
-                profile.get("entity_name", "Account"),
-                profile.get("file_name", "accounts.csv"),
-                profile.get("row_count", 0),
-                profile.get("column_count", 0),
-                json.dumps(profile.get("column_profiles", [])),
-                profile.get("profiled_utc", datetime.now(timezone.utc).isoformat())
-            ))
+                """,
+                (
+                    profile_id,
+                    run_id,
+                    profile["entity_name"],
+                    profile["file_name"],
+                    profile["row_count"],
+                    profile["column_count"],
+                    json.dumps(profile.get("column_profiles", [])),
+                    profile.get("profiled_utc", datetime.now(timezone.utc).isoformat()),
+                ),
+            )
             conn.commit()
-            conn.close()
             return profile_id
         except Exception:
-            return None
-
-    def persist_mapping_lineage(self, mapping_result: Dict[str, Any], run_id: str = "PILOT-RUN-001", actor: str = "Platform Admin"):
-        """Persists mapping result summaries and granular field lineage into SQLite metadata tables."""
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-
-            # Record Migration Run Summary
-            cursor.execute("""
-                INSERT OR REPLACE INTO migration_runs 
-                (run_id, migration_id, wave_id, entity_name, source_record_count, mapped_record_count, confidence_score, status, executed_by, executed_utc)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                run_id,
-                self.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
-                "PILOT",
-                mapping_result.get("entity", "Account"),
-                mapping_result.get("record_count", 0),
-                len(mapping_result.get("mapped_records", [])),
-                mapping_result.get("confidence_score", 0.0),
-                mapping_result.get("status", "SUCCESS"),
-                actor,
-                datetime.now(timezone.utc).isoformat()
-            ))
-
-            # Record Field-Level Lineage
-            for fl in mapping_result.get("field_lineages", []):
-                lineage_id = f"LIN-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{fl['source_field']}"
-                cursor.execute("""
-                    INSERT OR REPLACE INTO field_lineage_audit 
-                    (lineage_id, run_id, entity_name, source_column, canonical_column, applied_rule, validation_status, actor, timestamp_utc)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    lineage_id,
-                    run_id,
-                    mapping_result.get("entity", "Account"),
-                    fl["source_field"],
-                    fl["canonical_field"],
-                    fl["rule_applied"],
-                    "PASS",
-                    actor,
-                    datetime.now(timezone.utc).isoformat()
-                ))
-
-            conn.commit()
+            conn.rollback()
+            raise
+        finally:
             conn.close()
+
+    def persist_mapping_lineage(self, mapping_result: Dict[str, Any], run_id: str, actor: str = "Platform Admin"):
+        """Persist mapping outcome and lineage atomically; never suppress persistence errors."""
+        conn = get_db_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        entity_name = mapping_result.get("entity", "Account")
+        try:
+            conn.execute(
+                """
+                INSERT INTO migration_runs
+                (run_id, migration_id, wave_id, entity_name, source_record_count, mapped_record_count,
+                 confidence_score, status, executed_by, executed_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+                    "NOT_ASSIGNED",
+                    entity_name,
+                    int(mapping_result.get("record_count", 0)),
+                    len(mapping_result.get("mapped_records", [])),
+                    float(mapping_result.get("confidence_score", 0.0)),
+                    mapping_result.get("status", "UNKNOWN"),
+                    actor,
+                    now,
+                ),
+            )
+            for index, field_lineage in enumerate(mapping_result.get("field_lineages", [])):
+                source_field = str(field_lineage.get("source_field", ""))
+                if not source_field:
+                    continue
+                canonical_field = field_lineage.get("canonical_field")
+                conn.execute(
+                    """
+                    INSERT INTO field_lineage_audit
+                    (lineage_id, run_id, entity_name, source_column, canonical_column, applied_rule,
+                     validation_status, actor, timestamp_utc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"LIN-{run_id}-{index}-{uuid.uuid4().hex[:8]}",
+                        run_id,
+                        entity_name,
+                        source_field,
+                        canonical_field,
+                        field_lineage.get("rule_applied"),
+                        "MAPPED" if canonical_field else "UNMAPPED",
+                        actor,
+                        now,
+                    ),
+                )
+            conn.commit()
         except Exception:
-            pass
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def attach_entity_sample_file(self, entity_name: str, filename: str, content_bytes: bytes) -> Dict[str, Any]:
+        """Validate and persist uploaded CSV bytes, then retain the exact path used for mapping."""
+        import io
+
+        if not content_bytes:
+            raise ValueError("Uploaded file is empty.")
+        if not filename or Path(filename).suffix.lower() != ".csv":
+            raise ValueError("Only CSV source files are supported in this P0 workflow.")
+        try:
+            df = pd.read_csv(io.BytesIO(content_bytes))
+        except Exception as exc:
+            raise ValueError(f"Could not parse uploaded CSV: {exc}") from exc
+        if len(df.columns) == 0:
+            raise ValueError("Uploaded CSV has no columns.")
+        if df.columns.duplicated().any():
+            raise ValueError("Uploaded CSV contains duplicate column names.")
+
+        safe_entity = re.sub(r"[^A-Za-z0-9_-]+", "_", entity_name).strip("_") or "entity"
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name)
+        upload_dir = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads" / safe_entity
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        stored_path = upload_dir / f"{uuid.uuid4().hex}_{safe_name}"
+        stored_path.write_bytes(content_bytes)
+
+        record = {
+            "filename": Path(filename).name,
+            "stored_path": str(stored_path.resolve()),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "size_bytes": len(content_bytes),
+            "row_count": int(len(df)),
+            "column_count": int(len(df.columns)),
+            "columns": [str(column) for column in df.columns],
+            "status": "UPLOADED",
+        }
+        self.entity_sample_files[entity_name] = record
+        return record
 
     def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
         if self.pipeline_runs:
