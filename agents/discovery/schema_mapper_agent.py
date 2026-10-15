@@ -70,10 +70,6 @@ class SchemaMapperAgent:
         "HH_NAME": "HH_NAME",
         "HOUSEHOLD_NAME": "HH_NAME",
         "HH_TITLE": "HH_NAME",
-        "ESTABLISHED_DT": "OPEN_DATE",
-        "PRIMARY_CLIENT_ID": "PRIMARY_PARTY_ID",
-        "PRIMARY_PARTY_ID": "PRIMARY_PARTY_ID",
-        "HOUSEHOLD_PRIMARY_CLIENT_ID": "PRIMARY_PARTY_ID",
 
         # Client / Party Attributes
         "LEGACY_CLIENT_ID": "PARTY_ID",
