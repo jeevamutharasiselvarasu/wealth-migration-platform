@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
@@ -608,6 +609,79 @@ async def map_mcl_uploaded_files():
         "relationship_validation": relationship_validation,
         "execution_boundary": execution_boundary,
     })
+
+
+@app.get("/api/mapping-suggestions")
+async def list_source_mapping_suggestions(status_filter: str = "PENDING"):
+    """List proposed source-to-canonical mappings for human review."""
+    allowed = {"PENDING", "APPROVED", "REJECTED", "ALL"}
+    if status_filter not in allowed:
+        raise HTTPException(status_code=400, detail=f"status_filter must be one of {sorted(allowed)}.")
+    conn = get_db_connection()
+    try:
+        if status_filter == "ALL":
+            rows = conn.execute(
+                "SELECT * FROM mapping_suggestions ORDER BY created_utc DESC, source_field"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM mapping_suggestions WHERE status = ? ORDER BY created_utc DESC, source_field",
+                (status_filter,),
+            ).fetchall()
+        return JSONResponse({"status": "SUCCESS", "suggestions": [dict(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.post("/api/mapping-suggestions/{suggestion_id}/review")
+async def review_source_mapping_suggestion(
+    suggestion_id: str,
+    decision: str = Form(...),
+    reviewer: str = Form(...),
+    comments: str = Form(""),
+):
+    """Record an explicit approve/reject decision and prevent repeat review."""
+    normalized = decision.strip().upper()
+    reviewer_name = reviewer.strip()
+    if normalized not in {"APPROVED", "REJECTED"}:
+        raise HTTPException(status_code=400, detail="Decision must be APPROVED or REJECTED.")
+    if not reviewer_name:
+        raise HTTPException(status_code=400, detail="Reviewer is required.")
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM mapping_suggestions WHERE suggestion_id = ?", (suggestion_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Mapping suggestion was not found.")
+        if row["status"] != "PENDING":
+            raise HTTPException(status_code=409, detail=f"Mapping suggestion is already {row['status']}.")
+        conn.execute(
+            "UPDATE mapping_suggestions SET status = ?, reviewer = ?, review_comments = ?, reviewed_utc = ? "
+            "WHERE suggestion_id = ? AND status = 'PENDING'",
+            (normalized, reviewer_name, comments.strip(), now, suggestion_id),
+        )
+        conn.execute(
+            "INSERT INTO approvals (id, run_id, artifact_id, stage, decision, reviewer, comments, created_utc) "
+            "VALUES (?, ?, ?, 'SOURCE_TO_CANONICAL_MAPPING', ?, ?, ?, ?)",
+            (f"APR-{uuid.uuid4().hex}", row["run_id"], suggestion_id, normalized, reviewer_name, comments.strip(), now),
+        )
+        updated = conn.execute(
+            "SELECT * FROM mapping_suggestions WHERE suggestion_id = ?", (suggestion_id,)
+        ).fetchone()
+        conn.commit()
+        return JSONResponse({"status": "SUCCESS", "suggestion": dict(updated)})
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("Mapping suggestion review failed for %s", suggestion_id)
+        raise HTTPException(status_code=500, detail="Could not persist mapping review decision.") from exc
+    finally:
+        conn.close()
 
 
 @app.get("/api/mcl/runs/{mcl_run_id}")
