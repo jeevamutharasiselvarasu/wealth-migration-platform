@@ -47,6 +47,6 @@ def test_discovery_questionnaire_has_only_p0_mapping_context():
 def test_entity_model_documents_relationships_without_assumed_joins():
     model = (ROOT / "knowledge" / "p0_wealth_entity_model.md").read_text()
     assert "Account" in model and "Client" in model and "Household" in model
-    assert "Never infer joins" in model
+    assert "never join logic" in model
     assert "Account-to-Client" in model
     assert "Client-to-Household" in model
