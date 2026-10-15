@@ -70,6 +70,9 @@ def test_mcl_batch_endpoint_runs_three_entities_and_persists_summary(tmp_path, m
     assert payload["status"] == "NEEDS_REVIEW"
     assert set(payload["entities"]) == {"Account", "Household", "Client"}
     assert payload["entities"]["Client"]["canonical_entity"] == "Client"
+    assert payload["entities"]["Client"]["mapping"]["mapped_records_withheld"] is True
+    assert payload["entities"]["Client"]["mapping"]["preview_record_count"] == 1
+    assert "mapped_records" not in payload["entities"]["Client"]["mapping"]
     assert payload["relationship_validation"]["status"] == "PASS"
     assert payload["execution_boundary"]["target_loading"] == "NOT_RUN"
     assert payload["execution_boundary"]["canonical_output_status"] == "PREVIEW_ONLY_PENDING_APPROVAL"
@@ -121,3 +124,19 @@ def test_mapping_suggestion_review_lifecycle(tmp_path, monkeypatch):
     audit = conn.execute("SELECT decision, stage, reviewer FROM approvals WHERE artifact_id = 'SUG-1'").fetchone()
     assert tuple(audit) == ("APPROVED", "SOURCE_TO_CANONICAL_MAPPING", "Domain SME")
     conn.close()
+
+
+def test_single_entity_mapping_does_not_expose_unapproved_canonical_rows(monkeypatch):
+    mapping = {
+        "status": "SUCCESS",
+        "mapped_records": [{"CLIENT_ID": "PRIVATE-001"}],
+        "field_lineages": [{"source_field": "CLIENT_ID", "canonical_field": "CLIENT_ID", "sample_value": "PRIVATE-001"}],
+    }
+    result = {"status": "SUCCESS", "mapping": mapping, "execution_boundary": {}}
+    monkeypatch.setattr(app_module, "_map_uploaded_source_entity", lambda entity_name: result)
+    response = asyncio.run(app_module.map_uploaded_entity_file("Client"))
+    payload = json.loads(response.body)
+    assert payload["mapping"]["mapped_records_withheld"] is True
+    assert payload["mapping"]["preview_record_count"] == 1
+    assert "mapped_records" not in payload["mapping"]
+    assert "PRIVATE-001" not in response.body.decode("utf-8")
