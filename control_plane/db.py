@@ -124,5 +124,18 @@ def init_db() -> None:
         );
     """)
 
+    # MCL batch execution metadata; summaries only, never mapped source records.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mcl_execution_runs (
+            mcl_run_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            entity_summary_json TEXT NOT NULL,
+            relationship_summary_json TEXT NOT NULL,
+            execution_boundary_json TEXT NOT NULL,
+            executed_utc TEXT NOT NULL
+        );
+    """)
+
     conn.commit()
     conn.close()
