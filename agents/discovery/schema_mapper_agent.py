@@ -71,11 +71,11 @@ class SchemaMapperAgent:
         "HOUSEHOLD_NAME": "HH_NAME",
         "HH_TITLE": "HH_NAME",
 
-        # Client / Party Attributes
-        "LEGACY_CLIENT_ID": "PARTY_ID",
-        "CLIENT_ID": "PARTY_ID",
-        "PARTY_ID": "PARTY_ID",
-        "PARTY_SRC_ID": "PARTY_ID",
+        # Client / Client Attributes
+        "LEGACY_CLIENT_ID": "CLIENT_ID",
+        "CLIENT_ID": "CLIENT_ID",
+        "CLIENT_ID": "CLIENT_ID",
+        "PARTY_SRC_ID": "CLIENT_ID",
         "FULL_LEGAL_NAME": "LEGAL_NAME",
         "PARTY_NAME": "LEGAL_NAME",
         "CLIENT_NAME": "LEGAL_NAME",
@@ -87,10 +87,10 @@ class SchemaMapperAgent:
         "TAX_IDENTIFIER": "TAX_ID",
         "TAX_ID": "TAX_ID",
         "SSN_TIN": "TAX_ID",
-        "CLIENT_TYPE_RAW": "PARTY_TYPE",
-        "PARTY_TYPE": "PARTY_TYPE",
-        "CLIENT_TYPE": "PARTY_TYPE",
-        "PARTY_TYPE_SRC": "PARTY_TYPE",
+        "CLIENT_TYPE_RAW": "CLIENT_TYPE",
+        "CLIENT_TYPE": "CLIENT_TYPE",
+        "CLIENT_TYPE": "CLIENT_TYPE",
+        "CLIENT_TYPE_SRC": "CLIENT_TYPE",
         "EMAIL_ADDR": "EMAIL",
         "PRIMARY_EMAIL": "EMAIL",
         "PHONE_NUM": "PHONE",
@@ -123,8 +123,8 @@ class SchemaMapperAgent:
     MANDATORY_CANONICAL_FIELDS = {
         "Account": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "OPEN_DATE"],
         "Household": ["HH_ID", "HH_NAME", "REP_CODE"],
-        "Party": ["PARTY_ID", "LEGAL_NAME", "PARTY_TYPE"],
-        "Client": ["PARTY_ID", "LEGAL_NAME", "PARTY_TYPE"],
+        "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
+        "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
         "Sleeve": ["ACCT_NUM", "SLEEVE_ID", "TARGET_PCT"],
         "Position": ["ACCT_NUM", "CUSIP", "MARKET_VALUE"],
         "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
@@ -173,7 +173,7 @@ class SchemaMapperAgent:
             for raw_key, raw_val in raw_row.items():
                 source_fields_seen.add(raw_key)
                 if entity_name == "Client" and raw_key == "HOUSEHOLD_LINK_ID":
-                    source_key = next((raw_row.get(key) for key in ("LEGACY_CLIENT_ID", "CLIENT_ID", "PARTY_SRC_ID", "PARTY_ID") if raw_row.get(key) not in (None, "")), None)
+                    source_key = next((raw_row.get(key) for key in ("LEGACY_CLIENT_ID", "CLIENT_ID", "PARTY_SRC_ID", "CLIENT_ID") if raw_row.get(key) not in (None, "")), None)
                     relationship_candidates.append({
                         "relationship": "CLIENT_HOUSEHOLD_MEMBERSHIP",
                         "source_entity": "Client",
@@ -213,8 +213,8 @@ class SchemaMapperAgent:
                             transformed_val = self.REGISTRATION_TYPE_CROSSWALK[norm_reg]
                             applied_rule = f"REG_TYPE_LOOKUP ({raw_val} -> {transformed_val})"
 
-                    # Client / Party Type Crosswalk
-                    elif target_key == "PARTY_TYPE":
+                    # Client / Client Type Crosswalk
+                    elif target_key == "CLIENT_TYPE":
                         norm_party = str(raw_val).strip().upper()
                         if norm_party in self.CLIENT_TYPE_CROSSWALK:
                             transformed_val = self.CLIENT_TYPE_CROSSWALK[norm_party]
