@@ -123,6 +123,11 @@ def test_mapping_suggestion_review_lifecycle(tmp_path, monkeypatch):
     conn = db_module.get_db_connection()
     audit = conn.execute("SELECT decision, stage, reviewer FROM approvals WHERE artifact_id = 'SUG-1'").fetchone()
     assert tuple(audit) == ("APPROVED", "SOURCE_TO_CANONICAL_MAPPING", "Domain SME")
+    reusable = conn.execute(
+        "SELECT migration_id, entity_name, source_field, canonical_field, is_confirmed "
+        "FROM canonical_mappings WHERE source_field = 'LEGACY_ACCT_NO'"
+    ).fetchone()
+    assert tuple(reusable) == ("MIG-1", "Account", "LEGACY_ACCT_NO", "ACCT_NUM", 1)
     conn.close()
 
 
