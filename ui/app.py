@@ -250,7 +250,8 @@ async def map_pilot_account(records: Optional[List[Dict[str, Any]]] = None):
     mapping_res = schema_mapper.map_source_to_canonical("Account", records)
     run_id = f"RUN-{uuid.uuid4().hex}"
     state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
-    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": mapping_res})
+    safe_mapping = _preview_only_mapping(mapping_res)
+    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": safe_mapping})
 
 
 @app.get("/api/pilot/account/lineage")
@@ -478,6 +479,22 @@ async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFi
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip row-level canonical output and raw samples from all preview API responses."""
+    safe_mapping = dict(mapping_res)
+    records = safe_mapping.pop("mapped_records", [])
+    safe_mapping["preview_record_count"] = safe_mapping.get("record_count", len(records))
+    safe_mapping["mapped_records_withheld"] = True
+    safe_mapping["approval_status"] = "PENDING_REVIEW"
+    safe_mapping["canonical_output_status"] = "PREVIEW_ONLY_PENDING_APPROVAL"
+    safe_mapping["field_lineages"] = [
+        {key: value for key, value in lineage.items() if key != "sample_value"}
+        for lineage in safe_mapping.get("field_lineages", [])
+    ]
+    safe_mapping.pop("relationship_candidates", None)
+    return safe_mapping
 
 
 def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[str, str]:
@@ -887,7 +904,8 @@ async def map_pilot_household(records: Optional[List[Dict[str, Any]]] = None):
     mapping_res = schema_mapper.map_source_to_canonical("Household", records)
     run_id = f"RUN-{uuid.uuid4().hex}"
     state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
-    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": mapping_res})
+    safe_mapping = _preview_only_mapping(mapping_res)
+    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": safe_mapping})
 
 
 @app.get("/api/pilot/household/lineage")
@@ -926,7 +944,8 @@ async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
     mapping_res = schema_mapper.map_source_to_canonical("Client", records)
     run_id = f"RUN-{uuid.uuid4().hex}"
     state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
-    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": mapping_res})
+    safe_mapping = _preview_only_mapping(mapping_res)
+    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": safe_mapping})
 
 
 @app.get("/api/pilot/client/lineage")
