@@ -165,6 +165,26 @@ async def entity_sample_files_view(request: Request):
 async def agent_pipeline_view(request: Request):
     user = get_current_user(request)
     latest_run = state_store.pipeline_runs[-1] if state_store.pipeline_runs else None
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT suggestion_id, entity_name, source_field, canonical_field, proposed_rule, confidence_score "
+            "FROM mapping_suggestions WHERE status = ? ORDER BY created_utc DESC, entity_name, source_field",
+            ("PENDING",),
+        ).fetchall()
+        mapping_suggestions = [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+    source_files = {
+        entity: dict(files)
+        for entity, files in getattr(state_store, "entity_source_files", {}).items()
+        if entity in {"Account", "Household", "Client"}
+    }
+    for entity, record in getattr(state_store, "entity_sample_files", {}).items():
+        if entity in {"Account", "Household", "Client"}:
+            source_files.setdefault(entity, {}).setdefault(record.get("source_role", "ENTITY_MASTER"), record)
+
     return render_template_with_context(
         request=request,
         template_name="agent_pipeline.html",
@@ -173,7 +193,9 @@ async def agent_pipeline_view(request: Request):
             "user_name": user["name"],
             "user_role": user["role"],
             "firm_context": state_store.questionnaire_data,
-            "pipeline_run": latest_run
+            "pipeline_run": latest_run,
+            "source_files": source_files,
+            "mapping_suggestions": mapping_suggestions,
         }
     )
 
