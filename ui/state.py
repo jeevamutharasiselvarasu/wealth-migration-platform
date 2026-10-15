@@ -364,15 +364,15 @@ class WorkspaceStateStore:
             conn.close()
 
     def get_source_upload_entities(self) -> List[Dict[str, Any]]:
-        """Return in-scope source upload cards, presenting source Client as canonical Party."""
+        """Return in-scope source upload cards, presenting source Client as canonical Client."""
         result = []
         for entity in self.get_in_scope_entities():
-            if entity["entity_name"] == "Party":
+            if entity["entity_name"] == "Client":
                 alias = dict(entity)
                 alias["entity_name"] = "Client"
-                alias["canonical_entity_name"] = "Party"
+                alias["canonical_entity_name"] = "Client"
                 alias["expected_file"] = "clients.csv"
-                alias["required_fields"] = ["PARTY_ID", "LEGAL_NAME", "TAX_ID", "PARTY_TYPE"]
+                alias["required_fields"] = ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
                 alias["sample_file_info"] = self.entity_sample_files.get("Client")
                 result.append(alias)
             else:
