@@ -468,7 +468,7 @@ async def save_entity_scopes(request: Request):
 @app.post("/api/entities/upload-sample-file")
 async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFile = File(...)):
     """Store the actual uploaded CSV for the selected in-scope entity."""
-    scope_entity = "Party" if entity_name == "Client" else entity_name
+    scope_entity = "Client" if entity_name == "Client" else entity_name
     scope = state_store.entity_scopes.get(scope_entity)
     if scope != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
@@ -482,8 +482,8 @@ async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFi
 
 def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow") -> Dict[str, Any]:
     """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
-    scope_entity = "Party" if entity_name == "Client" else entity_name
-    if scope_entity not in {"Account", "Household", "Party"}:
+    scope_entity = "Client" if entity_name == "Client" else entity_name
+    if scope_entity not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the P0 MCL workflow.")
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
@@ -513,7 +513,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
     mapping = schema_mapper.map_source_to_canonical(entity_name, source_records)
     mapping["entity"] = entity_name
-    mapping["canonical_entity"] = "Party" if entity_name == "Client" else entity_name
+    mapping["canonical_entity"] = "Client" if entity_name == "Client" else entity_name
     mapping["run_id"] = run_id
     # Mapper output is a preview; suggestions require human approval before canonical use.
     mapping["approval_status"] = "PENDING_REVIEW" if mapping.get("field_lineages") else "NO_PROPOSALS"
@@ -557,7 +557,7 @@ async def map_mcl_uploaded_files():
     source_entities = ["Account", "Household", "Client"]
     # Validate all prerequisites before starting any profile/mapping work.
     for entity_name in source_entities:
-        scope_entity = "Party" if entity_name == "Client" else entity_name
+        scope_entity = "Client" if entity_name == "Client" else entity_name
         if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
             raise HTTPException(status_code=409, detail=f"MCL run blocked: {scope_entity} is not explicitly IN_SCOPE.")
         uploaded = state_store.entity_sample_files.get(entity_name)
@@ -852,7 +852,7 @@ async def profile_pilot_client_file(file: UploadFile = File(...)):
 
 @app.post("/api/pilot/client/map")
 async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
-    """Executes source-to-canonical mapping for Client/Party and persists lineage."""
+    """Executes source-to-canonical mapping for Client/Client and persists lineage."""
     if records is None:
         records = []
 
@@ -864,7 +864,7 @@ async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
 
 @app.get("/api/pilot/client/lineage")
 async def get_pilot_client_lineage():
-    """Retrieves SQLite metadata lineage audit records for Client/Party."""
+    """Retrieves SQLite metadata lineage audit records for Client/Client."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Client' ORDER BY timestamp_utc DESC LIMIT 20;")
