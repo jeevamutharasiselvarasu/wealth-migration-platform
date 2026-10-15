@@ -571,18 +571,71 @@ async def map_mcl_uploaded_files():
     else:
         overall_status = "MAPPED"
 
+    execution_boundary = {
+        "source_to_canonical_only": True,
+        "target_loading": "NOT_RUN",
+        "wave_assignment": "DISABLED",
+        "target_adapter": "NOT_SELECTED_IN_P0",
+    }
+    try:
+        state_store.persist_mcl_execution_summary(
+            mcl_run_id=mcl_run_id,
+            status=overall_status,
+            entity_results=entity_results,
+            relationship_validation=relationship_validation,
+            execution_boundary=execution_boundary,
+        )
+    except Exception as exc:
+        logger.exception("Could not persist MCL execution summary for %s", mcl_run_id)
+        raise HTTPException(status_code=500, detail=f"MCL results were produced but batch lineage could not be persisted for {mcl_run_id}: {type(exc).__name__}: {exc}") from exc
+
     return JSONResponse({
         "status": overall_status,
         "mcl_run_id": mcl_run_id,
         "migration_id": state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"),
         "entities": entity_results,
         "relationship_validation": relationship_validation,
-        "execution_boundary": {
-            "source_to_canonical_only": True,
-            "target_loading": "NOT_RUN",
-            "wave_assignment": "DISABLED",
-            "target_adapter": "NOT_SELECTED_IN_P0",
-        },
+        "execution_boundary": execution_boundary,
+    })
+
+
+@app.get("/api/mcl/runs/{mcl_run_id}")
+async def get_mcl_run_lineage(mcl_run_id: str):
+    """Retrieve persisted MCL batch summary, entity runs, and field lineage."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM mcl_execution_runs WHERE mcl_run_id = ?",
+            (mcl_run_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"MCL run {mcl_run_id} was not found.")
+        execution = dict(row)
+        entity_summary = json.loads(execution.pop("entity_summary_json"))
+        relationship_summary = json.loads(execution.pop("relationship_summary_json"))
+        execution_boundary = json.loads(execution.pop("execution_boundary_json"))
+        entity_run_ids = [item["run_id"] for item in entity_summary.values() if item.get("run_id")]
+        entity_runs = []
+        field_lineage = []
+        for entity_run_id in entity_run_ids:
+            run_row = conn.execute("SELECT * FROM migration_runs WHERE run_id = ?", (entity_run_id,)).fetchone()
+            if run_row:
+                entity_runs.append(dict(run_row))
+            lineage_rows = conn.execute(
+                "SELECT * FROM field_lineage_audit WHERE run_id = ? ORDER BY timestamp_utc, source_column",
+                (entity_run_id,),
+            ).fetchall()
+            field_lineage.extend(dict(lineage_row) for lineage_row in lineage_rows)
+    finally:
+        conn.close()
+    return JSONResponse({
+        "status": "SUCCESS",
+        "execution": execution,
+        "entities": entity_summary,
+        "relationship_validation": relationship_summary,
+        "execution_boundary": execution_boundary,
+        "entity_runs": entity_runs,
+        "field_lineage": field_lineage,
     })
 
 
