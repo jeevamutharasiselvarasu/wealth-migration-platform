@@ -74,7 +74,6 @@ class SchemaMapperAgent:
         # Client / Client Attributes
         "LEGACY_CLIENT_ID": "CLIENT_ID",
         "CLIENT_ID": "CLIENT_ID",
-        "CLIENT_ID": "CLIENT_ID",
         "PARTY_SRC_ID": "CLIENT_ID",
         "FULL_LEGAL_NAME": "LEGAL_NAME",
         "PARTY_NAME": "LEGAL_NAME",
@@ -88,7 +87,6 @@ class SchemaMapperAgent:
         "TAX_ID": "TAX_ID",
         "SSN_TIN": "TAX_ID",
         "CLIENT_TYPE_RAW": "CLIENT_TYPE",
-        "CLIENT_TYPE": "CLIENT_TYPE",
         "CLIENT_TYPE": "CLIENT_TYPE",
         "CLIENT_TYPE_SRC": "CLIENT_TYPE",
         "EMAIL_ADDR": "EMAIL",
@@ -123,7 +121,6 @@ class SchemaMapperAgent:
     MANDATORY_CANONICAL_FIELDS = {
         "Account": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "OPEN_DATE"],
         "Household": ["HH_ID", "HH_NAME", "REP_CODE"],
-        "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
         "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
         "Sleeve": ["ACCT_NUM", "SLEEVE_ID", "TARGET_PCT"],
         "Position": ["ACCT_NUM", "CUSIP", "MARKET_VALUE"],
