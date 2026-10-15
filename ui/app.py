@@ -464,9 +464,10 @@ async def save_entity_scopes(request: Request):
 @app.post("/api/entities/upload-sample-file")
 async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFile = File(...)):
     """Store the actual uploaded CSV for the selected in-scope entity."""
-    scope = state_store.entity_scopes.get(entity_name)
+    scope_entity = "Party" if entity_name == "Client" else entity_name
+    scope = state_store.entity_scopes.get(scope_entity)
     if scope != "IN_SCOPE":
-        raise HTTPException(status_code=409, detail=f"{entity_name} is not explicitly IN_SCOPE; upload is blocked.")
+        raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
     content = await file.read()
     try:
         record = state_store.attach_entity_sample_file(entity_name, file.filename or "", content)
