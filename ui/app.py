@@ -467,15 +467,23 @@ async def save_entity_scopes(request: Request):
 
 
 @app.post("/api/entities/upload-sample-file")
-async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFile = File(...)):
-    """Store the actual uploaded CSV for the selected in-scope entity."""
+async def upload_entity_sample_file(
+    entity_name: str = Form(...),
+    file: UploadFile = File(...),
+    source_role: str = Form("ENTITY_MASTER"),
+):
+    """Validate and store a supported source file with explicit role and lineage metadata."""
     scope_entity = "Client" if entity_name == "Client" else entity_name
     scope = state_store.entity_scopes.get(scope_entity)
     if scope != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
     content = await file.read()
     try:
-        record = state_store.attach_entity_sample_file(entity_name, file.filename or "", content)
+        if entity_name == "Account" and source_role.upper() != "ACCOUNT_MASTER":
+            raise HTTPException(status_code=400, detail="Account uploads must use the ACCOUNT_MASTER source role.")
+        record = state_store.attach_entity_sample_file(
+            entity_name, file.filename or "", content, source_role=source_role
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
