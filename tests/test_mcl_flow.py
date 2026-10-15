@@ -138,7 +138,7 @@ def test_mapper_flags_two_source_columns_mapped_to_one_canonical_field():
 def test_profiler_preserves_leading_zero_identifier_values():
     profile = SourceDataProfiler.profile_csv_content(
         "clients.csv",
-        b"CLIENT_ID,CLIENT_TYPE_RAW\\n00017,INDV\\n00018,TRUST\\n",
+        b"CLIENT_ID,CLIENT_TYPE_RAW\n00017,INDV\n00018,TRUST\n",
         entity_name="Client",
     )
 
