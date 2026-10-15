@@ -282,6 +282,22 @@ class WorkspaceStateStore:
                     in_scope_list.append(ent_copy)
         return in_scope_list
 
+    def get_source_upload_entities(self) -> List[Dict[str, Any]]:
+        """Return in-scope source upload cards, presenting source Client as canonical Party."""
+        result = []
+        for entity in self.get_in_scope_entities():
+            if entity["entity_name"] == "Party":
+                alias = dict(entity)
+                alias["entity_name"] = "Client"
+                alias["canonical_entity_name"] = "Party"
+                alias["expected_file"] = "clients.csv"
+                alias["required_fields"] = ["PARTY_ID", "LEGAL_NAME", "TAX_ID", "PARTY_TYPE"]
+                alias["sample_file_info"] = self.entity_sample_files.get("Client")
+                result.append(alias)
+            else:
+                result.append(entity)
+        return result
+
     def add_firm_file(self, filename: str, category: str, content_bytes: bytes) -> Dict[str, Any]:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         doc_record = {
