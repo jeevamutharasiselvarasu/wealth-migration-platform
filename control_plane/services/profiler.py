@@ -41,8 +41,11 @@ class SourceDataProfiler:
 
             inferred_type = "string"
             non_null_values = series.dropna().astype(str).str.strip()
-            if pd.api.types.is_datetime64_any_dtype(series) or "date" in col.lower() or col.lower().endswith("_dt"):
+            column_name = col.lower()
+            if pd.api.types.is_datetime64_any_dtype(series) or "date" in column_name or column_name.endswith("_dt"):
                 inferred_type = "date"
+            elif any(token in column_name for token in ("_id", "id_", "acct", "account_no", "account_num", "_num", "number", "_no", "code", "cusip", "ticker", "tax")):
+                inferred_type = "string"
             elif len(non_null_values) and pd.to_numeric(non_null_values, errors="coerce").notna().all():
                 inferred_type = "decimal" if non_null_values.map(lambda value: "." in value).any() else "integer"
 
