@@ -282,6 +282,69 @@ class WorkspaceStateStore:
                     in_scope_list.append(ent_copy)
         return in_scope_list
 
+    def persist_mcl_execution_summary(
+        self,
+        mcl_run_id: str,
+        status: str,
+        entity_results: Dict[str, Dict[str, Any]],
+        relationship_validation: Dict[str, Any],
+        execution_boundary: Dict[str, Any],
+    ) -> None:
+        """Persist metadata-only MCL batch evidence; never store mapped source records or identifier values."""
+        entity_summary = {}
+        for entity_name, result in entity_results.items():
+            mapping = result.get("mapping", {})
+            profile = result.get("profile", {})
+            entity_summary[entity_name] = {
+                "run_id": result.get("run_id"),
+                "canonical_entity": result.get("canonical_entity"),
+                "source_file": result.get("source_file"),
+                "row_count": profile.get("row_count", 0),
+                "column_count": profile.get("column_count", 0),
+                "status": mapping.get("status", "UNKNOWN"),
+                "mapped_fields": mapping.get("mapped_fields", []),
+                "unmapped_fields": mapping.get("unmapped_fields", []),
+                "missing_required": mapping.get("missing_required", []),
+                "confidence_score": mapping.get("confidence_score", 0.0),
+            }
+        relationship_summary = {
+            "status": relationship_validation.get("status", "UNKNOWN"),
+            "summary": relationship_validation.get("summary", {}),
+            "key_checks": [
+                {key: value for key, value in item.items() if key not in {"duplicate_values"}}
+                for item in relationship_validation.get("key_checks", [])
+            ],
+            "relationship_checks": [
+                {key: value for key, value in item.items() if key not in {"orphan_values"}}
+                for item in relationship_validation.get("relationship_checks", [])
+            ],
+        }
+        conn = get_db_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO mcl_execution_runs
+                (mcl_run_id, migration_id, status, entity_summary_json, relationship_summary_json,
+                 execution_boundary_json, executed_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mcl_run_id,
+                    self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+                    status,
+                    json.dumps(entity_summary),
+                    json.dumps(relationship_summary),
+                    json.dumps(execution_boundary),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def get_source_upload_entities(self) -> List[Dict[str, Any]]:
         """Return in-scope source upload cards, presenting source Client as canonical Party."""
         result = []
