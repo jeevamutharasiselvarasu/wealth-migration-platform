@@ -29,7 +29,7 @@ class WealthManagementKnowledgeKernel:
                 "entity_name": "Client",
                 "entity_class": "MASTER",
                 "grain": "One person, trust, or legal participant in identity domain",
-                "expected_file": "parties.csv",
+                "expected_file": "clients.csv",
                 "required_fields": ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"],
                 "default_scope": "IN_SCOPE"
             },
