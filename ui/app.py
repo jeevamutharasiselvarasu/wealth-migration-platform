@@ -479,8 +479,8 @@ async def upload_entity_sample_file(
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
     allowed_roles = {
         "Account": {"ACCOUNT_MASTER", "NAME_ADDRESS", "ACCOUNT_TYPE"},
-        "Client": {"ENTITY_MASTER"},
-        "Household": {"ENTITY_MASTER"},
+        "Client": {"ENTITY_MASTER", "CLIENT_MODEL"},
+        "Household": {"ENTITY_MASTER", "HOUSEHOLD_MAPPING"},
     }
     normalized_role = (source_role or "ENTITY_MASTER").strip().upper()
     if normalized_role not in allowed_roles.get(scope_entity, set()):
