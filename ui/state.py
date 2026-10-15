@@ -63,6 +63,7 @@ class WorkspaceStateStore:
         ]
 
         self.entity_sample_files: Dict[str, Dict[str, Any]] = {}
+        self.entity_source_files: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self.pipeline_runs: List[Dict[str, Any]] = []
         self.audit_log: List[Dict[str, Any]] = []
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
@@ -222,7 +223,11 @@ class WorkspaceStateStore:
             "columns": columns,
             "status": "UPLOADED",
         }
-        self.entity_sample_files[entity_name] = record
+        role_files = self.entity_source_files.setdefault(entity_name, {})
+        role_files[record["source_role"]] = record
+        # Keep the existing entity-level mapping path tied to the master file only.
+        if record["source_role"] in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
+            self.entity_sample_files[entity_name] = record
         return record
 
     def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
@@ -390,9 +395,12 @@ class WorkspaceStateStore:
                 alias["expected_file"] = "clients.csv"
                 alias["required_fields"] = ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
                 alias["sample_file_info"] = self.entity_sample_files.get("Client")
+                alias["source_files"] = self.entity_source_files.get("Client", {})
                 result.append(alias)
             else:
-                result.append(entity)
+                item = dict(entity)
+                item["source_files"] = self.entity_source_files.get(entity["entity_name"], {})
+                result.append(item)
         return result
 
     def add_firm_file(self, filename: str, category: str, content_bytes: bytes) -> Dict[str, Any]:
