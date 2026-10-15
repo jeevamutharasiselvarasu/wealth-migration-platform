@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
-from control_plane.db import get_db_connection, init_db
+from control_plane.db import get_db_connection, init_db\nfrom control_plane.services.source_file_adapter import read_source_records
 
 SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
 
@@ -168,21 +168,16 @@ class WorkspaceStateStore:
             conn.close()
 
     def attach_entity_sample_file(self, entity_name: str, filename: str, content_bytes: bytes) -> Dict[str, Any]:
-        """Validate and persist uploaded CSV bytes, then retain the exact path used for mapping."""
-        import io
-
+        """Validate and persist a supported sample file and retain its exact path."""
         if not content_bytes:
             raise ValueError("Uploaded file is empty.")
-        if not filename or Path(filename).suffix.lower() != ".csv":
-            raise ValueError("Only CSV source files are supported in this P0 workflow.")
         try:
-            df = pd.read_csv(io.BytesIO(content_bytes))
-        except Exception as exc:
-            raise ValueError(f"Could not parse uploaded CSV: {exc}") from exc
-        if len(df.columns) == 0:
-            raise ValueError("Uploaded CSV has no columns.")
-        if df.columns.duplicated().any():
-            raise ValueError("Uploaded CSV contains duplicate column names.")
+            records = read_source_records(filename, content_bytes)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        columns = list(records[0].keys()) if records else []
+        if not columns:
+            raise ValueError("Uploaded file has no records or headers.")
 
         safe_entity = re.sub(r"[^A-Za-z0-9_-]+", "_", entity_name).strip("_") or "entity"
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name)
@@ -196,15 +191,15 @@ class WorkspaceStateStore:
             "stored_path": str(stored_path.resolve()),
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(content_bytes),
-            "row_count": int(len(df)),
-            "column_count": int(len(df.columns)),
-            "columns": [str(column) for column in df.columns],
+            "row_count": len(records),
+            "column_count": len(columns),
+            "columns": columns,
             "status": "UPLOADED",
         }
         self.entity_sample_files[entity_name] = record
         return record
 
-    def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
+        def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
         if self.pipeline_runs:
             latest_run = self.pipeline_runs[-1]
             details = latest_run.get("agent_details", {})
