@@ -480,6 +480,11 @@ async def map_uploaded_entity_file(entity_name: str = Form(...)):
     scope = state_store.entity_scopes.get(entity_name)
     if scope != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} is not explicitly IN_SCOPE; mapping is blocked.")
+    if entity_name != "Account":
+        raise HTTPException(
+            status_code=409,
+            detail=f"End-to-end mapping is enabled for Account only in P0. {entity_name} can be uploaded, but its mapping module must be implemented and validated before execution.",
+        )
     uploaded = state_store.entity_sample_files.get(entity_name)
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
         raise HTTPException(status_code=409, detail=f"No valid uploaded CSV is available for {entity_name}.")
