@@ -166,13 +166,21 @@ def test_mapping_suggestion_review_lifecycle(tmp_path, monkeypatch):
     )
     conn.commit()
     conn.close()
-    assert app_module._get_approved_mapping_catalog("MIG-1", "Account") == {
-        "LEGACY_ACCT_NO": "ACCT_NUM"
-    }
+    approved_catalog = app_module._get_approved_mapping_catalog("MIG-1", "Account")
+    assert approved_catalog == {"LEGACY_ACCT_NO": "ACCT_NUM"}
     assert app_module._get_approved_mapping_catalog("MIG-OTHER", "Account") == {
         "OTHER_SOURCE": "ACCT_NUM"
     }
     assert app_module._get_approved_mapping_catalog("MIG-1", "Household") == {}
+
+    # The approved alias is actually consumed by the mapper; unapproved fields are not.
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    effective_mapper = SchemaMapperAgent(custom_catalog={**app_module.schema_mapper.catalog, **approved_catalog})
+    mapped = effective_mapper.map_source_to_canonical(
+        "Account", [{"LEGACY_ACCT_NO": "000123", "UNAPPROVED_SOURCE": "secret"}]
+    )
+    assert mapped["mapped_records"][0]["ACCT_NUM"] == "000123"
+    assert "UNAPPROVED_SOURCE" in mapped["unmapped_fields"]
 
 
 def test_single_entity_mapping_does_not_expose_unapproved_canonical_rows(monkeypatch):
