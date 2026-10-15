@@ -17,7 +17,7 @@ from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
-from control_plane.services.mcl_validation import validate_mcl_relationships
+from control_plane.services.mcl_validation import validate_mcl_relationships\nfrom control_plane.services.source_file_adapter import read_source_records
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
@@ -487,21 +487,29 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
     uploaded = state_store.entity_sample_files.get(entity_name)
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
-        raise HTTPException(status_code=409, detail=f"No valid uploaded CSV is available for {entity_name}.")
+        raise HTTPException(status_code=409, detail=f"No valid uploaded source file is available for {entity_name}.")
     source_path = Path(uploaded["stored_path"])
     if not source_path.is_file():
         raise HTTPException(status_code=409, detail=f"The uploaded source file for {entity_name} is no longer available; upload it again.")
 
-    import pandas as pd
     run_id = f"RUN-{uuid.uuid4().hex}"
     content = source_path.read_bytes()
-    profile = SourceDataProfiler.profile_csv_content(uploaded["filename"], content, entity_name=entity_name)
+    try:
+        source_records = read_source_records(uploaded["filename"], content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # The current profiler consumes CSV bytes; serialize adapter-normalized records
+    # to profile the same logical rows regardless of the original source format.
+    import io
+    import pandas as pd
+    normalized_csv = pd.DataFrame(source_records).to_csv(index=False).encode("utf-8")
+    profile = SourceDataProfiler.profile_csv_content(uploaded["filename"], normalized_csv, entity_name=entity_name)
     if profile.get("status") != "PROFILED":
-        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
+        raise HTTPException(status_code=400, detail=profile.get("error_message", "Source profiling failed."))
+    profile["source_format"] = Path(uploaded["filename"]).suffix.lower()
     profile["run_id"] = run_id
     profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
-    records_df = pd.read_csv(source_path, dtype=str, keep_default_na=False)
-    mapping = schema_mapper.map_source_to_canonical(entity_name, records_df.to_dict(orient="records"))
+    mapping = schema_mapper.map_source_to_canonical(entity_name, source_records)
     mapping["entity"] = entity_name
     mapping["canonical_entity"] = "Party" if entity_name == "Client" else entity_name
     mapping["run_id"] = run_id
@@ -549,7 +557,7 @@ async def map_mcl_uploaded_files():
             raise HTTPException(status_code=409, detail=f"MCL run blocked: {scope_entity} is not explicitly IN_SCOPE.")
         uploaded = state_store.entity_sample_files.get(entity_name)
         if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
-            raise HTTPException(status_code=409, detail=f"MCL run blocked: upload a valid {entity_name} CSV first.")
+            raise HTTPException(status_code=409, detail=f"MCL run blocked: upload a valid {entity_name} source file first.")
         if not Path(uploaded["stored_path"]).is_file():
             raise HTTPException(status_code=409, detail=f"MCL run blocked: the {entity_name} source file is missing; upload it again.")
 
