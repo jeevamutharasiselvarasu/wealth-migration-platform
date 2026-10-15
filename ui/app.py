@@ -497,18 +497,32 @@ def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     return safe_mapping
 
 
-def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[str, str]:
-    """Return only explicitly approved rules for this migration/entity pair."""
+def _get_approved_mapping_rules(migration_id: str, entity_name: str) -> Dict[str, Dict[str, str]]:
+    """Return approved target fields and transformation expressions for one migration/entity."""
     conn = get_db_connection()
     try:
         rows = conn.execute(
-            "SELECT source_field, canonical_field FROM canonical_mappings "
+            "SELECT source_field, canonical_field, transformation_expression FROM canonical_mappings "
             "WHERE migration_id = ? AND entity_name = ? AND is_confirmed = 1",
             (migration_id, entity_name),
         ).fetchall()
-        return {row["source_field"]: row["canonical_field"] for row in rows}
+        return {
+            row["source_field"]: {
+                "canonical_field": row["canonical_field"],
+                "transformation_expression": (row["transformation_expression"] or "DIRECT_COPY").strip().upper(),
+            }
+            for row in rows
+        }
     finally:
         conn.close()
+
+
+def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[str, str]:
+    """Backward-compatible field alias view of explicitly approved rules."""
+    return {
+        source: rule["canonical_field"]
+        for source, rule in _get_approved_mapping_rules(migration_id, entity_name).items()
+    }
 
 
 def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow") -> Dict[str, Any]:
@@ -544,12 +558,25 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
     # Approved rules are reusable only within the same migration and canonical entity.
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
-    approved_catalog = _get_approved_mapping_catalog(migration_id, entity_name)
-    effective_mapper = SchemaMapperAgent(custom_catalog={**schema_mapper.catalog, **approved_catalog})
+    approved_rules = _get_approved_mapping_rules(migration_id, entity_name)
+    approved_catalog = {
+        source: rule["canonical_field"] for source, rule in approved_rules.items()
+    }
+    approved_transformations = {
+        source: rule["transformation_expression"] for source, rule in approved_rules.items()
+    }
+    effective_mapper = SchemaMapperAgent(
+        custom_catalog={**schema_mapper.catalog, **approved_catalog},
+        approved_transformations=approved_transformations,
+    )
     mapping = effective_mapper.map_source_to_canonical(entity_name, source_records)
     mapping["approved_reusable_rules_applied"] = [
-        {"source_field": source, "canonical_field": target}
-        for source, target in approved_catalog.items()
+        {
+            "source_field": source,
+            "canonical_field": rule["canonical_field"],
+            "transformation_expression": rule["transformation_expression"],
+        }
+        for source, rule in approved_rules.items()
         if any(source in record for record in source_records)
     ]
     mapping["entity"] = entity_name
@@ -721,6 +748,15 @@ async def review_source_mapping_suggestion(
             raise HTTPException(status_code=404, detail="Mapping suggestion was not found.")
         if row["status"] != "PENDING":
             raise HTTPException(status_code=409, detail=f"Mapping suggestion is already {row['status']}.")
+        proposed_expression = str(row["proposed_rule"] or "DIRECT_COPY").strip().upper()
+        if normalized == "APPROVED" and proposed_expression not in SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot approve unsupported transformation '{proposed_expression}'. "
+                    "Use one of: " + ", ".join(sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS))
+                ),
+            )
         conn.execute(
             "UPDATE mapping_suggestions SET status = ?, reviewer = ?, review_comments = ?, reviewed_utc = ? "
             "WHERE suggestion_id = ? AND status = 'PENDING'",
