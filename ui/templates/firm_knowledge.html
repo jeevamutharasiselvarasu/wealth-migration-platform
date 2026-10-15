@@ -8,7 +8,7 @@
             <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">01</span>
             <div>
                 <h1 class="text-lg font-bold text-[#152c6b]">Step 1: Firm Knowledge Studio & Discovery Form</h1>
-                <p class="text-xs text-[#5a6a88]">Complete the acquisition questionnaire form to generate program metrics and wave strategy.</p>
+                <p class="text-xs text-[#5a6a88]">Capture firm context and governance thresholds. P0 does not assign migration waves.</p>
             </div>
         </div>
         <div class="text-right text-[11px] font-mono text-[#5a6a88]">
@@ -35,71 +35,11 @@
                 {% endif %}
             </div>
 
-            {% if user_role in ['Platform Admin', 'Domain SME'] %}
-            <!-- ADMIN / SME EDITABLE KERNEL SPEC FORM -->
-            <form action="/api/kernel/update" method="POST" class="space-y-3 text-xs">
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">15 Canonical Entities</span>
-                        <span class="text-[9px] text-[#8a97b2] font-mono">FIXED TAXONOMY</span>
-                    </div>
-                    <div class="text-[11px] text-[#5a6a88]">Account, Household, Party, Advisor, Model, Security, Sleeve, Account Owner, Position, Transaction, Performance, Tax Lot, Documents, Terminated Accounts</div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2">
-                    <label class="block font-bold text-[#1c2a4a]">Sleeve Invariant Equation</label>
-                    <input type="text" name="sleeve_invariant" value="{{ kernel_specs.sleeve_invariant }}" required
-                           class="w-full bg-white border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-teal-800 focus:outline-none focus:border-blue-500">
-                    <div class="flex justify-between items-center text-[10px]">
-                        <span class="text-[#5a6a88]">Drift Tolerance (&Delta;):</span>
-                        <input type="text" name="sleeve_tolerance" value="{{ kernel_specs.sleeve_tolerance }}" required
-                               class="w-24 bg-white border border-[#cbd5e1] rounded px-1.5 py-0.5 font-mono text-right text-[10px] text-teal-800">
-                    </div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2">
-                    <label class="block font-bold text-[#1c2a4a]">Reconciliation Gate Standard</label>
-                    <input type="text" name="aum_drift_gate" value="{{ kernel_specs.aum_drift_gate }}" required
-                           class="w-full bg-white border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-amber-800 focus:outline-none focus:border-blue-500">
-                </div>
-
-                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-xl text-xs transition shadow-sm">
-                    Update Kernel Configuration →
-                </button>
-            </form>
-            {% else %}
-            <!-- READ-ONLY KERNEL SPEC DISPLAY -->
-            <div class="space-y-3 text-xs">
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">15 Canonical Entities</span>
-                        <span class="text-[9px] text-[#8a97b2] font-mono">NON-EDITABLE</span>
-                    </div>
-                    <div class="text-[11px] text-[#5a6a88]">Account, Household, Party, Advisor, Model, Security, Sleeve, Account Owner, Position, Transaction, Performance, Tax Lot, Documents, Terminated Accounts</div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">Sleeve Invariant Equation</span>
-                        <span class="text-[9px] text-teal-700 font-mono font-semibold">LOCKED RULE</span>
-                    </div>
-                    <div class="text-[11px] font-mono bg-[#e2f4f3] text-[#0a6e69] p-2 rounded-lg border border-[#a6dbd7]">
-                        &sum; W_sleeve = {{ kernel_specs.sleeve_invariant }}<br/>
-                        Tolerance: &Delta; &le; {{ kernel_specs.sleeve_tolerance }} (Rounding Drift)
-                    </div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">Reconciliation Gate Standard</span>
-                        <span class="text-[9px] text-teal-700 font-mono font-semibold">LOCKED GATE</span>
-                    </div>
-                    <div class="text-[11px] font-mono bg-[#faf1e3] text-[#b4711f] p-2 rounded-lg border border-[#e6c79a]">
-                        AUM Drift Variance &le; {{ kernel_specs.aum_drift_gate }}
-                    </div>
-                </div>
+            <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
+                <div class="flex justify-between items-center"><span class="font-bold text-[#1c2a4a]">P0 Canonical Entity Scope</span><span class="text-[9px] text-[#8a97b2] font-mono">FIXED</span></div>
+                <div class="text-[11px] text-[#5a6a88]">Account · Client · Household</div>
+                <p class="text-[10px] text-[#5a6a88]">Sleeve allocation, performance reconciliation, AUM drift gates, trading, and target packaging are outside this phase.</p>
             </div>
-            {% endif %}
 
             <!-- Supplementary Data Attachments -->
             <div class="border-t border-[#e9eff9] pt-4 space-y-3">
@@ -107,15 +47,15 @@
                 <form action="/api/knowledge/file-upload" method="POST" enctype="multipart/form-data" class="space-y-2">
                     <select name="category" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 text-[11px] text-[#1c2a4a] font-medium">
                         <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
-                        <option value="transformation_rule">Custom Markdown Rule (.md)</option>
+                        <option value="transformation_rule">Transferable Source-to-Canonical Rule (.md/.txt)</option><option value="source_analysis">Current System / Source Analysis</option><option value="mapping_reference">Reusable Mapping Reference</option>
                     </select>
-                    <input type="file" name="file" required class="block w-full text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">
+                    <input type="file" name="file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" required class="block w-full text-[10px text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">
                     <button type="submit" class="w-full bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] font-bold py-1.5 rounded-lg text-xs transition border border-[#cbd5e1]">
                         Attach Data Asset
                     </button>
                 </form>
 
-                <div class="space-y-1.5 max-h-32 overflow-y-auto">
+                <div class="space-y-1.5 max-h-64 overflow-y-auto">
                     {% for doc in docs %}
                     <div class="bg-[#f8fafc] p-2 rounded-lg border border-[#e2e8f0] text-[10px] flex justify-between items-center">
                         <span class="font-mono text-blue-700 font-semibold truncate max-w-[140px]">{{ doc.filename }}</span>
@@ -131,7 +71,7 @@
             <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
                 <div>
                     <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Acquisition Discovery Questionnaire Form</h2>
-                    <p class="text-[10px] text-[#5a6a88]">Configure acquisition operating parameters for wave sizing</p>
+                    <p class="text-[10px] text-[#5a6a88]">Configure firm context and governance gates for source-to-canonical mapping</p>
                 </div>
                 <span class="text-[10px] text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full font-mono font-semibold">
                     Interactive Input Mode
@@ -140,87 +80,37 @@
 
             <form action="/api/knowledge/submit-questionnaire" method="POST" class="space-y-6">
                 
-                <!-- Section 1: Firm Profile -->
+                <!-- P0 discovery context: only details that help source-to-canonical mapping -->
                 <div class="space-y-3">
-                    <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">1. Acquired Firm Profile</h3>
-                    
+                    <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">1. Firm & Source Context</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                         <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Acquired Firm Name</label>
-                            <input type="text" name="firm_name" value="{{ form.firm_name }}" required
-                                   class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] focus:outline-none focus:border-blue-500 font-medium">
+                            <label class="block font-semibold text-[#1c2a4a] mb-1">Firm Name</label>
+                            <input type="text" name="firm_name" value="{{ form.firm_name }}" required class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Total Advisor Population (Reps)</label>
-                            <input type="number" name="advisor_count" value="{{ form.advisor_count }}" required
-                                   class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] font-mono focus:outline-none focus:border-blue-500">
+                            <label class="block font-semibold text-[#1c2a4a] mb-1">Source System(s)</label>
+                            <input type="text" name="source_systems" value="{{ form.source_systems or 'Amplify; Black Diamond' }}" placeholder="e.g. custodian, CRM, portfolio system" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-[#1c2a4a] mb-1">Business / Data Owner</label>
+                            <input type="text" name="business_data_owner" value="{{ form.business_data_owner or '' }}" placeholder="Person or team responsible for source definitions" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-[#1c2a4a] mb-1">Mapping Approver</label>
+                            <input type="text" name="mapping_approver" value="{{ form.mapping_approver or '' }}" placeholder="Reviewer who approves canonical mappings" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                     </div>
                 </div>
-
-                <!-- Section 2: Architecture & Custody -->
                 <div class="space-y-3 border-t border-[#e9eff9] pt-4">
-                    <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">2. System Architecture & Custody</h3>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Advisor Portfolio Operating Model</label>
-                            <select name="operating_model" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] font-medium">
-                                <option value="Rep-as-PM" {% if form.operating_model == 'Rep-as-PM' %}selected{% endif %}>Rep-as-PM (Custom Advisor UMA Sleeves)</option>
-                                <option value="Home-Office-Centralized" {% if form.operating_model == 'Home-Office-Centralized' %}selected{% endif %}>Home Office Centralized Models</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Primary Custodian Constraint</label>
-                            <select name="primary_custodian" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] font-medium">
-                                <option value="Charles Schwab (Retained)" {% if 'Schwab' in form.primary_custodian %}selected{% endif %}>Charles Schwab (Retained — No Asset Transfer)</option>
-                                <option value="Fidelity Institutional" {% if 'Fidelity' in form.primary_custodian %}selected{% endif %}>Fidelity Institutional</option>
-                                <option value="BNY Mellon Pershing" {% if 'Pershing' in form.primary_custodian %}selected{% endif %}>BNY Mellon Pershing</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Source TAMP Platform</label>
-                            <input type="text" name="source_tamp" value="{{ form.source_tamp }}" required
-                                   class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] focus:outline-none focus:border-blue-500 font-medium">
-                        </div>
-
-                        <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Performance Reporting Source</label>
-                            <input type="text" name="performance_source" value="{{ form.performance_source }}" required
-                                   class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] focus:outline-none focus:border-blue-500 font-medium">
-                        </div>
-                    </div>
+                    <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">2. Identifier & Relationship Notes</h3>
+                    <p class="text-[11px] text-[#5a6a88]">Document source primary keys, foreign keys, and known relationships for Account, Client, and Household. Do not infer or create joins when the source does not document them.</p>
+                    <textarea name="identifier_relationship_notes" rows="3" placeholder="e.g. source key names, documented account-to-client ownership, household grouping evidence" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-xs text-[#1c2a4a]">{{ form.identifier_relationship_notes or '' }}</textarea>
                 </div>
-
-                <!-- Section 3: Controls & Gates -->
-                <div class="space-y-3 border-t border-[#e9eff9] pt-4">
-                    <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">3. Risk Controls & Drift Gates</h3>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">AUM Drift Gate Threshold (%)</label>
-                            <input type="text" name="aum_drift_gate" value="{{ form.aum_drift_gate }}" required
-                                   class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] font-mono focus:outline-none focus:border-blue-500">
-                        </div>
-
-                        <div>
-                            <label class="block font-semibold text-[#1c2a4a] mb-1">Restricted Security/Model Overlays</label>
-                            <input type="text" name="restricted_models" value="{{ form.restricted_models }}"
-                                   class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a] font-mono focus:outline-none focus:border-blue-500">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Submit Action Button -->
                 <div class="flex justify-between items-center border-t border-[#e9eff9] pt-4">
-                    <div class="text-[11px] text-[#5a6a88]">
-                        Submitting updates the state store and generates the Dashboard Overview.
-                    </div>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
-                        <span>Save & Generate Dashboard Overview</span>
-                        <span>→</span>
+                    <div class="text-[11px] text-[#5a6a88]">Only source-to-canonical discovery context is captured in P0. Custody, trading, performance, sleeve, AUM wave-sizing, and restricted-model questions are deferred.</div>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow">
+                        Save Mapping Context →
                     </button>
                 </div>
             </form>

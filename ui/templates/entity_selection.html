@@ -8,7 +8,7 @@
             <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">03</span>
             <div>
                 <h1 class="text-lg font-bold text-[#152c6b]">Canonical Entity Scope Selector & Menu Card</h1>
-                <p class="text-xs text-[#5a6a88]">Configure scope choices across the 15 built-in canonical entities. Canonical shapes remain fixed.</p>
+                <p class="text-xs text-[#5a6a88]">P0 source-to-canonical scope: Account, Client, and Household only. Other canonical entities are deferred.</p>
             </div>
         </div>
         
@@ -25,7 +25,7 @@
         <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
             <div class="flex justify-between items-center border-b border-[#e9eff9] pb-2">
                 <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">{{ class_name }} ENTITIES</h2>
-                <span class="text-[#8a97b2] font-mono text-[10px]">{{ entities|length }} Built-in Fixed Entities</span>
+                <span class="text-[#8a97b2] font-mono text-[10px]">{{ entities|length }} P0 Entities</span>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -37,7 +37,7 @@
                                 <span>{{ ent.entity_name }}</span>
                                 <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">{{ ent.entity_class }}</span>
                             </div>
-                            <div class="text-[11px] text-[#5a6a88] mt-1 font-mono">Expected File: {{ ent.expected_file }}</div>
+                            <div class="text-[11px] text-[#5a6a88] mt-1">Expected source files:</div><div class="flex flex-wrap gap-1 mt-1">{% for expected_file in ent.expected_files|default([ent.expected_file]) %}<span class="inline-flex rounded-md bg-white border border-[#d9e3f5] px-2 py-1 text-[10px] font-mono text-[#41506b]">{{ expected_file }}</span>{% endfor %}</div>
                             <div class="text-xs text-[#41506b] mt-1.5">{{ ent.grain }}</div>
                         </div>
                         

@@ -1,19 +1,67 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "asset_type": "source_to_canonical_data_dictionary",
   "source_system": "AMPLIFY_TAMP",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "scope": {
+    "phase": "P0",
+    "direction": "source_to_canonical",
+    "canonical_entities": ["Account", "Client", "Household"],
+    "deferred": ["canonical_to_target", "trading", "sleeves", "models", "positions", "transactions", "performance", "tax lots"]
+  },
   "entities": [
     {
-      "source_table": "amplify_sleeves",
-      "canonical_entity": "Sleeve / Allocation",
-      "primary_key": ["SRC_ACCOUNT_NO", "SUB_SLEEVE_ID"],
+      "source_table": "accounts",
+      "canonical_entity": "Account",
+      "description": "A custodial or legal account record. An account is not the same as the person or household associated with it.",
       "fields": [
-        {"name": "REP_CODE_RAW", "type": "string", "required": true, "maps_to": "Advisor.rep_code"},
-        {"name": "SRC_ACCOUNT_NO", "type": "string", "required": true, "maps_to": "Account.account_number"},
-        {"name": "SUB_SLEEVE_ID", "type": "string", "required": true, "maps_to": "Sleeve.sleeve_id"},
-        {"name": "STRATEGY_MODEL_ID", "type": "string", "required": true, "maps_to": "Model.model_code"},
-        {"name": "TARGET_WEIGHT_PCT", "type": "decimal", "required": true, "maps_to": "Sleeve.target_weight"}
+        {"name": "ACCT_NUM", "type": "string", "required": true, "canonical_field": "ACCT_NUM", "meaning": "Source account identifier; preserve leading zeroes"},
+        {"name": "CUSTODIAN_CODE", "type": "string", "required": true, "canonical_field": "CUSTODIAN_CODE", "meaning": "Custodian identifier/code"},
+        {"name": "REP_CODE", "type": "string", "required": false, "canonical_field": "REP_CODE", "meaning": "Servicing or responsible representative code"},
+        {"name": "REG_TYPE", "type": "string", "required": false, "canonical_field": "REG_TYPE", "meaning": "Account registration type"},
+        {"name": "OPEN_DATE", "type": "date", "required": false, "canonical_field": "OPEN_DATE", "meaning": "Account opening date"}
+      ],
+      "relationship_rules": [
+        "Do not assume account ownership or household membership from name similarity.",
+        "Use only documented source keys or an explicitly approved relationship mapping."
+      ]
+    },
+    {
+      "source_table": "clients",
+      "canonical_entity": "Client",
+      "description": "A person, trust, or legal participant represented in the source identity domain.",
+      "fields": [
+        {"name": "CLIENT_ID", "type": "string", "required": true, "canonical_field": "CLIENT_ID", "meaning": "Source client identifier; preserve leading zeroes"},
+        {"name": "LEGAL_NAME", "type": "string", "required": true, "canonical_field": "LEGAL_NAME", "meaning": "Person or legal entity name as supplied by source"},
+        {"name": "TAX_ID", "type": "string", "required": false, "canonical_field": "TAX_ID", "meaning": "Sensitive identifier; mask in previews and logs"},
+        {"name": "CLIENT_TYPE", "type": "string", "required": false, "canonical_field": "CLIENT_TYPE", "meaning": "Source classification of the client"}
+      ],
+      "relationship_rules": [
+        "A client is distinct from an account and from a household.",
+        "Do not use TAX_ID as a join key unless explicitly authorized and governed."
+      ]
+    },
+    {
+      "source_table": "households",
+      "canonical_entity": "Household",
+      "description": "A business/reporting grouping of related clients and/or accounts. It is a grouping, not an individual legal identity.",
+      "fields": [
+        {"name": "HH_ID", "type": "string", "required": true, "canonical_field": "HH_ID", "meaning": "Source household identifier; preserve leading zeroes"},
+        {"name": "HH_NAME", "type": "string", "required": false, "canonical_field": "HH_NAME", "meaning": "Source household display name"},
+        {"name": "REP_CODE", "type": "string", "required": false, "canonical_field": "REP_CODE", "meaning": "Responsible representative code where supplied"}
+      ],
+      "relationship_rules": [
+        "Household membership must come from an explicit household mapping or documented source relationship.",
+        "Do not infer client-to-household or account-to-household joins from REP_CODE alone."
       ]
     }
-  ]
+  ],
+  "governance": {
+    "approval_required": true,
+    "unknown_columns": "flag_for_review",
+    "missing_required_fields": "raise_validation_exception",
+    "out_of_scope_entities": "exclude_with_reason",
+    "joins": "never_invent_join_keys",
+    "preview_policy": "mask_sensitive_values_and_withhold_row_level_canonical_output_until_approved"
+  }
 }
