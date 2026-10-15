@@ -1,6 +1,6 @@
-from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+import json\nimport sqlite3\n\nfrom agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services.mcl_validation import validate_mcl_relationships
-from control_plane.services.profiler import SourceDataProfiler
+from control_plane.services.profiler import SourceDataProfiler\nimport ui.state as state_module\nfrom ui.state import WorkspaceStateStore
 
 
 def test_client_source_maps_to_party_canonical_fields():
@@ -146,3 +146,64 @@ def test_profiler_preserves_leading_zero_identifier_values():
     client_id_profile = next(item for item in profile["column_profiles"] if item["column_name"] == "CLIENT_ID")
     assert client_id_profile["sample_values"] == ["00017", "00018"]
     assert client_id_profile["inferred_type"] == "string"
+
+def test_mcl_batch_persistence_stores_metadata_not_source_values(tmp_path, monkeypatch):
+    db_path = tmp_path / "mcl-test.db"
+
+    def connect_test_db():
+        connection = sqlite3.connect(db_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    connection = connect_test_db()
+    connection.execute("""
+        CREATE TABLE mcl_execution_runs (
+            mcl_run_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            entity_summary_json TEXT NOT NULL,
+            relationship_summary_json TEXT NOT NULL,
+            execution_boundary_json TEXT NOT NULL,
+            executed_utc TEXT NOT NULL
+        )
+    """)
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(state_module, "get_db_connection", connect_test_db)
+    store = WorkspaceStateStore()
+
+    store.persist_mcl_execution_summary(
+        mcl_run_id="MCL-TEST",
+        status="NEEDS_REMEDIATION",
+        entity_results={
+            "Client": {
+                "run_id": "RUN-CLIENT",
+                "canonical_entity": "Party",
+                "source_file": "clients.csv",
+                "profile": {"row_count": 1, "column_count": 2},
+                "mapping": {
+                    "status": "SUCCESS",
+                    "mapped_records": [{"PARTY_ID": "PRIVATE-CLIENT-ID"}],
+                    "mapped_fields": ["PARTY_ID"],
+                    "unmapped_fields": [],
+                    "missing_required": [],
+                    "confidence_score": 1.0,
+                },
+            }
+        },
+        relationship_validation={
+            "status": "FAIL",
+            "summary": {"failed": 1},
+            "key_checks": [{"status": "FAIL", "duplicate_values": ["PRIVATE-CLIENT-ID"]}],
+            "relationship_checks": [{"status": "FAIL", "orphan_values": ["PRIVATE-CLIENT-ID"]}],
+        },
+        execution_boundary={"target_loading": "NOT_RUN", "wave_assignment": "DISABLED"},
+    )
+
+    connection = connect_test_db()
+    row = connection.execute("SELECT * FROM mcl_execution_runs WHERE mcl_run_id = 'MCL-TEST'").fetchone()
+    connection.close()
+    persisted_text = json.dumps(dict(row))
+    assert "PRIVATE-CLIENT-ID" not in persisted_text
+    assert "clients.csv" in persisted_text
+    assert "RUN-CLIENT" in persisted_text
