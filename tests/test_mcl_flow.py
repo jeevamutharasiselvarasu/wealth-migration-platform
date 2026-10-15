@@ -21,7 +21,7 @@ def test_client_source_maps_to_party_canonical_fields():
     assert result["mapped_records"][0]["PARTY_TYPE"] == "INDIVIDUAL"
 
 
-def test_household_maps_primary_client_link_without_creating_client_entity():
+def test_household_maps_core_fields_and_keeps_unconfirmed_client_link_unresolved():
     mapper = SchemaMapperAgent()
     result = mapper.map_source_to_canonical(
         "Household",
@@ -35,8 +35,9 @@ def test_household_maps_primary_client_link_without_creating_client_entity():
 
     assert result["status"] == "SUCCESS"
     assert result["mapped_records"][0]["HH_ID"] == "HH-01"
-    assert result["mapped_records"][0]["PRIMARY_PARTY_ID"] == "00017"
     assert result["mapped_records"][0]["REP_CODE"] == "REP-0024"
+    assert "PRIMARY_CLIENT_ID" in result["unmapped_fields"]
+    assert any(item["source_field"] == "PRIMARY_CLIENT_ID" and item["canonical_field"] is None for item in result["field_lineages"])
 
 
 def test_mcl_validation_passes_for_resolvable_keys_and_relationships():
