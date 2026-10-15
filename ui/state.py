@@ -415,18 +415,40 @@ class WorkspaceStateStore:
             elif suffix == ".json":
                 payload = json.loads(content_bytes.decode("utf-8-sig"))
                 extracted_text = json.dumps(payload, ensure_ascii=False, indent=2)
-                if isinstance(payload, list) and payload and isinstance(payload[0], dict):
-                    columns = list(payload[0].keys())
-                elif isinstance(payload, dict):
-                    fields = payload.get("columns") or payload.get("fields") or payload.get("records") or payload.get("schema") or payload.get("properties") or payload.get("data") or payload.get("tables") or payload.get("entities")
-                    if isinstance(fields, list) and fields and isinstance(fields[0], dict):
-                        columns = list(fields[0].keys())
-                    elif isinstance(fields, list) and all(isinstance(x, str) for x in fields):
-                        columns = fields
-                    elif isinstance(fields, dict):
-                        columns = list(fields.keys())
-                    elif isinstance(fields, dict):
-                        columns = list(fields.keys())
+                def discover_columns(value):
+                    # Support records, field-name lists, nested dictionary schemas,
+                    # and JSON Schema "properties" without assuming a single vendor shape.
+                    if isinstance(value, list):
+                        if value and all(isinstance(item, str) for item in value):
+                            return value
+                        if value and all(isinstance(item, dict) for item in value):
+                            named = []
+                            for item in value:
+                                name = (
+                                    item.get("canonical_field") or item.get("column_name")
+                                    or item.get("field_name") or item.get("source_field")
+                                    or item.get("name")
+                                )
+                                if isinstance(name, str) and name.strip():
+                                    named.append(name.strip())
+                            return named or list(value[0].keys())
+                        for item in value:
+                            found = discover_columns(item)
+                            if found:
+                                return found
+                    elif isinstance(value, dict):
+                        for key in ("columns", "fields", "schema", "properties", "record",
+                                    "records", "data", "tables", "entities", "items"):
+                            if key in value:
+                                found = discover_columns(value[key])
+                                if found:
+                                    return found
+                        # Some dictionaries map each field name to its metadata.
+                        if value and all(isinstance(item, dict) for item in value.values()):
+                            return list(value.keys())
+                    return []
+
+                columns = discover_columns(payload)
             elif suffix in {".csv", ".tsv"}:
                 import csv
                 reader = csv.reader(content_bytes.decode("utf-8-sig").splitlines(), delimiter="\t" if suffix == ".tsv" else ",")
