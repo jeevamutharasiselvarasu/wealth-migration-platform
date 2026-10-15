@@ -1,4 +1,5 @@
 import os
+import uuid
 import json
 import logging
 from pathlib import Path
@@ -236,17 +237,7 @@ async def profile_pilot_account_file(file: UploadFile = File(...)):
 @app.post("/api/pilot/account/map")
 async def map_pilot_account(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping with confidence scoring and persists metadata lineage."""
-    if not records:
-        accounts_path = Path("test_files/accounts.csv")
-        if not accounts_path.exists():
-            accounts_path = Path(os.path.join(root_dir, "test_files", "accounts.csv"))
-        if accounts_path.exists():
-            import pandas as pd
-            df = pd.read_csv(accounts_path)
-            records = df.to_dict(orient="records")
-        else:
-            records = []
-
+    if records is None:\n        records = []\n
     mapping_res = schema_mapper.map_source_to_canonical("Account", records)
     state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-ACCOUNT-RUN-01", actor="Platform Admin")
     return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
@@ -466,9 +457,66 @@ async def save_entity_scopes(request: Request):
 
 @app.post("/api/entities/upload-sample-file")
 async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFile = File(...)):
+    """Store the actual uploaded CSV for the selected in-scope entity."""
+    scope = state_store.entity_scopes.get(entity_name)
+    if scope != "IN_SCOPE":
+        raise HTTPException(status_code=409, detail=f"{entity_name} is not explicitly IN_SCOPE; upload is blocked.")
     content = await file.read()
-    state_store.attach_entity_sample_file(entity_name, file.filename, content)
+    try:
+        record = state_store.attach_entity_sample_file(entity_name, file.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/entities/map-uploaded-file")
+async def map_uploaded_entity_file(entity_name: str = Form(...)):
+    """Profile and map the exact uploaded CSV; never fall back to a repository sample file."""
+    scope = state_store.entity_scopes.get(entity_name)
+    if scope != "IN_SCOPE":
+        raise HTTPException(status_code=409, detail=f"{entity_name} is not explicitly IN_SCOPE; mapping is blocked.")
+    uploaded = state_store.entity_sample_files.get(entity_name)
+    if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
+        raise HTTPException(status_code=409, detail=f"No valid uploaded CSV is available for {entity_name}.")
+
+    source_path = Path(uploaded["stored_path"])
+    if not source_path.is_file():
+        raise HTTPException(status_code=409, detail="The uploaded source file is no longer available; upload it again.")
+
+    import pandas as pd
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    try:
+        content = source_path.read_bytes()
+        profile = SourceDataProfiler.profile_csv_content(uploaded["filename"], content, entity_name=entity_name)
+        if profile.get("status") != "PROFILED":
+            raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
+        profile["run_id"] = run_id
+        profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
+        records_df = pd.read_csv(source_path)
+        records = records_df.to_dict(orient="records")
+        mapping = schema_mapper.map_source_to_canonical(entity_name, records)
+        mapping["entity"] = entity_name
+        mapping["run_id"] = run_id
+        state_store.persist_mapping_lineage(mapping, run_id=run_id, actor="SourceMappingWorkflow")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Uploaded-file mapping failed for %s", entity_name)
+        raise HTTPException(status_code=500, detail=f"Mapping failed; no success was reported: {type(exc).__name__}: {exc}") from exc
+
+    return JSONResponse({
+        "status": mapping.get("status", "UNKNOWN"),
+        "run_id": run_id,
+        "entity_name": entity_name,
+        "source_file": uploaded["filename"],
+        "profile": profile,
+        "mapping": mapping,
+        "execution_boundary": {
+            "source_to_canonical_only": True,
+            "target_loading": "NOT_RUN",
+            "wave_assignment": "DISABLED",
+        },
+    })
 
 
 @app.post("/api/knowledge/file-upload")
@@ -553,17 +601,7 @@ async def profile_pilot_household_file(file: UploadFile = File(...)):
 @app.post("/api/pilot/household/map")
 async def map_pilot_household(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping for Household and persists lineage."""
-    if not records:
-        hh_path = Path("test_files/households.csv")
-        if not hh_path.exists():
-            hh_path = Path(os.path.join(root_dir, "test_files", "households.csv"))
-        if hh_path.exists():
-            import pandas as pd
-            df = pd.read_csv(hh_path)
-            records = df.to_dict(orient="records")
-        else:
-            records = []
-
+    if records is None:\n        records = []\n
     mapping_res = schema_mapper.map_source_to_canonical("Household", records)
     state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-HH-RUN-01", actor="Platform Admin")
     return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
@@ -595,17 +633,7 @@ async def profile_pilot_client_file(file: UploadFile = File(...)):
 @app.post("/api/pilot/client/map")
 async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping for Client/Party and persists lineage."""
-    if not records:
-        client_path = Path("test_files/clients.csv")
-        if not client_path.exists():
-            client_path = Path(os.path.join(root_dir, "test_files", "clients.csv"))
-        if client_path.exists():
-            import pandas as pd
-            df = pd.read_csv(client_path)
-            records = df.to_dict(orient="records")
-        else:
-            records = []
-
+    if records is None:\n        records = []\n
     mapping_res = schema_mapper.map_source_to_canonical("Client", records)
     state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-CLIENT-RUN-01", actor="Platform Admin")
     return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
