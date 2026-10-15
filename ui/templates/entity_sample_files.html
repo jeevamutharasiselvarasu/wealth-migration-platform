@@ -151,9 +151,6 @@ document.querySelectorAll('.map-uploaded-file').forEach((button) => {
     }
   });
 });
-</script>
-
-
 document.getElementById('run-mcl-flow')?.addEventListener('click', async (event) => {
   const button = event.currentTarget;
   const result = document.getElementById('mcl-flow-result');
@@ -188,5 +185,7 @@ document.getElementById('run-mcl-flow')?.addEventListener('click', async (event)
     button.textContent = 'Retry full MCL flow';
   } finally { button.disabled = false; }
 });
+
+</script>
 
 {% endblock %}
