@@ -44,7 +44,7 @@ class SourceDataProfiler:
             if pd.api.types.is_datetime64_any_dtype(series) or "date" in col.lower() or col.lower().endswith("_dt"):
                 inferred_type = "date"
             elif len(non_null_values) and pd.to_numeric(non_null_values, errors="coerce").notna().all():
-                inferred_type = "decimal" if non_null_values.str.contains(r"\\.").any() else "integer"
+                inferred_type = "decimal" if non_null_values.map(lambda value: "." in value).any() else "integer"
 
             is_candidate_key = (null_count == 0 and unique_count == row_count and row_count > 0)
             if is_candidate_key:
