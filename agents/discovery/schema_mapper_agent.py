@@ -154,6 +154,8 @@ class SchemaMapperAgent:
                 "unmapped_fields": [],
                 "missing_required": self.MANDATORY_CANONICAL_FIELDS.get(entity_name, []),
                 "confidence_score": 0.0,
+                "relationship_candidates": [],
+                "field_lineages": [],
                 "warnings": [f"No source records provided for entity {entity_name}."]
             }
 
@@ -164,11 +166,32 @@ class SchemaMapperAgent:
         field_lineages = []
         lineage_fields_seen: Set[str] = set()
         field_collisions: Set[str] = set()
+        relationship_candidates = []
 
         for raw_row in raw_records:
             canonical_row = {}
             for raw_key, raw_val in raw_row.items():
                 source_fields_seen.add(raw_key)
+                if entity_name == "Client" and raw_key == "HOUSEHOLD_LINK_ID":
+                    source_key = next((raw_row.get(key) for key in ("LEGACY_CLIENT_ID", "CLIENT_ID", "PARTY_SRC_ID", "PARTY_ID") if raw_row.get(key) not in (None, "")), None)
+                    relationship_candidates.append({
+                        "relationship": "CLIENT_HOUSEHOLD_MEMBERSHIP",
+                        "source_entity": "Client",
+                        "source_key": str(source_key) if source_key is not None else None,
+                        "source_field": raw_key,
+                        "target_entity": "Household",
+                        "target_field": "HH_ID",
+                        "target_key_value": str(raw_val).strip() if raw_val is not None else "",
+                        "status": "PROPOSED_REQUIRES_SOURCE_CONFIRMATION",
+                    })
+                    if raw_key not in lineage_fields_seen:
+                        field_lineages.append({
+                            "source_field": raw_key,
+                            "canonical_field": None,
+                            "rule_applied": "RELATIONSHIP_CANDIDATE_PROPOSED",
+                        })
+                        lineage_fields_seen.add(raw_key)
+                    continue
                 target_key = self.catalog.get(raw_key)
 
                 if target_key:
@@ -271,6 +294,7 @@ class SchemaMapperAgent:
             "unmapped_fields": sorted(list(unmapped_source_fields)),
             "missing_required": missing_required,
             "field_collisions": sorted(field_collisions),
+            "relationship_candidates": relationship_candidates,
             "confidence_score": confidence_score,
             "field_lineages": field_lineages,
             "warnings": warnings
