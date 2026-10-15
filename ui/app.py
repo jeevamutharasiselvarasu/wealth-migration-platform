@@ -834,7 +834,7 @@ async def get_pilot_household_lineage():
     return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
 
 
-# --- CLIENT / PARTY ENDPOINTS ---
+# --- CLIENT ENDPOINTS ---
 
 @app.post("/api/pilot/client/profile")
 async def profile_pilot_client_file(file: UploadFile = File(...)):
@@ -852,7 +852,7 @@ async def profile_pilot_client_file(file: UploadFile = File(...)):
 
 @app.post("/api/pilot/client/map")
 async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
-    """Executes source-to-canonical mapping for Client/Client and persists lineage."""
+    """Executes source-to-canonical mapping for Client and persists lineage."""
     if records is None:
         records = []
 
@@ -864,7 +864,7 @@ async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
 
 @app.get("/api/pilot/client/lineage")
 async def get_pilot_client_lineage():
-    """Retrieves SQLite metadata lineage audit records for Client/Client."""
+    """Retrieves SQLite metadata lineage audit records for Client."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Client' ORDER BY timestamp_utc DESC LIMIT 20;")
