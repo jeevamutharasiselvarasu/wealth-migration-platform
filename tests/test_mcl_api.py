@@ -1,5 +1,6 @@
 import asyncio
 import json
+import pytest
 from pathlib import Path
 
 from ui import app as app_module
@@ -73,3 +74,49 @@ def test_mcl_batch_endpoint_runs_three_entities_and_persists_summary(tmp_path, m
     assert payload["execution_boundary"]["target_loading"] == "NOT_RUN"
     assert payload["execution_boundary"]["wave_assignment"] == "DISABLED"
     assert fake_state.persisted_summary["mcl_run_id"] == payload["mcl_run_id"]
+
+
+def test_mapping_suggestion_review_lifecycle(tmp_path, monkeypatch):
+    from control_plane import db as db_module
+
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "controlplane.db")
+    db_module.init_db()
+    conn = db_module.get_db_connection()
+    conn.execute(
+        "INSERT INTO mapping_suggestions "
+        "(suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, "
+        "proposed_rule, confidence_score, status, created_utc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)",
+        ("SUG-1", "RUN-1", "MIG-1", "Account", "LEGACY_ACCT_NO", "ACCT_NUM", "ALIAS", 0.8, "2026-10-15T00:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(app_module, "get_db_connection", db_module.get_db_connection)
+
+    pending = asyncio.run(app_module.list_source_mapping_suggestions())
+    pending_payload = json.loads(pending.body)
+    assert pending_payload["status"] == "SUCCESS"
+    assert len(pending_payload["suggestions"]) == 1
+    assert pending_payload["suggestions"][0]["status"] == "PENDING"
+
+    approved = asyncio.run(
+        app_module.review_source_mapping_suggestion(
+            "SUG-1", decision="APPROVED", reviewer="Domain SME", comments="Verified against source dictionary"
+        )
+    )
+    approved_payload = json.loads(approved.body)
+    assert approved_payload["suggestion"]["status"] == "APPROVED"
+    assert approved_payload["suggestion"]["reviewer"] == "Domain SME"
+
+    with pytest.raises(app_module.HTTPException) as repeated:
+        asyncio.run(
+            app_module.review_source_mapping_suggestion(
+                "SUG-1", decision="REJECTED", reviewer="Domain SME", comments="repeat decision"
+            )
+        )
+    assert repeated.value.status_code == 409
+
+    conn = db_module.get_db_connection()
+    audit = conn.execute("SELECT decision, stage, reviewer FROM approvals WHERE artifact_id = 'SUG-1'").fetchone()
+    assert tuple(audit) == ("APPROVED", "SOURCE_TO_CANONICAL_MAPPING", "Domain SME")
+    conn.close()
