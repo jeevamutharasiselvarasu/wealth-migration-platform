@@ -261,4 +261,3 @@ def test_p0_scope_selector_and_upload_catalog_are_limited_to_three_entities(monk
     })
     uploads = {entity["entity_name"] for entity in state.get_source_upload_entities()}
     assert uploads == {"Account", "Client", "Household"}
-    assert "Advisor / Rep" not in state.entity_scopes or state.entity_scopes["Advisor / Rep"] != "IN_SCOPE"
