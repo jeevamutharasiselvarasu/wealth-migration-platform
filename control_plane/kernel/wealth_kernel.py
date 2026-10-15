@@ -25,7 +25,7 @@ class WealthManagementKnowledgeKernel:
                 "default_scope": "IN_SCOPE"
             },
             {
-                "entity_id": "ENT-PARTY",
+                "entity_id": "ENT-CLIENT",
                 "entity_name": "Client",
                 "entity_class": "MASTER",
                 "grain": "One person, trust, or legal participant in identity domain",
