@@ -1,5 +1,5 @@
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services.mcl_validation import validate_mcl_relationships
+from control_plane.services.mcl_validation import validate_mcl_relationships\nfrom control_plane.services.profiler import SourceDataProfiler
 
 
 def test_client_source_maps_to_party_canonical_fields():
@@ -133,3 +133,14 @@ def test_mapper_flags_two_source_columns_mapped_to_one_canonical_field():
     assert result["status"] == "WARNING_INCOMPLETE"
     assert result["field_collisions"]
     assert any("Multiple source columns map" in warning for warning in result["warnings"])
+
+def test_profiler_preserves_leading_zero_identifier_values():
+    profile = SourceDataProfiler.profile_csv_content(
+        "clients.csv",
+        b"CLIENT_ID,CLIENT_TYPE_RAW\\n00017,INDV\\n00018,TRUST\\n",
+        entity_name="Client",
+    )
+
+    client_id_profile = next(item for item in profile["column_profiles"] if item["column_name"] == "CLIENT_ID")
+    assert client_id_profile["sample_values"] == ["00017", "00018"]
+    assert client_id_profile["inferred_type"] == "string"
