@@ -7,7 +7,7 @@
             <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">04</span>
             <div>
                 <h1 class="text-lg font-bold text-[#152c6b]">Source File Upload, Profiling & Ingestion Specs</h1>
-                <p class="text-xs text-[#5a6a88]">Upload masked or representative CSV samples only; inspect structures, data types, null rates, and natural keys before source-to-canonical mapping.</p>
+                <p class="text-xs text-[#5a6a88]">Upload masked or representative CSV, TSV, Excel, or JSON samples only; inspect structure and lineage before source-to-canonical mapping.</p>
             </div>
         </div>
         
@@ -54,7 +54,7 @@
                                     {% endif %}
                                     <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="inline-flex items-center gap-1">
                                         <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
-                                        <input type="file" name="file" accept=".csv,text/csv" required class="w-28 text-[10px]">
+                                        <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required class="w-28 text-[10px]">
                                         <button type="submit" class="bg-slate-200 hover:bg-slate-300 text-[#1c2a4a] px-2 py-1.5 rounded-lg text-xs font-bold">Replace</button>
                                     </form>
                                 </div>
