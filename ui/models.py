@@ -29,8 +29,8 @@ class CreateRunRequest(BaseModel):
 class ApprovalRequest(BaseModel):
     artifactId: Optional[str] = None
     stage: str
-    decision: str  # APPROVED or REJECTED
-    reviewer: str  # Migration Analyst or Validation Specialist
+    decision: str
+    reviewer: str
     comments: Optional[str] = None
 
 
@@ -38,3 +38,11 @@ class RuleRerunRequest(BaseModel):
     entity: str
     targetField: Optional[str] = None
     reviewer: str = "migration-analyst"
+
+
+# Phase 1 Pilot Schemas
+class PilotMappingRequest(BaseModel):
+    migration_id: str = "MIG-CORECAP-2026"
+    wave_id: str = "PILOT"
+    entity_name: str = "Account"
+    records: Optional[List[Dict[str, Any]]] = None

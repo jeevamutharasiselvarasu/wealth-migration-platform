@@ -4,21 +4,22 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.state import state_store
 from agents.orchestrator import AgenticOrchestrator
+from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
 from data_plane.storage_manager import HybridStorageManager
+from control_plane.services.profiler import SourceDataProfiler
+from control_plane.services.wave_rules import WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
-from control_plane.compiler.rulebook import RulebookCompiler
-from control_plane.compiler.inference import KnowledgeInferenceEngine
+from control_plane.db import get_db_connection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DataMigrationWorkbench")
@@ -39,15 +40,18 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
 
 orchestrator = AgenticOrchestrator(source_dir=storage_dir)
+schema_mapper = SchemaMapperAgent()
 cutover_agent = CutoverAgent()
 audit_agent = AuditAgent()
 adf_client = AzureDataFactoryClient()
+
 
 def get_current_user(request: Request) -> Dict[str, str]:
     session = session_mgr.get_session(request)
     if not session:
         raise HTTPException(status_code=status.HTTP_307_TEMPORARY_REDIRECT, headers={"Location": "/login"})
     return session
+
 
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
@@ -61,21 +65,24 @@ def render_template_with_context(request: Request, template_name: str, extra_con
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
 
+
 # --- AUTHENTICATION ROUTES ---
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = None):
     return templates.TemplateResponse(request=request, name="login.html", context={"error": error})
 
+
 @app.post("/login")
 async def process_login(email: str = Form(...), password: str = Form(...), role: str = Form(...)):
     session_id = session_mgr.authenticate(email, password, role)
     if not session_id:
         return RedirectResponse(url="/login?error=Invalid+credentials+provided", status_code=status.HTTP_303_SEE_OTHER)
-    
+
     response = RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(key="session_id", value=session_id, httponly=True)
     return response
+
 
 @app.get("/logout")
 async def logout(request: Request):
@@ -85,6 +92,7 @@ async def logout(request: Request):
     response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("session_id")
     return response
+
 
 # --- WORKBENCH MODULE ROUTES ---
 
@@ -102,6 +110,7 @@ async def dashboard_overview(request: Request):
         }
     )
 
+
 @app.get("/firm-knowledge", response_class=HTMLResponse)
 async def firm_knowledge_studio(request: Request):
     user = get_current_user(request)
@@ -117,6 +126,7 @@ async def firm_knowledge_studio(request: Request):
         }
     )
 
+
 @app.get("/entity-selection", response_class=HTMLResponse)
 async def entity_selection_view(request: Request):
     user = get_current_user(request)
@@ -131,6 +141,7 @@ async def entity_selection_view(request: Request):
         }
     )
 
+
 @app.get("/entity-sample-files", response_class=HTMLResponse)
 async def entity_sample_files_view(request: Request):
     user = get_current_user(request)
@@ -144,6 +155,7 @@ async def entity_sample_files_view(request: Request):
             "selected_entities": state_store.get_in_scope_entities()
         }
     )
+
 
 @app.get("/agent-pipeline", response_class=HTMLResponse)
 async def agent_pipeline_view(request: Request):
@@ -161,11 +173,12 @@ async def agent_pipeline_view(request: Request):
         }
     )
 
+
 @app.get("/hitl", response_class=HTMLResponse)
 async def hitl_approval_queue(request: Request):
     user = get_current_user(request)
     latest_run = state_store.pipeline_runs[-1] if state_store.pipeline_runs else None
-    
+
     rep_code = latest_run.get("rep_code", "REP-9981") if latest_run else "REP-9981"
     wave_id = latest_run.get("wave_id", "WAVE-01") if latest_run else "WAVE-01"
     cohort_summary = state_store.get_cohort_sleeve_summary(rep_code)
@@ -191,6 +204,7 @@ async def hitl_approval_queue(request: Request):
         }
     )
 
+
 @app.get("/reconciliation", response_class=HTMLResponse)
 async def reconciliation_dashboard(request: Request):
     user = get_current_user(request)
@@ -206,6 +220,112 @@ async def reconciliation_dashboard(request: Request):
         }
     )
 
+
+# --- PHASE 1 PILOT ENDPOINTS: SOURCE-TO-CANONICAL ACCOUNT ---
+
+@app.post("/api/pilot/account/profile")
+async def profile_pilot_account_file(file: UploadFile = File(...)):
+    """Inspects uploaded accounts.csv, infers types, null rates, and candidate keys."""
+    content = await file.read()
+    profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Account")
+    profile_id = state_store.persist_source_profile(profile, run_id="PILOT-ACCOUNT-RUN-01")
+    profile["profile_id"] = profile_id
+    return JSONResponse({"status": "SUCCESS", "profile": profile})
+
+
+@app.post("/api/pilot/account/map")
+async def map_pilot_account(records: Optional[List[Dict[str, Any]]] = None):
+    """Executes source-to-canonical mapping with confidence scoring and persists metadata lineage."""
+    if not records:
+        accounts_path = Path("test_files/accounts.csv")
+        if not accounts_path.exists():
+            accounts_path = Path(os.path.join(root_dir, "test_files", "accounts.csv"))
+        if accounts_path.exists():
+            import pandas as pd
+            df = pd.read_csv(accounts_path)
+            records = df.to_dict(orient="records")
+        else:
+            records = []
+
+    mapping_res = schema_mapper.map_source_to_canonical("Account", records)
+    state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-ACCOUNT-RUN-01", actor="Platform Admin")
+    return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
+
+
+@app.get("/api/pilot/account/lineage")
+async def get_pilot_account_lineage():
+    """Retrieves SQLite metadata lineage audit records for the Account pilot."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Account' ORDER BY timestamp_utc DESC LIMIT 20;")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
+
+
+# --- PHASE 2 & 3: MIGRATION TELEMETRY & LINEAGE ENDPOINTS ---
+
+@app.get("/api/migration/telemetry")
+async def get_migration_telemetry_report():
+    """Returns migration-level and entity-level mapping confidence, gap counts, and readiness."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT entity_name, source_record_count, mapped_record_count, confidence_score, status, executed_utc
+        FROM migration_runs ORDER BY executed_utc DESC;
+    """)
+    run_rows = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT entity_name, source_column, canonical_column, applied_rule, validation_status
+        FROM field_lineage_audit ORDER BY timestamp_utc DESC;
+    """)
+    lineage_rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    total_entities = len(run_rows)
+    avg_confidence = round(sum(r["confidence_score"] for r in run_rows) / total_entities, 2) if total_entities > 0 else 1.0
+
+    return JSONResponse({
+        "status": "SUCCESS",
+        "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+        "overall_confidence_score": avg_confidence,
+        "entity_runs": run_rows,
+        "lineage_audit": lineage_rows[:20]
+    })
+
+
+@app.get("/api/waves/conditions")
+async def get_wave_cohort_conditions():
+    """Returns declarative conditions catalog used for condition-driven cohort actuation."""
+    return JSONResponse({
+        "status": "SUCCESS",
+        "conditions": CohortConditionEngine.get_condition_catalog()
+    })
+
+@app.post("/api/waves/evaluate-record")
+async def evaluate_record_cohort(
+    market_value: float = Form(10000000.0),
+    custodian_code: str = Form("SCHWAB"),
+    confidence_score: float = Form(0.98),
+    missing_required_count: int = Form(0)
+):
+    """Evaluates a record against wave rules to determine dynamic cohort assignment."""
+    record_payload = {
+        "market_value": market_value,
+        "CUSTODIAN_CODE": custodian_code,
+        "confidence_score": confidence_score,
+        "missing_required_count": missing_required_count
+    }
+    assigned_wave = WaveConditionEvaluator.assign_wave_for_record(record_payload)
+    return JSONResponse({
+        "status": "SUCCESS",
+        "evaluated_record": record_payload,
+        "assigned_wave": assigned_wave
+    })
+
+
 # --- ADLS & AZURE DATA FACTORY (ADF) ENDPOINTS ---
 
 @app.get("/api/adls/status")
@@ -217,6 +337,7 @@ async def get_adls_status():
         "container": state_store.adls_container,
         "hybrid_mode": "ACTIVE"
     }
+
 
 @app.post("/api/adls/upload")
 async def upload_to_adls_container(run_id: str = Form("RUN-001"), subfolder: str = Form("RAW"), file: UploadFile = File(...)):
@@ -238,6 +359,7 @@ async def upload_to_adls_container(run_id: str = Form("RUN-001"), subfolder: str
         "adls_container": state_store.adls_container
     })
 
+
 @app.post("/api/adf/trigger")
 async def trigger_adf_pipeline(rep_code: str = Form("REP-9981"), wave_id: str = Form("WAVE-01")):
     """Triggers Azure Data Factory Account & Transaction migration pipeline."""
@@ -250,41 +372,47 @@ async def trigger_adf_pipeline(rep_code: str = Form("REP-9981"), wave_id: str = 
     )
     return JSONResponse(adf_result)
 
+
 @app.get("/api/adf/status/{adf_run_id}")
 async def check_adf_pipeline_status(adf_run_id: str):
     """Queries Azure Data Factory pipeline execution status."""
     status_res = adf_client.get_pipeline_run_status(adf_run_id)
     return JSONResponse(status_res)
 
+
 @app.get("/api/runs/{run_id}/export-package")
 async def export_package(run_id: str, mode: str = "local"):
     """Generates SQL views and exports ADF deployment package to ADLS or local storage."""
-    transformation_sql = f"""-- ====================================================================
--- XODUS-AMP Data Migration Control Plane · Transformation Rules Package
--- Run ID: {run_id}
--- Exported UTC: 2026-10-12
--- ====================================================================
-
-CREATE OR REPLACE VIEW stg_accounts AS
-SELECT TRIM(LEGACY_ACCT_NO) AS ACCT_NUM, CUST_CODE_SRC AS CUSTODIAN_CODE FROM accounts;
-
-CREATE OR REPLACE VIEW stg_sleeves AS
-SELECT SUB_SLEEVE_ID AS SLEEVE_ID, TARGET_WEIGHT_PCT / 100.0 AS TARGET_WEIGHT FROM amplify_sleeves;
-"""
-
-    validation_plan = {
-        "sleeve_math_invariant": "SUM(target_weight) == 1.0000",
-        "aum_drift_gate": "variance_pct <= 0.5000%"
-    }
-
+    in_scope_list = [e["entity_name"] for e in state_store.get_in_scope_entities()]
     manifest = ADFPackageExporter.export_package(
         run_id=run_id,
-        migration_id="MIG-CORECAP-2026",
-        transformation_sql=transformation_sql,
-        validation_plan=validation_plan
+        migration_id=state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+        in_scope_entities=in_scope_list,
+        adls_container=state_store.adls_container
     )
-    manifest["sqlContent"] = transformation_sql
     return JSONResponse(manifest)
+
+
+@app.get("/api/adf/package/download/{run_id}")
+async def download_adf_package_file(run_id: str):
+    """Downloads the exported ADF package as a deployable zip bundle."""
+    zip_path = Path(f"App_Data/Storage/{run_id}/TRANSFORMED/adf_package_{run_id}.zip")
+    if not zip_path.exists():
+        in_scope_list = [e["entity_name"] for e in state_store.get_in_scope_entities()]
+        ADFPackageExporter.export_package(
+            run_id=run_id,
+            migration_id=state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+            in_scope_entities=in_scope_list,
+            adls_container=state_store.adls_container
+        )
+    if zip_path.exists():
+        return FileResponse(
+            path=str(zip_path),
+            filename=f"adf_package_{run_id}.zip",
+            media_type="application/zip"
+        )
+    raise HTTPException(status_code=404, detail="ADF package bundle not found.")
+
 
 # --- FORM SUBMISSIONS & API ENDPOINTS ---
 
@@ -301,10 +429,11 @@ async def update_kernel_config(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Kernel Configuration edits are strictly restricted to Platform Admin or Domain SME."
         )
-    
+
     state_store.update_kernel_specs(user["name"], sleeve_invariant, sleeve_tolerance, aum_drift_gate)
     logger.info(f"Wealth Kernel specifications updated by {user['name']} ({user['role']})")
     return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @app.post("/api/knowledge/submit-questionnaire")
 async def submit_questionnaire(
@@ -330,6 +459,7 @@ async def submit_questionnaire(
     state_store.update_questionnaire_from_form(form_payload)
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
+
 @app.post("/api/entities/save-scopes")
 async def save_entity_scopes(request: Request):
     form_data = await request.form()
@@ -338,9 +468,10 @@ async def save_entity_scopes(request: Request):
         if key.startswith("scope_"):
             entity_name = key.replace("scope_", "")
             scopes_map[entity_name] = str(value)
-    
+
     state_store.save_entity_scopes(scopes_map)
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @app.post("/api/entities/upload-sample-file")
 async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFile = File(...)):
@@ -348,11 +479,13 @@ async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFi
     state_store.attach_entity_sample_file(entity_name, file.filename, content)
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
+
 @app.post("/api/knowledge/file-upload")
 async def upload_firm_file(category: str = Form(...), file: UploadFile = File(...)):
     content = await file.read()
     state_store.add_firm_file(file.filename, category, content)
     return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @app.post("/api/pipeline/run")
 async def execute_agent_pipeline(rep_code: str = Form("REP-9981"), wave_id: str = Form("WAVE-01")):
@@ -361,11 +494,13 @@ async def execute_agent_pipeline(rep_code: str = Form("REP-9981"), wave_id: str 
     state_store.record_pipeline_run(pipeline_result)
     return JSONResponse({"status": "SUCCESS", "result": pipeline_result})
 
+
 @app.get("/api/pipeline/agent-detail/{agent_id}")
 async def get_agent_detail(agent_id: str, request: Request):
     user = get_current_user(request)
     detail = state_store.get_agent_detail(agent_id)
     return JSONResponse({"status": "SUCCESS", "agent_id": agent_id, "detail": detail})
+
 
 @app.post("/api/pipeline/override-agent")
 async def override_agent_logic(
@@ -376,6 +511,7 @@ async def override_agent_logic(
     res = state_store.apply_agent_override(agent_id, new_logic, override_notes)
     logger.info(f"Human intervention override applied to Agent '{agent_id}': {override_notes}")
     return JSONResponse(res)
+
 
 @app.post("/api/hitl/approve")
 async def approve_cohort(rep_code: str = Form(...), approver: str = Form(...)):
@@ -388,6 +524,7 @@ async def approve_cohort(rep_code: str = Form(...), approver: str = Form(...)):
         "audit_entry": audit_entry
     })
 
+
 @app.post("/api/hitl/reject")
 async def reject_cohort(rep_code: str = Form(...), reason: str = Form(...)):
     audit_entry = state_store.record_approval(rep_code, "Domain SME", f"REJECTED: {reason}")
@@ -396,3 +533,86 @@ async def reject_cohort(rep_code: str = Form(...), reason: str = Form(...)):
         "message": f"Cohort {rep_code} returned for analyst review.",
         "audit_entry": audit_entry
     })
+
+# --- HOUSEHOLD ENDPOINTS ---
+
+@app.post("/api/pilot/household/profile")
+async def profile_pilot_household_file(file: UploadFile = File(...)):
+    """Inspects uploaded households.csv, infers types, null rates, and candidate keys."""
+    content = await file.read()
+    profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Household")
+    profile_id = state_store.persist_source_profile(profile, run_id="PILOT-HH-RUN-01")
+    profile["profile_id"] = profile_id
+    return JSONResponse({"status": "SUCCESS", "profile": profile})
+
+
+@app.post("/api/pilot/household/map")
+async def map_pilot_household(records: Optional[List[Dict[str, Any]]] = None):
+    """Executes source-to-canonical mapping for Household and persists lineage."""
+    if not records:
+        hh_path = Path("test_files/households.csv")
+        if not hh_path.exists():
+            hh_path = Path(os.path.join(root_dir, "test_files", "households.csv"))
+        if hh_path.exists():
+            import pandas as pd
+            df = pd.read_csv(hh_path)
+            records = df.to_dict(orient="records")
+        else:
+            records = []
+
+    mapping_res = schema_mapper.map_source_to_canonical("Household", records)
+    state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-HH-RUN-01", actor="Platform Admin")
+    return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
+
+
+@app.get("/api/pilot/household/lineage")
+async def get_pilot_household_lineage():
+    """Retrieves SQLite metadata lineage audit records for Household."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Household' ORDER BY timestamp_utc DESC LIMIT 20;")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
+
+
+# --- CLIENT / PARTY ENDPOINTS ---
+
+@app.post("/api/pilot/client/profile")
+async def profile_pilot_client_file(file: UploadFile = File(...)):
+    """Inspects uploaded clients.csv, infers types, null rates, and candidate keys."""
+    content = await file.read()
+    profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Client")
+    profile_id = state_store.persist_source_profile(profile, run_id="PILOT-CLIENT-RUN-01")
+    profile["profile_id"] = profile_id
+    return JSONResponse({"status": "SUCCESS", "profile": profile})
+
+
+@app.post("/api/pilot/client/map")
+async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
+    """Executes source-to-canonical mapping for Client/Party and persists lineage."""
+    if not records:
+        client_path = Path("test_files/clients.csv")
+        if not client_path.exists():
+            client_path = Path(os.path.join(root_dir, "test_files", "clients.csv"))
+        if client_path.exists():
+            import pandas as pd
+            df = pd.read_csv(client_path)
+            records = df.to_dict(orient="records")
+        else:
+            records = []
+
+    mapping_res = schema_mapper.map_source_to_canonical("Client", records)
+    state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-CLIENT-RUN-01", actor="Platform Admin")
+    return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
+
+
+@app.get("/api/pilot/client/lineage")
+async def get_pilot_client_lineage():
+    """Retrieves SQLite metadata lineage audit records for Client/Party."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Client' ORDER BY timestamp_utc DESC LIMIT 20;")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return JSONResponse({"status": "SUCCESS", "lineage_records": rows})

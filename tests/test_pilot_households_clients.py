@@ -1,0 +1,64 @@
+import io
+import pytest
+import pandas as pd
+from control_plane.services.profiler import SourceDataProfiler
+from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+from agents.logic.data_quality_agent import DataQualityAgent
+
+HOUSEHOLD_CSV = b"""LEGACY_HH_ID,HOUSEHOLD_NAME,PRIMARY_REP_NUM,ESTABLISHED_DT
+HH-99811,Miller Family Wealth,9981,2018-05-12
+HH-99812,Johnson Living Trust,9981,2020-01-15"""
+
+CLIENT_CSV = b"""LEGACY_CLIENT_ID,CLIENT_FIRST_NAME,CLIENT_LAST_NAME,FULL_LEGAL_NAME,TAX_IDENTIFIER,CLIENT_TYPE_RAW,EMAIL_ADDR,PHONE_NUM,HOUSEHOLD_LINK_ID,ADVISOR_REP_NUM
+CL-99811A,Robert,Miller,Robert Miller,***-**-1122,INDV,robert.miller@example.com,555-0101,HH-99811,9981
+CL-99812A,Arthur,Johnson,Arthur Johnson Revocable Trust,**-***4455,TRUST,arthur.j@example.com,555-0203,HH-99812,9981"""
+
+
+def test_household_profiling_and_mapping():
+    profile = SourceDataProfiler.profile_csv_content("households.csv", HOUSEHOLD_CSV, "Household")
+    assert profile["status"] == "PROFILED"
+    assert profile["row_count"] == 2
+    assert "LEGACY_HH_ID" in profile["candidate_keys"]
+
+    df = pd.read_csv(io.BytesIO(HOUSEHOLD_CSV))
+    mapper = SchemaMapperAgent()
+    res = mapper.map_source_to_canonical("Household", df.to_dict(orient="records"))
+
+    assert res["status"] == "SUCCESS"
+    assert res["confidence_score"] == 1.0
+    assert res["mapped_records"][0]["HH_ID"] == "HH-99811"
+    assert res["mapped_records"][0]["REP_CODE"] == "REP-9981"
+
+
+def test_client_profiling_and_mapping():
+    profile = SourceDataProfiler.profile_csv_content("clients.csv", CLIENT_CSV, "Client")
+    assert profile["status"] == "PROFILED"
+    assert profile["row_count"] == 2
+    assert "LEGACY_CLIENT_ID" in profile["candidate_keys"]
+
+    df = pd.read_csv(io.BytesIO(CLIENT_CSV))
+    mapper = SchemaMapperAgent()
+    res = mapper.map_source_to_canonical("Client", df.to_dict(orient="records"))
+
+    assert res["status"] == "SUCCESS"
+    assert res["confidence_score"] == 1.0
+    assert res["mapped_records"][0]["PARTY_ID"] == "CL-99811A"
+    assert res["mapped_records"][0]["PARTY_TYPE"] == "INDIVIDUAL"
+    assert res["mapped_records"][1]["PARTY_TYPE"] == "TRUST"
+
+
+def test_spine_referential_integrity():
+    df_hh = pd.read_csv(io.BytesIO(HOUSEHOLD_CSV))
+    df_cl = pd.read_csv(io.BytesIO(CLIENT_CSV))
+    mapper = SchemaMapperAgent()
+
+    hh_records = mapper.map_source_to_canonical("Household", df_hh.to_dict(orient="records"))["mapped_records"]
+    cl_records = mapper.map_source_to_canonical("Client", df_cl.to_dict(orient="records"))["mapped_records"]
+
+    valid_accounts = [{"ACCT_NUM": "ACC-99812", "HH_ID": "HH-99811"}]
+    dq = DataQualityAgent()
+    res = dq.audit_integrity(accounts=valid_accounts, households=hh_records, clients=cl_records)
+
+    assert res["status"] == "PASS"
+    assert res["orphaned_account_count"] == 0
+    assert res["orphaned_client_count"] == 0

@@ -8,7 +8,7 @@
             <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">02</span>
             <div>
                 <h1 class="text-lg font-bold text-[#152c6b]">Dashboard Overview: {{ dashboard.firm_name }}</h1>
-                <p class="text-xs text-[#5a6a88]">Generated dynamically from Firm Context Form (Updated: {{ dashboard.generated_at }})</p>
+                <p class="text-xs text-[#5a6a88]">Firm context & condition-driven cohort planning architecture (Updated: {{ dashboard.generated_at }})</p>
             </div>
         </div>
         <span class="bg-teal-50 text-teal-700 border border-teal-200 px-3.5 py-1 rounded-full text-xs font-bold font-mono">
@@ -19,74 +19,101 @@
     <!-- Dynamically Rendered Metrics Grid -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Advisor Population</div>
-            <div class="text-2xl font-extrabold text-[#152c6b]">{{ dashboard.advisor_count }} Reps</div>
-            <div class="text-xs text-blue-600 font-mono font-semibold">Operating Model: {{ dashboard.operating_model }}</div>
+            <div class="text-xs text-[#5a6a88] font-medium">In-Scope Core Modules</div>
+            <div class="text-xl font-extrabold text-[#152c6b]">Account, Client, Household</div>
+            <div class="text-xs text-blue-600 font-mono font-semibold">Master Identity Spine Active</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Primary Custodian</div>
-            <div class="text-2xl font-extrabold text-[#152c6b]">{{ dashboard.primary_custodian }}</div>
-            <div class="text-xs text-[#5a6a88] font-mono">Direct API / Retained</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Primary Custodian Rails</div>
+            <div class="text-xl font-extrabold text-[#152c6b]">{{ dashboard.primary_custodian }}</div>
+            <div class="text-xs text-[#5a6a88] font-mono">Retained · Direct Custody API</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">AUM Drift Gate Threshold</div>
-            <div class="text-2xl font-extrabold text-[#152c6b]">{{ dashboard.aum_drift_gate }}</div>
-            <div class="text-xs text-teal-700 font-mono font-semibold">Strict Control Enabled</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Mapping Scope Boundary</div>
+            <div class="text-xl font-extrabold text-teal-700">Source ➔ Canonical</div>
+            <div class="text-xs text-teal-700 font-mono font-semibold">Target Mapping Decoupled</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Program Kernel Status</div>
-            <div class="text-2xl font-extrabold text-teal-700">LOAD_READY</div>
-            <div class="text-xs text-[#5a6a88] font-mono">Canonical Invariants Active</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Cohort Formation Model</div>
+            <div class="text-xl font-extrabold text-blue-700">Condition-Driven</div>
+            <div class="text-xs text-[#5a6a88] font-mono">No Arbitrary Wave Slicing</div>
         </div>
     </div>
 
-    <!-- Dynamically Calculated Wave Pipeline Table -->
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
-            <h2 class="text-sm font-bold text-[#152c6b]">Sequential Wave Execution Pipeline</h2>
-            <span class="text-xs text-[#5a6a88] font-mono">Sized for {{ dashboard.advisor_count }} Advisors</span>
+    <!-- Condition-Driven Cohort Planning Framework Card -->
+    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-5 shadow-sm">
+        <div class="flex justify-between items-start border-b border-[#e9eff9] pb-3">
+            <div>
+                <h2 class="text-base font-bold text-[#152c6b]">Cohort Segregation Conditions (Criteria Catalog)</h2>
+                <p class="text-xs text-[#5a6a88] mt-0.5">
+                    Instead of arbitrary numerical splits, migration waves are formed based on declarative business conditions. In the initial phase, conditions are configured and reviewed below without premature wave segregation. In the full framework, ADLS data telemetry dynamically evaluates these rules to actuate cohorts.
+                </p>
+            </div>
+            <span class="bg-blue-50 text-blue-700 border border-blue-200 text-xs px-2.5 py-1 rounded-lg font-mono font-bold whitespace-nowrap">
+                Condition Catalog (Initial Phase)
+            </span>
         </div>
 
+        <!-- Conditions Table -->
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm text-[#1c2a4a]">
                 <thead class="bg-[#f8fafc] text-[#5a6a88] text-xs uppercase tracking-wider border-b border-[#e2e8f0] font-mono">
                     <tr>
-                        <th class="p-3">Wave ID</th>
-                        <th class="p-3">Cohort Name</th>
-                        <th class="p-3">Advisors</th>
-                        <th class="p-3">Execution Status</th>
-                        <th class="p-3">Post-Load AUM Drift</th>
+                        <th class="p-3">Condition ID</th>
+                        <th class="p-3">Business Dimension</th>
+                        <th class="p-3">Parameter & Operator</th>
+                        <th class="p-3">Rule / Threshold Expression</th>
+                        <th class="p-3">ADLS Telemetry Source</th>
+                        <th class="p-3">Cohort Purpose / Governance Strategy</th>
+                        <th class="p-3">Status</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[#e9eff9] text-xs">
-                    {% for wave in dashboard.waves %}
+                    {% for cond in dashboard.cohort_conditions %}
                     <tr class="hover:bg-slate-50 transition">
-                        <td class="p-3 font-mono font-bold text-blue-700">{{ wave.wave_id }}</td>
-                        <td class="p-3 font-bold text-[#152c6b]">{{ wave.cohort_name }}</td>
-                        <td class="p-3 text-[#5a6a88] font-mono">{{ wave.advisors }} Reps</td>
+                        <td class="p-3 font-mono font-bold text-blue-700">{{ cond.condition_id }}</td>
+                        <td class="p-3 font-bold text-[#152c6b]">{{ cond.category }}</td>
+                        <td class="p-3 font-mono text-[#5a6a88]">{{ cond.parameter }} <span class="text-blue-600 font-bold">{{ cond.operator }}</span></td>
+                        <td class="p-3 font-mono text-teal-800 bg-teal-50/50 p-2 rounded font-semibold">{{ cond.threshold_value }}</td>
+                        <td class="p-3 text-[#5a6a88] font-mono text-[11px]">{{ cond.telemetry_source }}</td>
+                        <td class="p-3 text-[#1c2a4a]">{{ cond.business_rationale }}</td>
                         <td class="p-3">
-                            {% if wave.status == 'COMPLETED' %}
-                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold">
-                                    COMPLETED
-                                </span>
-                            {% elif wave.status == 'IN_PROGRESS' %}
-                                <span class="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold">
-                                    IN_PROGRESS
-                                </span>
-                            {% else %}
-                                <span class="bg-slate-100 text-[#5a6a88] border border-slate-200 px-2.5 py-1 rounded-md text-[11px] font-mono font-medium">
-                                    PLANNED
-                                </span>
-                            {% endif %}
+                            <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap">
+                                {{ cond.status }}
+                            </span>
                         </td>
-                        <td class="p-3 font-mono text-[#1c2a4a] font-semibold">{{ wave.aum_drift }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+
+        <!-- ADLS Telemetry Actuation Architecture Lifecycle -->
+        <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
+            <div class="font-bold text-[#152c6b] flex items-center space-x-2">
+                <span>🔄 ADLS Telemetry Feedback & Dynamic Actuation Architecture:</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px] pt-1">
+                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
+                    <span class="font-mono text-blue-700 font-bold block">1. Condition Catalog</span>
+                    <span class="text-[#5a6a88]">Business rules defined for AUM, Custodian, Data Quality, and Entity Structure without guessing cohort sizes.</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
+                    <span class="font-mono text-blue-700 font-bold block">2. ADLS Raw Ingestion</span>
+                    <span class="text-[#5a6a88]">Original firm extracts land in <code class="font-mono text-slate-800">abfss://raw-landing@...</code> across accounts, clients, and households.</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
+                    <span class="font-mono text-blue-700 font-bold block">3. Telemetry Feedback</span>
+                    <span class="text-[#5a6a88]">Profiler agents extract AUM distribution, custodian frequency, and schema null rates directly into SQLite metadata.</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
+                    <span class="font-mono text-teal-700 font-bold block">4. Dynamic Actuation</span>
+                    <span class="text-[#5a6a88]">Condition engine evaluates live telemetry to actuate and group accounts into validated execution cohorts at runtime.</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>

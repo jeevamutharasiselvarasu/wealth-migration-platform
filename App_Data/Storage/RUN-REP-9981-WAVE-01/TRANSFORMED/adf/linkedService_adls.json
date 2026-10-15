@@ -1,0 +1,8 @@
+{
+  "name": "LS_AzureDataLakeStorage_Gold",
+  "type": "AzureBlobFS",
+  "typeProperties": {
+    "url": "https://xodusamp.dfs.core.windows.net",
+    "accountKey": "ENV_VAR_OR_KEYVAULT"
+  }
+}

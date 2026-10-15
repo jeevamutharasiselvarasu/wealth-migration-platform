@@ -4,15 +4,18 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
+from control_plane.db import get_db_connection, init_db
+
 
 class WorkspaceStateStore:
-    """Thread-safe persistent state store managing firm context, entity scope choices, and pipeline runs."""
+    """State engine managing firm context, in-scope filtering, and metadata table persistence."""
 
     def __init__(self):
+        init_db()
         self.active_role: str = "Platform Admin"
         self.adls_connected: bool = True
         self.adls_container: str = "stg-corecap-data"
-        
+
         # 1. Configurable Acquisition Discovery Context
         self.questionnaire_data: Dict[str, Any] = {
             "firm_name": "Core Cap Wealth Management",
@@ -37,7 +40,7 @@ class WorkspaceStateStore:
             "last_modified_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        # 3. Entity Scopes Storage (Scope preferences on 15 fixed canonical entities)
+        # 3. Entity Scopes Storage (In Scope vs Out of Scope)
         self.entity_scopes: Dict[str, str] = {}
         for category, entities in WealthManagementKnowledgeKernel.get_canonical_entities().items():
             for ent in entities:
@@ -59,7 +62,7 @@ class WorkspaceStateStore:
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
 
     def update_kernel_specs(self, updated_by: str, sleeve_invariant: str, sleeve_tolerance: str, aum_drift_gate: str) -> Dict[str, Any]:
-        """Updates Kernel invariants when executed by an authorized Platform Admin or Domain SME."""
+        """Updates Kernel invariants when executed by Platform Admin or Domain SME."""
         self.kernel_specs.update({
             "sleeve_invariant": sleeve_invariant,
             "sleeve_tolerance": sleeve_tolerance,
@@ -67,7 +70,82 @@ class WorkspaceStateStore:
             "last_modified_by": updated_by,
             "last_modified_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         })
+        self._record_metadata_audit("KERNEL_SPEC_UPDATE", updated_by, f"Invariant: {sleeve_invariant}, Gate: {aum_drift_gate}")
         return self.kernel_specs
+
+    def persist_source_profile(self, profile: Dict[str, Any], run_id: str = "PILOT-RUN-001") -> Optional[str]:
+        """Persists source file profiling metrics into source_file_profiles SQLite table."""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            profile_id = f"PROF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+            cursor.execute("""
+                INSERT OR REPLACE INTO source_file_profiles 
+                (profile_id, run_id, entity_name, file_name, row_count, column_count, profile_summary_json, created_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                profile_id,
+                run_id,
+                profile.get("entity_name", "Account"),
+                profile.get("file_name", "accounts.csv"),
+                profile.get("row_count", 0),
+                profile.get("column_count", 0),
+                json.dumps(profile.get("column_profiles", [])),
+                profile.get("profiled_utc", datetime.now(timezone.utc).isoformat())
+            ))
+            conn.commit()
+            conn.close()
+            return profile_id
+        except Exception:
+            return None
+
+    def persist_mapping_lineage(self, mapping_result: Dict[str, Any], run_id: str = "PILOT-RUN-001", actor: str = "Platform Admin"):
+        """Persists mapping result summaries and granular field lineage into SQLite metadata tables."""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Record Migration Run Summary
+            cursor.execute("""
+                INSERT OR REPLACE INTO migration_runs 
+                (run_id, migration_id, wave_id, entity_name, source_record_count, mapped_record_count, confidence_score, status, executed_by, executed_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                run_id,
+                self.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+                "PILOT",
+                mapping_result.get("entity", "Account"),
+                mapping_result.get("record_count", 0),
+                len(mapping_result.get("mapped_records", [])),
+                mapping_result.get("confidence_score", 0.0),
+                mapping_result.get("status", "SUCCESS"),
+                actor,
+                datetime.now(timezone.utc).isoformat()
+            ))
+
+            # Record Field-Level Lineage
+            for fl in mapping_result.get("field_lineages", []):
+                lineage_id = f"LIN-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{fl['source_field']}"
+                cursor.execute("""
+                    INSERT OR REPLACE INTO field_lineage_audit 
+                    (lineage_id, run_id, entity_name, source_column, canonical_column, applied_rule, validation_status, actor, timestamp_utc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    lineage_id,
+                    run_id,
+                    mapping_result.get("entity", "Account"),
+                    fl["source_field"],
+                    fl["canonical_field"],
+                    fl["rule_applied"],
+                    "PASS",
+                    actor,
+                    datetime.now(timezone.utc).isoformat()
+                ))
+
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
     def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
         if self.pipeline_runs:
@@ -76,147 +154,7 @@ class WorkspaceStateStore:
             if agent_id in details:
                 return details[agent_id]
 
-        previews = {
-            "extractor": {
-                "name": "Extractor Agent",
-                "phase": "Phase 1: Discovery Agents",
-                "status": "PREVIEW_MODE",
-                "inputs": {
-                    "configured_connectors": ["Amplify TAMP", "Schwab PAS", "Black Diamond"],
-                    "active_cohort_filter": "REP-9981",
-                    "source_files": ["accounts.csv", "amplify_sleeves.csv", "amplify_positions.csv"]
-                },
-                "transformation_logic": "-- Extract Advisor Cohort Data\nSELECT * FROM legacy_schwab_extracts WHERE ADVISOR_REP_NUM = '9981';\nSELECT * FROM legacy_amplify_sleeves WHERE REP_CODE_RAW = '9981';",
-                "outputs": {
-                    "extracted_sample_records": 4,
-                    "extracted_entities": ["Account", "Sleeve / Allocation", "Position (Snapshot)", "Transaction"]
-                },
-                "warnings": []
-            },
-            "schema_mapper": {
-                "name": "Schema Mapper Agent",
-                "phase": "Phase 1: Discovery Agents",
-                "status": "PREVIEW_MODE",
-                "inputs": {
-                    "raw_source_headers": ["LEGACY_ACCT_NO", "CUST_CODE_SRC", "ADVISOR_REP_NUM", "REGISTRATION_SRC_TYPE", "ACCOUNT_OPEN_DT"],
-                    "raw_source_sample_row": {
-                        "LEGACY_ACCT_NO": "ACC-99812",
-                        "CUST_CODE_SRC": "SCHW",
-                        "ADVISOR_REP_NUM": "9981",
-                        "REGISTRATION_SRC_TYPE": "INDV_TAXABLE",
-                        "ACCOUNT_OPEN_DT": "03/15/2021"
-                    }
-                },
-                "transformation_logic": """-- Source-to-Target Canonical Crosswalk SQL
-SELECT 
-    TRIM(LEGACY_ACCT_NO) AS ACCT_NUM,
-    CASE CUST_CODE_SRC 
-        WHEN 'SCHW' THEN 'SCHWAB'
-        WHEN 'FID'  THEN 'FIDELITY'
-        ELSE CUST_CODE_SRC 
-    END AS CUSTODIAN_CODE,
-    'REP-' || TRIM(ADVISOR_REP_NUM) AS REP_CODE,
-    CASE REGISTRATION_SRC_TYPE 
-        WHEN 'INDV_TAXABLE' THEN 'INDIVIDUAL'
-        WHEN 'IRA_ROLL'    THEN 'IRA_ROLLOVER'
-        ELSE REGISTRATION_SRC_TYPE 
-    END AS REG_TYPE,
-    TO_DATE(ACCOUNT_OPEN_DT, 'MM/DD/YYYY') AS OPEN_DATE
-FROM staging_raw.schwab_accounts_extract;""",
-                "outputs": {
-                    "target_canonical_row": {
-                        "ACCT_NUM": "ACC-99812",
-                        "CUSTODIAN_CODE": "SCHWAB",
-                        "REP_CODE": "REP-9981",
-                        "REG_TYPE": "INDIVIDUAL",
-                        "OPEN_DATE": "2021-03-15"
-                    },
-                    "mapping_status": "CROSSWALK_APPLIED",
-                    "unmapped_fields": []
-                },
-                "warnings": ["Crosswalk Rule Applied: 'SCHW' coerced to 'SCHWAB' and 'INDV_TAXABLE' to 'INDIVIDUAL'."]
-            },
-            "ai_foundry": {
-                "name": "AI Foundry Mapper",
-                "phase": "Phase 1: Discovery Agents",
-                "status": "GPT-4o ACTIVE",
-                "inputs": {"unmapped_attributes": ["EXSTIVA_BILLING_TIER", "AMPLIFY_OVERLAY_FLAG"]},
-                "transformation_logic": "PROMPT: Infer canonical target entity and attribute for unmapped TAMP field EXSTIVA_BILLING_TIER using zero-shot classification.",
-                "outputs": {"inferred_mapping": {"source_field": "EXSTIVA_BILLING_TIER", "target_field": "Billing.schedule_tier", "confidence": 0.98}},
-                "warnings": []
-            },
-            "sleeve_math": {
-                "name": "Sleeve Math Agent",
-                "phase": "Phase 2: Business Logic",
-                "status": "PREVIEW_MODE",
-                "inputs": {
-                    "raw_sleeve_allocations": [
-                        {"sleeve_id": "SLV-01", "model_code": "AMPLIFY-GROWTH-01", "target_pct": 70.0},
-                        {"sleeve_id": "SLV-02", "model_code": "AMPLIFY-INCOME-02", "target_pct": 30.0}
-                    ]
-                },
-                "transformation_logic": """-- Sleeve Target Weight Decimal Normalization & Invariant Equation
-target_weight = Decimal(target_pct) / Decimal("100.00")
-ASSERT SUM(target_weight) == Decimal("1.0000")
-IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
-    target_weight[0] += (Decimal("1.0000") - SUM(target_weight))""",
-                "outputs": {
-                    "validated_compositions": [
-                        {"sleeve_id": "SLV-01", "model_code": "MOD-GROWTH", "target_weight": 0.7000},
-                        {"sleeve_id": "SLV-02", "model_code": "MOD-INCOME", "target_weight": 0.3000}
-                    ],
-                    "sum_check": "1.0000 (PASS)"
-                },
-                "warnings": []
-            },
-            "compliance": {
-                "name": "Compliance Validator",
-                "phase": "Phase 2: Business Logic",
-                "status": "PREVIEW_MODE",
-                "inputs": {"restricted_models": ["MOD-RESTRICTED-01", "MOD-RESTRICTED-02"]},
-                "transformation_logic": "CHECK model_code NOT IN (SELECT restricted_code FROM firm_compliance_overlay);",
-                "outputs": {"status": "APPROVED", "violations": 0},
-                "warnings": []
-            },
-            "data_quality": {
-                "name": "Data Quality Agent",
-                "phase": "Phase 2: Business Logic",
-                "status": "PREVIEW_MODE",
-                "inputs": {"referential_spine": "Party -> Household -> Account -> Sleeve -> Position"},
-                "transformation_logic": "ASSERT Account.household_id REFERENCES Household.household_id;",
-                "outputs": {"orphaned_accounts": 0, "status": "PASS"},
-                "warnings": []
-            },
-            "loader": {
-                "name": "Loader Agent",
-                "phase": "Phase 3: Operational Execution",
-                "status": "PREVIEW_MODE",
-                "inputs": {"targets": ["Salesforce SPARC", "Orion Eclipse"]},
-                "transformation_logic": "INSERT INTO staging_sparc.account; INSERT INTO staging_orion.portfolio;",
-                "outputs": {"sparc_staged_records": 1, "orion_staged_records": 2},
-                "warnings": []
-            },
-            "reconciler": {
-                "name": "Reconciler Agent",
-                "phase": "Phase 3: Operational Execution",
-                "status": "PREVIEW_MODE",
-                "inputs": {"source_aum": 108000.00, "target_aum": 108000.00},
-                "transformation_logic": "variance_pct = abs((target_aum - source_aum) / source_aum) * 100.00\nASSERT variance_pct <= 0.5000%",
-                "outputs": {"source_aum": 108000.00, "target_aum": 108000.00, "variance_pct": 0.0000, "status": "PASS"},
-                "warnings": []
-            },
-            "cutover": {
-                "name": "Cutover & Audit Agents",
-                "phase": "Phase 3: Operational Execution",
-                "status": "PREVIEW_MODE",
-                "inputs": {"rep_code": "REP-9981", "wave_id": "WAVE-01"},
-                "transformation_logic": "UPDATE trade_router SET active_platform = 'ORION_ECLIPSE' WHERE advisor_id = 'REP-9981';",
-                "outputs": {"cutover_gate": "AWAITING_STEP_6_HITL_SIGNOFF"},
-                "warnings": ["Action Required: Approve atomic cutover in Step 6 HITL Queue."]
-            }
-        }
-
-        return previews.get(agent_id, {
+        return {
             "name": f"Agent {agent_id.replace('_', ' ').title()}",
             "phase": "Pipeline Execution",
             "status": "READY_TO_RUN",
@@ -224,7 +162,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             "transformation_logic": "-- Transformation SQL or logic will be displayed here.",
             "outputs": {},
             "warnings": []
-        })
+        }
 
     def apply_agent_override(self, agent_id: str, new_logic: str, override_notes: str) -> Dict[str, Any]:
         if self.pipeline_runs:
@@ -233,7 +171,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             if agent_data:
                 agent_data["transformation_logic"] = new_logic
                 agent_data["status"] = "HUMAN_OVERRIDDEN"
-                agent_data.setdefault("warnings", []).append(f"Human Override Applied: {override_notes}")
+                agent_data.setdefault("warnings", []).append(f"Human Override: {override_notes}")
 
         entry = self.record_approval("REP-9981", "Platform Admin", f"OVERRIDE_AGENT_{agent_id.upper()}: {override_notes}")
         return {"status": "SUCCESS", "agent_id": agent_id, "updated_logic": new_logic, "audit_entry": entry}
@@ -243,11 +181,6 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             {"sleeve_id": "SLV-01", "model_code": "MOD-GROWTH", "target_pct": 70.0},
             {"sleeve_id": "SLV-02", "model_code": "MOD-INCOME", "target_pct": 30.0}
         ]
-        
-        if self.pipeline_runs:
-            for run in reversed(self.pipeline_runs):
-                if run.get("rep_code") == rep_code:
-                    break
 
         total_pct = sum(float(a.get("target_pct", 0.0)) for a in allocations)
         sum_check = f"{total_pct / 100.0:.4f} (PASS)" if abs(total_pct - 100.0) < 0.01 else f"{total_pct / 100.0:.4f} (FAIL)"
@@ -279,6 +212,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
         return result
 
     def get_in_scope_entities(self) -> List[Dict[str, Any]]:
+        """Filters ONLY in-scope or archive-only entities, excluding out-of-scope."""
         in_scope_list = []
         catalog = WealthManagementKnowledgeKernel.get_canonical_entities()
         for class_name, entities in catalog.items():
@@ -299,7 +233,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             "category": category,
             "size_bytes": len(content_bytes),
             "uploaded_at": timestamp,
-            "parsed_summary": f"Uploaded supplementary file '{filename}' ({len(content_bytes)} bytes)"
+            "parsed_summary": f"Supplementary asset '{filename}' ({len(content_bytes)} bytes)"
         }
         self.firm_knowledge_docs.append(doc_record)
         return doc_record
@@ -326,6 +260,7 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
     def record_pipeline_run(self, pipeline_result: Dict[str, Any]):
         self.pipeline_runs.append(pipeline_result)
         self.generated_dashboard = self._build_dashboard_from_form()
+        self._record_metadata_audit("PIPELINE_RUN", pipeline_result.get("rep_code"), pipeline_result.get("run_id"))
 
     def record_approval(self, rep_code: str, approver: str, decision: str) -> Dict[str, Any]:
         entry = {
@@ -337,45 +272,40 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
         }
         self.audit_log.append(entry)
         self.generated_dashboard = self._build_dashboard_from_form()
+        self._record_metadata_audit("HITL_APPROVAL", approver, decision)
         return entry
 
+    def _record_metadata_audit(self, action: str, actor: str, details: str):
+        """Records audit actions into the approvals table in SQLite."""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO approvals (id, run_id, artifact_id, stage, decision, reviewer, comments, created_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                f"AUD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+                self.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+                action,
+                "AUDIT_LINEAGE",
+                action,
+                actor or "System",
+                details or "",
+                datetime.now(timezone.utc).isoformat()
+            ))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
     def _build_dashboard_from_form(self) -> Dict[str, Any]:
+        from control_plane.services.wave_rules import CohortConditionEngine
         advisor_count = int(self.questionnaire_data.get("advisor_count", 120))
         custodian = self.questionnaire_data.get("primary_custodian", "Charles Schwab (Retained)")
         aum_drift_gate = self.questionnaire_data.get("aum_drift_gate", "0.50%")
         firm_name = self.questionnaire_data.get("firm_name", "Core Cap Wealth Management")
 
-        pilot_count = min(5, advisor_count)
-        rem_count = max(0, advisor_count - pilot_count)
-        w1_count = int(rem_count * 0.25)
-        w2_count = int(rem_count * 0.35)
-        w3_count = rem_count - w1_count - w2_count
-
-        waves = [
-            {"wave_id": "WAVE-00", "cohort_name": "Pilot Cohort", "advisors": pilot_count, "status": "PLANNED", "aum_drift": "N/A"},
-            {"wave_id": "WAVE-01", "cohort_name": "Wave 1", "advisors": w1_count, "status": "PLANNED", "aum_drift": "N/A"},
-            {"wave_id": "WAVE-02", "cohort_name": "Wave 2", "advisors": w2_count, "status": "PLANNED", "aum_drift": "N/A"},
-            {"wave_id": "WAVE-03", "cohort_name": "Wave 3", "advisors": w3_count, "status": "PLANNED", "aum_drift": "N/A"}
-        ]
-
-        approved_reps = {entry["rep_code"] for entry in self.audit_log if entry.get("decision") == "APPROVED"}
-        
-        for run in self.pipeline_runs:
-            run_wave_id = run.get("wave_id")
-            run_rep_code = run.get("rep_code")
-            drift_val = run.get("reconciliation_summary", {}).get("variance_pct", 0.0)
-
-            for w in waves:
-                if w["wave_id"] == run_wave_id:
-                    if run_rep_code in approved_reps:
-                        w["status"] = "COMPLETED"
-                    else:
-                        w["status"] = "IN_PROGRESS"
-                    w["aum_drift"] = f"{drift_val:.4f}%"
-
-        program_status = "PROGRAM_INSTANTIATED"
-        if any(w["status"] == "COMPLETED" for w in waves):
-            program_status = "CUTOVER_IN_PROGRESS"
+        cohort_conditions = CohortConditionEngine.get_condition_catalog()
 
         return {
             "firm_name": firm_name,
@@ -383,9 +313,10 @@ IF abs(Decimal("1.0000") - SUM(target_weight)) <= Decimal("0.0005"):
             "primary_custodian": custodian,
             "aum_drift_gate": aum_drift_gate,
             "operating_model": self.questionnaire_data.get("operating_model", "Rep-as-PM"),
-            "program_status": program_status,
-            "waves": waves,
+            "program_status": "CONDITION_FRAMEWORK_ACTIVE",
+            "cohort_conditions": cohort_conditions,
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
+
 
 state_store = WorkspaceStateStore()

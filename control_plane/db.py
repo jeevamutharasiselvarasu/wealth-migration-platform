@@ -8,7 +8,7 @@ DB_PATH = Path("App_Data/controlplane.db")
 
 
 def get_db_connection() -> sqlite3.Connection:
-    """Provides a thread-safe connection to the Control Plane database[cite: 78, 80]."""
+    """Provides a thread-safe connection to the Control Plane database."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -16,7 +16,7 @@ def get_db_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Creates control-plane metadata tables using idempotent DDL[cite: 78, 80]."""
+    """Creates control-plane metadata tables using idempotent DDL."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -48,83 +48,65 @@ def init_db() -> None:
         );
     """)
 
-    # Migration Executable Rulebook Overrides
+    # 1. Migration Run Execution Summaries
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS migration_rulebooks (
-            migration_id TEXT PRIMARY KEY,
-            content TEXT NOT NULL,
-            updated_by TEXT,
-            updated_utc TEXT NOT NULL,
-            FOREIGN KEY (migration_id) REFERENCES migrations (id)
+        CREATE TABLE IF NOT EXISTS migration_runs (
+            run_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            wave_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            source_record_count INTEGER,
+            mapped_record_count INTEGER,
+            confidence_score REAL,
+            status TEXT NOT NULL,
+            executed_by TEXT NOT NULL,
+            executed_utc TEXT NOT NULL
         );
     """)
 
-    # Knowledge Base Assets
+    # 2. Source File Profiling Metadata
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS knowledge_assets (
-            id TEXT PRIMARY KEY,
-            system_id TEXT,
-            migration_id TEXT,
-            asset_type TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS source_file_profiles (
+            profile_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
             file_name TEXT NOT NULL,
-            relative_path TEXT NOT NULL,
-            content_type TEXT,
-            size_bytes INTEGER,
-            sha256 TEXT,
-            version INTEGER DEFAULT 1,
+            row_count INTEGER NOT NULL,
+            column_count INTEGER NOT NULL,
+            profile_summary_json TEXT NOT NULL,
             created_utc TEXT NOT NULL
         );
     """)
 
-    # Pipeline Runs
+    # 3. Canonical Field Mapping Rules
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS runs (
-            id TEXT PRIMARY KEY,
-            source_system_id TEXT,
-            target_system_id TEXT,
+        CREATE TABLE IF NOT EXISTS canonical_mappings (
+            mapping_id TEXT PRIMARY KEY,
             migration_id TEXT NOT NULL,
-            status TEXT NOT NULL,
-            canonical_model_version TEXT,
-            created_by TEXT,
-            created_utc TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            source_field TEXT NOT NULL,
+            canonical_field TEXT NOT NULL,
+            mapping_type TEXT NOT NULL,
+            transformation_expression TEXT,
+            confidence_score REAL NOT NULL,
+            is_confirmed INTEGER DEFAULT 0,
+            created_by TEXT NOT NULL,
             updated_utc TEXT NOT NULL
         );
     """)
 
-    # Input Files & Checksums
+    # 4. Field Lineage Audit Trail
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS run_input_files (
-            id TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS field_lineage_audit (
+            lineage_id TEXT PRIMARY KEY,
             run_id TEXT NOT NULL,
-            file_order INTEGER,
-            file_name TEXT NOT NULL,
-            entity_name TEXT,
-            dataset_id TEXT,
-            processing_id TEXT,
-            feed_instance_id TEXT,
-            relative_path TEXT NOT NULL,
-            content_type TEXT,
-            layer TEXT DEFAULT 'RAW',
-            size_bytes INTEGER,
-            sha256 TEXT,
-            created_utc TEXT NOT NULL,
-            FOREIGN KEY (run_id) REFERENCES runs (id)
-        );
-    """)
-
-    # Transformation Artifacts
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS artifacts (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            file_name TEXT NOT NULL,
-            relative_path TEXT NOT NULL,
-            sha256 TEXT,
-            version INTEGER DEFAULT 1,
-            status TEXT DEFAULT 'DRAFT',
-            created_utc TEXT NOT NULL,
-            FOREIGN KEY (run_id) REFERENCES runs (id)
+            entity_name TEXT NOT NULL,
+            source_column TEXT NOT NULL,
+            canonical_column TEXT,
+            applied_rule TEXT,
+            validation_status TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            timestamp_utc TEXT NOT NULL
         );
     """)
 
@@ -138,8 +120,7 @@ def init_db() -> None:
             decision TEXT NOT NULL,
             reviewer TEXT NOT NULL,
             comments TEXT,
-            created_utc TEXT NOT NULL,
-            FOREIGN KEY (run_id) REFERENCES runs (id)
+            created_utc TEXT NOT NULL
         );
     """)
 
