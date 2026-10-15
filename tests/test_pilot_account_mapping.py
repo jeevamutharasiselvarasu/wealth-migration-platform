@@ -138,3 +138,32 @@ def test_profile_persistence_failure_is_not_suppressed(monkeypatch):
     profile = SourceDataProfiler.profile_csv_content("accounts.csv", SAMPLE_CSV, "Account")
     with pytest.raises(RuntimeError, match="database unavailable"):
         store.persist_source_profile(profile, run_id="TEST-PERSISTENCE-FAILURE")
+
+
+
+@pytest.mark.parametrize(
+    ("entity", "role", "filename", "csv_bytes"),
+    [
+        ("Household", "ENTITY_MASTER", "households.csv", b"HH_ID,HH_NAME\nH001,Family One\n"),
+        ("Household", "HOUSEHOLD_MAPPING", "household_mapping.csv", b"HH_ID,ACCOUNT_ID\nH001,A001\n"),
+        ("Client", "ENTITY_MASTER", "clients.csv", b"CLIENT_ID,LEGAL_NAME\nC001,Example Client\n"),
+        ("Client", "CLIENT_MODEL", "client_model.csv", b"CLIENT_ID,MODEL_CODE\nC001,MOD001\n"),
+    ],
+)
+def test_household_and_client_source_roles_are_retained_separately(
+    tmp_path, monkeypatch, entity, role, filename, csv_bytes
+):
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    record = store.attach_entity_sample_file(entity, filename, csv_bytes, source_role=role)
+
+    assert record["entity_name"] == entity
+    assert record["source_role"] == role
+    assert record["status"] == "UPLOADED"
+    assert record["row_count"] == 1
+    assert record["columns"]
+    assert store.entity_source_files[entity][role]["stored_path"] == record["stored_path"]
+    if role == "ENTITY_MASTER":
+        assert store.entity_sample_files[entity]["stored_path"] == record["stored_path"]
+    else:
+        assert entity not in store.entity_sample_files
