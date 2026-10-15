@@ -200,7 +200,7 @@ class WorkspaceStateStore:
         self.entity_sample_files[entity_name] = record
         return record
 
-        def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
+    def get_agent_detail(self, agent_id: str) -> Dict[str, Any]:
         if self.pipeline_runs:
             latest_run = self.pipeline_runs[-1]
             details = latest_run.get("agent_details", {})
