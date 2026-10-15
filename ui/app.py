@@ -17,6 +17,7 @@ from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
+from control_plane.services.mcl_validation import validate_mcl_relationships
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
@@ -153,7 +154,7 @@ async def entity_sample_files_view(request: Request):
             "page_title": "4. Entity Sample Files",
             "user_name": user["name"],
             "user_role": user["role"],
-            "selected_entities": state_store.get_in_scope_entities()
+            "selected_entities": state_store.get_source_upload_entities()
         }
     )
 
@@ -474,57 +475,112 @@ async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFi
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.post("/api/entities/map-uploaded-file")
-async def map_uploaded_entity_file(entity_name: str = Form(...)):
-    """Profile and map the exact uploaded CSV; never fall back to a repository sample file."""
-    scope = state_store.entity_scopes.get(entity_name)
-    if scope != "IN_SCOPE":
-        raise HTTPException(status_code=409, detail=f"{entity_name} is not explicitly IN_SCOPE; mapping is blocked.")
-    if entity_name != "Account":
-        raise HTTPException(
-            status_code=409,
-            detail=f"End-to-end mapping is enabled for Account only in P0. {entity_name} can be uploaded, but its mapping module must be implemented and validated before execution.",
-        )
+def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow") -> Dict[str, Any]:
+    """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
+    scope_entity = "Party" if entity_name == "Client" else entity_name
+    if scope_entity not in {"Account", "Household", "Party"}:
+        raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the P0 MCL workflow.")
+    if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
+        raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
     uploaded = state_store.entity_sample_files.get(entity_name)
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
         raise HTTPException(status_code=409, detail=f"No valid uploaded CSV is available for {entity_name}.")
-
     source_path = Path(uploaded["stored_path"])
     if not source_path.is_file():
-        raise HTTPException(status_code=409, detail="The uploaded source file is no longer available; upload it again.")
+        raise HTTPException(status_code=409, detail=f"The uploaded source file for {entity_name} is no longer available; upload it again.")
 
     import pandas as pd
     run_id = f"RUN-{uuid.uuid4().hex}"
+    content = source_path.read_bytes()
+    profile = SourceDataProfiler.profile_csv_content(uploaded["filename"], content, entity_name=entity_name)
+    if profile.get("status") != "PROFILED":
+        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
+    profile["run_id"] = run_id
+    profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
+    records_df = pd.read_csv(source_path, dtype=str, keep_default_na=False)
+    mapping = schema_mapper.map_source_to_canonical(entity_name, records_df.to_dict(orient="records"))
+    mapping["entity"] = entity_name
+    mapping["canonical_entity"] = "Party" if entity_name == "Client" else entity_name
+    mapping["run_id"] = run_id
+    state_store.persist_mapping_lineage(mapping, run_id=run_id, actor=actor)
+    return {
+        "status": mapping.get("status", "UNKNOWN"),
+        "run_id": run_id,
+        "entity_name": entity_name,
+        "canonical_entity": mapping["canonical_entity"],
+        "source_file": uploaded["filename"],
+        "profile": profile,
+        "mapping": mapping,
+    }
+
+
+@app.post("/api/entities/map-uploaded-file")
+async def map_uploaded_entity_file(entity_name: str = Form(...)):
+    """Profile and map an uploaded MCL CSV or another explicitly supported canonical source entity."""
+    if entity_name not in {"Account", "Household", "Client"}:
+        raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
     try:
-        content = source_path.read_bytes()
-        profile = SourceDataProfiler.profile_csv_content(uploaded["filename"], content, entity_name=entity_name)
-        if profile.get("status") != "PROFILED":
-            raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
-        profile["run_id"] = run_id
-        profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
-        records_df = pd.read_csv(source_path)
-        records = records_df.to_dict(orient="records")
-        mapping = schema_mapper.map_source_to_canonical(entity_name, records)
-        mapping["entity"] = entity_name
-        mapping["run_id"] = run_id
-        state_store.persist_mapping_lineage(mapping, run_id=run_id, actor="SourceMappingWorkflow")
+        result = _map_uploaded_source_entity(entity_name)
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("Uploaded-file mapping failed for %s", entity_name)
         raise HTTPException(status_code=500, detail=f"Mapping failed; no success was reported: {type(exc).__name__}: {exc}") from exc
+    result["execution_boundary"] = {
+        "source_to_canonical_only": True,
+        "target_loading": "NOT_RUN",
+        "wave_assignment": "DISABLED",
+    }
+    return JSONResponse(result)
+
+
+@app.post("/api/entities/map-mcl")
+async def map_mcl_uploaded_files():
+    """Run the MCL source-to-canonical flow across Account, Household, and Client."""
+    mcl_run_id = f"MCL-{uuid.uuid4().hex}"
+    source_entities = ["Account", "Household", "Client"]
+    # Validate all prerequisites before starting any profile/mapping work.
+    for entity_name in source_entities:
+        scope_entity = "Party" if entity_name == "Client" else entity_name
+        if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
+            raise HTTPException(status_code=409, detail=f"MCL run blocked: {scope_entity} is not explicitly IN_SCOPE.")
+        uploaded = state_store.entity_sample_files.get(entity_name)
+        if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
+            raise HTTPException(status_code=409, detail=f"MCL run blocked: upload a valid {entity_name} CSV first.")
+        if not Path(uploaded["stored_path"]).is_file():
+            raise HTTPException(status_code=409, detail=f"MCL run blocked: the {entity_name} source file is missing; upload it again.")
+
+    entity_results = {}
+    try:
+        for entity_name in source_entities:
+            entity_results[entity_name] = _map_uploaded_source_entity(entity_name, actor="MCLSourceMappingWorkflow")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("MCL mapping run failed for %s", mcl_run_id)
+        raise HTTPException(status_code=500, detail=f"MCL run {mcl_run_id} failed before completion: {type(exc).__name__}: {exc}") from exc
+
+    mappings = {name: result["mapping"] for name, result in entity_results.items()}
+    relationship_validation = validate_mcl_relationships(mappings)
+    mapping_statuses = {result["mapping"].get("status") for result in entity_results.values()}
+    if relationship_validation["status"] == "FAIL" or "WARNING_INCOMPLETE" in mapping_statuses or "NO_SOURCE_RECORDS" in mapping_statuses:
+        overall_status = "NEEDS_REMEDIATION"
+    elif relationship_validation["status"] == "WARN" or mapping_statuses - {"SUCCESS"}:
+        overall_status = "MAPPED_WITH_WARNINGS"
+    else:
+        overall_status = "MAPPED"
 
     return JSONResponse({
-        "status": mapping.get("status", "UNKNOWN"),
-        "run_id": run_id,
-        "entity_name": entity_name,
-        "source_file": uploaded["filename"],
-        "profile": profile,
-        "mapping": mapping,
+        "status": overall_status,
+        "mcl_run_id": mcl_run_id,
+        "migration_id": state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+        "entities": entity_results,
+        "relationship_validation": relationship_validation,
         "execution_boundary": {
             "source_to_canonical_only": True,
             "target_loading": "NOT_RUN",
             "wave_assignment": "DISABLED",
+            "target_adapter": "NOT_SELECTED_IN_P0",
         },
     })
 
