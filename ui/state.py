@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
 from control_plane.db import get_db_connection, init_db
 
+SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
+
 
 class WorkspaceStateStore:
     """State engine managing firm context, in-scope filtering, and metadata table persistence."""
@@ -184,7 +186,7 @@ class WorkspaceStateStore:
 
         safe_entity = re.sub(r"[^A-Za-z0-9_-]+", "_", entity_name).strip("_") or "entity"
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name)
-        upload_dir = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads" / safe_entity
+        upload_dir = SOURCE_UPLOAD_ROOT / safe_entity
         upload_dir.mkdir(parents=True, exist_ok=True)
         stored_path = upload_dir / f"{uuid.uuid4().hex}_{safe_name}"
         stored_path.write_bytes(content_bytes)
