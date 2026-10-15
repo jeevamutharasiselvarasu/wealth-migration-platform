@@ -59,7 +59,7 @@
             </button>
             <button type="button" onclick="runPipelineTrigger('REP-9981', 'WAVE-01')" 
                     class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
-                <span>▶ Execute 9-Agent Pipeline</span>
+                <span>▶ Run Source-to-Canonical Mapping</span>
             </button>
         </div>
     </div>
@@ -70,7 +70,7 @@
     <!-- Migration Readiness & Mapping Telemetry Banner -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Overall Mapping Confidence</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Latest Run Mapping Confidence</div>
             <div id="metric-confidence" class="text-2xl font-extrabold text-teal-700 font-mono">98%</div>
             <div class="text-[10px] text-teal-700 font-mono font-semibold">HIGH QUALITY · READY</div>
         </div>
@@ -78,19 +78,19 @@
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
             <div class="text-xs text-[#5a6a88] font-medium">In-Scope Entities Evaluated</div>
             <div class="text-2xl font-extrabold text-[#152c6b] font-mono">3 Entities</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">Account, Sleeve, Position</div>
+            <div class="text-[10px] text-[#5a6a88] font-mono">Account, Client, Household</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Custodian Crosswalk Engine</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Column Mapping Review</div>
             <div class="text-2xl font-extrabold text-blue-700 font-mono">ACTIVE</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">SCHW, FID, PER Coerced</div>
+            <div class="text-[10px] text-[#5a6a88] font-mono">Human approval required</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">ADF Deployment Package</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Target Mapping</div>
             <div class="text-2xl font-extrabold text-teal-700 font-mono">STAGED</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">ANSI SQL + ADF Templates</div>
+            <div class="text-[10px] text-[#5a6a88] font-mono">Deferred from P0</div>
         </div>
     </div>
 
@@ -137,234 +137,50 @@
         </div>
     </section>
 
-    <!-- Source-to-Canonical Telemetry Entity Cards (Step 3 & 4) -->
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
-            <div>
-                <h2 class="text-sm font-bold text-[#152c6b]">Source-to-Canonical Telemetry & Mapping Completeness</h2>
-                <p class="text-xs text-[#5a6a88]">Shows mapped columns, unmapped attributes, missing mandatory fields, and confidence scores.</p>
-            </div>
-            <span class="bg-teal-50 text-teal-700 border border-teal-200 text-xs px-2.5 py-1 rounded-full font-mono font-bold">
-                Target Mapping Decoupled
-            </span>
+    <section class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
+        <div class="border-b border-[#e9eff9] pb-3">
+            <h2 class="text-sm font-bold text-[#152c6b]">P0 Source-to-Canonical Mapping</h2>
+            <p class="text-xs text-[#5a6a88]">Only Account, Client, and Household are supported. Mapping proposals remain pending until a named reviewer approves each column. Canonical-to-target mapping, wave assignment, sleeves, positions, and trading are deferred.</p>
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <!-- Entity 1: Account -->
+            {% for entity in ["Account", "Client", "Household"] %}
             <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-3">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-[#152c6b] text-sm">Account Entity</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] px-2 py-0.5 rounded font-mono font-bold">100% CONFIDENCE</span>
-                </div>
-                <div class="space-y-1 font-mono text-[11px]">
-                    <div class="text-teal-700 font-semibold">✓ Mapped (5):</div>
-                    <div class="text-slate-600 bg-white p-2 rounded border border-[#e2e8f0] text-[10px]">
-                        LEGACY_ACCT_NO ➔ ACCT_NUM<br/>
-                        CUST_CODE_SRC ➔ CUSTODIAN_CODE (SCHWAB)<br/>
-                        ADVISOR_REP_NUM ➔ REP_CODE<br/>
-                        REGISTRATION_SRC_TYPE ➔ REG_TYPE<br/>
-                        ACCOUNT_OPEN_DT ➔ OPEN_DATE
+                <h3 class="font-bold text-sm text-[#152c6b]">{{ entity }}</h3>
+                {% set entity_files = source_files.get(entity, {}) %}
+                {% if entity_files %}
+                    {% for role, file in entity_files.items() %}
+                    <div class="bg-white border border-[#d9e3f5] rounded-lg p-2">
+                        <div class="flex justify-between gap-2"><span class="font-bold">{{ role }}</span><span class="text-teal-700">{{ file.status }}</span></div>
+                        <div class="font-mono break-all">{{ file.filename }}</div>
+                        <div class="text-[#5a6a88]">{{ file.row_count }} rows · {{ file.column_count }} columns</div>
                     </div>
-                </div>
-                <div class="flex justify-between items-center text-[10px] text-[#5a6a88] font-mono pt-1">
-                    <span>Unmapped Columns: 0</span>
-                    <span class="text-teal-700 font-bold">0 Missing Required</span>
-                </div>
+                    {% endfor %}
+                {% else %}<p class="text-[#5a6a88]">No source files uploaded.</p>{% endif %}
             </div>
-
-            <!-- Entity 2: Sleeve -->
-            <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-3">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-[#152c6b] text-sm">Sleeve / Allocation</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] px-2 py-0.5 rounded font-mono font-bold">100% CONFIDENCE</span>
-                </div>
-                <div class="space-y-1 font-mono text-[11px]">
-                    <div class="text-teal-700 font-semibold">✓ Mapped (5):</div>
-                    <div class="text-slate-600 bg-white p-2 rounded border border-[#e2e8f0] text-[10px]">
-                        SRC_ACCOUNT_NO ➔ ACCT_NUM<br/>
-                        SUB_SLEEVE_ID ➔ SLEEVE_ID<br/>
-                        STRATEGY_MODEL_ID ➔ MODEL_CODE<br/>
-                        TARGET_WEIGHT_PCT ➔ TARGET_PCT<br/>
-                        REP_CODE_RAW ➔ REP_CODE
-                    </div>
-                </div>
-                <div class="flex justify-between items-center text-[10px] text-[#5a6a88] font-mono pt-1">
-                    <span>Unmapped Columns: 0</span>
-                    <span class="text-teal-700 font-bold">Invariant: 1.0000 PASS</span>
-                </div>
-            </div>
-
-            <!-- Entity 3: Position -->
-            <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-3">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-[#152c6b] text-sm">Position (Snapshot)</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] px-2 py-0.5 rounded font-mono font-bold">100% CONFIDENCE</span>
-                </div>
-                <div class="space-y-1 font-mono text-[11px]">
-                    <div class="text-teal-700 font-semibold">✓ Mapped (4):</div>
-                    <div class="text-slate-600 bg-white p-2 rounded border border-[#e2e8f0] text-[10px]">
-                        ACCT_NUM ➔ ACCT_NUM<br/>
-                        CUSIP ➔ CUSIP<br/>
-                        TICKER ➔ TICKER<br/>
-                        market_value ➔ MARKET_VALUE
-                    </div>
-                </div>
-                <div class="flex justify-between items-center text-[10px] text-[#5a6a88] font-mono pt-1">
-                    <span>Unmapped Columns: 0</span>
-                    <span class="text-teal-700 font-bold">AUM Drift: 0.00% PASS</span>
-                </div>
-            </div>
+            {% endfor %}
         </div>
-    </div>
-
-    <!-- 3-Phase Interactive Agent Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <!-- Phase 1: Discovery Agents -->
-        <div class="bg-white rounded-2xl border border-[#d9e3f5] p-5 space-y-4 shadow-sm">
-            <div class="flex justify-between items-center border-b border-[#e9eff9] pb-2">
-                <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Phase 1: Discovery Agents</h2>
-                <span class="text-[10px] text-[#8a97b2] font-mono">3 Agents</span>
-            </div>
-
-            <!-- Agent 1 -->
-            <div onclick="openAgentInspector('extractor')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">1. Extractor Agent</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">EXECUTED</span>
+        <div class="space-y-2">
+            <h3 class="text-xs font-bold text-[#152c6b]">Pending per-column decisions</h3>
+            {% if mapping_suggestions %}
+                {% for suggestion in mapping_suggestions %}
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-center border border-[#e2e8f0] rounded-xl p-3 text-xs">
+                    <div><div class="font-bold">{{ suggestion.entity_name }}</div><div class="text-[10px] text-slate-500">{{ suggestion.source_field }}</div></div>
+                    <div class="font-mono">→ {{ suggestion.canonical_field or "No candidate" }}</div>
+                    <div><span class="text-slate-500">Transform</span><div class="font-bold">{{ suggestion.proposed_rule or "DIRECT_COPY" }}</div></div>
+                    <div><span class="text-slate-500">Confidence</span><div>{{ "%.0f"|format((suggestion.confidence_score or 0) * 100) }}%</div></div>
+                    <form action="/api/mapping-suggestions/{{ suggestion.suggestion_id }}/review" method="POST" class="md:col-span-2 flex flex-wrap items-center gap-1">
+                        <input name="reviewer" placeholder="Reviewer" required class="min-w-24 border rounded p-1 text-xs">
+                        <input name="comments" placeholder="Review note (optional)" class="min-w-24 flex-1 border rounded p-1 text-xs">
+                        <button name="decision" value="APPROVED" class="bg-teal-700 text-white rounded px-2 py-1">Approve</button>
+                        <button name="decision" value="REJECTED" class="bg-rose-700 text-white rounded px-2 py-1">Reject</button>
+                    </form>
                 </div>
-                <p class="text-[11px] text-[#5a6a88]">Pulls per-advisor extracts from Amplify and Black Diamond.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>OUT: Sleeves & Positions</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-
-            <!-- Agent 2 -->
-            <div onclick="openAgentInspector('schema_mapper')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">2. Schema Mapper Agent</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">EXECUTED</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Applies catalog field mapping to canonical attribute taxonomy.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>IN: Raw Headers → OUT: Canonical</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-
-            <!-- Agent 3 -->
-            <div onclick="openAgentInspector('ai_foundry')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">3. AI Foundry Mapper</span>
-                    <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">GPT-4o ACTIVE</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Uses Azure AI Foundry models to infer unmapped field logic.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>Confidence: 0.98</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
+                {% endfor %}
+            {% else %}<p class="text-xs text-[#5a6a88]">No pending proposals. Upload sample files and run mapping to create column-level review items.</p>{% endif %}
         </div>
+    </section>
 
-        <!-- Phase 2: Business Logic Agents -->
-        <div class="bg-white rounded-2xl border border-[#d9e3f5] p-5 space-y-4 shadow-sm">
-            <div class="flex justify-between items-center border-b border-[#e9eff9] pb-2">
-                <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Phase 2: Business Logic</h2>
-                <span class="text-[10px] text-[#8a97b2] font-mono">3 Agents</span>
-            </div>
-
-            <!-- Agent 4 -->
-            <div onclick="openAgentInspector('sleeve_math')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">4. Sleeve Math Agent</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">INVARIANT 1.0000</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Enforces UMA sleeve decomposition and 100% allocation sum invariant.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>Sum: 70% + 30% = 1.0000</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-
-            <!-- Agent 5 -->
-            <div onclick="openAgentInspector('compliance')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">5. Compliance Validator</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">APPROVED</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Re-applies Home Office overlays and restricted model checks.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>Restricted Models: 0 Flagged</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-
-            <!-- Agent 6 -->
-            <div onclick="openAgentInspector('data_quality')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">6. Data Quality Agent</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">PASS</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Audits referential integrity across Household, Account, and Sleeves.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>Orphaned Accounts: 0</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Phase 3: Operational Agents -->
-        <div class="bg-white rounded-2xl border border-[#d9e3f5] p-5 space-y-4 shadow-sm">
-            <div class="flex justify-between items-center border-b border-[#e9eff9] pb-2">
-                <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Phase 3: Operational Execution</h2>
-                <span class="text-[10px] text-[#8a97b2] font-mono">3 Agents</span>
-            </div>
-
-            <!-- Agent 7 -->
-            <div onclick="openAgentInspector('loader')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">7. Loader Agent</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">STAGED</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Writes approved packages to SPARC and Orion staging schemas.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>SPARC: 1 | Orion: 2 Staged</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-
-            <!-- Agent 8 -->
-            <div onclick="openAgentInspector('reconciler')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">8. Reconciler Agent</span>
-                    <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">DRIFT 0.00%</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Compares target post-load market values against source extracts.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>0.0000% <= 0.5000% (PASS)</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-
-            <!-- Agent 9 -->
-            <div onclick="openAgentInspector('cutover')" class="bg-[#f8fafc] hover:bg-blue-50/60 p-4 rounded-xl border border-[#e2e8f0] hover:border-blue-400 cursor-pointer transition space-y-2 group">
-                <div class="flex justify-between items-center">
-                    <span class="font-bold text-xs text-[#152c6b] group-hover:text-blue-700">9. Cutover & Audit Agents</span>
-                    <span class="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">PENDING_APPROVAL</span>
-                </div>
-                <p class="text-[11px] text-[#5a6a88]">Executes T+0 trade re-routing and generates evidence packs.</p>
-                <div class="text-[10px] font-mono text-[#5a6a88] bg-white p-2 rounded-lg border border-[#e2e8f0] flex justify-between items-center">
-                    <span>Action: Step 6 Sign-off</span>
-                    <span class="text-blue-600 font-bold">Inspect Trace →</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ================= AGENT DEEP DIVE INSPECTOR DRAWER ================= -->
-<div id="agent-inspector-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end transition-all">
+    <div id="agent-inspector-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end transition-all">
     <div class="bg-white w-full max-w-4xl h-full border-l border-[#d9e3f5] p-6 overflow-y-auto space-y-6 flex flex-col justify-between shadow-2xl">
         
         <div class="space-y-6">
@@ -537,7 +353,7 @@ async function downloadAdfPackage() {
 async function runPipelineTrigger(repCode, waveId) {
     const alertBox = document.getElementById('pipeline-status-alert');
     alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-blue-50 border border-blue-200 text-blue-800";
-    alertBox.textContent = `Executing 9-Agent Pipeline for Advisor ${repCode} (${waveId})...`;
+    alertBox.textContent = `Running source-to-canonical mapping for ${repCode} (${waveId})...`;
     alertBox.classList.remove('hidden');
 
     try {
