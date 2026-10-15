@@ -423,6 +423,8 @@ class WorkspaceStateStore:
                         columns = list(fields[0].keys())
                     elif isinstance(fields, list) and all(isinstance(x, str) for x in fields):
                         columns = fields
+                    elif isinstance(fields, dict):
+                        columns = list(fields.keys())
             elif suffix in {".csv", ".tsv"}:
                 import csv
                 reader = csv.reader(content_bytes.decode("utf-8-sig").splitlines(), delimiter="\t" if suffix == ".tsv" else ",")
