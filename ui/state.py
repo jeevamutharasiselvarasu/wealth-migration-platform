@@ -443,7 +443,14 @@ class WorkspaceStateStore:
                                 found = discover_columns(value[key])
                                 if found:
                                     return found
-                        # Some dictionaries map each field name to its metadata.
+                        # Traverse vendor-specific containers such as definitions.Account
+                        # before treating a dictionary's keys as field names.
+                        for item in value.values():
+                            if isinstance(item, (dict, list)):
+                                found = discover_columns(item)
+                                if found:
+                                    return found
+                        # Some dictionaries map each field name directly to metadata.
                         if value and all(isinstance(item, dict) for item in value.values()):
                             return list(value.keys())
                     return []
