@@ -864,8 +864,15 @@ async def get_mcl_run_lineage(mcl_run_id: str):
 
 @app.post("/api/knowledge/file-upload")
 async def upload_firm_file(category: str = Form(...), file: UploadFile = File(...)):
+    filename = file.filename or ""
+    allowed_extensions = {".md", ".txt", ".csv", ".tsv", ".json", ".xlsx", ".xlsm", ".xls"}
+    if Path(filename).suffix.lower() not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Knowledge assets must be Markdown, text, CSV/TSV, JSON, or Excel files.")
     content = await file.read()
-    state_store.add_firm_file(file.filename, category, content)
+    try:
+        state_store.add_firm_file(filename, category, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
 
 
