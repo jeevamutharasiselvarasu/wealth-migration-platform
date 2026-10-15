@@ -16,7 +16,7 @@ from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
-from control_plane.services.wave_rules import WaveConditionEvaluator
+from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import get_db_connection
@@ -305,25 +305,16 @@ async def get_wave_cohort_conditions():
     })
 
 @app.post("/api/waves/evaluate-record")
-async def evaluate_record_cohort(
-    market_value: float = Form(10000000.0),
-    custodian_code: str = Form("SCHWAB"),
-    confidence_score: float = Form(0.98),
-    missing_required_count: int = Form(0)
-):
-    """Evaluates a record against wave rules to determine dynamic cohort assignment."""
-    record_payload = {
-        "market_value": market_value,
-        "CUSTODIAN_CODE": custodian_code,
-        "confidence_score": confidence_score,
-        "missing_required_count": missing_required_count
-    }
-    assigned_wave = WaveConditionEvaluator.assign_wave_for_record(record_payload)
-    return JSONResponse({
-        "status": "SUCCESS",
-        "evaluated_record": record_payload,
-        "assigned_wave": assigned_wave
-    })
+async def evaluate_record_cohort():
+    """Wave evaluation is intentionally deferred until approved ADLS telemetry is available."""
+    return JSONResponse(
+        {
+            "status": "DEFERRED_SCOPE",
+            "wave_assignment": "DISABLED",
+            "message": "Conditions can be configured in this phase, but records are not evaluated and no waves are assigned.",
+        },
+        status_code=409,
+    )
 
 
 # --- ADLS & AZURE DATA FACTORY (ADF) ENDPOINTS ---
@@ -361,16 +352,16 @@ async def upload_to_adls_container(run_id: str = Form("RUN-001"), subfolder: str
 
 
 @app.post("/api/adf/trigger")
-async def trigger_adf_pipeline(rep_code: str = Form("REP-9981"), wave_id: str = Form("WAVE-01")):
-    """Triggers Azure Data Factory Account & Transaction migration pipeline."""
-    run_id = f"RUN-{rep_code}-{wave_id}"
-    adf_result = adf_client.trigger_entity_pipeline(
-        migration_id="MIG-CORECAP-2026",
-        wave_id=wave_id,
-        run_id=run_id,
-        rep_code=rep_code
+async def trigger_adf_pipeline():
+    """Actual target-side ADF execution is deferred; P0 is source-to-canonical mapping only."""
+    return JSONResponse(
+        {
+            "status": "DEFERRED_SCOPE",
+            "mode": "NOT_SUBMITTED",
+            "message": "Target-side ADF execution is disabled in P0. Generate and review deployment artifacts separately.",
+        },
+        status_code=409,
     )
-    return JSONResponse(adf_result)
 
 
 @app.get("/api/adf/status/{adf_run_id}")
@@ -488,11 +479,24 @@ async def upload_firm_file(category: str = Form(...), file: UploadFile = File(..
 
 
 @app.post("/api/pipeline/run")
-async def execute_agent_pipeline(rep_code: str = Form("REP-9981"), wave_id: str = Form("WAVE-01")):
-    logger.info(f"Executing 9-agent pipeline for advisor '{rep_code}' ({wave_id})...")
-    pipeline_result = orchestrator.run_cohort_pipeline(rep_code=rep_code, wave_id=wave_id)
+async def execute_agent_pipeline(rep_code: str = Form("REP-9981")):
+    """Run source-to-canonical mapping for explicitly selected IN_SCOPE entities only."""
+    scoped_entities = [
+        entity["entity_name"]
+        for entity in state_store.get_full_menu_card().values()
+        for entity in entity
+        if entity.get("current_scope") == "IN_SCOPE"
+    ]
+    migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
+    logger.info("Starting source-to-canonical mapping for %s across %s explicitly in-scope entities", rep_code, len(scoped_entities))
+    pipeline_result = orchestrator.run_cohort_pipeline(
+        rep_code=rep_code,
+        in_scope_entity_names=scoped_entities,
+        migration_id=migration_id,
+    )
     state_store.record_pipeline_run(pipeline_result)
-    return JSONResponse({"status": "SUCCESS", "result": pipeline_result})
+    status_code = 200 if pipeline_result.get("status") not in {"BLOCKED_NO_SCOPE"} else 409
+    return JSONResponse({"status": pipeline_result.get("status", "UNKNOWN"), "result": pipeline_result}, status_code=status_code)
 
 
 @app.get("/api/pipeline/agent-detail/{agent_id}")
