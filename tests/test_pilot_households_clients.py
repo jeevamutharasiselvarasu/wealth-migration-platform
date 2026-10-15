@@ -43,9 +43,9 @@ def test_client_profiling_and_mapping():
 
     assert res["status"] == "SUCCESS"
     assert res["confidence_score"] == 1.0
-    assert res["mapped_records"][0]["PARTY_ID"] == "CL-99811A"
-    assert res["mapped_records"][0]["PARTY_TYPE"] == "INDIVIDUAL"
-    assert res["mapped_records"][1]["PARTY_TYPE"] == "TRUST"
+    assert res["mapped_records"][0]["CLIENT_ID"] == "CL-99811A"
+    assert res["mapped_records"][0]["CLIENT_TYPE"] == "INDIVIDUAL"
+    assert res["mapped_records"][1]["CLIENT_TYPE"] == "TRUST"
 
 
 def test_spine_referential_integrity():
@@ -58,7 +58,7 @@ def test_spine_referential_integrity():
     valid_accounts = [{
         "ACCT_NUM": "ACC-99812",
         "HH_ID": "HH-99811",
-        "PARTY_ID": "CL-99811A",
+        "CLIENT_ID": "CL-99811A",
     }]
     res = validate_mcl_relationships({
         "Account": {"mapped_records": valid_accounts},
