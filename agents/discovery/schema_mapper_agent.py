@@ -127,8 +127,48 @@ class SchemaMapperAgent:
         "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
     }
 
-    def __init__(self, custom_catalog: Dict[str, str] = None):
-        self.catalog = custom_catalog or self.DEFAULT_CATALOG
+    # Approved expressions are deliberately declarative; never eval arbitrary rule text.
+    SUPPORTED_APPROVED_TRANSFORMS = {
+        "DIRECT_COPY", "ALIAS", "TRIM", "UPPERCASE", "LOWERCASE", "NORMALIZE_WHITESPACE"
+    }
+
+    def __init__(
+        self,
+        custom_catalog: Dict[str, str] = None,
+        approved_transformations: Dict[str, str] = None,
+    ):
+        self.catalog = {**self.DEFAULT_CATALOG, **(custom_catalog or {})}
+        self.approved_transformations = {
+            source: str(expression or "DIRECT_COPY").strip().upper()
+            for source, expression in (approved_transformations or {}).items()
+        }
+        unsupported = {
+            source: expression for source, expression in self.approved_transformations.items()
+            if expression not in self.SUPPORTED_APPROVED_TRANSFORMS
+        }
+        if unsupported:
+            raise ValueError(
+                "Unsupported approved transformation expression(s): "
+                + ", ".join(f"{source}={expression}" for source, expression in sorted(unsupported.items()))
+            )
+
+    @staticmethod
+    def _apply_approved_transformation(value: Any, expression: str) -> Any:
+        """Apply a small, explicit transformation DSL to a source value."""
+        if expression in {"DIRECT_COPY", "ALIAS"}:
+            return value
+        if value is None:
+            return None
+        text_value = str(value)
+        if expression == "TRIM":
+            return text_value.strip()
+        if expression == "UPPERCASE":
+            return text_value.upper()
+        if expression == "LOWERCASE":
+            return text_value.lower()
+        if expression == "NORMALIZE_WHITESPACE":
+            return " ".join(text_value.split())
+        raise ValueError(f"Unsupported approved transformation: {expression}")
 
     def map_source_schema(self, raw_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Backward-compatible mapping function for 9-agent pipeline."""
@@ -231,6 +271,11 @@ class SchemaMapperAgent:
                             if len(parts) == 3:
                                 transformed_val = f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
                                 applied_rule = "DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)"
+
+                    approved_expression = self.approved_transformations.get(raw_key)
+                    if approved_expression:
+                        transformed_val = self._apply_approved_transformation(raw_val, approved_expression)
+                        applied_rule = f"APPROVED_{approved_expression}"
 
                     if target_key in canonical_row:
                         field_collisions.add(f"{target_key} <- {raw_key}")
