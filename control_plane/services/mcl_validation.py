@@ -94,7 +94,7 @@ def _relationship_candidate_check(
     values = [str(item.get("target_key_value")).strip() for item in candidates if _present(item.get("target_key_value"))]
     orphans = sorted({value for value in values if value not in target_keys})
     missing = len(candidates) - len(values)
-    status = "FAIL" if orphans else "PROPOSED"
+    status = "FAIL" if orphans else ("WARN" if missing else "PROPOSED")
     return {
         "check": "RELATIONSHIP_CANDIDATE",
         "from_entity": "Client",
@@ -109,7 +109,7 @@ def _relationship_candidate_check(
         "orphan_values": orphans[:50],
         "message": (
             f"{len(orphans)} Client-to-Household candidate reference(s) do not resolve."
-            if orphans else "Candidate references resolve, but the source relationship meaning still requires confirmation and approval."
+            if orphans else (f"{missing} candidate relationship value(s) are missing." if missing else "Candidate references resolve, but the source relationship meaning still requires confirmation and approval.")
         ),
     }
 
