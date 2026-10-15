@@ -8,7 +8,7 @@ from ui import app as app_module
 
 class FakeStateStore:
     def __init__(self, files):
-        self.entity_scopes = {"Account": "IN_SCOPE", "Household": "IN_SCOPE", "Party": "IN_SCOPE"}
+        self.entity_scopes = {"Account": "IN_SCOPE", "Household": "IN_SCOPE", "Client": "IN_SCOPE"}
         self.entity_sample_files = files
         self.questionnaire_data = {"migration_id": "MIG-MCL-TEST"}
         self.persisted_summary = None
@@ -32,11 +32,11 @@ def test_mcl_batch_endpoint_runs_three_entities_and_persists_summary(tmp_path, m
     monkeypatch.setattr(app_module, "state_store", fake_state)
 
     def fake_map_entity(entity_name, actor="SourceMappingWorkflow"):
-        canonical = "Party" if entity_name == "Client" else entity_name
+        canonical = "Client" if entity_name == "Client" else entity_name
         records = {
-            "Account": [{"ACCT_NUM": "A1", "HH_ID": "H1", "PARTY_ID": "P1"}],
+            "Account": [{"ACCT_NUM": "A1", "HH_ID": "H1", "CLIENT_ID": "P1"}],
             "Household": [{"HH_ID": "H1"}],
-            "Client": [{"PARTY_ID": "P1"}],
+            "Client": [{"CLIENT_ID": "P1"}],
         }[entity_name]
         fields = sorted(records[0].keys())
         mapping = {
@@ -69,7 +69,7 @@ def test_mcl_batch_endpoint_runs_three_entities_and_persists_summary(tmp_path, m
     assert response.status_code == 200
     assert payload["status"] == "NEEDS_REVIEW"
     assert set(payload["entities"]) == {"Account", "Household", "Client"}
-    assert payload["entities"]["Client"]["canonical_entity"] == "Party"
+    assert payload["entities"]["Client"]["canonical_entity"] == "Client"
     assert payload["relationship_validation"]["status"] == "PASS"
     assert payload["execution_boundary"]["target_loading"] == "NOT_RUN"
     assert payload["execution_boundary"]["canonical_output_status"] == "PREVIEW_ONLY_PENDING_APPROVAL"
