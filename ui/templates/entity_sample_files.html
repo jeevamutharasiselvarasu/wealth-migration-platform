@@ -128,6 +128,24 @@
                 </div>
                 {% endif %}
 
+                {% if ent.entity_name in ["Household", "Client"] %}
+                {% set extra_role = "HOUSEHOLD_MAPPING" if ent.entity_name == "Household" else "CLIENT_MODEL" %}
+                {% set extra_label = "Household Mapping" if ent.entity_name == "Household" else "Client Model" %}
+                <div class="rounded-xl border border-[#d9e3f5] bg-white p-4 space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div><div class="font-bold text-[#152c6b]">{{ extra_label }}</div><div class="text-xs text-[#5a6a88]">Additional source file retained separately for the {{ ent.entity_name }} canonical entity.</div></div>
+                        {% if ent.source_files and ent.source_files.get(extra_role) %}
+                        <div class="text-right text-xs"><div class="font-mono font-bold text-teal-700">{{ ent.source_files.get(extra_role).filename }}</div><div class="text-[#5a6a88]">{{ ent.source_files.get(extra_role).row_count }} Rows • {{ ent.source_files.get(extra_role).column_count }} Columns • {{ ent.source_files.get(extra_role).status }}</div></div>
+                        {% else %}<span class="text-xs text-[#8a97b2]">No file uploaded</span>{% endif %}
+                    </div>
+                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="entity_name" value="{{ ent.entity_name }}"><input type="hidden" name="source_role" value="{{ extra_role }}">
+                        <label for="extra-file-{{ loop.index }}" class="text-xs font-semibold text-[#152c6b]">{{ extra_label }} source file</label>
+                        <input id="extra-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block max-w-64 text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white font-bold">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold">Upload &amp; Validate</button>
+                    </form>
+                </div>
+                {% endif %}
                 <div id="mapping-result-{{ loop.index }}" class="hidden mt-3 bg-white border border-[#d9e3f5] rounded-xl p-4 text-xs"></div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1 font-mono">
