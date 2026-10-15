@@ -418,7 +418,7 @@ class WorkspaceStateStore:
                 if isinstance(payload, list) and payload and isinstance(payload[0], dict):
                     columns = list(payload[0].keys())
                 elif isinstance(payload, dict):
-                    fields = payload.get("columns") or payload.get("fields") or payload.get("records")
+                    fields = payload.get("columns") or payload.get("fields") or payload.get("records") or payload.get("schema") or payload.get("properties") or payload.get("data") or payload.get("tables") or payload.get("entities")
                     if isinstance(fields, list) and fields and isinstance(fields[0], dict):
                         columns = list(fields[0].keys())
                     elif isinstance(fields, list) and all(isinstance(x, str) for x in fields):
