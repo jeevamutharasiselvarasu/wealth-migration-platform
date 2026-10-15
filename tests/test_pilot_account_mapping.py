@@ -73,9 +73,9 @@ def test_account_source_roles_keep_separate_files_and_lineage(tmp_path, monkeypa
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     store = WorkspaceStateStore()
     master = store.attach_entity_sample_file("Account", "accounts.csv", SAMPLE_CSV, source_role="ACCOUNT_MASTER")
-    name_address_csv = b"ACCOUNT_ID,ADDRESS_LINE1,CITY\\n00012,10 Main St,Chennai\\n"
+    name_address_csv = b"ACCOUNT_ID,ADDRESS_LINE1,CITY\n00012,10 Main St,Chennai\n"
     name_address = store.attach_entity_sample_file("Account", "name_address.csv", name_address_csv, source_role="NAME_ADDRESS")
-    account_type_csv = b"ACCOUNT_TYPE_CODE,ACCOUNT_TYPE_DESC\\nIRA,Retirement\\n"
+    account_type_csv = b"ACCOUNT_TYPE_CODE,ACCOUNT_TYPE_DESC\nIRA,Retirement\n"
     account_type = store.attach_entity_sample_file("Account", "account_type.csv", account_type_csv, source_role="ACCOUNT_TYPE")
 
     assert master["source_role"] == "ACCOUNT_MASTER"
