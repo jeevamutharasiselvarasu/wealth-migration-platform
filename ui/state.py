@@ -161,6 +161,28 @@ class WorkspaceStateStore:
                         now,
                     ),
                 )
+            for index, field_lineage in enumerate(mapping_result.get("field_lineages", [])):
+                source_field = str(field_lineage.get("source_field", "")).strip()
+                canonical_field = field_lineage.get("canonical_field")
+                if not source_field or not canonical_field:
+                    continue
+                conn.execute(
+                    "INSERT INTO mapping_suggestions "
+                    "(suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, "
+                    "proposed_rule, confidence_score, status, created_utc) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)",
+                    (
+                        f"MAPSUG-{run_id}-{index}-{uuid.uuid4().hex[:8]}",
+                        run_id,
+                        self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+                        entity_name,
+                        source_field,
+                        str(canonical_field),
+                        field_lineage.get("rule_applied"),
+                        float(mapping_result.get("confidence_score", 0.0)),
+                        now,
+                    ),
+                )
             conn.commit()
         except Exception:
             conn.rollback()
