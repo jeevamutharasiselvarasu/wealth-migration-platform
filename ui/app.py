@@ -242,7 +242,9 @@ async def profile_pilot_account_file(file: UploadFile = File(...)):
 @app.post("/api/pilot/account/map")
 async def map_pilot_account(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping with confidence scoring and persists metadata lineage."""
-    if records is None:\n        records = []\n
+    if records is None:
+        records = []
+
     mapping_res = schema_mapper.map_source_to_canonical("Account", records)
     run_id = f"RUN-{uuid.uuid4().hex}"
     state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
@@ -725,7 +727,9 @@ async def profile_pilot_household_file(file: UploadFile = File(...)):
 @app.post("/api/pilot/household/map")
 async def map_pilot_household(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping for Household and persists lineage."""
-    if records is None:\n        records = []\n
+    if records is None:
+        records = []
+
     mapping_res = schema_mapper.map_source_to_canonical("Household", records)
     run_id = f"RUN-{uuid.uuid4().hex}"
     state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
@@ -762,7 +766,9 @@ async def profile_pilot_client_file(file: UploadFile = File(...)):
 @app.post("/api/pilot/client/map")
 async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping for Client/Party and persists lineage."""
-    if records is None:\n        records = []\n
+    if records is None:
+        records = []
+
     mapping_res = schema_mapper.map_source_to_canonical("Client", records)
     run_id = f"RUN-{uuid.uuid4().hex}"
     state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
