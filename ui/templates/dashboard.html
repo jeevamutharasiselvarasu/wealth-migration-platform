@@ -53,10 +53,7 @@
             {% endfor %}
         </div>
         {% else %}<p class="text-xs text-[#5a6a88]">No parsed knowledge assets available yet. Upload a source data dictionary or Markdown mapping rule in Firm Knowledge Studio.</p>{% endif %}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-[#f8fafc] rounded-xl border border-[#e2e8f0] p-4"><h3 class="font-bold text-xs text-[#152c6b] mb-2">Transferable Source → Canonical Knowledge</h3>{% if dashboard.transferable_knowledge %}<ul class="list-disc pl-4 space-y-1 text-xs text-[#5a6a88]">{% for rule in dashboard.transferable_knowledge %}<li>{{ rule }}</li>{% endfor %}</ul>{% else %}<p class="text-xs text-[#5a6a88]">No mapping instructions extracted yet. Upload a documented rule or data dictionary; extracted suggestions require human review.</p>{% endif %}</div>
-            <div class="bg-[#f8fafc] rounded-xl border border-[#e2e8f0] p-4"><h3 class="font-bold text-xs text-[#152c6b] mb-2">Practical Segregation Conditions (Not Activated in P0)</h3><ul class="space-y-2 text-xs text-[#5a6a88]">{% for condition in dashboard.segregation_conditions|default([]) %}<li><span class="font-bold text-[#1c2a4a]">{{ condition.name }}:</span> {{ condition.rule }}</li>{% endfor %}</ul><p class="text-[10px] text-amber-700 mt-2">No wave/cohort assignment is performed in this phase.</p></div>
-        </div>
+        <div class="bg-[#f8fafc] rounded-xl border border-[#e2e8f0] p-4"><h3 class="font-bold text-xs text-[#152c6b] mb-2">Transferable Source → Canonical Knowledge</h3>{% if dashboard.transferable_knowledge %}<ul class="list-disc pl-4 space-y-1 text-xs text-[#5a6a88]">{% for rule in dashboard.transferable_knowledge %}<li>{{ rule }}</li>{% endfor %}</ul>{% else %}<p class="text-xs text-[#5a6a88]">No mapping instructions extracted yet. Upload a documented rule or data dictionary; extracted suggestions require human review.</p>{% endif %}</div>
     </div>
 
 {% endblock %}
