@@ -293,25 +293,6 @@ class WorkspaceStateStore:
         self.firm_knowledge_docs.append(doc_record)
         return doc_record
 
-    def attach_entity_sample_file(self, entity_name: str, filename: str, content_bytes: bytes) -> Dict[str, Any]:
-        row_count = 0
-        try:
-            import io
-            df = pd.read_csv(io.BytesIO(content_bytes))
-            row_count = len(df)
-        except Exception:
-            pass
-
-        record = {
-            "filename": filename,
-            "uploaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            "size_bytes": len(content_bytes),
-            "row_count": row_count,
-            "status": "PARSED"
-        }
-        self.entity_sample_files[entity_name] = record
-        return record
-
     def record_pipeline_run(self, pipeline_result: Dict[str, Any]):
         self.pipeline_runs.append(pipeline_result)
         self.generated_dashboard = self._build_dashboard_from_form()
