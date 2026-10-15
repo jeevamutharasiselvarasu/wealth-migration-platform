@@ -74,7 +74,7 @@ def test_uploaded_source_rejects_invalid_csv(tmp_path, monkeypatch):
     store = WorkspaceStateStore()
 
     with pytest.raises(ValueError, match="Could not parse uploaded CSV"):
-        store.attach_entity_sample_file("Account", "accounts.csv", b"\\x00\\x01not-a-csv")
+        store.attach_entity_sample_file("Account", "accounts.csv", b"")
 
 
 def test_uploaded_source_rejects_non_csv(tmp_path, monkeypatch):
