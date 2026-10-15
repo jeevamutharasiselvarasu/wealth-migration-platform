@@ -35,71 +35,11 @@
                 {% endif %}
             </div>
 
-            {% if user_role in ['Platform Admin', 'Domain SME'] %}
-            <!-- ADMIN / SME EDITABLE KERNEL SPEC FORM -->
-            <form action="/api/kernel/update" method="POST" class="space-y-3 text-xs">
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">P0 Canonical Entities</span>
-                        <span class="text-[9px] text-[#8a97b2] font-mono">FIXED TAXONOMY</span>
-                    </div>
-                    <div class="text-[11px] text-[#5a6a88]">Account, Client, Household</div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2">
-                    <label class="block font-bold text-[#1c2a4a]">Sleeve Invariant Equation</label>
-                    <input type="text" name="sleeve_invariant" value="{{ kernel_specs.sleeve_invariant }}" required
-                           class="w-full bg-white border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-teal-800 focus:outline-none focus:border-blue-500">
-                    <div class="flex justify-between items-center text-[10px]">
-                        <span class="text-[#5a6a88]">Drift Tolerance (&Delta;):</span>
-                        <input type="text" name="sleeve_tolerance" value="{{ kernel_specs.sleeve_tolerance }}" required
-                               class="w-24 bg-white border border-[#cbd5e1] rounded px-1.5 py-0.5 font-mono text-right text-[10px] text-teal-800">
-                    </div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2">
-                    <label class="block font-bold text-[#1c2a4a]">Reconciliation Gate Standard</label>
-                    <input type="text" name="aum_drift_gate" value="{{ kernel_specs.aum_drift_gate }}" required
-                           class="w-full bg-white border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-amber-800 focus:outline-none focus:border-blue-500">
-                </div>
-
-                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-xl text-xs transition shadow-sm">
-                    Update Kernel Configuration →
-                </button>
-            </form>
-            {% else %}
-            <!-- READ-ONLY KERNEL SPEC DISPLAY -->
-            <div class="space-y-3 text-xs">
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">3 P0 Canonical Entities</span>
-                        <span class="text-[9px] text-[#8a97b2] font-mono">NON-EDITABLE</span>
-                    </div>
-                    <div class="text-[11px] text-[#5a6a88]">Account, Client, Household</div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">Sleeve Invariant Equation</span>
-                        <span class="text-[9px] text-teal-700 font-mono font-semibold">LOCKED RULE</span>
-                    </div>
-                    <div class="text-[11px] font-mono bg-[#e2f4f3] text-[#0a6e69] p-2 rounded-lg border border-[#a6dbd7]">
-                        &sum; W_sleeve = {{ kernel_specs.sleeve_invariant }}<br/>
-                        Tolerance: &Delta; &le; {{ kernel_specs.sleeve_tolerance }} (Rounding Drift)
-                    </div>
-                </div>
-
-                <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-1">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-[#1c2a4a]">Reconciliation Gate Standard</span>
-                        <span class="text-[9px] text-teal-700 font-mono font-semibold">LOCKED GATE</span>
-                    </div>
-                    <div class="text-[11px] font-mono bg-[#faf1e3] text-[#b4711f] p-2 rounded-lg border border-[#e6c79a]">
-                        AUM Drift Variance &le; {{ kernel_specs.aum_drift_gate }}
-                    </div>
-                </div>
+            <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
+                <div class="flex justify-between items-center"><span class="font-bold text-[#1c2a4a]">P0 Canonical Entity Scope</span><span class="text-[9px] text-[#8a97b2] font-mono">FIXED</span></div>
+                <div class="text-[11px] text-[#5a6a88]">Account · Client · Household</div>
+                <p class="text-[10px] text-[#5a6a88]">Sleeve allocation, performance reconciliation, AUM drift gates, trading, and target packaging are outside this phase.</p>
             </div>
-            {% endif %}
 
             <!-- Supplementary Data Attachments -->
             <div class="border-t border-[#e9eff9] pt-4 space-y-3">
