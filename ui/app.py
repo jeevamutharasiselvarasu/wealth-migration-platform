@@ -64,7 +64,7 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         "firm_name": state_store.questionnaire_data.get("firm_name", "Core Cap Wealth Management"),
         "adls_connected": state_store.adls_connected,
         "adls_container": state_store.adls_container,
-        "kernel_specs": state_store.kernel_specs
+        "kernel_specs": getattr(state_store, "kernel_specs", {})
     }
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
