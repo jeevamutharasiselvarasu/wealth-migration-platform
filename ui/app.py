@@ -483,8 +483,8 @@ async def execute_agent_pipeline(rep_code: str = Form("REP-9981")):
     """Run source-to-canonical mapping for explicitly selected IN_SCOPE entities only."""
     scoped_entities = [
         entity["entity_name"]
-        for entity in state_store.get_full_menu_card().values()
-        for entity in entity
+        for entities in state_store.get_full_menu_card().values()
+        for entity in entities
         if entity.get("current_scope") == "IN_SCOPE"
     ]
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
