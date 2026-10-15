@@ -25,7 +25,8 @@ def test_source_dictionary_contains_only_p0_entities_and_no_target_mapping():
 
 
 def test_discovery_questionnaire_has_only_p0_mapping_context():
-    template = (ROOT / "ui" / "templates" / "firm_knowledge.html").read_text()
+    full_template = (ROOT / "ui" / "templates" / "firm_knowledge.html").read_text()
+    template = full_template.split("<!-- Configurable Acquisition Discovery Questionnaire Form -->", 1)[1]
     assert 'name="firm_name"' in template
     assert 'name="source_systems"' in template
     assert 'name="business_data_owner"' in template
