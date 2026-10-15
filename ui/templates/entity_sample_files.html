@@ -46,7 +46,11 @@
                                 <div class="text-xs font-mono text-teal-700 font-bold">{{ ent.sample_file_info.filename }}</div>
                                 <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.column_count }} Columns • {{ ent.sample_file_info.status }}</div>
                                 <div class="flex items-center justify-end gap-2 mt-2">
+                                    {% if ent.entity_name == "Account" %}
                                     <button type="button" class="map-uploaded-file bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold" data-entity="{{ ent.entity_name }}" data-result-id="mapping-result-{{ loop.index }}">Profile & Map Uploaded File</button>
+                                    {% else %}
+                                    <span class="text-[10px] text-[#5a6a88]">Mapping module not enabled in P0</span>
+                                    {% endif %}
                                     <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="inline-flex items-center gap-1">
                                         <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
                                         <input type="file" name="file" accept=".csv,text/csv" required class="w-28 text-[10px]">
