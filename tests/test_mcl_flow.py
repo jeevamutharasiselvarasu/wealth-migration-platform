@@ -1,5 +1,6 @@
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services.mcl_validation import validate_mcl_relationships\nfrom control_plane.services.profiler import SourceDataProfiler
+from control_plane.services.mcl_validation import validate_mcl_relationships
+from control_plane.services.profiler import SourceDataProfiler
 
 
 def test_client_source_maps_to_party_canonical_fields():
