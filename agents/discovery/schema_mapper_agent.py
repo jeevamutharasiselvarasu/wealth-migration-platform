@@ -50,7 +50,7 @@ class SchemaMapperAgent:
 
     DEFAULT_CATALOG = {
         # Account Attributes
-        "LEGACY_ACCT_NO": "ACCT_NUM",
+        "LEGACY_ACCT_NO": "ACCT_NUM",\n        "ACCT_NUM": "ACCT_NUM",\n        "ACCOUNT_ID": "ACCT_NUM",
         "CUST_CODE_SRC": "CUSTODIAN_CODE",
         "ADVISOR_REP_NUM": "REP_CODE",
         "PRIMARY_REP_NUM": "REP_CODE",
@@ -59,27 +59,27 @@ class SchemaMapperAgent:
         "LEGACY_HH_ID": "HH_ID",
         "HOUSEHOLD_ID": "HH_ID",
         "HHOLD_ID": "HH_ID",
-        "HOUSEHOLD_LINK_ID": "HH_ID",
+        "HOUSEHOLD_LINK_ID": "HH_ID",\n        "HH_ID": "HH_ID",\n        "ACCOUNT_HOUSEHOLD_ID": "HH_ID",
 
         # Household Attributes
-        "SRC_HH_ID": "HH_ID",
+        "SRC_HH_ID": "HH_ID",\n        "HH_NAME": "HH_NAME",
         "HOUSEHOLD_NAME": "HH_NAME",
         "HH_TITLE": "HH_NAME",
-        "ESTABLISHED_DT": "OPEN_DATE",
+        "ESTABLISHED_DT": "OPEN_DATE",\n        "PRIMARY_CLIENT_ID": "PRIMARY_PARTY_ID",\n        "PRIMARY_PARTY_ID": "PRIMARY_PARTY_ID",\n        "HOUSEHOLD_PRIMARY_CLIENT_ID": "PRIMARY_PARTY_ID",
 
         # Client / Party Attributes
         "LEGACY_CLIENT_ID": "PARTY_ID",
-        "CLIENT_ID": "PARTY_ID",
+        "CLIENT_ID": "PARTY_ID",\n        "PARTY_ID": "PARTY_ID",
         "PARTY_SRC_ID": "PARTY_ID",
-        "FULL_LEGAL_NAME": "LEGAL_NAME",
+        "FULL_LEGAL_NAME": "LEGAL_NAME",\n        "PARTY_NAME": "LEGAL_NAME",\n        "CLIENT_NAME": "LEGAL_NAME",
         "LEGAL_NAME": "LEGAL_NAME",
         "CLIENT_FIRST_NAME": "FIRST_NAME",
         "FIRST_NAME": "FIRST_NAME",
         "CLIENT_LAST_NAME": "LAST_NAME",
         "LAST_NAME": "LAST_NAME",
-        "TAX_IDENTIFIER": "TAX_ID",
+        "TAX_IDENTIFIER": "TAX_ID",\n        "TAX_ID": "TAX_ID",
         "SSN_TIN": "TAX_ID",
-        "CLIENT_TYPE_RAW": "PARTY_TYPE",
+        "CLIENT_TYPE_RAW": "PARTY_TYPE",\n        "PARTY_TYPE": "PARTY_TYPE",\n        "CLIENT_TYPE": "PARTY_TYPE",
         "PARTY_TYPE_SRC": "PARTY_TYPE",
         "EMAIL_ADDR": "EMAIL",
         "PRIMARY_EMAIL": "EMAIL",
