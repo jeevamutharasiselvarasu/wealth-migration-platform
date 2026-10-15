@@ -7,7 +7,8 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
-from control_plane.db import get_db_connection, init_db\nfrom control_plane.services.source_file_adapter import read_source_records
+from control_plane.db import get_db_connection, init_db
+from control_plane.services.source_file_adapter import read_source_records
 
 SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
 
