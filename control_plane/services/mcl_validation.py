@@ -117,7 +117,7 @@ def _relationship_candidate_check(
 def validate_mcl_relationships(mapped_by_entity: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Validate MCL key uniqueness and only those cross-entity links evidenced by mapped fields.
 
-    Client is a source entity whose identity fields map to canonical Party fields. Missing
+    Client is a source entity whose identity fields map to canonical Client fields. Missing
     relationship columns are reported as NOT_EVALUATED rather than guessed.
     """
     account = (mapped_by_entity.get("Account") or {}).get("mapped_records", [])
@@ -127,11 +127,11 @@ def validate_mcl_relationships(mapped_by_entity: Dict[str, Dict[str, Any]]) -> D
     key_checks = [
         _key_check("Account", account, "ACCT_NUM"),
         _key_check("Household", household, "HH_ID"),
-        _key_check("Client (canonical Party)", client, "PARTY_ID"),
+        _key_check("Client (canonical Client)", client, "CLIENT_ID"),
     ]
     relationship_checks = [
         _relationship_check("Account", account, "HH_ID", "Household", household, "HH_ID"),
-        _relationship_check("Account", account, "PARTY_ID", "Client (canonical Party)", client, "PARTY_ID"),
+        _relationship_check("Account", account, "CLIENT_ID", "Client (canonical Client)", client, "CLIENT_ID"),
     ]
     client_relationship_candidates = (mapped_by_entity.get("Client") or {}).get("relationship_candidates", [])
     if client_relationship_candidates:
