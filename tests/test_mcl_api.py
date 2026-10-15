@@ -67,11 +67,12 @@ def test_mcl_batch_endpoint_runs_three_entities_and_persists_summary(tmp_path, m
     payload = json.loads(response.body)
 
     assert response.status_code == 200
-    assert payload["status"] == "MAPPED"
+    assert payload["status"] == "NEEDS_REVIEW"
     assert set(payload["entities"]) == {"Account", "Household", "Client"}
     assert payload["entities"]["Client"]["canonical_entity"] == "Party"
     assert payload["relationship_validation"]["status"] == "PASS"
     assert payload["execution_boundary"]["target_loading"] == "NOT_RUN"
+    assert payload["execution_boundary"]["canonical_output_status"] == "PREVIEW_ONLY_PENDING_APPROVAL"
     assert payload["execution_boundary"]["wave_assignment"] == "DISABLED"
     assert fake_state.persisted_summary["mcl_run_id"] == payload["mcl_run_id"]
 
