@@ -511,7 +511,25 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     profile["source_format"] = Path(uploaded["filename"]).suffix.lower()
     profile["run_id"] = run_id
     profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
-    mapping = schema_mapper.map_source_to_canonical(entity_name, source_records)
+    # Approved rules are reusable only within the same migration and canonical entity.
+    migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
+    rules_conn = get_db_connection()
+    try:
+        approved_rows = rules_conn.execute(
+            "SELECT source_field, canonical_field FROM canonical_mappings "
+            "WHERE migration_id = ? AND entity_name = ? AND is_confirmed = 1",
+            (migration_id, entity_name),
+        ).fetchall()
+        approved_catalog = {row["source_field"]: row["canonical_field"] for row in approved_rows}
+    finally:
+        rules_conn.close()
+    effective_mapper = SchemaMapperAgent(custom_catalog={**schema_mapper.catalog, **approved_catalog})
+    mapping = effective_mapper.map_source_to_canonical(entity_name, source_records)
+    mapping["approved_reusable_rules_applied"] = [
+        {"source_field": source, "canonical_field": target}
+        for source, target in approved_catalog.items()
+        if any(source in record for record in source_records)
+    ]
     mapping["entity"] = entity_name
     mapping["canonical_entity"] = "Client" if entity_name == "Client" else entity_name
     mapping["run_id"] = run_id
@@ -686,6 +704,31 @@ async def review_source_mapping_suggestion(
             "WHERE suggestion_id = ? AND status = 'PENDING'",
             (normalized, reviewer_name, comments.strip(), now, suggestion_id),
         )
+        # Only an explicit approval creates a reusable, migration-scoped rule.
+        # Rejections are auditable but never become confirmed canonical mappings.
+        if normalized == "APPROVED" and row["canonical_field"]:
+            conn.execute(
+                """
+                INSERT INTO canonical_mappings
+                (mapping_id, migration_id, entity_name, source_field, canonical_field,
+                 mapping_type, transformation_expression, confidence_score, is_confirmed,
+                 created_by, updated_utc)
+                VALUES (?, ?, ?, ?, ?, 'APPROVED_ALIAS', ?, ?, 1, ?, ?)
+                ON CONFLICT(mapping_id) DO UPDATE SET
+                    canonical_field = excluded.canonical_field,
+                    transformation_expression = excluded.transformation_expression,
+                    confidence_score = excluded.confidence_score,
+                    is_confirmed = 1,
+                    created_by = excluded.created_by,
+                    updated_utc = excluded.updated_utc
+                """,
+                (
+                    f"MAP-{row['migration_id']}-{row['entity_name']}-{row['source_field']}",
+                    row["migration_id"], row["entity_name"], row["source_field"],
+                    row["canonical_field"], row["proposed_rule"] or "DIRECT_COPY",
+                    float(row["confidence_score"] or 0.0), reviewer_name, now,
+                ),
+            )
         conn.execute(
             "INSERT INTO approvals (id, run_id, artifact_id, stage, decision, reviewer, comments, created_utc) "
             "VALUES (?, ?, ?, 'SOURCE_TO_CANONICAL_MAPPING', ?, ?, ?, ?)",
