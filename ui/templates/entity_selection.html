@@ -37,7 +37,7 @@
                                 <span>{{ ent.entity_name }}</span>
                                 <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">{{ ent.entity_class }}</span>
                             </div>
-                            <div class="text-[11px] text-[#5a6a88] mt-1 font-mono">Expected File: {{ ent.expected_file }}</div>
+                            <div class="text-[11px] text-[#5a6a88] mt-1">Expected source files:</div><div class="flex flex-wrap gap-1 mt-1">{% for expected_file in ent.expected_files|default([ent.expected_file]) %}<span class="inline-flex rounded-md bg-white border border-[#d9e3f5] px-2 py-1 text-[10px] font-mono text-[#41506b]">{{ expected_file }}</span>{% endfor %}</div>
                             <div class="text-xs text-[#41506b] mt-1.5">{{ ent.grain }}</div>
                         </div>
                         
