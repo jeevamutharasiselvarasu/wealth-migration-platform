@@ -84,6 +84,36 @@ def _relationship_check(
     }
 
 
+def _relationship_candidate_check(
+    candidates: List[Dict[str, Any]],
+    target_records: List[Dict[str, Any]],
+    target_entity: str,
+    target_field: str,
+) -> Dict[str, Any]:
+    target_keys = set(_key_values(target_records, target_field))
+    values = [str(item.get("target_key_value")).strip() for item in candidates if _present(item.get("target_key_value"))]
+    orphans = sorted({value for value in values if value not in target_keys})
+    missing = len(candidates) - len(values)
+    status = "FAIL" if orphans else "PROPOSED"
+    return {
+        "check": "RELATIONSHIP_CANDIDATE",
+        "from_entity": "Client",
+        "from_field": "HOUSEHOLD_LINK_ID",
+        "to_entity": target_entity,
+        "to_field": target_field,
+        "status": status,
+        "rule_status": "PROPOSED_REQUIRES_SOURCE_CONFIRMATION",
+        "checked_count": len(values),
+        "missing_count": missing,
+        "orphan_count": len(orphans),
+        "orphan_values": orphans[:50],
+        "message": (
+            f"{len(orphans)} Client-to-Household candidate reference(s) do not resolve."
+            if orphans else "Candidate references resolve, but the source relationship meaning still requires confirmation and approval."
+        ),
+    }
+
+
 def validate_mcl_relationships(mapped_by_entity: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Validate MCL key uniqueness and only those cross-entity links evidenced by mapped fields.
 
@@ -102,13 +132,15 @@ def validate_mcl_relationships(mapped_by_entity: Dict[str, Dict[str, Any]]) -> D
     relationship_checks = [
         _relationship_check("Account", account, "HH_ID", "Household", household, "HH_ID"),
         _relationship_check("Account", account, "PARTY_ID", "Client (canonical Party)", client, "PARTY_ID"),
-        _relationship_check("Household", household, "PRIMARY_PARTY_ID", "Client (canonical Party)", client, "PARTY_ID"),
     ]
+    client_relationship_candidates = (mapped_by_entity.get("Client") or {}).get("relationship_candidates", [])
+    if client_relationship_candidates:
+        relationship_checks.append(_relationship_candidate_check(client_relationship_candidates, household, "Household", "HH_ID"))
     all_checks = key_checks + relationship_checks
     statuses = {check["status"] for check in all_checks}
     if "FAIL" in statuses:
         status = "FAIL"
-    elif "WARN" in statuses or "NOT_EVALUATED" in statuses:
+    elif "WARN" in statuses or "NOT_EVALUATED" in statuses or "PROPOSED" in statuses:
         status = "WARN"
     else:
         status = "PASS"
@@ -119,7 +151,7 @@ def validate_mcl_relationships(mapped_by_entity: Dict[str, Dict[str, Any]]) -> D
         "summary": {
             "checks_total": len(all_checks),
             "failed": sum(check["status"] == "FAIL" for check in all_checks),
-            "warnings": sum(check["status"] in {"WARN", "NOT_EVALUATED"} for check in all_checks),
+            "warnings": sum(check["status"] in {"WARN", "NOT_EVALUATED", "PROPOSED"} for check in all_checks),
             "passed": sum(check["status"] == "PASS" for check in all_checks),
         },
     }
