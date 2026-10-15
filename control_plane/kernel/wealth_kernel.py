@@ -12,6 +12,8 @@ class WealthManagementKnowledgeKernel:
                 "entity_class": "MASTER",
                 "grain": "One legal/custodial account identity",
                 "expected_file": "accounts.csv",
+                "expected_files": ["accounts.csv", "account_name_address.csv", "account_type.csv"],
+                "source_roles": ["ACCOUNT_MASTER", "NAME_ADDRESS", "ACCOUNT_TYPE"],
                 "required_fields": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "REG_TYPE", "OPEN_DATE"],
                 "default_scope": "IN_SCOPE"
             },
@@ -21,6 +23,8 @@ class WealthManagementKnowledgeKernel:
                 "entity_class": "MASTER",
                 "grain": "One person, trust, or legal participant in the identity domain",
                 "expected_file": "clients.csv",
+                "expected_files": ["clients.csv", "client_model.csv"],
+                "source_roles": ["ENTITY_MASTER", "CLIENT_MODEL"],
                 "required_fields": ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"],
                 "default_scope": "IN_SCOPE"
             },
@@ -30,6 +34,8 @@ class WealthManagementKnowledgeKernel:
                 "entity_class": "MASTER",
                 "grain": "One business/reporting grouping of related clients and/or accounts",
                 "expected_file": "households.csv",
+                "expected_files": ["households.csv", "household_mapping.csv"],
+                "source_roles": ["ENTITY_MASTER", "HOUSEHOLD_MAPPING"],
                 "required_fields": ["HH_ID", "HH_NAME", "REP_CODE"],
                 "default_scope": "IN_SCOPE"
             }
