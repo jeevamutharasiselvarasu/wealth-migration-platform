@@ -477,12 +477,18 @@ async def upload_entity_sample_file(
     scope = state_store.entity_scopes.get(scope_entity)
     if scope != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
+    allowed_roles = {
+        "Account": {"ACCOUNT_MASTER", "NAME_ADDRESS"},
+        "Client": {"ENTITY_MASTER"},
+        "Household": {"ENTITY_MASTER"},
+    }
+    normalized_role = (source_role or "ENTITY_MASTER").strip().upper()
+    if normalized_role not in allowed_roles.get(scope_entity, set()):
+        raise HTTPException(status_code=400, detail=f"Source role {normalized_role} is not supported for {scope_entity}.")
     content = await file.read()
     try:
-        if entity_name == "Account" and source_role.upper() != "ACCOUNT_MASTER":
-            raise HTTPException(status_code=400, detail="Account uploads must use the ACCOUNT_MASTER source role.")
         record = state_store.attach_entity_sample_file(
-            entity_name, file.filename or "", content, source_role=source_role
+            entity_name, file.filename or "", content, source_role=normalized_role
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
