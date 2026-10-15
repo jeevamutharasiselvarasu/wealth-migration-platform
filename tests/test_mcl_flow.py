@@ -130,7 +130,7 @@ def test_mapper_flags_two_source_columns_mapped_to_one_canonical_field():
         "Client",
         [{
             "CLIENT_ID": "00017",
-            "CLIENT_ID": "00018",
+            "LEGACY_CLIENT_ID": "00018",
             "FULL_LEGAL_NAME": "Sample Client",
             "TAX_IDENTIFIER": "MASKED-TAX-ID",
             "CLIENT_TYPE_RAW": "INDV",
