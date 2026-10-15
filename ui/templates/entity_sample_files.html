@@ -11,11 +11,12 @@
             </div>
         </div>
         
-        <a href="/agent-pipeline" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
+        <div class="flex items-center gap-2"><button id="run-mcl-flow" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow">Run full MCL flow</button><a href="/agent-pipeline" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
             <span>Proceed to Agent Pipeline Studio</span>
             <span>→</span>
-        </a>
+        </a></div>
     </div>
+    <div id="mcl-flow-result" class="hidden bg-white border border-[#b7e4d3] rounded-2xl p-4 text-xs"></div>
 
     <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
         <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
@@ -29,7 +30,7 @@
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#e9eff9] pb-3">
                     <div class="space-y-1">
                         <div class="flex items-center space-x-3">
-                            <span class="font-bold text-[#152c6b] text-base">{{ ent.entity_name }}</span>
+                            <span class="font-bold text-[#152c6b] text-base">{{ ent.entity_name }}</span>{% if ent.entity_name == "Client" %}<span class="text-[10px] text-purple-700">Source Client → canonical Party</span>{% endif %}
                             <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold">
                                 {{ ent.current_scope }}
                             </span>
@@ -46,7 +47,7 @@
                                 <div class="text-xs font-mono text-teal-700 font-bold">{{ ent.sample_file_info.filename }}</div>
                                 <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.column_count }} Columns • {{ ent.sample_file_info.status }}</div>
                                 <div class="flex items-center justify-end gap-2 mt-2">
-                                    {% if ent.entity_name == "Account" %}
+                                    {% if ent.entity_name in ["Account", "Household", "Client"] %}
                                     <button type="button" class="map-uploaded-file bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold" data-entity="{{ ent.entity_name }}" data-result-id="mapping-result-{{ loop.index }}">Profile & Map Uploaded File</button>
                                     {% else %}
                                     <span class="text-[10px] text-[#5a6a88]">Mapping module not enabled in P0</span>
@@ -151,5 +152,41 @@ document.querySelectorAll('.map-uploaded-file').forEach((button) => {
   });
 });
 </script>
+
+
+document.getElementById('run-mcl-flow')?.addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const result = document.getElementById('mcl-flow-result');
+  button.disabled = true;
+  button.textContent = 'Running MCL…';
+  result.classList.remove('hidden');
+  result.textContent = 'Profiling Account, Household, and Client; mapping canonical fields; validating keys and relationships…';
+  try {
+    const response = await fetch('/api/entities/map-mcl', { method: 'POST' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || 'MCL flow failed.');
+    const lines = ['Overall status: ' + payload.status, 'MCL run: ' + payload.mcl_run_id];
+    Object.entries(payload.entities || {}).forEach(([name, entity]) => {
+      lines.push(name + ' → ' + entity.canonical_entity + ': ' + entity.status);
+      lines.push('  Source: ' + entity.source_file + ' · Rows: ' + ((entity.profile || {}).row_count || 0));
+      lines.push('  Mapped fields: ' + (((entity.mapping || {}).mapped_fields || []).length));
+      lines.push('  Unmapped fields: ' + ((((entity.mapping || {}).unmapped_fields || []).join(', ')) || 'None'));
+      lines.push('  Missing required: ' + ((((entity.mapping || {}).missing_required || []).join(', ')) || 'None'));
+      lines.push('  Confidence: ' + ((entity.mapping || {}).confidence_score || 0));
+    });
+    lines.push('Relationship validation: ' + ((payload.relationship_validation || {}).status || 'UNKNOWN'));
+    ((payload.relationship_validation || {}).key_checks || []).forEach(item => lines.push(item.status + ' key ' + item.entity + '.' + item.field + ': ' + item.message));
+    ((payload.relationship_validation || {}).relationship_checks || []).forEach(item => lines.push(item.status + ' relationship ' + item.from_entity + '.' + item.from_field + ' → ' + item.to_entity + '.' + item.to_field + ': ' + item.message));
+    lines.push('Target loading: NOT_RUN · Wave assignment: DISABLED');
+    result.replaceChildren();
+    const heading = document.createElement('strong'); heading.textContent = 'MCL end-to-end result';
+    const pre = document.createElement('pre'); pre.className = 'whitespace-pre-wrap mt-2 text-[#1c2a4a]'; pre.textContent = lines.join('\n');
+    result.append(heading, pre);
+    button.textContent = 'Re-run full MCL flow';
+  } catch (error) {
+    result.textContent = 'MCL flow blocked/failed: ' + error.message;
+    button.textContent = 'Retry full MCL flow';
+  } finally { button.disabled = false; }
+});
 
 {% endblock %}
