@@ -95,6 +95,25 @@ def init_db() -> None:
         );
     """)
 
+    # Mapping proposals are persisted as unapproved until a reviewer explicitly approves them.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mapping_suggestions (
+            suggestion_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            migration_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            source_field TEXT NOT NULL,
+            canonical_field TEXT,
+            proposed_rule TEXT,
+            confidence_score REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            reviewer TEXT,
+            review_comments TEXT,
+            created_utc TEXT NOT NULL,
+            reviewed_utc TEXT
+        );
+    """)
+
     # 4. Field Lineage Audit Trail
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS field_lineage_audit (
