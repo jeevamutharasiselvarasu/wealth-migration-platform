@@ -275,7 +275,7 @@ class WorkspaceStateStore:
         for class_name, entities in catalog.items():
             for ent in entities:
                 scope = self.entity_scopes.get(ent["entity_name"], ent["default_scope"])
-                if scope in ["IN_SCOPE", "ARCHIVE_ONLY"]:
+                if scope == "IN_SCOPE":
                     ent_copy = dict(ent)
                     ent_copy["current_scope"] = scope
                     ent_copy["sample_file_info"] = self.entity_sample_files.get(ent["entity_name"], None)
