@@ -229,7 +229,11 @@ async def profile_pilot_account_file(file: UploadFile = File(...)):
     """Inspects uploaded accounts.csv, infers types, null rates, and candidate keys."""
     content = await file.read()
     profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Account")
-    profile_id = state_store.persist_source_profile(profile, run_id="PILOT-ACCOUNT-RUN-01")
+    if profile.get("status") != "PROFILED":
+        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    profile_id = state_store.persist_source_profile(profile, run_id=run_id)
+    profile["run_id"] = run_id
     profile["profile_id"] = profile_id
     return JSONResponse({"status": "SUCCESS", "profile": profile})
 
@@ -239,8 +243,9 @@ async def map_pilot_account(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping with confidence scoring and persists metadata lineage."""
     if records is None:\n        records = []\n
     mapping_res = schema_mapper.map_source_to_canonical("Account", records)
-    state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-ACCOUNT-RUN-01", actor="Platform Admin")
-    return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
+    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": mapping_res})
 
 
 @app.get("/api/pilot/account/lineage")
@@ -593,7 +598,11 @@ async def profile_pilot_household_file(file: UploadFile = File(...)):
     """Inspects uploaded households.csv, infers types, null rates, and candidate keys."""
     content = await file.read()
     profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Household")
-    profile_id = state_store.persist_source_profile(profile, run_id="PILOT-HH-RUN-01")
+    if profile.get("status") != "PROFILED":
+        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    profile_id = state_store.persist_source_profile(profile, run_id=run_id)
+    profile["run_id"] = run_id
     profile["profile_id"] = profile_id
     return JSONResponse({"status": "SUCCESS", "profile": profile})
 
@@ -603,8 +612,9 @@ async def map_pilot_household(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping for Household and persists lineage."""
     if records is None:\n        records = []\n
     mapping_res = schema_mapper.map_source_to_canonical("Household", records)
-    state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-HH-RUN-01", actor="Platform Admin")
-    return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
+    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": mapping_res})
 
 
 @app.get("/api/pilot/household/lineage")
@@ -625,7 +635,11 @@ async def profile_pilot_client_file(file: UploadFile = File(...)):
     """Inspects uploaded clients.csv, infers types, null rates, and candidate keys."""
     content = await file.read()
     profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Client")
-    profile_id = state_store.persist_source_profile(profile, run_id="PILOT-CLIENT-RUN-01")
+    if profile.get("status") != "PROFILED":
+        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    profile_id = state_store.persist_source_profile(profile, run_id=run_id)
+    profile["run_id"] = run_id
     profile["profile_id"] = profile_id
     return JSONResponse({"status": "SUCCESS", "profile": profile})
 
@@ -635,8 +649,9 @@ async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
     """Executes source-to-canonical mapping for Client/Party and persists lineage."""
     if records is None:\n        records = []\n
     mapping_res = schema_mapper.map_source_to_canonical("Client", records)
-    state_store.persist_mapping_lineage(mapping_res, run_id="PILOT-CLIENT-RUN-01", actor="Platform Admin")
-    return JSONResponse({"status": "SUCCESS", "mapping": mapping_res})
+    run_id = f"RUN-{uuid.uuid4().hex}"
+    state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
+    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": mapping_res})
 
 
 @app.get("/api/pilot/client/lineage")
