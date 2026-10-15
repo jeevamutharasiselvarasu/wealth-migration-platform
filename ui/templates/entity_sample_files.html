@@ -44,7 +44,8 @@
                         {% if ent.sample_file_info %}
                             <div class="text-right">
                                 <div class="text-xs font-mono text-teal-700 font-bold">{{ ent.sample_file_info.filename }}</div>
-                                <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • Parsed</div>
+                                <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.column_count }} Columns • {{ ent.sample_file_info.status }}</div>
+                                <button type="button" class="map-uploaded-file mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold" data-entity="{{ ent.entity_name }}">Profile & Map Uploaded File</button>
                             </div>
                             <span class="h-3 w-3 rounded-full bg-teal-500"></span>
                         {% else %}
@@ -58,6 +59,8 @@
                         {% endif %}
                     </div>
                 </div>
+
+                <div id="mapping-result-{{ loop.index }}" class="hidden mt-3 bg-white border border-[#d9e3f5] rounded-xl p-4 text-xs"></div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1 font-mono">
                     <div class="bg-white p-3 rounded-xl border border-[#e2e8f0]">
@@ -80,4 +83,63 @@
         </div>
     </div>
 </div>
+
+<script>
+document.querySelectorAll('.map-uploaded-file').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const entity = button.dataset.entity;
+    const card = button.closest('.bg-\\[\\#f8fafc\\]');
+    const result = card ? card.querySelector('[id^="mapping-result-"]') : null;
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Mapping…';
+    if (result) {
+      result.classList.remove('hidden');
+      result.textContent = 'Profiling the uploaded CSV and applying source-to-canonical rules…';
+    }
+    try {
+      const form = new FormData();
+      form.append('entity_name', entity);
+      const response = await fetch('/api/entities/map-uploaded-file', { method: 'POST', body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || 'Mapping request failed.');
+      const mapping = payload.mapping || {};
+      const warnings = mapping.warnings || [];
+      const missing = mapping.missing_required || [];
+      const unmapped = mapping.unmapped_fields || [];
+      const summary = [
+        'Status: ' + (payload.status || 'UNKNOWN'),
+        'Run: ' + payload.run_id,
+        'Source: ' + payload.source_file,
+        'Rows profiled: ' + ((payload.profile || {}).row_count ?? 0),
+        'Mapped fields: ' + ((mapping.mapped_fields || []).length),
+        'Unmapped columns: ' + (unmapped.length ? unmapped.join(', ') : 'None'),
+        'Missing required fields: ' + (missing.length ? missing.join(', ') : 'None'),
+        'Confidence: ' + (mapping.confidence_score ?? 0),
+        'Warnings: ' + (warnings.length ? warnings.join(' | ') : 'None'),
+        'Target loading: NOT_RUN · Wave assignment: DISABLED'
+      ];
+      if (result) {
+        result.replaceChildren();
+        const heading = document.createElement('strong');
+        heading.textContent = 'Mapping result';
+        const pre = document.createElement('pre');
+        pre.className = 'whitespace-pre-wrap mt-2 text-[#1c2a4a]';
+        pre.textContent = summary.join('\n');
+        result.append(heading, pre);
+      }
+      button.textContent = 'Re-run Mapping';
+    } catch (error) {
+      if (result) {
+        result.classList.remove('hidden');
+        result.textContent = 'Mapping failed: ' + error.message;
+      }
+      button.textContent = originalLabel;
+    } finally {
+      button.disabled = false;
+    }
+  });
+});
+</script>
+
 {% endblock %}
