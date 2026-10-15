@@ -77,12 +77,27 @@ def test_uploaded_source_rejects_invalid_csv(tmp_path, monkeypatch):
         store.attach_entity_sample_file("Account", "accounts.csv", b"")
 
 
-def test_uploaded_source_rejects_non_csv(tmp_path, monkeypatch):
+def test_uploaded_source_rejects_malformed_excel(tmp_path, monkeypatch):
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     store = WorkspaceStateStore()
 
-    with pytest.raises(ValueError, match="Only CSV"):
+    with pytest.raises(ValueError, match="Could not parse"):
         store.attach_entity_sample_file("Account", "accounts.xlsx", SAMPLE_CSV)
+
+
+def test_uploaded_source_accepts_excel(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    buffer = io.BytesIO()
+    pd.DataFrame({"LEGACY_ACCT_NO": ["00012"], "CUST_CODE_SRC": ["SCHW"]}).to_excel(
+        buffer, index=False, engine="openpyxl"
+    )
+
+    record = store.attach_entity_sample_file("Account", "accounts.xlsx", buffer.getvalue())
+
+    assert record["status"] == "UPLOADED"
+    assert record["row_count"] == 1
+    assert record["columns"] == ["LEGACY_ACCT_NO", "CUST_CODE_SRC"]
 
 
 def test_profile_persistence_failure_is_not_suppressed(monkeypatch):
