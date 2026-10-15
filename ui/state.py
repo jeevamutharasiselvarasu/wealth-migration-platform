@@ -506,6 +506,8 @@ class WorkspaceStateStore:
         firm_name = self.questionnaire_data.get("firm_name", "Core Cap Wealth Management")
 
         cohort_conditions = CohortConditionEngine.get_condition_catalog()
+        knowledge_assets = self.firm_knowledge_docs
+        transferable_rules = [rule for doc in knowledge_assets for rule in doc.get("transferable_knowledge", [])]
 
         return {
             "firm_name": firm_name,
@@ -515,6 +517,15 @@ class WorkspaceStateStore:
             "operating_model": self.questionnaire_data.get("operating_model", "Rep-as-PM"),
             "program_status": "CONDITION_FRAMEWORK_ACTIVE",
             "cohort_conditions": cohort_conditions,
+            "knowledge_asset_count": len(knowledge_assets),
+            "knowledge_assets": [{"filename": doc.get("filename"), "category": doc.get("category"), "summary": doc.get("parsed_summary"), "columns": doc.get("extracted_columns", []), "status": doc.get("status", "REGISTERED_REVIEW_REQUIRED")} for doc in knowledge_assets],
+            "knowledge_column_count": sum(len(doc.get("extracted_columns", [])) for doc in knowledge_assets),
+            "transferable_knowledge": transferable_rules[:20],
+            "segregation_conditions": [
+                {"name": "AUM band", "rule": "Use only when a reliable account AUM field is available; thresholds require business-owner confirmation."},
+                {"name": "Data quality readiness", "rule": "Hold records with missing identifiers or unresolved critical mappings for remediation."},
+                {"name": "Custodian / source system", "rule": "Group by verified source only when operational handling differs."}
+            ],
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
 
