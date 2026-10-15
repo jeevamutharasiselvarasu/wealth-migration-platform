@@ -438,7 +438,7 @@ class WorkspaceStateStore:
                                 return found
                     elif isinstance(value, dict):
                         for key in ("columns", "fields", "schema", "properties", "record",
-                                    "records", "data", "tables", "entities", "items"):
+                                    "records", "data", "tables", "entities", "items", "definitions", "$defs", "components"):
                             if key in value:
                                 found = discover_columns(value[key])
                                 if found:
