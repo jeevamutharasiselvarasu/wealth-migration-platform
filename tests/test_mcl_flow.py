@@ -33,7 +33,7 @@ def test_household_maps_core_fields_and_keeps_unconfirmed_client_link_unresolved
         }],
     )
 
-    assert result["status"] == "SUCCESS"
+    assert result["status"] == "PARTIAL_MAPPED"
     assert result["mapped_records"][0]["HH_ID"] == "HH-01"
     assert result["mapped_records"][0]["REP_CODE"] == "REP-0024"
     assert "PRIMARY_CLIENT_ID" in result["unmapped_fields"]
