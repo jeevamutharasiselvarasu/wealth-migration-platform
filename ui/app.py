@@ -453,23 +453,18 @@ async def update_kernel_config(
 @app.post("/api/knowledge/submit-questionnaire")
 async def submit_questionnaire(
     firm_name: str = Form(...),
-    advisor_count: int = Form(...),
-    operating_model: str = Form(...),
-    primary_custodian: str = Form(...),
-    source_tamp: str = Form(...),
-    performance_source: str = Form(...),
-    aum_drift_gate: str = Form(...),
-    restricted_models: str = Form(...)
+    source_systems: str = Form(""),
+    business_data_owner: str = Form(""),
+    mapping_approver: str = Form(""),
+    identifier_relationship_notes: str = Form("")
 ):
+    """Save only the discovery context needed for P0 source-to-canonical mapping."""
     form_payload = {
-        "firm_name": firm_name,
-        "advisor_count": advisor_count,
-        "operating_model": operating_model,
-        "primary_custodian": primary_custodian,
-        "source_tamp": source_tamp,
-        "performance_source": performance_source,
-        "aum_drift_gate": aum_drift_gate,
-        "restricted_models": restricted_models
+        "firm_name": firm_name.strip(),
+        "source_systems": source_systems.strip(),
+        "business_data_owner": business_data_owner.strip(),
+        "mapping_approver": mapping_approver.strip(),
+        "identifier_relationship_notes": identifier_relationship_notes.strip(),
     }
     state_store.update_questionnaire_from_form(form_payload)
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
