@@ -155,7 +155,7 @@ class WorkspaceStateStore:
                         source_field,
                         canonical_field,
                         field_lineage.get("rule_applied"),
-                        "MAPPED" if canonical_field else "UNMAPPED",
+                        ("RELATIONSHIP_PROPOSED" if str(field_lineage.get("rule_applied", "")).startswith("RELATIONSHIP_CANDIDATE") else ("MAPPED" if canonical_field else "UNMAPPED")),
                         actor,
                         now,
                     ),
