@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from collections import Counter\nfrom typing import Any, Dict, List
 
 
 def _present(value: Any) -> bool:
@@ -20,7 +20,7 @@ def _key_values(records: List[Dict[str, Any]], field: str) -> List[str]:
 def _key_check(entity: str, records: List[Dict[str, Any]], field: str) -> Dict[str, Any]:
     values = _key_values(records, field)
     missing = sum(1 for row in records if not _present(row.get(field)))
-    duplicates = sorted({value for value in values if values.count(value) > 1})
+    duplicates = sorted(value for value, count in Counter(values).items() if count > 1)
     status = "FAIL" if missing or duplicates else "PASS"
     return {
         "check": "CANONICAL_KEY",
