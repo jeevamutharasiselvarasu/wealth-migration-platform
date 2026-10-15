@@ -480,6 +480,20 @@ async def upload_entity_sample_file(entity_name: str = Form(...), file: UploadFi
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[str, str]:
+    """Return only explicitly approved rules for this migration/entity pair."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT source_field, canonical_field FROM canonical_mappings "
+            "WHERE migration_id = ? AND entity_name = ? AND is_confirmed = 1",
+            (migration_id, entity_name),
+        ).fetchall()
+        return {row["source_field"]: row["canonical_field"] for row in rows}
+    finally:
+        conn.close()
+
+
 def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow") -> Dict[str, Any]:
     """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
     scope_entity = "Client" if entity_name == "Client" else entity_name
@@ -513,16 +527,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     profile["profile_id"] = state_store.persist_source_profile(profile, run_id=run_id)
     # Approved rules are reusable only within the same migration and canonical entity.
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
-    rules_conn = get_db_connection()
-    try:
-        approved_rows = rules_conn.execute(
-            "SELECT source_field, canonical_field FROM canonical_mappings "
-            "WHERE migration_id = ? AND entity_name = ? AND is_confirmed = 1",
-            (migration_id, entity_name),
-        ).fetchall()
-        approved_catalog = {row["source_field"]: row["canonical_field"] for row in approved_rows}
-    finally:
-        rules_conn.close()
+    approved_catalog = _get_approved_mapping_catalog(migration_id, entity_name)
     effective_mapper = SchemaMapperAgent(custom_catalog={**schema_mapper.catalog, **approved_catalog})
     mapping = effective_mapper.map_source_to_canonical(entity_name, source_records)
     mapping["approved_reusable_rules_applied"] = [
