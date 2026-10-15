@@ -30,7 +30,7 @@ P0 acceptance tests cover explicit scope gating, no synthetic source records, ma
 
 ## Known follow-up work
 
-- Connect the uploaded Account CSV bytes to a single profile → map workflow and remove any implicit demo-file fallback from production mapping paths.
-- Add UI progress states for `BLOCKED`, `NO_SOURCE_DATA`, `NEEDS_REMEDIATION`, `MAPPED`, `MOCKED`, and `FAILED`.
+- Exercise the uploaded-file → profile → mapping path with a clean environment and verify lineage in the UI.
+- Expand UI progress states for `BLOCKED`, `NO_SOURCE_DATA`, `NEEDS_REMEDIATION`, `MAPPED`, `MOCKED`, and `FAILED`.
 - Extend the shared mapping registry and scope model to all configured entities.
 - Add CI execution and test against a clean database/storage directory before merge.
