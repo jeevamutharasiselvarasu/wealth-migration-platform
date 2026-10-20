@@ -11,6 +11,15 @@
       {% endfor %}
     </div>
   </section>
+  {% if demo_loaded %}
+  <div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs leading-5 text-teal-900"><b>Demo inputs loaded.</b> Migration details, two knowledge assets and three synthetic source files have been populated from the editable demo data set. Review the setup and save it to continue to entity confirmation.</div>
+  {% endif %}
+  {% if demo_available %}
+  <section class="flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 md:flex-row md:items-center md:justify-between">
+    <div><h2 class="font-bold text-[#152C6B]">Load demo migration inputs</h2><p class="mt-1 text-xs leading-5 text-[#41506B]">Populate this form from the demo data files, register sample knowledge and infer the three source files. The values are editable inputs; no live Azure connection or target load is started.</p></div>
+    <form action="/api/demo/load" method="post"><button type="submit" class="shrink-0 rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white hover:bg-blue-700">Load demo data set →</button></form>
+  </section>
+  {% endif %}
   <form action="/api/migration/setup" method="post" class="space-y-5">
     <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
       <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">01</span><div><h2 class="font-bold text-[#152C6B]">Target system and canonical contract</h2><p class="mt-1 text-xs text-[#5A6A88]">Capture the destination and target schema requirements before mapping. This configures the intended contract; it does not enable target loading in P0.</p></div></div>
