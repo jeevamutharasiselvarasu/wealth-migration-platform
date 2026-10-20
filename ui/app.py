@@ -343,6 +343,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             "uploaded_entity": uploaded,
             "notice": notice,
             "acquisition_method": state_store.questionnaire_data.get("migration_setup", {}).get("source_acquisition", "SAMPLE_FILES"),
+            "knowledge_docs": state_store.firm_knowledge_docs,
         }
     )
 
