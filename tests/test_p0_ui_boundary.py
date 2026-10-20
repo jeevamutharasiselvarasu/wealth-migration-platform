@@ -121,3 +121,18 @@ def test_azure_connection_requires_environment_identifiers_without_collecting_se
         assert field in app
         assert field in setup
     assert "Do not paste secrets" in setup
+
+
+def test_persona_switch_is_limited_to_roles_assigned_to_authenticated_user():
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])' in app
+    assert 'if assigned_role != "Platform Admin" and role != assigned_role:' in app
+    assert 'raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")' in app
+
+
+def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):' in app
+    assert 'async def review_source_mapping_suggestion(' in app
+    assert 'if request is not None and "text/html" in request.headers.get("accept", ""):' in app
+    assert 'RedirectResponse(url="/agent-pipeline"' in app
