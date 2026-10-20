@@ -415,6 +415,70 @@ async def hitl_approval_queue(request: Request):
 @app.get("/reconciliation", response_class=HTMLResponse)
 async def reconciliation_dashboard(request: Request):
     user = get_current_user(request)
+    migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
+    conn = get_db_connection()
+    try:
+        approved_mappings = [
+            dict(row) for row in conn.execute(
+                """
+                SELECT c.entity_name, c.source_field, c.canonical_field,
+                       c.mapping_type, c.transformation_expression, c.confidence_score,
+                       c.created_by, c.updated_utc, c.migration_id,
+                       s.status AS review_status, s.reviewer, s.review_comments,
+                       s.reviewed_utc, s.run_id
+                FROM canonical_mappings AS c
+                LEFT JOIN mapping_suggestions AS s
+                  ON s.migration_id = c.migration_id
+                 AND s.entity_name = c.entity_name
+                 AND s.source_field = c.source_field
+                 AND s.canonical_field = c.canonical_field
+                 AND s.status = 'APPROVED'
+                WHERE c.migration_id = ? AND c.is_confirmed = 1
+                ORDER BY c.entity_name, c.source_field
+                """,
+                (migration_id,),
+            ).fetchall()
+        ]
+        pending_count = conn.execute(
+            """
+            SELECT COUNT(*) AS count FROM mapping_suggestions AS s
+            WHERE s.migration_id = ? AND s.status = 'PENDING'
+              AND NOT EXISTS (
+                SELECT 1 FROM canonical_mappings AS c
+                WHERE c.migration_id = s.migration_id
+                  AND c.entity_name = s.entity_name
+                  AND c.source_field = s.source_field
+                  AND c.canonical_field = s.canonical_field
+                  AND c.is_confirmed = 1
+              )
+            """,
+            (migration_id,),
+        ).fetchone()["count"]
+        mapping_runs = [
+            dict(row) for row in conn.execute(
+                """
+                SELECT run_id, entity_name, source_record_count, confidence_score, status, executed_by, executed_utc
+                FROM migration_runs WHERE migration_id = ?
+                ORDER BY executed_utc DESC LIMIT 25
+                """,
+                (migration_id,),
+            ).fetchall()
+        ]
+        mapping_lineage = [
+            dict(row) for row in conn.execute(
+                """
+                SELECT l.entity_name, l.source_column, l.canonical_column, l.applied_rule,
+                       l.validation_status, l.actor, l.timestamp_utc, l.run_id
+                FROM field_lineage_audit AS l
+                JOIN migration_runs AS r ON r.run_id = l.run_id
+                WHERE r.migration_id = ?
+                ORDER BY l.timestamp_utc DESC LIMIT 100
+                """,
+                (migration_id,),
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
     return render_template_with_context(
         request=request,
         template_name="reconciliation.html",
@@ -423,7 +487,12 @@ async def reconciliation_dashboard(request: Request):
             "user_name": user["name"],
             "user_role": user["role"],
             "pipeline_runs": state_store.pipeline_runs,
-            "drift_gate": state_store.questionnaire_data.get("aum_drift_gate", "0.50%")
+            "drift_gate": state_store.questionnaire_data.get("aum_drift_gate", "0.50%"),
+            "approved_mappings": approved_mappings,
+            "pending_mapping_count": pending_count,
+            "mapping_runs": mapping_runs,
+            "mapping_lineage": mapping_lineage,
+            "migration_id": migration_id,
         }
     )
 
