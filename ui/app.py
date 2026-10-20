@@ -142,6 +142,7 @@ async def migration_setup_page(request: Request, demo_loaded: str = ""):
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
         "demo_loaded": demo_loaded == "1",
         "demo_available": session_mgr.demo_mode,
+        "knowledge_docs": state_store.firm_knowledge_docs,
     })
 
 
