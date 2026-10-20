@@ -157,6 +157,8 @@ async def save_migration_setup(request: Request):
         "configured_by": user["name"],
         "configuration_status": "CONFIGURED",
     }
+    if not setup["target_system"] or not setup["canonical_version"]:
+        raise HTTPException(status_code=400, detail="Target system and canonical schema / contract reference are required before source mapping setup.")
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     state_store.questionnaire_data["migration_id"] = state_store.questionnaire_data.get("migration_id") or f"MIG-{uuid.uuid4().hex[:10].upper()}"
     state_store.questionnaire_data["migration_name"] = setup["migration_name"]
