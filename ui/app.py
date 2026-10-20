@@ -297,6 +297,7 @@ async def dashboard_overview(request: Request):
             "user_role": user["role"],
             "dashboard": state_store.generated_dashboard,
             "migration_setup": state_store.questionnaire_data.get("migration_setup", {}),
+            "knowledge_docs_count": len(state_store.firm_knowledge_docs),
             "wave_conditions": CohortConditionEngine.get_condition_catalog(),
             "entity_approval_summary": {
                 entity: {
@@ -356,6 +357,14 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             "notice": notice,
             "acquisition_method": state_store.questionnaire_data.get("migration_setup", {}).get("source_acquisition", "SAMPLE_FILES"),
             "knowledge_docs": state_store.firm_knowledge_docs,
+            "entity_approval_summary": {
+                entity: {
+                    "total": len(state_store.entity_source_files.get(entity, {})),
+                    "approved": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "APPROVED"),
+                    "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in {"APPROVED", "REJECTED"}),
+                    "rejected": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "REJECTED"),
+                } for entity in ("Account", "Household", "Client")
+            },
         }
     )
 
@@ -809,7 +818,7 @@ async def confirm_entity_inference(request: Request, entity_name: str = Form(...
         evidence = inference.get("evidence", {}).get(entity_name, {})
         matched_fields = evidence.get("matched_fields", [])
         signature_fields = evidence.get("signature_fields", [])
-        if inference.get("entity") != entity_name or inference.get("status") not in {"INFERRED", "NEEDS_REVIEW"} or not matched_fields or not signature_fields:
+        if record.get("inference_approval_status") == "REJECTED" or inference.get("entity") != entity_name or inference.get("status") != "INFERRED" or not matched_fields or not signature_fields:
             blockers.append(record.get("filename", "Unnamed file"))
     if blockers:
         raise HTTPException(
