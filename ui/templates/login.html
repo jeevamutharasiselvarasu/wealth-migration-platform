@@ -23,6 +23,15 @@
             <p class="text-xs text-[#5a6a88] font-semibold">Data Migration Workbench Control Plane</p>
         </div>
 
+        {% if demo_mode %}
+        <div class="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-5 text-teal-900">
+            <div class="font-bold">Local demo access enabled</div>
+            <div class="mt-1">Demo email: <span class="font-mono">{{ demo_email }}</span></div>
+            <div>Use the demo password configured for this repository's local demo account.</div>
+            <div class="mt-1 text-[10px]">Demo only — disable demo authentication before any shared or production deployment.</div>
+        </div>
+        {% endif %}
+
         <!-- Login Form -->
         <form action="/login" method="POST" class="space-y-4">
             {% if error %}
