@@ -110,3 +110,14 @@ def test_target_contract_is_a_required_prerequisite_for_migration_setup():
     assert 'name="canonical_version"' in setup
     assert 'required placeholder="Version or target schema document reference"' in setup
     assert "Target system and canonical schema / contract reference are required" in app
+
+
+def test_azure_connection_requires_environment_identifiers_without_collecting_secrets():
+    app = (ROOT / "ui" / "app.py").read_text()
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    assert 'setup["source_acquisition"] == "AZURE_CONNECTION"' in app
+    for field in ("azure_tenant_id", "azure_subscription_id", "azure_resource_group",
+                  "azure_storage_account", "azure_container"):
+        assert field in app
+        assert field in setup
+    assert "Do not paste secrets" in setup
