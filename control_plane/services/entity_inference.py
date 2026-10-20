@@ -35,7 +35,7 @@ def normalize_header(header: Any) -> str:
     raw = re.sub(r"[^A-Za-z0-9]+", "_", str(header or "").strip()).strip("_").upper()
     return ALIASES.get(raw, raw)
 
-def infer_entity_from_headers(headers: list[str]) -> dict[str, Any]:
+def infer_entity_from_headers(headers: list[str], context: str = "") -> dict[str, Any]:
     """Infer likely entity using canonical field evidence; return ambiguous instead of guessing."""
     canonical = {normalize_header(header) for header in headers}
     scores = {}
@@ -46,6 +46,21 @@ def infer_entity_from_headers(headers: list[str]) -> dict[str, Any]:
         signature_hits = sorted(SIGNATURES[entity].intersection(canonical))
         scores[entity] = score
         evidence[entity] = {"matched_fields": matched, "signature_fields": signature_hits, "score": score}
+    # Explicit source-purpose / dictionary notes can disambiguate headers, but cannot override
+    # contradictory field evidence without a review state.
+    context_text = re.sub(r"[^a-z0-9]+", " ", str(context or "").lower())
+    context_terms = {
+        "Account": ("account", "custodian", "registration"),
+        "Household": ("household", "family group"),
+        "Client": ("client", "party", "person master"),
+    }
+    mentioned = [entity for entity, terms in context_terms.items()
+                 if any(term in context_text for term in terms)]
+    if len(mentioned) == 1:
+        entity = mentioned[0]
+        scores[entity] += 2
+        evidence[entity]["context_terms"] = [term for term in context_terms[entity] if term in context_text]
+        evidence[entity]["score"] = scores[entity]
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     best_entity, best_score = ranked[0]
     second_score = ranked[1][1]
