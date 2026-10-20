@@ -141,9 +141,8 @@ async def migration_setup_page(request: Request):
 async def save_migration_setup(request: Request):
     user = get_current_user(request)
     form = await request.form()
-    selected_entities = [entity for entity in form.getlist("entities") if entity in {"Account","Household","Client"}]
-    if not selected_entities:
-        raise HTTPException(status_code=400, detail="Select at least one supported P0 entity.")
+    # Entity scope is discovered from source evidence after setup; setup defines the P0 candidate boundary.
+    selected_entities = ["Account", "Household", "Client"]
     setup = {
         "migration_name": str(form.get("migration_name", "")).strip(),
         "target_system": str(form.get("target_system", "")).strip(),
@@ -182,7 +181,7 @@ async def save_migration_setup(request: Request):
     })
     state_store.questionnaire_data["migration_setup"] = setup
     for entity in {"Account", "Household", "Client"}:
-        state_store.entity_scopes[entity] = "IN_SCOPE" if entity in selected_entities else "OUT_OF_SCOPE"
+        state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -626,8 +625,6 @@ async def upload_entity_sample_file(
         notice = f"Could not confidently infer an entity for {file.filename or 'the uploaded file'}. Add the data dictionary and explain key/relationship semantics, then upload again."
         return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice), status_code=status.HTTP_303_SEE_OTHER)
     entity_name = inference["entity"]
-    if state_store.entity_scopes.get(entity_name) != "IN_SCOPE":
-        raise HTTPException(status_code=409, detail=f"Inference identified {entity_name}, but that entity is not enabled in this migration's scope.")
     normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
     try:
         record = state_store.attach_entity_sample_file(
@@ -636,6 +633,7 @@ async def upload_entity_sample_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record["inference"] = inference
+    record["inference_approval_status"] = "PENDING"
     record["source_context"] = source_context.strip()
     record["data_dictionary_notes"] = data_dictionary_notes.strip()
     state_store.audit_log.append({
@@ -698,6 +696,8 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
     uploaded = state_store.entity_sample_files.get(entity_name)
+    if uploaded and uploaded.get("inference") and uploaded.get("inference_approval_status") != "APPROVED":
+        raise HTTPException(status_code=409, detail=f"Entity inference for {entity_name} must be approved before mapping.")
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
         raise HTTPException(status_code=409, detail=f"No valid uploaded source file is available for {entity_name}.")
     source_path = Path(uploaded["stored_path"])
