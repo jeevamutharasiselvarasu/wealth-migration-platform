@@ -1344,6 +1344,136 @@ async def review_source_mapping_suggestion(
         conn.close()
 
 
+@app.post("/api/mapping-suggestions/approve-entity")
+async def approve_entity_mapping_suggestions(
+    request: Request,
+    entity_name: str = Form(...),
+    reviewer: str = Form(...),
+    comments: str = Form(""),
+):
+    """Approve all pending mappings for one entity atomically, only when every proposal is valid."""
+    user = get_current_user(request)
+    reviewer_name = reviewer.strip() or user.get("name", "")
+    if entity_name not in {"Account", "Household", "Client"}:
+        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
+    if not reviewer_name:
+        raise HTTPException(status_code=400, detail="Reviewer is required.")
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            """
+            SELECT * FROM mapping_suggestions
+            WHERE migration_id = ? AND entity_name = ? AND status = 'PENDING'
+              AND NOT EXISTS (
+                SELECT 1 FROM canonical_mappings AS c
+                WHERE c.migration_id = mapping_suggestions.migration_id
+                  AND c.entity_name = mapping_suggestions.entity_name
+                  AND c.source_field = mapping_suggestions.source_field
+                  AND c.canonical_field = mapping_suggestions.canonical_field
+                  AND c.is_confirmed = 1
+              )
+            ORDER BY source_field, created_utc
+            """,
+            (migration_id, entity_name),
+        ).fetchall()
+        if not rows:
+            conn.rollback()
+            message = f"No pending mapping proposals are waiting for {entity_name} approval."
+            return RedirectResponse(url="/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
+
+        blockers = []
+        source_targets = {}
+        for row in rows:
+            source_field = str(row["source_field"] or "").strip()
+            canonical_field = str(row["canonical_field"] or "").strip()
+            rule = str(row["proposed_rule"] or "DIRECT_COPY").strip().upper()
+            if not source_field or not canonical_field:
+                blockers.append(f"{source_field or '(missing source field)'}: unresolved canonical field")
+            if rule not in SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS:
+                blockers.append(f"{source_field or '(missing source field)'}: unsupported rule {rule}")
+            prior_target = source_targets.get(source_field)
+            if prior_target and prior_target != canonical_field:
+                blockers.append(f"{source_field}: conflicting canonical targets {prior_target} and {canonical_field}")
+            source_targets[source_field] = canonical_field
+            existing = conn.execute(
+                """
+                SELECT canonical_field FROM canonical_mappings
+                WHERE migration_id = ? AND entity_name = ? AND source_field = ? AND is_confirmed = 1
+                LIMIT 1
+                """,
+                (migration_id, entity_name, source_field),
+            ).fetchone()
+            if existing and existing["canonical_field"] != canonical_field:
+                blockers.append(f"{source_field}: already approved to {existing['canonical_field']}")
+        if blockers:
+            conn.rollback()
+            message = f"Entity-level mapping approval blocked for {entity_name}. Resolve: " + "; ".join(blockers)
+            return RedirectResponse(url="/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
+
+        approved_count = 0
+        for row in rows:
+            suggestion_id = row["suggestion_id"]
+            conn.execute(
+                """
+                UPDATE mapping_suggestions
+                SET status = 'APPROVED', reviewer = ?, review_comments = ?, reviewed_utc = ?
+                WHERE suggestion_id = ? AND status = 'PENDING'
+                """,
+                (reviewer_name, comments.strip() or "Entity-level approval: all pending proposals passed validation.", now, suggestion_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO canonical_mappings
+                (mapping_id, migration_id, entity_name, source_field, canonical_field,
+                 mapping_type, transformation_expression, confidence_score, is_confirmed,
+                 created_by, updated_utc)
+                VALUES (?, ?, ?, ?, ?, 'APPROVED_ALIAS', ?, ?, 1, ?, ?)
+                ON CONFLICT(mapping_id) DO UPDATE SET
+                    canonical_field = excluded.canonical_field,
+                    transformation_expression = excluded.transformation_expression,
+                    confidence_score = excluded.confidence_score,
+                    is_confirmed = 1,
+                    created_by = excluded.created_by,
+                    updated_utc = excluded.updated_utc
+                """,
+                (
+                    f"MAP-{row['migration_id']}-{row['entity_name']}-{row['source_field']}",
+                    row["migration_id"], row["entity_name"], row["source_field"],
+                    row["canonical_field"], row["proposed_rule"] or "DIRECT_COPY",
+                    float(row["confidence_score"] or 0.0), reviewer_name, now,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO approvals (id, run_id, artifact_id, stage, decision, reviewer, comments, created_utc)
+                VALUES (?, ?, ?, 'SOURCE_TO_CANONICAL_MAPPING', 'APPROVED', ?, ?, ?)
+                """,
+                (f"APR-{uuid.uuid4().hex}", row["run_id"], suggestion_id, reviewer_name, comments.strip() or "Entity-level mapping approval.", now),
+            )
+            approved_count += 1
+        conn.commit()
+        state_store.audit_log.append({
+            "event": "ENTITY_LEVEL_MAPPING_APPROVED",
+            "actor": reviewer_name,
+            "timestamp_utc": now,
+            "details": {"migration_id": migration_id, "entity": entity_name, "approved_count": approved_count, "comments": comments.strip()},
+        })
+        message = f"Approved {approved_count} mapping proposal(s) for {entity_name} after validating the entire pending set."
+        return RedirectResponse(url="/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("Entity-level mapping approval failed for %s", entity_name)
+        raise HTTPException(status_code=500, detail="Could not persist entity-level mapping approval.") from exc
+    finally:
+        conn.close()
+
+
 @app.get("/api/mcl/runs/{mcl_run_id}")
 async def get_mcl_run_lineage(mcl_run_id: str):
     """Retrieve persisted MCL batch summary, entity runs, and field lineage."""
