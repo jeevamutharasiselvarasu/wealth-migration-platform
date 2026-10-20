@@ -1,120 +1,84 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="space-y-6 max-w-6xl">
-    <!-- Header with Instantiation Timestamp -->
-    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
-        <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">02</span>
+<div class="max-w-6xl space-y-6">
+    <section class="rounded-2xl border border-[#d9e3f5] bg-white p-6 shadow-sm">
+        <div class="flex flex-col justify-between gap-4 md:flex-row md:items-start">
             <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Dashboard Overview: {{ dashboard.firm_name }}</h1>
-                <p class="text-xs text-[#5a6a88]">Firm context & condition-driven cohort planning architecture (Updated: {{ dashboard.generated_at }})</p>
-            </div>
-        </div>
-        <span class="bg-teal-50 text-teal-700 border border-teal-200 px-3.5 py-1 rounded-full text-xs font-bold font-mono">
-            {{ dashboard.program_status }}
-        </span>
-    </div>
-
-    <!-- Dynamically Rendered Metrics Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">In-Scope Core Modules</div>
-            <div class="text-xl font-extrabold text-[#152c6b]">Account, Client, Household</div>
-            <div class="text-xs text-blue-600 font-mono font-semibold">Master Identity Spine Active</div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Primary Custodian Rails</div>
-            <div class="text-xl font-extrabold text-[#152c6b]">{{ dashboard.primary_custodian }}</div>
-            <div class="text-xs text-[#5a6a88] font-mono">Retained · Direct Custody API</div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Mapping Scope Boundary</div>
-            <div class="text-xl font-extrabold text-teal-700">Source ➔ Canonical</div>
-            <div class="text-xs text-teal-700 font-mono font-semibold">Target Mapping Decoupled</div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Cohort Formation Model</div>
-            <div class="text-xl font-extrabold text-blue-700">Condition-Driven</div>
-            <div class="text-xs text-[#5a6a88] font-mono">No Arbitrary Wave Slicing</div>
-        </div>
-    </div>
-
-    <!-- Condition-Driven Cohort Planning Framework Card -->
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-5 shadow-sm">
-        <div class="flex justify-between items-start border-b border-[#e9eff9] pb-3">
-            <div>
-                <h2 class="text-base font-bold text-[#152c6b]">Cohort Segregation Conditions (Criteria Catalog)</h2>
-                <p class="text-xs text-[#5a6a88] mt-0.5">
-                    Instead of arbitrary numerical splits, migration waves are formed based on declarative business conditions. In the initial phase, conditions are configured and reviewed below without premature wave segregation. In the full framework, ADLS data telemetry dynamically evaluates these rules to actuate cohorts.
+                <div class="font-mono text-[10px] font-bold uppercase tracking-[.16em] text-blue-700">XODUS-AMP · Migration workspace</div>
+                <h1 class="mt-2 text-2xl font-bold tracking-tight text-[#152c6b]">Three-entity migration overview</h1>
+                <p class="mt-2 max-w-2xl text-sm leading-6 text-[#5a6a88]">
+                    Manage source-to-canonical mapping for Account, Household and Client. Review source profiles,
+                    resolve mapping gaps, approve transformations and validate migration outputs.
                 </p>
             </div>
-            <span class="bg-blue-50 text-blue-700 border border-blue-200 text-xs px-2.5 py-1 rounded-lg font-mono font-bold whitespace-nowrap">
-                Condition Catalog (Initial Phase)
+            <span class="inline-flex w-fit items-center rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 font-mono text-[10px] font-bold text-teal-700">
+                PILOT SCOPE · 3 ENTITIES
             </span>
         </div>
+    </section>
 
-        <!-- Conditions Table -->
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-[#1c2a4a]">
-                <thead class="bg-[#f8fafc] text-[#5a6a88] text-xs uppercase tracking-wider border-b border-[#e2e8f0] font-mono">
-                    <tr>
-                        <th class="p-3">Condition ID</th>
-                        <th class="p-3">Business Dimension</th>
-                        <th class="p-3">Parameter & Operator</th>
-                        <th class="p-3">Rule / Threshold Expression</th>
-                        <th class="p-3">ADLS Telemetry Source</th>
-                        <th class="p-3">Cohort Purpose / Governance Strategy</th>
-                        <th class="p-3">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-[#e9eff9] text-xs">
-                    {% for cond in dashboard.cohort_conditions %}
-                    <tr class="hover:bg-slate-50 transition">
-                        <td class="p-3 font-mono font-bold text-blue-700">{{ cond.condition_id }}</td>
-                        <td class="p-3 font-bold text-[#152c6b]">{{ cond.category }}</td>
-                        <td class="p-3 font-mono text-[#5a6a88]">{{ cond.parameter }} <span class="text-blue-600 font-bold">{{ cond.operator }}</span></td>
-                        <td class="p-3 font-mono text-teal-800 bg-teal-50/50 p-2 rounded font-semibold">{{ cond.threshold_value }}</td>
-                        <td class="p-3 text-[#5a6a88] font-mono text-[11px]">{{ cond.telemetry_source }}</td>
-                        <td class="p-3 text-[#1c2a4a]">{{ cond.business_rationale }}</td>
-                        <td class="p-3">
-                            <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap">
-                                {{ cond.status }}
-                            </span>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+    <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {% for item in [
+            {'number':'01','name':'Account','file':'accounts.csv','fields':'ACCT_NUM · CUSTODIAN_CODE · REP_CODE · REG_TYPE · OPEN_DATE','tone':'blue'},
+            {'number':'02','name':'Household','file':'households.csv','fields':'HH_ID · HH_NAME · REP_CODE','tone':'teal'},
+            {'number':'03','name':'Client','file':'clients.csv','fields':'CLIENT_ID · LEGAL_NAME · CLIENT_TYPE','tone':'blue'}
+        ] %}
+        <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
+            <div class="flex items-start justify-between">
+                <span class="rounded-lg bg-blue-50 px-2.5 py-1 font-mono text-[10px] font-bold text-blue-700">{{ item.number }}</span>
+                <span class="rounded-full border border-[#d9e3f5] bg-[#f8fafc] px-2.5 py-1 font-mono text-[9px] font-bold text-[#5a6a88]">CANONICAL ENTITY</span>
+            </div>
+            <h2 class="mt-4 text-lg font-bold text-[#152c6b]">{{ item.name }}</h2>
+            <p class="mt-1 font-mono text-[10px] text-[#5a6a88]">Sample: {{ item.file }}</p>
+            <div class="mt-4 border-t border-[#e9eff9] pt-3">
+                <div class="font-mono text-[9px] font-bold uppercase tracking-wider text-[#8a97b2]">Required canonical fields</div>
+                <p class="mt-2 text-xs leading-5 text-[#41506b]">{{ item.fields }}</p>
+            </div>
+            <a href="/entity-sample-files" class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-blue-700 hover:text-blue-900">
+                View sample file workflow <span aria-hidden="true">→</span>
+            </a>
+        </article>
+        {% endfor %}
+    </section>
 
-        <!-- ADLS Telemetry Actuation Architecture Lifecycle -->
-        <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
-            <div class="font-bold text-[#152c6b] flex items-center space-x-2">
-                <span>🔄 ADLS Telemetry Feedback & Dynamic Actuation Architecture:</span>
+    <section class="rounded-2xl border border-[#d9e3f5] bg-white p-6 shadow-sm">
+        <div class="flex flex-col justify-between gap-3 border-b border-[#e9eff9] pb-4 md:flex-row md:items-center">
+            <div>
+                <h2 class="text-base font-bold text-[#152c6b]">Platform workflow</h2>
+                <p class="mt-1 text-xs leading-5 text-[#5a6a88]">The same controlled process is applied independently to each in-scope entity.</p>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px] pt-1">
-                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
-                    <span class="font-mono text-blue-700 font-bold block">1. Condition Catalog</span>
-                    <span class="text-[#5a6a88]">Business rules defined for AUM, Custodian, Data Quality, and Entity Structure without guessing cohort sizes.</span>
-                </div>
-                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
-                    <span class="font-mono text-blue-700 font-bold block">2. ADLS Raw Ingestion</span>
-                    <span class="text-[#5a6a88]">Original firm extracts land in <code class="font-mono text-slate-800">abfss://raw-landing@...</code> across accounts, clients, and households.</span>
-                </div>
-                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
-                    <span class="font-mono text-blue-700 font-bold block">3. Telemetry Feedback</span>
-                    <span class="text-[#5a6a88]">Profiler agents extract AUM distribution, custodian frequency, and schema null rates directly into SQLite metadata.</span>
-                </div>
-                <div class="bg-white p-3 rounded-lg border border-[#e2e8f0] space-y-1">
-                    <span class="font-mono text-teal-700 font-bold block">4. Dynamic Actuation</span>
-                    <span class="text-[#5a6a88]">Condition engine evaluates live telemetry to actuate and group accounts into validated execution cohorts at runtime.</span>
-                </div>
-            </div>
+            <a href="/entity-selection" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">Configure entity scope →</a>
         </div>
-    </div>
+        <div class="grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+            {% for step in [
+                {'n':'01','title':'Discover & profile','desc':'Register sample files, inspect schema and assess data quality.'},
+                {'n':'02','title':'Map to canonical','desc':'Suggest field mappings and capture evidence, lineage and gaps.'},
+                {'n':'03','title':'Review & approve','desc':'Validate rules and mapping decisions with a human reviewer.'},
+                {'n':'04','title':'Execute & reconcile','desc':'Run approved logic, report exceptions and validate outputs.'}
+            ] %}
+            <div class="rounded-xl border border-[#d9e3f5] bg-[#f8fafc] p-4">
+                <div class="font-mono text-[10px] font-bold text-blue-700">{{ step.n }}</div>
+                <h3 class="mt-2 text-sm font-bold text-[#152c6b]">{{ step.title }}</h3>
+                <p class="mt-1 text-xs leading-5 text-[#5a6a88]">{{ step.desc }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <a href="/agent-pipeline" class="group rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md">
+            <div class="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-700">Control plane</div>
+            <h2 class="mt-2 text-base font-bold text-[#152c6b]">Mapping & transformation studio</h2>
+            <p class="mt-1 text-xs leading-5 text-[#5a6a88]">Inspect mapping results, transformation logic and execution traces.</p>
+            <div class="mt-4 text-xs font-bold text-blue-700">Open pipeline studio →</div>
+        </a>
+        <a href="/reconciliation" class="group rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm transition hover:border-teal-300 hover:shadow-md">
+            <div class="font-mono text-[10px] font-bold uppercase tracking-wider text-teal-700">Validation & governance</div>
+            <h2 class="mt-2 text-base font-bold text-[#152c6b]">Reconciliation & exceptions</h2>
+            <p class="mt-1 text-xs leading-5 text-[#5a6a88]">Review run outcomes, data-quality exceptions and reconciliation evidence.</p>
+            <div class="mt-4 text-xs font-bold text-teal-700">Open reconciliation →</div>
+        </a>
+    </section>
 </div>
 {% endblock %}
