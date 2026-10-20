@@ -1,0 +1,11 @@
+{
+  "demo_mode": true,
+  "users": [
+    {
+      "email": "jeeva@simplicitywealth.com",
+      "password_sha256": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+      "name": "Jeeva S.",
+      "default_role": "Platform Admin"
+    }
+  ]
+}
