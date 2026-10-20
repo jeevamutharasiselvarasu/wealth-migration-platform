@@ -202,3 +202,33 @@ def test_entity_inference_business_rules_are_externalized_to_configuration():
     assert "ENTITY_FIELDS =" not in service
     assert set(rules["entities"]) == {"Account", "Household", "Client"}
     assert "minimum_confidence" in rules["decision"]
+
+
+def test_demo_manifest_includes_multiple_files_for_each_supported_entity():
+    import json
+    manifest = json.loads((ROOT / "demo_data" / "demo_migration.json").read_text())
+    paths = [item["path"] for item in manifest["source_files"]]
+    assert len(paths) >= 6
+    assert any("account_" in path for path in paths)
+    assert any("household_" in path for path in paths)
+    assert any("client_" in path for path in paths)
+    assert len(manifest["knowledge_files"]) >= 2
+
+
+def test_setup_forms_are_not_nested_and_demo_load_lands_in_discovery():
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'id="knowledge-upload-form"' in setup
+    assert 'id="migration-setup-form"' in setup
+    assert 'form="migration-setup-form"' in setup
+    assert 'url="/entity-sample-files?notice="' in app
+
+
+def test_source_inventory_uses_file_level_review_for_multiple_extracts():
+    state = (ROOT / "ui" / "state.py").read_text()
+    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert '"file_id": uuid.uuid4().hex' in state
+    assert 'name="file_id" value="{{ file.file_id }}"' in source
+    assert 'entity_files.get(file_id)' in app
+    assert 'Entity review queue' in (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
