@@ -35,6 +35,42 @@
         </div>
     </div>
 
+    <!-- Three-entity pilot cards: generic source inputs, fixed canonical entities. -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4" aria-label="Three-entity pilot scope">
+        <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
+            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">ENTITY 01</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
+            <h2 class="mt-3 text-base font-bold text-[#152c6b]">Account</h2>
+            <p class="mt-1 text-xs text-[#5a6a88]">Account identity, custodian, representative, registration and opening date.</p>
+            <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">ACCT_NUM · CUSTODIAN_CODE · REP_CODE · REG_TYPE · OPEN_DATE</p>
+        </article>
+        <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
+            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">ENTITY 02</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
+            <h2 class="mt-3 text-base font-bold text-[#152c6b]">Household</h2>
+            <p class="mt-1 text-xs text-[#5a6a88]">Household identity, display name and representative.</p>
+            <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">HH_ID · HH_NAME · REP_CODE</p>
+        </article>
+        <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
+            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">ENTITY 03</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
+            <h2 class="mt-3 text-base font-bold text-[#152c6b]">Client</h2>
+            <p class="mt-1 text-xs text-[#5a6a88]">Client identity, legal name, tax identifier and client type.</p>
+            <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">CLIENT_ID · LEGAL_NAME · TAX_ID · CLIENT_TYPE</p>
+        </article>
+    </section>
+
+    <section class="rounded-2xl border border-[#d9e3f5] bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-2 border-b border-[#e9eff9] pb-3 md:flex-row md:items-center md:justify-between">
+            <div><h2 class="text-base font-bold text-[#152c6b]">Platform flow</h2><p class="mt-1 text-xs text-[#5a6a88]">A controlled source-to-canonical workflow, applied to each in-scope entity.</p></div>
+            <a href="/entity-selection" class="w-fit rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">Configure scope →</a>
+        </div>
+        <div class="grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-xl border border-[#d9e3f5] bg-[#f8fafc] p-4"><div class="font-mono text-[10px] font-bold text-blue-700">01</div><h3 class="mt-2 text-sm font-bold text-[#152c6b]">Discover & profile</h3><p class="mt-1 text-xs leading-5 text-[#5a6a88]">Upload representative source files, inspect schema and profile quality.</p></div>
+            <div class="rounded-xl border border-[#d9e3f5] bg-[#f8fafc] p-4"><div class="font-mono text-[10px] font-bold text-blue-700">02</div><h3 class="mt-2 text-sm font-bold text-[#152c6b]">Map & capture lineage</h3><p class="mt-1 text-xs leading-5 text-[#5a6a88]">Suggest source-to-canonical mappings and flag unresolved columns or required fields.</p></div>
+            <div class="rounded-xl border border-[#d9e3f5] bg-[#f8fafc] p-4"><div class="font-mono text-[10px] font-bold text-blue-700">03</div><h3 class="mt-2 text-sm font-bold text-[#152c6b]">Review & approve</h3><p class="mt-1 text-xs leading-5 text-[#5a6a88]">Review mapping evidence and rules; keep unapproved previews from becoming approved output.</p></div>
+            <div class="rounded-xl border border-[#d9e3f5] bg-[#f8fafc] p-4"><div class="font-mono text-[10px] font-bold text-blue-700">04</div><h3 class="mt-2 text-sm font-bold text-[#152c6b]">Validate & record</h3><p class="mt-1 text-xs leading-5 text-[#5a6a88]">Check canonical keys and evidenced relationships; persist run status, lineage and remediation findings.</p></div>
+        </div>
+        <p class="mt-3 text-[11px] leading-5 text-[#5a6a88]">P0 stops at reviewed source-to-canonical mapping. Target loading and wave assignment are not executed in this phase.</p>
+    </section>
+
     <!-- Future cohort criteria are visible for planning, but deliberately not activated in P0. -->
     <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
         <div class="flex items-start justify-between gap-4 border-b border-[#e9eff9] pb-3">
