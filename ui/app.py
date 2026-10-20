@@ -159,6 +159,11 @@ async def save_migration_setup(request: Request):
     }
     if not setup["target_system"] or not setup["canonical_version"]:
         raise HTTPException(status_code=400, detail="Target system and canonical schema / contract reference are required before source mapping setup.")
+    if setup["source_acquisition"] == "AZURE_CONNECTION":
+        required_azure = ["azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"]
+        missing_azure = [field for field in required_azure if not setup.get(field)]
+        if missing_azure:
+            raise HTTPException(status_code=400, detail="Azure connection mode requires: " + ", ".join(missing_azure) + ".")
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     state_store.questionnaire_data["migration_id"] = state_store.questionnaire_data.get("migration_id") or f"MIG-{uuid.uuid4().hex[:10].upper()}"
     state_store.questionnaire_data["migration_name"] = setup["migration_name"]
