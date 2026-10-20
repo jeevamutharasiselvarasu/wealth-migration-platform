@@ -1,44 +1,54 @@
+import hashlib
+import hmac
+import json
+import os
 import uuid
+from pathlib import Path
 from typing import Dict, Optional
-from fastapi import Request, HTTPException, status
+
+from fastapi import Request
+
 
 class SessionManager:
-    """Manages active user sessions, role permissions, and logins across RBAC personas."""
+    """Manages local demo sessions and role permissions.
+
+    Demo accounts are data-driven from demo_data/demo_users.json. Disable demo
+    authentication outside local/demo environments with XODUS_DEMO_MODE=false.
+    Production deployments should replace this provider with the organisation's
+    approved identity provider.
+    """
 
     def __init__(self):
         self.active_sessions: Dict[str, Dict[str, str]] = {}
-        # Pre-seeded authorized users for the Migration Workbench
-        self.authorized_users = {
-            "jeeva@simplicitywealth.com": {
-                "password": "password123",
-                "name": "Jeeva S.",
-                "default_role": "Platform Admin"
-            },
-            "analyst@simplicitywealth.com": {
-                "password": "password123",
-                "name": "Alex Migration Analyst",
-                "default_role": "Migration Analyst"
-            },
-            "sme@simplicitywealth.com": {
-                "password": "password123",
-                "name": "Sarah Domain SME",
-                "default_role": "Domain SME"
-            },
-            "specialist@simplicitywealth.com": {
-                "password": "password123",
-                "name": "Marcus Validation Specialist",
-                "default_role": "Validation Specialist"
-            }
-        }
+        self.demo_mode = os.getenv("XODUS_DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
+        self.authorized_users = {}
+        if self.demo_mode:
+            config_path = Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json"
+            try:
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                if config.get("demo_mode", False):
+                    for item in config.get("users", []):
+                        email = str(item.get("email", "")).strip().lower()
+                        password_hash = str(item.get("password_sha256", "")).strip().lower()
+                        if email and len(password_hash) == 64:
+                            self.authorized_users[email] = {
+                                "password_sha256": password_hash,
+                                "name": str(item.get("name", email)),
+                                "default_role": str(item.get("default_role", "Migration Analyst")),
+                            }
+            except (OSError, ValueError, TypeError):
+                # A missing or invalid demo-user configuration fails closed.
+                self.authorized_users = {}
 
     def authenticate(self, email: str, password: str, role: str) -> Optional[str]:
-        user = self.authorized_users.get(email.lower())
-        if user and user["password"] == password:
+        user = self.authorized_users.get(email.strip().lower())
+        supplied_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        if user and hmac.compare_digest(user["password_sha256"], supplied_hash):
             session_id = str(uuid.uuid4())
             self.active_sessions[session_id] = {
-                "email": email,
+                "email": email.strip().lower(),
                 "name": user["name"],
-                "role": role
+                "role": role,
             }
             return session_id
         return None
@@ -59,5 +69,6 @@ class SessionManager:
     def logout(self, session_id: str):
         if session_id in self.active_sessions:
             del self.active_sessions[session_id]
+
 
 session_mgr = SessionManager()
