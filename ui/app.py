@@ -933,6 +933,8 @@ async def review_source_mapping_suggestion(
         raise HTTPException(status_code=400, detail="Decision must be APPROVED or REJECTED.")
     if not reviewer_name:
         raise HTTPException(status_code=400, detail="Reviewer is required.")
+    if normalized == "REJECTED" and not comments.strip():
+        raise HTTPException(status_code=400, detail="A rejection reason is required so the mapping owner knows what to correct.")
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db_connection()
     try:
