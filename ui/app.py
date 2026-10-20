@@ -228,16 +228,27 @@ async def entity_selection_view(request: Request):
 
 
 @app.get("/entity-sample-files", response_class=HTMLResponse)
-async def entity_sample_files_view(request: Request):
+async def entity_sample_files_view(request: Request, uploaded: str = "", notice: str = ""):
     user = get_current_user(request)
+    source_uploads = []
+    for entity, roles in getattr(state_store, "entity_source_files", {}).items():
+        if entity not in {"Account", "Household", "Client"}:
+            continue
+        for role, record in roles.items():
+            source_uploads.append({**record, "inferred_entity": entity, "source_role": role})
+    source_uploads.sort(key=lambda item: item.get("uploaded_at", ""), reverse=True)
     return render_template_with_context(
         request=request,
         template_name="entity_sample_files.html",
         extra_context={
-            "page_title": "4. Entity Sample Files",
+            "page_title": "Source Discovery & Profiling",
             "user_name": user["name"],
             "user_role": user["role"],
-            "selected_entities": state_store.get_source_upload_entities()
+            "selected_entities": state_store.get_source_upload_entities(),
+            "source_uploads": source_uploads,
+            "uploaded_entity": uploaded,
+            "notice": notice,
+            "acquisition_method": state_store.questionnaire_data.get("migration_setup", {}).get("source_acquisition", "SAMPLE_FILES"),
         }
     )
 
