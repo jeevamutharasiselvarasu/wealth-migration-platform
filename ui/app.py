@@ -804,14 +804,14 @@ async def upload_entity_sample_file(
 
 
 @app.post("/api/entities/confirm-entity")
-async def confirm_entity_inference(request: Request, entity_name: str = Form(...), comments: str = Form("")):
+async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(...), comments: str = Form("")):
     """Approve all files for an entity in one action only when every file has clear inference evidence."""
     user = get_current_user(request)
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
     entity_files = state_store.entity_source_files.get(entity_name, {})
     if not entity_files:
-        raise HTTPException(status_code=409, detail=f"No source files are registered for {entity_name}.")
+        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"No source files are registered for {entity_name}.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
     blockers = []
     for record in entity_files.values():
         inference = record.get("inference") or {}
@@ -821,10 +821,8 @@ async def confirm_entity_inference(request: Request, entity_name: str = Form(...
         if record.get("inference_approval_status") == "REJECTED" or inference.get("entity") != entity_name or inference.get("status") != "INFERRED" or not matched_fields or not signature_fields:
             blockers.append(record.get("filename", "Unnamed file"))
     if blockers:
-        raise HTTPException(
-            status_code=409,
-            detail="Entity-level approval is blocked because these files need clarification or do not have sufficient entity evidence: " + ", ".join(blockers) + ". Review them individually first."
-        )
+        message = "Entity-level approval blocked. Review these files individually first: " + ", ".join(blockers) + "."
+        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(message) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
     now = datetime.now(timezone.utc).isoformat()
     approved_files = []
     for record in entity_files.values():
