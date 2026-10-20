@@ -8,7 +8,7 @@ from control_plane.db import get_db_connection, init_db
 
 
 class WorkspaceStateStore:
-    """State engine managing firm context, in-scope filtering, and metadata table persistence."""
+    """State engine for the three-entity migration pilot and metadata persistence."""
 
     def __init__(self):
         init_db()
@@ -32,7 +32,7 @@ class WorkspaceStateStore:
 
         # 2. Kernel Specs (Editable ONLY by Platform Admin / Domain SME)
         self.kernel_specs: Dict[str, Any] = {
-            "canonical_entity_count": 15,
+            "canonical_entity_count": 3,
             "sleeve_invariant": "1.0000 (100.00%)",
             "sleeve_tolerance": "0.0005",
             "aum_drift_gate": "0.5000%",
@@ -212,7 +212,7 @@ class WorkspaceStateStore:
         return result
 
     def get_in_scope_entities(self) -> List[Dict[str, Any]]:
-        """Filters ONLY in-scope or archive-only entities, excluding out-of-scope."""
+        """Returns only the configured pilot entities that are currently in scope."""
         in_scope_list = []
         catalog = WealthManagementKnowledgeKernel.get_canonical_entities()
         for class_name, entities in catalog.items():
