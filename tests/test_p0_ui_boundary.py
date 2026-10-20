@@ -133,7 +133,7 @@ def test_persona_switch_is_limited_to_roles_assigned_to_authenticated_user():
 
 def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
     app = (ROOT / "ui" / "app.py").read_text()
-    assert 'async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):' in app
+    assert 'async def map_uploaded_entity_file(entity_name: str = Form(...), file_id: str = Form(\"\"), request: Request = None):' in app
     assert 'async def review_source_mapping_suggestion(' in app
     assert 'if request is not None and "text/html" in request.headers.get("accept", ""):' in app
     assert 'RedirectResponse(url="/agent-pipeline"' in app
@@ -180,11 +180,13 @@ def test_demo_migration_is_input_data_not_values_embedded_in_routes():
     manifest = __import__("json").loads((ROOT / "demo_data" / "demo_migration.json").read_text())
     assert '@app.post("/api/demo/load")' in app
     assert 'demo_migration.json' in app
-    assert len(manifest["source_files"]) == 3
-    assert len(manifest["knowledge_files"]) >= 1
-    assert {item["path"].split("/")[-1] for item in manifest["source_files"]} == {
-        "accounts.csv", "households.csv", "clients.csv"
-    }
+    assert len(manifest["source_files"]) >= 6
+    assert len(manifest["knowledge_files"]) >= 2
+    filenames = {item["path"].split("/")[-1] for item in manifest["source_files"]}
+    assert {"accounts.csv", "households.csv", "clients.csv"}.issubset(filenames)
+    assert any(name.startswith("account_") for name in filenames)
+    assert any(name.startswith("household_") for name in filenames)
+    assert any(name.startswith("client_") for name in filenames)
 
 
 def test_demo_source_inputs_have_no_real_personal_identifiers():
