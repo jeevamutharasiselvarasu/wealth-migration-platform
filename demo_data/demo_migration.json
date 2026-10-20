@@ -1,0 +1,53 @@
+{
+  "migration_setup": {
+    "migration_name": "Three-Entity Sample Migration",
+    "target_system": "Canonical Migration Sandbox",
+    "canonical_version": "demo-canonical-v1",
+    "target_owner": "Demo Data Steward",
+    "azure_tenant_id": "",
+    "azure_subscription_id": "",
+    "azure_resource_group": "",
+    "azure_storage_account": "",
+    "azure_container": "",
+    "azure_access_method": "PENDING",
+    "knowledge_schema_ref": "demo_data/knowledge/canonical_contract.md",
+    "knowledge_rules_ref": "demo_data/knowledge/source_mapping_notes.md",
+    "knowledge_sme": "Demo Data Steward",
+    "relationship_notes": "Account links to Client and may link to Household; Household groups related Clients and/or Accounts. Confirm these relationships with the data owner.",
+    "source_acquisition": "SAMPLE_FILES",
+    "source_details": "demo_data/source_files/*.csv (synthetic sample files)",
+    "entities": [
+      "Account",
+      "Household",
+      "Client"
+    ],
+    "configuration_status": "DEMO_PRELOADED"
+  },
+  "source_files": [
+    {
+      "path": "demo_data/source_files/accounts.csv",
+      "context": "Legacy account master extract; contains account identity and registration details.",
+      "dictionary_notes": "LEGACY_ACCT_NO is the source account identifier. LEGACY_CLIENT_ID links to the client file. HOUSEHOLD_LINK_ID is a candidate household relationship."
+    },
+    {
+      "path": "demo_data/source_files/households.csv",
+      "context": "Household grouping extract.",
+      "dictionary_notes": "HOUSEHOLD_ID identifies the household grouping. PRIMARY_CLIENT_ID is a candidate link to the client file."
+    },
+    {
+      "path": "demo_data/source_files/clients.csv",
+      "context": "Client/person master extract.",
+      "dictionary_notes": "CLIENT_ID identifies a person or legal party. LEGAL_NAME and CLIENT_TYPE describe the party."
+    }
+  ],
+  "knowledge_files": [
+    {
+      "path": "demo_data/knowledge/canonical_contract.md",
+      "category": "data_dictionary"
+    },
+    {
+      "path": "demo_data/knowledge/source_mapping_notes.md",
+      "category": "mapping_reference"
+    }
+  ]
+}
