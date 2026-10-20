@@ -1,0 +1,115 @@
+{
+  "version": "1.0",
+  "entities": {
+    "Account": {
+      "field_weights": {
+        "ACCT_NUM": 3,
+        "CUSTODIAN_CODE": 2,
+        "REG_TYPE": 1,
+        "OPEN_DATE": 1,
+        "REP_CODE": 1
+      },
+      "signature_fields": [
+        "ACCT_NUM",
+        "CUSTODIAN_CODE"
+      ],
+      "context_terms": [
+        "account",
+        "custodian",
+        "registration"
+      ]
+    },
+    "Household": {
+      "field_weights": {
+        "HH_ID": 3,
+        "HH_NAME": 3,
+        "REP_CODE": 1
+      },
+      "signature_fields": [
+        "HH_ID",
+        "HH_NAME"
+      ],
+      "context_terms": [
+        "household",
+        "family group"
+      ]
+    },
+    "Client": {
+      "field_weights": {
+        "CLIENT_ID": 3,
+        "LEGAL_NAME": 3,
+        "CLIENT_TYPE": 2,
+        "TAX_ID": 1,
+        "FIRST_NAME": 1,
+        "LAST_NAME": 1,
+        "EMAIL": 1
+      },
+      "signature_fields": [
+        "CLIENT_ID",
+        "LEGAL_NAME",
+        "CLIENT_TYPE"
+      ],
+      "context_terms": [
+        "client",
+        "party",
+        "person master"
+      ]
+    }
+  },
+  "header_aliases": {
+    "ACCOUNT_NUMBER": "ACCT_NUM",
+    "ACCOUNT_NO": "ACCT_NUM",
+    "ACCT_NUMBER": "ACCT_NUM",
+    "ACCT_NUM": "ACCT_NUM",
+    "ACCOUNT_ID": "ACCT_NUM",
+    "LEGACY_ACCT_NO": "ACCT_NUM",
+    "CUSTODIAN": "CUSTODIAN_CODE",
+    "CUSTODIAN_CODE": "CUSTODIAN_CODE",
+    "REP_CODE": "REP_CODE",
+    "ADVISOR_REP_NUM": "REP_CODE",
+    "PRIMARY_REP_NUM": "REP_CODE",
+    "REG_TYPE": "REG_TYPE",
+    "REGISTRATION_TYPE": "REG_TYPE",
+    "REGISTRATION_SRC_TYPE": "REG_TYPE",
+    "OPEN_DATE": "OPEN_DATE",
+    "ACCOUNT_OPEN_DT": "OPEN_DATE",
+    "HH_ID": "HH_ID",
+    "HOUSEHOLD_ID": "HH_ID",
+    "HOUSEHOLD_LINK_ID": "HH_ID",
+    "HOUSEHOLD_NAME": "HH_NAME",
+    "HH_NAME": "HH_NAME",
+    "HH_TITLE": "HH_NAME",
+    "CLIENT_ID": "CLIENT_ID",
+    "LEGACY_CLIENT_ID": "CLIENT_ID",
+    "PARTY_SRC_ID": "CLIENT_ID",
+    "LEGAL_NAME": "LEGAL_NAME",
+    "FULL_LEGAL_NAME": "LEGAL_NAME",
+    "CLIENT_NAME": "LEGAL_NAME",
+    "PARTY_NAME": "LEGAL_NAME",
+    "FIRST_NAME": "FIRST_NAME",
+    "CLIENT_FIRST_NAME": "FIRST_NAME",
+    "LAST_NAME": "LAST_NAME",
+    "CLIENT_LAST_NAME": "LAST_NAME",
+    "CLIENT_TYPE": "CLIENT_TYPE",
+    "CLIENT_TYPE_RAW": "CLIENT_TYPE",
+    "CLIENT_TYPE_SRC": "CLIENT_TYPE",
+    "TAX_ID": "TAX_ID",
+    "TAX_IDENTIFIER": "TAX_ID",
+    "SSN_TIN": "TAX_ID",
+    "EMAIL": "EMAIL",
+    "EMAIL_ADDR": "EMAIL",
+    "PRIMARY_EMAIL": "EMAIL"
+  },
+  "decision": {
+    "minimum_positive_score": 0,
+    "minimum_confidence": 0.6,
+    "require_unique_top_score": true,
+    "require_signature_or_context": true,
+    "context_bonus": 2
+  },
+  "messages": {
+    "needs_clarification": "The columns do not uniquely identify a configured entity. Provide a data dictionary or explain the key fields.",
+    "inferred": "Entity inferred from column names and canonical field evidence.",
+    "needs_review": "A likely entity was detected, but the evidence is mixed; review before mapping."
+  }
+}
