@@ -414,7 +414,7 @@ async def get_migration_telemetry_report():
 
     return JSONResponse({
         "status": "SUCCESS",
-        "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+        "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"),
         "overall_confidence_score": avg_confidence,
         "entity_runs": run_rows,
         "lineage_audit": lineage_rows[:20]
