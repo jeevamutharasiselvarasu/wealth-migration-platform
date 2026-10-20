@@ -1,78 +1,105 @@
-"""Conservative source-file entity inference for the XODUS three-entity P0 pilot."""
+"""Config-driven source-file entity inference.
+
+Entity aliases, field weights, signature requirements and thresholds are maintained
+in knowledge/entity_inference_rules.json so the business rules can be updated as
+input configuration without editing this service.
+"""
 from __future__ import annotations
+
+import json
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-ALIASES = {
-    "ACCOUNT_NUMBER": "ACCT_NUM", "ACCOUNT_NO": "ACCT_NUM", "ACCT_NUMBER": "ACCT_NUM",
-    "ACCT_NUM": "ACCT_NUM", "ACCOUNT_ID": "ACCT_NUM", "LEGACY_ACCT_NO": "ACCT_NUM",
-    "CUSTODIAN": "CUSTODIAN_CODE", "CUSTODIAN_CODE": "CUSTODIAN_CODE",
-    "REP_CODE": "REP_CODE", "ADVISOR_REP_NUM": "REP_CODE", "PRIMARY_REP_NUM": "REP_CODE",
-    "REG_TYPE": "REG_TYPE", "REGISTRATION_TYPE": "REG_TYPE", "REGISTRATION_SRC_TYPE": "REG_TYPE",
-    "OPEN_DATE": "OPEN_DATE", "ACCOUNT_OPEN_DT": "OPEN_DATE",
-    "HH_ID": "HH_ID", "HOUSEHOLD_ID": "HH_ID", "HOUSEHOLD_LINK_ID": "HH_ID",
-    "HOUSEHOLD_NAME": "HH_NAME", "HH_NAME": "HH_NAME", "HH_TITLE": "HH_NAME",
-    "CLIENT_ID": "CLIENT_ID", "LEGACY_CLIENT_ID": "CLIENT_ID", "PARTY_SRC_ID": "CLIENT_ID",
-    "LEGAL_NAME": "LEGAL_NAME", "FULL_LEGAL_NAME": "LEGAL_NAME", "CLIENT_NAME": "LEGAL_NAME",
-    "PARTY_NAME": "LEGAL_NAME", "FIRST_NAME": "FIRST_NAME", "CLIENT_FIRST_NAME": "FIRST_NAME",
-    "LAST_NAME": "LAST_NAME", "CLIENT_LAST_NAME": "LAST_NAME",
-    "CLIENT_TYPE": "CLIENT_TYPE", "CLIENT_TYPE_RAW": "CLIENT_TYPE", "CLIENT_TYPE_SRC": "CLIENT_TYPE",
-    "TAX_ID": "TAX_ID", "TAX_IDENTIFIER": "TAX_ID", "SSN_TIN": "TAX_ID",
-    "EMAIL": "EMAIL", "EMAIL_ADDR": "EMAIL", "PRIMARY_EMAIL": "EMAIL",
-}
-ENTITY_FIELDS = {
-    "Account": {"ACCT_NUM": 3, "CUSTODIAN_CODE": 2, "REG_TYPE": 1, "OPEN_DATE": 1, "REP_CODE": 1},
-    "Household": {"HH_ID": 3, "HH_NAME": 3, "REP_CODE": 1},
-    "Client": {"CLIENT_ID": 3, "LEGAL_NAME": 3, "CLIENT_TYPE": 2, "TAX_ID": 1, "FIRST_NAME": 1, "LAST_NAME": 1, "EMAIL": 1},
-}
-SIGNATURES = {
-    "Account": {"ACCT_NUM", "CUSTODIAN_CODE"},
-    "Household": {"HH_ID", "HH_NAME"},
-    "Client": {"CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"},
-}
+RULES_PATH = Path(__file__).resolve().parents[2] / "knowledge" / "entity_inference_rules.json"
 
-def normalize_header(header: Any) -> str:
+
+@lru_cache(maxsize=1)
+def _load_rules_cached(rules_path: str, modified_ns: int) -> dict[str, Any]:
+    path = Path(rules_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload.get("entities"), dict) or not payload["entities"]:
+        raise ValueError(f"Entity inference rules have no entities: {path}")
+    if not isinstance(payload.get("header_aliases"), dict) or not isinstance(payload.get("decision"), dict):
+        raise ValueError(f"Entity inference rules are missing required sections: {path}")
+    return payload
+
+
+def load_entity_inference_rules() -> dict[str, Any]:
+    """Load editable inference configuration; reload automatically when its file changes."""
+    if not RULES_PATH.is_file():
+        raise FileNotFoundError(f"Entity inference configuration not found: {RULES_PATH}")
+    return _load_rules_cached(str(RULES_PATH), RULES_PATH.stat().st_mtime_ns)
+
+
+def normalize_header(header: Any, aliases: dict[str, str] | None = None) -> str:
+    rules = aliases if aliases is not None else load_entity_inference_rules()["header_aliases"]
     raw = re.sub(r"[^A-Za-z0-9]+", "_", str(header or "").strip()).strip("_").upper()
-    return ALIASES.get(raw, raw)
+    return str(rules.get(raw, raw))
+
 
 def infer_entity_from_headers(headers: list[str], context: str = "") -> dict[str, Any]:
-    """Infer likely entity using canonical field evidence; return ambiguous instead of guessing."""
-    canonical = {normalize_header(header) for header in headers}
-    scores = {}
-    evidence = {}
-    for entity, weights in ENTITY_FIELDS.items():
+    """Infer a configured entity from column evidence; return ambiguity instead of guessing."""
+    rules = load_entity_inference_rules()
+    entities = rules["entities"]
+    decision = rules["decision"]
+    aliases = rules["header_aliases"]
+    canonical = {normalize_header(header, aliases) for header in headers}
+    scores: dict[str, int] = {}
+    evidence: dict[str, dict[str, Any]] = {}
+
+    for entity, config in entities.items():
+        weights = {str(field): int(weight) for field, weight in config.get("field_weights", {}).items()}
+        signatures = set(map(str, config.get("signature_fields", [])))
         matched = sorted(field for field in weights if field in canonical)
         score = sum(weights[field] for field in matched)
-        signature_hits = sorted(SIGNATURES[entity].intersection(canonical))
+        signature_hits = sorted(signatures.intersection(canonical))
         scores[entity] = score
         evidence[entity] = {"matched_fields": matched, "signature_fields": signature_hits, "score": score}
-    # Explicit source-purpose / dictionary notes can disambiguate headers, but cannot override
-    # contradictory field evidence without a review state.
+
     context_text = re.sub(r"[^a-z0-9]+", " ", str(context or "").lower())
-    context_terms = {
-        "Account": ("account", "custodian", "registration"),
-        "Household": ("household", "family group"),
-        "Client": ("client", "party", "person master"),
-    }
-    mentioned = [entity for entity, terms in context_terms.items()
-                 if any(term in context_text for term in terms)]
+    mentioned: list[str] = []
+    for entity, config in entities.items():
+        terms = [str(term).lower() for term in config.get("context_terms", [])]
+        hits = [term for term in terms if term in context_text]
+        if hits:
+            mentioned.append(entity)
+            evidence[entity]["context_terms"] = hits
+
     if len(mentioned) == 1:
         entity = mentioned[0]
-        scores[entity] += 2
-        evidence[entity]["context_terms"] = [term for term in context_terms[entity] if term in context_text]
+        scores[entity] += int(decision.get("context_bonus", 0))
         evidence[entity]["score"] = scores[entity]
+
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     best_entity, best_score = ranked[0]
-    second_score = ranked[1][1]
-    # Require a positive score, a unique winner, and at least one identity signature.
-    if best_score <= 0 or best_score == second_score or (not evidence[best_entity]["signature_fields"] and not evidence[best_entity].get("context_terms")):
-        return {"status": "NEEDS_CLARIFICATION", "entity": None, "confidence": 0.0,
-                "scores": scores, "evidence": evidence,
-                "message": "The columns do not uniquely identify Account, Household or Client. Provide a data dictionary or explain the key fields."}
+    second_score = ranked[1][1] if len(ranked) > 1 else -1
+    has_signature_or_context = bool(evidence[best_entity]["signature_fields"] or evidence[best_entity].get("context_terms"))
+    ambiguous = (
+        best_score <= int(decision.get("minimum_positive_score", 0))
+        or (decision.get("require_unique_top_score", True) and best_score == second_score)
+        or (decision.get("require_signature_or_context", True) and not has_signature_or_context)
+    )
+    messages = rules.get("messages", {})
+    if ambiguous:
+        return {
+            "status": "NEEDS_CLARIFICATION",
+            "entity": None,
+            "confidence": 0.0,
+            "scores": scores,
+            "evidence": evidence,
+            "message": messages.get("needs_clarification", "Source entity needs clarification."),
+        }
+
     total = sum(scores.values()) or 1
     confidence = round(best_score / total, 3)
-    status = "INFERRED" if confidence >= 0.6 and evidence[best_entity]["signature_fields"] else "NEEDS_REVIEW"
-    return {"status": status, "entity": best_entity, "confidence": confidence,
-            "scores": scores, "evidence": evidence,
-            "message": ("Entity inferred from column names and canonical field evidence." if status == "INFERRED"
-                        else "A likely entity was detected, but the evidence is mixed; review before mapping.")}
+    status = "INFERRED" if confidence >= float(decision.get("minimum_confidence", 0.6)) and evidence[best_entity]["signature_fields"] else "NEEDS_REVIEW"
+    return {
+        "status": status,
+        "entity": best_entity,
+        "confidence": confidence,
+        "scores": scores,
+        "evidence": evidence,
+        "message": messages.get("inferred", "Entity inferred from source evidence.") if status == "INFERRED" else messages.get("needs_review", "Entity inference requires review."),
+    }
