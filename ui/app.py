@@ -355,7 +355,7 @@ async def agent_pipeline_view(request: Request):
     try:
         rows = conn.execute(
             "SELECT suggestion_id, entity_name, source_field, canonical_field, proposed_rule, confidence_score "
-            "FROM mapping_suggestions WHERE status = ? ORDER BY created_utc DESC, entity_name, source_field",
+            "FROM mapping_suggestions WHERE status = ? ORDER BY entity_name, created_utc DESC, source_field",
             ("PENDING",),
         ).fetchall()
         mapping_suggestions = [dict(row) for row in rows]
