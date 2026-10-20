@@ -133,7 +133,7 @@ def test_persona_switch_is_limited_to_roles_assigned_to_authenticated_user():
 
 def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
     app = (ROOT / "ui" / "app.py").read_text()
-    assert 'async def map_uploaded_entity_file(entity_name: str = Form(...), file_id: str = Form(\"\"), request: Request = None):' in app
+    assert 'async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):' in app
     assert 'async def review_source_mapping_suggestion(' in app
     assert 'if request is not None and "text/html" in request.headers.get("accept", ""):' in app
     assert 'RedirectResponse(url="/agent-pipeline"' in app
@@ -232,5 +232,5 @@ def test_source_inventory_uses_file_level_review_for_multiple_extracts():
     app = (ROOT / "ui" / "app.py").read_text()
     assert '"file_id": uuid.uuid4().hex' in state
     assert 'name="file_id" value="{{ file.file_id }}"' in source
-    assert 'entity_files.get(file_id)' in app
+    assert 'item.get("file_id") == file_id' in app
     assert 'Entity review queue' in (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
