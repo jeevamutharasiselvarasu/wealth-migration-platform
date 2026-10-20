@@ -292,7 +292,8 @@ async def dashboard_overview(request: Request):
             "page_title": "2. Dashboard Overview",
             "user_name": user["name"],
             "user_role": user["role"],
-            "dashboard": state_store.generated_dashboard
+            "dashboard": state_store.generated_dashboard,
+            "migration_setup": state_store.questionnaire_data.get("migration_setup", {})
         }
     )
 
