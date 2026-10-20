@@ -329,7 +329,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
         if entity not in {"Account", "Household", "Client"}:
             continue
         for file_id, record in files.items():
-            source_uploads.append({**record, "file_id": file_id, "inferred_entity": entity})
+            source_uploads.append({**record, "file_id": record.get("file_id", file_id), "inferred_entity": entity})
     source_uploads.sort(key=lambda item: item.get("uploaded_at", ""), reverse=True)
     return render_template_with_context(
         request=request,
@@ -735,7 +735,7 @@ async def confirm_entity_inference(
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
     file_id = str((await request.form()).get("file_id", "")).strip() if request is not None else ""
     entity_files = state_store.entity_source_files.get(entity_name, {})
-    record = entity_files.get(file_id) if file_id else state_store.entity_sample_files.get(entity_name)
+    record = next((item for item in entity_files.values() if item.get("file_id") == file_id), None) if file_id else state_store.entity_sample_files.get(entity_name)
     if not record or not record.get("inference"):
         raise HTTPException(status_code=404, detail=f"No inferred source file is awaiting confirmation for {entity_name}.")
     normalized_decision = decision.strip().upper()
@@ -812,7 +812,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
     entity_files = state_store.entity_source_files.get(entity_name, {})
-    uploaded = entity_files.get(file_id) if file_id else state_store.entity_sample_files.get(entity_name)
+    uploaded = next((item for item in entity_files.values() if item.get("file_id") == file_id), None) if file_id else state_store.entity_sample_files.get(entity_name)
     if uploaded and uploaded.get("inference") and uploaded.get("inference_approval_status") != "APPROVED":
         raise HTTPException(status_code=409, detail=f"Entity inference for {entity_name} must be approved before mapping.")
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
@@ -913,7 +913,7 @@ async def map_uploaded_entity_file(entity_name: str = Form(...), file_id: str = 
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
     try:
-        result = _map_uploaded_source_entity(entity_name, file_id=file_id)
+        result = _map_uploaded_source_entity(entity_name, file_id=file_id) if file_id else _map_uploaded_source_entity(entity_name)
     except HTTPException:
         raise
     except Exception as exc:
