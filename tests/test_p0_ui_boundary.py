@@ -136,3 +136,29 @@ def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
     assert 'async def review_source_mapping_suggestion(' in app
     assert 'if request is not None and "text/html" in request.headers.get("accept", ""):' in app
     assert 'RedirectResponse(url="/agent-pipeline"' in app
+
+
+def test_migration_setup_defers_entity_scope_until_source_discovery():
+    app = (ROOT / "ui" / "app.py").read_text()
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    assert 'selected_entities = ["Account", "Household", "Client"]' in app
+    assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY"' in app
+    assert "Do not choose entity scope here" in setup
+    assert 'href="/firm-knowledge"' not in setup
+
+
+def test_inferred_entity_requires_human_approval_before_mapping():
+    app = (ROOT / "ui" / "app.py").read_text()
+    inventory = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    assert '@app.post("/api/entities/confirm-inference")' in app
+    assert 'record["inference_approval_status"] = "APPROVED" if normalized_decision == "APPROVE" else "REJECTED"' in app
+    assert 'uploaded.get("inference_approval_status") != "APPROVED"' in app
+    assert 'name="decision" value="APPROVE"' in inventory
+    assert 'name="decision" value="REJECT"' in inventory
+    assert "A rejection reason is required." in app
+
+
+def test_entity_scope_screen_redirects_into_source_discovery():
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'async def entity_selection_view(request: Request):' in app
+    assert 'return RedirectResponse(url="/entity-sample-files"' in app
