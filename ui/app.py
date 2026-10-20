@@ -352,7 +352,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
 
 
 @app.get("/agent-pipeline", response_class=HTMLResponse)
-async def agent_pipeline_view(request: Request):
+async def agent_pipeline_view(request: Request, notice: str = "", error: str = ""):
     user = get_current_user(request)
     latest_run = state_store.pipeline_runs[-1] if state_store.pipeline_runs else None
     conn = get_db_connection()
@@ -387,39 +387,17 @@ async def agent_pipeline_view(request: Request):
             "source_files": source_files,
             "mapping_suggestions": mapping_suggestions,
             "information_requests": state_store.questionnaire_data.get("mapping_information_requests", []),
+            "notice": notice,
+            "error": error,
         }
     )
 
 
 @app.get("/hitl", response_class=HTMLResponse)
 async def hitl_approval_queue(request: Request):
-    user = get_current_user(request)
-    latest_run = state_store.pipeline_runs[-1] if state_store.pipeline_runs else None
-
-    rep_code = latest_run.get("rep_code", "REP-9981") if latest_run else "REP-9981"
-    wave_id = latest_run.get("wave_id", "WAVE-01") if latest_run else "WAVE-01"
-    cohort_summary = state_store.get_cohort_sleeve_summary(rep_code)
-
-    cohort = {
-        "rep_code": rep_code,
-        "wave_id": wave_id,
-        "account_id": "ACC-99812",
-        "allocations": cohort_summary.get("allocations", []),
-        "sum_check": cohort_summary.get("sum_check", "1.0000 (PASS)")
-    }
-
-    return render_template_with_context(
-        request=request,
-        template_name="hitl_queue.html",
-        extra_context={
-            "page_title": "Mapping Review & Information Requests",
-            "user_name": user["name"],
-            "user_role": user["role"],
-            "cohort": cohort,
-            "pipeline_run": latest_run,
-            "audit_log": state_store.audit_log
-        }
-    )
+    """P0 human approval lives in the source-to-canonical mapping review."""
+    get_current_user(request)
+    return RedirectResponse(url="/agent-pipeline#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/reconciliation", response_class=HTMLResponse)
@@ -941,6 +919,44 @@ async def map_uploaded_entity_file(entity_name: str = Form(...), request: Reques
     if request is not None and "text/html" in request.headers.get("accept", ""):
         return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
     return JSONResponse(result)
+
+
+@app.post("/api/entities/map-approved-files")
+async def map_all_approved_source_files(request: Request):
+    """Create mapping proposals for every approved source file not mapped yet."""
+    user = get_current_user(request)
+    approved_files = []
+    for entity_name, files in state_store.entity_source_files.items():
+        if entity_name not in {"Account", "Household", "Client"}:
+            continue
+        for record in files.values():
+            if record.get("inference_approval_status") == "APPROVED" and not record.get("mapping_generated"):
+                approved_files.append((entity_name, record))
+    if not approved_files:
+        message = "No new approved files are waiting for profiling. Confirm inferred entities first, or review existing proposals."
+        return RedirectResponse(url="/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
+    completed, failures = [], []
+    for entity_name, record in approved_files:
+        try:
+            result = _map_uploaded_source_entity(entity_name, actor=user.get("name", "SourceMappingWorkflow"), file_id=record.get("file_id", ""))
+            record["mapping_generated"] = True
+            record["last_mapping_run_id"] = result.get("run_id")
+            completed.append(record.get("filename", "source file"))
+        except HTTPException as exc:
+            failures.append(f"{record.get('filename', 'source file')}: {exc.detail}")
+        except Exception as exc:
+            logger.exception("Batch mapping failed for %s", record.get("filename"))
+            failures.append(f"{record.get('filename', 'source file')}: {type(exc).__name__}")
+    if completed:
+        message = f"Generated mapping proposals for {len(completed)} approved file(s): " + ", ".join(completed)
+        if failures:
+            message += f". {len(failures)} file(s) need attention: " + " | ".join(failures)
+        destination = "/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings"
+    else:
+        message = "No mapping proposals generated. " + " | ".join(failures)
+        destination = "/entity-sample-files?notice=" + quote_plus(message) + "#discovered-source-inventory"
+    state_store.audit_log.append({"event":"BATCH_SOURCE_MAPPING_PROPOSED","actor":user.get("name","Unknown reviewer"),"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"completed_files":completed,"failures":failures}})
+    return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/map-mcl")
