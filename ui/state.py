@@ -142,11 +142,43 @@ class WorkspaceStateStore:
                         now,
                     ),
                 )
+            migration_id = self.questionnaire_data.get("migration_id", "UNCONFIGURED")
             for index, field_lineage in enumerate(mapping_result.get("field_lineages", [])):
                 source_field = str(field_lineage.get("source_field", "")).strip()
-                canonical_field = field_lineage.get("canonical_field")
+                canonical_field = str(field_lineage.get("canonical_field") or "").strip()
+                proposed_rule = str(field_lineage.get("rule_applied") or "DIRECT_COPY").strip()
                 if not source_field or not canonical_field:
                     continue
+
+                # Do not recreate approval work for a rule that is already approved.
+                # This is migration/entity/source/canonical scoped so an approval in
+                # one entity or migration cannot suppress a different mapping.
+                approved = conn.execute(
+                    """
+                    SELECT 1 FROM canonical_mappings
+                    WHERE migration_id = ? AND entity_name = ? AND source_field = ?
+                      AND canonical_field = ? AND is_confirmed = 1
+                    LIMIT 1
+                    """,
+                    (migration_id, entity_name, source_field, canonical_field),
+                ).fetchone()
+                if approved:
+                    continue
+
+                # Repeated profiling runs should reuse the existing review item for
+                # the same proposed mapping instead of creating a new PENDING row.
+                existing = conn.execute(
+                    """
+                    SELECT suggestion_id FROM mapping_suggestions
+                    WHERE migration_id = ? AND entity_name = ? AND source_field = ?
+                      AND canonical_field = ? AND COALESCE(proposed_rule, 'DIRECT_COPY') = ?
+                    LIMIT 1
+                    """,
+                    (migration_id, entity_name, source_field, canonical_field, proposed_rule),
+                ).fetchone()
+                if existing:
+                    continue
+
                 conn.execute(
                     "INSERT INTO mapping_suggestions "
                     "(suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, "
@@ -155,11 +187,11 @@ class WorkspaceStateStore:
                     (
                         f"MAPSUG-{run_id}-{index}-{uuid.uuid4().hex[:8]}",
                         run_id,
-                        self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+                        migration_id,
                         entity_name,
                         source_field,
-                        str(canonical_field),
-                        field_lineage.get("rule_applied"),
+                        canonical_field,
+                        proposed_rule,
                         float(mapping_result.get("confidence_score", 0.0)),
                         now,
                     ),
