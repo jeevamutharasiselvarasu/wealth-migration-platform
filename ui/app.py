@@ -644,6 +644,40 @@ async def upload_entity_sample_file(
 
 
 
+
+@app.post("/api/entities/confirm-inference")
+async def confirm_entity_inference(
+    entity_name: str = Form(...),
+    decision: str = Form(...),
+    comments: str = Form(""),
+    request: Request = None,
+):
+    """Require human confirmation of inferred entity before mapping is enabled."""
+    user = get_current_user(request) if request is not None else {"name": "Unknown reviewer"}
+    if entity_name not in {"Account", "Household", "Client"}:
+        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
+    record = state_store.entity_sample_files.get(entity_name)
+    if not record or not record.get("inference"):
+        raise HTTPException(status_code=404, detail=f"No inferred source file is awaiting confirmation for {entity_name}.")
+    normalized_decision = decision.strip().upper()
+    if normalized_decision not in {"APPROVE", "REJECT"}:
+        raise HTTPException(status_code=400, detail="Decision must be APPROVE or REJECT.")
+    record["inference_approval_status"] = "APPROVED" if normalized_decision == "APPROVE" else "REJECTED"
+    record["inference_review"] = {
+        "decision": normalized_decision,
+        "reviewer": user.get("name", "Unknown reviewer"),
+        "comments": comments.strip(),
+        "reviewed_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    state_store.entity_scopes[entity_name] = "IN_SCOPE" if normalized_decision == "APPROVE" else "PENDING_DISCOVERY"
+    state_store.audit_log.append({
+        "event": "ENTITY_INFERENCE_REVIEWED",
+        "actor": user.get("name", "Unknown reviewer"),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "details": {"entity": entity_name, "filename": record.get("filename"), "decision": normalized_decision, "comments": comments.strip()},
+    })
+    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
 def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     """Strip row-level canonical output and raw samples from all preview API responses."""
     safe_mapping = dict(mapping_res)
