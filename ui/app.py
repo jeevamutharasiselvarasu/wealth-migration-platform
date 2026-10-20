@@ -909,11 +909,13 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
 
 
 @app.post("/api/entities/map-uploaded-file")
-async def map_uploaded_entity_file(entity_name: str = Form(...), file_id: str = Form(""), request: Request = None):
+async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):
     """Profile and map an uploaded MCL CSV or another explicitly supported canonical source entity."""
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
     try:
+        form = await request.form() if request is not None else {}
+        file_id = str(form.get("file_id", "")).strip()
         result = _map_uploaded_source_entity(entity_name, file_id=file_id) if file_id else _map_uploaded_source_entity(entity_name)
     except HTTPException:
         raise
