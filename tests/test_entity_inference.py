@@ -19,3 +19,8 @@ def test_ambiguous_file_requests_more_information_instead_of_guessing():
     result = infer_entity_from_headers(["ID", "NAME", "STATUS"])
     assert result["status"] == "NEEDS_CLARIFICATION"
     assert result["entity"] is None
+
+def test_context_can_disambiguate_generic_headers_when_source_dictionary_is_explicit():
+    result = infer_entity_from_headers(["ID", "NAME", "STATUS"], context="This is the household register. Household ID and household name are defined in the dictionary.")
+    assert result["entity"] == "Household"
+    assert result["status"] == "INFERRED"
