@@ -57,8 +57,9 @@ def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
     pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
     assert ">98%</div>" not in pipeline
     assert "HIGH QUALITY · READY" not in pipeline
-    assert "P0 · REVIEW ONLY" in pipeline
-    assert "Canonical-to-target mapping, wave assignment" in pipeline
+    assert "P0 · APPROVAL REQUIRED" in pipeline
+    assert "target loading" in pipeline.lower()
+    assert "wave assignment" in pipeline.lower()
 
 
 
