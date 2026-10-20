@@ -194,7 +194,7 @@ async def save_migration_setup(request: Request):
     for entity in {"Account", "Household", "Client"}:
         state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
-    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/demo/load")
@@ -296,7 +296,16 @@ async def dashboard_overview(request: Request):
             "user_name": user["name"],
             "user_role": user["role"],
             "dashboard": state_store.generated_dashboard,
-            "migration_setup": state_store.questionnaire_data.get("migration_setup", {})
+            "migration_setup": state_store.questionnaire_data.get("migration_setup", {}),
+            "wave_conditions": CohortConditionEngine.get_condition_catalog(),
+            "entity_approval_summary": {
+                entity: {
+                    "total": len(state_store.entity_source_files.get(entity, {})),
+                    "approved": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "APPROVED"),
+                    "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in {"APPROVED", "REJECTED"}),
+                    "rejected": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "REJECTED"),
+                } for entity in ("Account", "Household", "Client")
+            }
         }
     )
 
@@ -783,6 +792,50 @@ async def upload_entity_sample_file(
     return RedirectResponse(url="/entity-sample-files?uploaded=" + entity_name, status_code=status.HTTP_303_SEE_OTHER)
 
 
+
+
+@app.post("/api/entities/confirm-entity")
+async def confirm_entity_inference(request: Request, entity_name: str = Form(...), comments: str = Form("")):
+    """Approve all files for an entity in one action only when every file has clear inference evidence."""
+    user = get_current_user(request)
+    if entity_name not in {"Account", "Household", "Client"}:
+        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
+    entity_files = state_store.entity_source_files.get(entity_name, {})
+    if not entity_files:
+        raise HTTPException(status_code=409, detail=f"No source files are registered for {entity_name}.")
+    blockers = []
+    for record in entity_files.values():
+        inference = record.get("inference") or {}
+        evidence = inference.get("evidence", {}).get(entity_name, {})
+        matched_fields = evidence.get("matched_fields", [])
+        signature_fields = evidence.get("signature_fields", [])
+        if inference.get("entity") != entity_name or inference.get("status") not in {"INFERRED", "NEEDS_REVIEW"} or not matched_fields or not signature_fields:
+            blockers.append(record.get("filename", "Unnamed file"))
+    if blockers:
+        raise HTTPException(
+            status_code=409,
+            detail="Entity-level approval is blocked because these files need clarification or do not have sufficient entity evidence: " + ", ".join(blockers) + ". Review them individually first."
+        )
+    now = datetime.now(timezone.utc).isoformat()
+    approved_files = []
+    for record in entity_files.values():
+        record["inference_approval_status"] = "APPROVED"
+        record["inference_review"] = {
+            "decision": "APPROVE_ENTITY",
+            "reviewer": user.get("name", "Unknown reviewer"),
+            "comments": comments.strip() or "Entity-level approval: all registered files passed the evidence gate.",
+            "reviewed_utc": now,
+        }
+        approved_files.append(record.get("filename", "source file"))
+    state_store.entity_scopes[entity_name] = "IN_SCOPE"
+    state_store.audit_log.append({
+        "event": "ENTITY_LEVEL_INFERENCE_APPROVED",
+        "actor": user.get("name", "Unknown reviewer"),
+        "timestamp_utc": now,
+        "details": {"entity": entity_name, "files": approved_files, "comments": comments.strip()},
+    })
+    message = f"Approved {entity_name} entity scope and {len(approved_files)} file(s): " + ", ".join(approved_files)
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(message) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/confirm-inference")
