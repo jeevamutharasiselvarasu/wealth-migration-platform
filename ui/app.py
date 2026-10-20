@@ -108,7 +108,8 @@ async def persona_selection_page(request: Request):
          "description":"Review field completeness, keys, relationships, data-quality exceptions and reconciliation evidence.",
          "stages":["Validation","Exceptions","Evidence"]},
     ]
-    allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"} if user["role"] == "Platform Admin" else {user["role"]}
+    assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])
+    allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"} if assigned_role == "Platform Admin" else {assigned_role}
     personas = [persona for persona in personas if persona["id"] in allowed_roles]
     return render_template_with_context(request, "persona_selection.html", {
         "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"], "personas":personas
@@ -118,7 +119,8 @@ async def persona_selection_page(request: Request):
 @app.post("/persona-selection")
 async def select_persona(request: Request, role: str = Form(...)):
     user = get_current_user(request)
-    if user["role"] != "Platform Admin" and role != user["role"]:
+    assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])
+    if assigned_role != "Platform Admin" and role != assigned_role:
         raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")
     session_id = request.cookies.get("session_id")
     if not session_id or not session_mgr.select_role(session_id, role):
