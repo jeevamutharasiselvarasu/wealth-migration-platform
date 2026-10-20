@@ -7,6 +7,10 @@ The platform decouples control plane governance from data plane execution, norma
 
 ---
 
+## Current Pilot Scope
+
+The active pilot is deliberately limited to three canonical entities: **Account**, **Household**, and **Client**. Each entity has a fixed canonical contract and an expected sample CSV (`accounts.csv`, `households.csv`, and `clients.csv`). The initial workflow is source discovery and profiling, source-to-canonical mapping with field lineage and missing-field warnings, human review, approved transformation execution, and reconciliation. Canonical-to-source mapping, additional entities, wave/cohort segregation, and production target-specific loading are outside this pilot scope.
+
 ## 🎨 XODUS-AMP Design & Visual System
 
 * **Header Branding**: Navy `#152C6B` topbar with gradient `XA` logo badge and dynamic acquisition pipeline tags[cite: 108].
