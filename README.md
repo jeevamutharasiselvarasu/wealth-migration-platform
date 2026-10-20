@@ -1,9 +1,9 @@
 ```markdown
 # XODUS-AMP Data Migration Workbench
 
-An enterprise-grade, metadata-driven data migration platform built for wealth management acquisition migrations (specifically **Core Cap Wealth Management → Simplicity Wealth**). 
+XODUS-AMP is a metadata-driven migration workbench. The active P0 implementation is a generic **source-to-canonical mapping** pilot limited to three entities: **Account, Household, and Client**. It supports sample-file upload, source profiling, mapping and field-lineage evidence, scope gating, human review, and MCL key/relationship validation.
 
-The platform decouples control plane governance from data plane execution, normalizes raw legacy extracts (Amplify TAMP & Black Diamond) into a fixed 15-entity canonical taxonomy, enforces strict mathematical invariants (Rep-as-PM sleeve weights $\sum = 1.0000$, AUM drift $\le 0.5000\%$), and dispatches reconciled packages into target destinations (**Salesforce SPARC** CRM and **Orion Eclipse** Trading)[cite: 1, 2, 4, 5, 88].
+**Current P0 boundary:** source and target systems are not hard-coded into the active mapping workflow; target-side loading, canonical-to-target/reverse mapping, production cutover, and wave/cohort assignment are deferred. The broader architecture sections below describe future platform direction and must not be read as evidence that those deferred capabilities are implemented.
 
 ---
 
