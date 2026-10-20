@@ -20,6 +20,7 @@ from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
 from control_plane.services.mcl_validation import validate_mcl_relationships
 from control_plane.services.source_file_adapter import read_source_records
+from control_plane.services.entity_inference import infer_entity_from_headers
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
@@ -78,14 +79,94 @@ async def login_page(request: Request, error: str = None):
 
 
 @app.post("/login")
-async def process_login(email: str = Form(...), password: str = Form(...), role: str = Form(...)):
-    session_id = session_mgr.authenticate(email, password, role)
+async def process_login(email: str = Form(...), password: str = Form(...)):
+    # Authentication and persona selection are intentionally separate steps.
+    session_id = session_mgr.authenticate(email, password, "Platform Admin")
     if not session_id:
         return RedirectResponse(url="/login?error=Invalid+credentials+provided", status_code=status.HTTP_303_SEE_OTHER)
-
-    response = RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(key="session_id", value=session_id, httponly=True)
+    response = RedirectResponse(url="/persona-selection", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(key="session_id", value=session_id, httponly=True, samesite="lax")
     return response
+
+
+@app.get("/persona-selection", response_class=HTMLResponse)
+async def persona_selection_page(request: Request):
+    user = get_current_user(request)
+    personas = [
+        {"id":"Platform Admin","label":"Platform Admin","initials":"PA","plane":"Platform governance",
+         "description":"Configure the migration workspace, identity boundaries, environment references and access controls.",
+         "stages":["Migration setup","Access & governance","Audit"]},
+        {"id":"Migration Analyst","label":"Migration Analyst","initials":"MA","plane":"Control plane",
+         "description":"Own source discovery, profiling, entity inference, mapping recommendations, information requests and rule preparation.",
+         "stages":["Discovery","Mapping","Rule design"]},
+        {"id":"Domain SME","label":"Domain SME / Data Steward","initials":"SME","plane":"Business review",
+         "description":"Resolve business meaning, provide missing definitions, and approve or reject mappings and proposed transformations.",
+         "stages":["Knowledge","Review","Approve / reject"]},
+        {"id":"Validation Specialist","label":"Validation Specialist","initials":"VS","plane":"Validation",
+         "description":"Review field completeness, keys, relationships, data-quality exceptions and reconciliation evidence.",
+         "stages":["Validation","Exceptions","Evidence"]},
+    ]
+    return render_template_with_context(request, "persona_selection.html", {
+        "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"], "personas":personas
+    })
+
+
+@app.post("/persona-selection")
+async def select_persona(request: Request, role: str = Form(...)):
+    session_id = request.cookies.get("session_id")
+    if not session_id or not session_mgr.select_role(session_id, role):
+        raise HTTPException(status_code=403, detail="The selected persona is not available for this session.")
+    return RedirectResponse(url="/migration-setup", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/migration-setup", response_class=HTMLResponse)
+async def migration_setup_page(request: Request):
+    user = get_current_user(request)
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    return render_template_with_context(request, "migration_setup.html", {
+        "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup
+    })
+
+
+@app.post("/api/migration/setup")
+async def save_migration_setup(request: Request):
+    user = get_current_user(request)
+    form = await request.form()
+    selected_entities = [entity for entity in form.getlist("entities") if entity in {"Account","Household","Client"}]
+    if not selected_entities:
+        raise HTTPException(status_code=400, detail="Select at least one supported P0 entity.")
+    setup = {
+        "migration_name": str(form.get("migration_name", "")).strip(),
+        "target_system": str(form.get("target_system", "")).strip(),
+        "canonical_version": str(form.get("canonical_version", "")).strip(),
+        "target_owner": str(form.get("target_owner", "")).strip(),
+        "azure_tenant_id": str(form.get("azure_tenant_id", "")).strip(),
+        "azure_subscription_id": str(form.get("azure_subscription_id", "")).strip(),
+        "azure_resource_group": str(form.get("azure_resource_group", "")).strip(),
+        "azure_storage_account": str(form.get("azure_storage_account", "")).strip(),
+        "azure_container": str(form.get("azure_container", "")).strip(),
+        "azure_access_method": str(form.get("azure_access_method", "PENDING")).strip(),
+        "knowledge_schema_ref": str(form.get("knowledge_schema_ref", "")).strip(),
+        "knowledge_rules_ref": str(form.get("knowledge_rules_ref", "")).strip(),
+        "knowledge_sme": str(form.get("knowledge_sme", "")).strip(),
+        "relationship_notes": str(form.get("relationship_notes", "")).strip(),
+        "source_acquisition": str(form.get("source_acquisition", "SAMPLE_FILES")).strip(),
+        "source_details": str(form.get("source_details", "")).strip(),
+        "entities": selected_entities,
+        "configured_by": user["name"],
+        "configuration_status": "CONFIGURED",
+    }
+    # Configuration metadata only: never store secrets or claim a live Azure connection.
+    state_store.questionnaire_data["migration_id"] = state_store.questionnaire_data.get("migration_id") or f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    state_store.questionnaire_data["firm_name"] = setup["migration_name"]
+    state_store.questionnaire_data["target_system"] = setup["target_system"]
+    state_store.questionnaire_data["source_systems"] = setup["source_details"]
+    state_store.questionnaire_data["migration_setup"] = setup
+    state_store.questionnaire_data["last_updated"] = datetime.now(timezone.utc).isoformat()
+    for entity in {"Account", "Household", "Client"}:
+        state_store.entity_scopes[entity] = "IN_SCOPE" if entity in selected_entities else "OUT_OF_SCOPE"
+    state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
+    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout")
@@ -485,31 +566,46 @@ async def save_entity_scopes(request: Request):
 
 @app.post("/api/entities/upload-sample-file")
 async def upload_entity_sample_file(
-    entity_name: str = Form(...),
     file: UploadFile = File(...),
     source_role: str = Form("ENTITY_MASTER"),
 ):
-    """Validate and store a supported source file with explicit role and lineage metadata."""
-    scope_entity = "Client" if entity_name == "Client" else entity_name
-    scope = state_store.entity_scopes.get(scope_entity)
-    if scope != "IN_SCOPE":
-        raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE; upload is blocked.")
-    allowed_roles = {
-        "Account": {"ACCOUNT_MASTER", "NAME_ADDRESS", "ACCOUNT_TYPE"},
-        "Client": {"ENTITY_MASTER", "CLIENT_MODEL"},
-        "Household": {"ENTITY_MASTER", "HOUSEHOLD_MAPPING"},
-    }
-    normalized_role = (source_role or "ENTITY_MASTER").strip().upper()
-    if normalized_role not in allowed_roles.get(scope_entity, set()):
-        raise HTTPException(status_code=400, detail=f"Source role {normalized_role} is not supported for {scope_entity}.")
+    """Inspect headers and infer the canonical entity; callers do not assign an entity manually."""
     content = await file.read()
+    try:
+        records = read_source_records(file.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    headers = list(records[0].keys()) if records else []
+    inference = infer_entity_from_headers(headers)
+    if inference["status"] == "NEEDS_CLARIFICATION":
+        return JSONResponse({
+            "status": "NEEDS_CLARIFICATION",
+            "filename": file.filename,
+            "inference": inference,
+            "information_required": [
+                "Provide the source data dictionary or field definitions.",
+                "Identify the business meaning of the likely primary key.",
+                "Clarify whether the file primarily describes an Account, Household or Client.",
+            ],
+            "message": inference["message"],
+        }, status_code=422)
+    entity_name = inference["entity"]
+    if state_store.entity_scopes.get(entity_name) != "IN_SCOPE":
+        raise HTTPException(status_code=409, detail=f"Inference identified {entity_name}, but that entity is not enabled in this migration's scope.")
+    normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
     try:
         record = state_store.attach_entity_sample_file(
             entity_name, file.filename or "", content, source_role=normalized_role
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+    record["inference"] = inference
+    state_store.audit_log.append({
+        "event":"SOURCE_ENTITY_INFERRED","actor":"SourceDiscovery","timestamp_utc":datetime.now(timezone.utc).isoformat(),
+        "details":{"filename":record["filename"],"entity":entity_name,"confidence":inference["confidence"],"status":inference["status"]}
+    })
+    return RedirectResponse(url="/entity-sample-files?uploaded=" + entity_name, status_code=status.HTTP_303_SEE_OTHER)
+
 
 
 def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
