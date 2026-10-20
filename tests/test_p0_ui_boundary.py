@@ -22,12 +22,13 @@ def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
     assert 'self.firm_knowledge_docs: List[Dict[str, Any]] = []' in state
     assert '"program_status": "P0_SOURCE_TO_CANONICAL"' in state
 
-def test_p0_navigation_exposes_only_control_plane_workflow():
+def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow():
     navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
-    for route in ('/firm-knowledge', '/entity-selection', '/entity-sample-files', '/agent-pipeline'):
+    for route in ('/persona-selection', '/migration-setup', '/entity-sample-files', '/agent-pipeline', '/hitl', '/reconciliation'):
         assert f'href="{route}"' in navigation
-    assert 'href="/hitl"' not in navigation
-    assert 'href="/reconciliation"' in navigation
+    assert 'href="/firm-knowledge"' not in navigation
+    assert "Persona / Role" in navigation
+    assert "Source Discovery & Entity Scope" in navigation
     assert "DATA PLANE (SPECIALIST)" not in navigation
 
 
