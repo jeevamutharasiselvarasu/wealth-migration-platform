@@ -191,6 +191,7 @@ class WorkspaceStateStore:
         stored_path.write_bytes(content_bytes)
 
         record = {
+            "file_id": uuid.uuid4().hex,
             "filename": Path(filename).name,
             "source_role": str(source_role or "ENTITY_MASTER").strip().upper(),
             "entity_name": entity_name,
@@ -203,9 +204,10 @@ class WorkspaceStateStore:
             "columns": columns,
             "status": "UPLOADED",
         }
-        role_files = self.entity_source_files.setdefault(entity_name, {})
-        role_files[record["source_role"]] = record
-        # Keep the existing entity-level mapping path tied to the master file only.
+        # Store every file independently. A single entity can have many source extracts.
+        entity_files = self.entity_source_files.setdefault(entity_name, {})
+        entity_files[record["file_id"]] = record
+        # Preserve compatibility for legacy entity-level endpoints by pointing at the latest upload.
         if record["source_role"] in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
             self.entity_sample_files[entity_name] = record
         return record
