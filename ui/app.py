@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
@@ -592,20 +593,21 @@ async def upload_entity_sample_file(
     headers = list(records[0].keys()) if records else []
     inference = infer_entity_from_headers(headers, context=" ".join([source_context, data_dictionary_notes]))
     if inference["status"] == "NEEDS_CLARIFICATION":
-        return JSONResponse({
-            "status": "NEEDS_CLARIFICATION",
-            "filename": file.filename,
+        state_store.questionnaire_data.setdefault("source_inference_clarifications", []).append({
+            "filename": file.filename or "Unknown file",
+            "headers": headers,
+            "source_context": source_context.strip(),
+            "data_dictionary_notes": data_dictionary_notes.strip(),
             "inference": inference,
             "information_required": [
                 "Provide the source data dictionary or field definitions.",
                 "Identify the business meaning of the likely primary key.",
                 "Clarify whether the file primarily describes an Account, Household or Client.",
             ],
-            "message": inference["message"],
-            "source_context_received": bool(source_context.strip()),
-            "data_dictionary_notes_received": bool(data_dictionary_notes.strip()),
-            "suggested_follow_up": "Add field definitions and explain the key/relationship semantics, then resubmit the file.",
-        }, status_code=422)
+            "created_utc": datetime.now(timezone.utc).isoformat(),
+        })
+        notice = f"Could not confidently infer an entity for {file.filename or 'the uploaded file'}. Add the data dictionary and explain key/relationship semantics, then upload again."
+        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice), status_code=status.HTTP_303_SEE_OTHER)
     entity_name = inference["entity"]
     if state_store.entity_scopes.get(entity_name) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"Inference identified {entity_name}, but that entity is not enabled in this migration's scope.")
