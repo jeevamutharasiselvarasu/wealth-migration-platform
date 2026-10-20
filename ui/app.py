@@ -579,6 +579,8 @@ async def save_entity_scopes(request: Request):
 async def upload_entity_sample_file(
     file: UploadFile = File(...),
     source_role: str = Form("ENTITY_MASTER"),
+    source_context: str = Form(""),
+    data_dictionary_notes: str = Form(""),
 ):
     """Inspect headers and infer the canonical entity; callers do not assign an entity manually."""
     content = await file.read()
@@ -599,6 +601,9 @@ async def upload_entity_sample_file(
                 "Clarify whether the file primarily describes an Account, Household or Client.",
             ],
             "message": inference["message"],
+            "source_context_received": bool(source_context.strip()),
+            "data_dictionary_notes_received": bool(data_dictionary_notes.strip()),
+            "suggested_follow_up": "Add field definitions and explain the key/relationship semantics, then resubmit the file.",
         }, status_code=422)
     entity_name = inference["entity"]
     if state_store.entity_scopes.get(entity_name) != "IN_SCOPE":
@@ -611,6 +616,8 @@ async def upload_entity_sample_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record["inference"] = inference
+    record["source_context"] = source_context.strip()
+    record["data_dictionary_notes"] = data_dictionary_notes.strip()
     state_store.audit_log.append({
         "event":"SOURCE_ENTITY_INFERRED","actor":"SourceDiscovery","timestamp_utc":datetime.now(timezone.utc).isoformat(),
         "details":{"filename":record["filename"],"entity":entity_name,"confidence":inference["confidence"],"status":inference["status"]}
