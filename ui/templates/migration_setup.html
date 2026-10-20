@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-6xl space-y-5">
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-6 shadow-sm">
+    <div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Migration onboarding · Step 1</div>
+    <h1 class="mt-2 text-2xl font-bold text-[#152C6B]">Set up the migration</h1>
+    <p class="mt-2 max-w-3xl text-sm leading-6 text-[#5A6A88]">Define the intended target contract first, then provide Azure access details, firm knowledge and source access. The platform will inspect source files and infer whether they contain Account, Household or Client data—do not assign entities manually.</p>
+    <div class="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+      {% for n,label in [(1,'Target & canonical contract'),(2,'Azure environment'),(3,'Knowledge assets'),(4,'Source acquisition')] %}
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[10px] font-bold text-blue-700">0{{n}}</div><div class="mt-1 text-xs font-bold text-[#152C6B]">{{label}}</div></div>
+      {% endfor %}
+    </div>
+  </section>
+  <form action="/api/migration/setup" method="post" class="space-y-5">
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">01</span><div><h2 class="font-bold text-[#152C6B]">Target system and canonical contract</h2><p class="mt-1 text-xs text-[#5A6A88]">Capture the destination and target schema requirements before mapping. This configures the intended contract; it does not enable target loading in P0.</p></div></div>
+      <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <label class="text-xs font-bold text-[#41506B]">Migration name<input name="migration_name" value="{{ setup.get('migration_name','') }}" required placeholder="e.g. Advisory book migration" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Target system / platform<input name="target_system" value="{{ setup.get('target_system','') }}" required placeholder="Target platform name" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Canonical schema / contract version<input name="canonical_version" value="{{ setup.get('canonical_version','') }}" placeholder="Version, URL or document reference" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Target owner / SME<input name="target_owner" value="{{ setup.get('target_owner','') }}" placeholder="Name or team responsible for target rules" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"></label>
+      </div>
+      <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        {% for entity in ['Account','Household','Client'] %}
+        <label class="flex items-center gap-2 rounded-lg border border-[#D9E3F5] bg-[#F8FAFD] p-3 text-xs font-bold text-[#152C6B]"><input type="checkbox" name="entities" value="{{ entity }}" checked>{{entity}} <span class="ml-auto text-[9px] font-mono text-teal-700">P0</span></label>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">02</span><div><h2 class="font-bold text-[#152C6B]">Azure environment and access</h2><p class="mt-1 text-xs text-[#5A6A88]">Collect environment identifiers and the approved access method. Do not paste secrets, keys or passwords into this form; use managed identity or Key Vault references.</p></div></div>
+      <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <label class="text-xs font-bold text-[#41506B]">Azure tenant ID<input name="azure_tenant_id" value="{{ setup.get('azure_tenant_id','') }}" placeholder="Tenant ID" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Subscription ID<input name="azure_subscription_id" value="{{ setup.get('azure_subscription_id','') }}" placeholder="Subscription ID" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Resource group<input name="azure_resource_group" value="{{ setup.get('azure_resource_group','') }}" placeholder="Resource group name" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Storage account / ADLS endpoint<input name="azure_storage_account" value="{{ setup.get('azure_storage_account','') }}" placeholder="Storage account or endpoint" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Container / filesystem<input name="azure_container" value="{{ setup.get('azure_container','') }}" placeholder="Container name" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Access method<select name="azure_access_method" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"><option value="MANAGED_IDENTITY">Managed identity / approved enterprise auth</option><option value="KEY_VAULT_REFERENCE">Key Vault secret reference</option><option value="PENDING">Access not provisioned yet</option></select></label>
+      </div>
+    </section>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">03</span><div><h2 class="font-bold text-[#152C6B]">Knowledge and mapping evidence</h2><p class="mt-1 text-xs text-[#5A6A88]">Register where the platform should find the data dictionary, target schema, business rules and SME knowledge. Uploads and connected repositories can be added later.</p></div></div>
+      <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <label class="text-xs font-bold text-[#41506B]">Data dictionary / schema reference<input name="knowledge_schema_ref" value="{{ setup.get('knowledge_schema_ref','') }}" placeholder="Document URL, repository path or asset name" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Business rules / Confluence / Drive references<input name="knowledge_rules_ref" value="{{ setup.get('knowledge_rules_ref','') }}" placeholder="URLs or document references" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Business/data SME<input name="knowledge_sme" value="{{ setup.get('knowledge_sme','') }}" placeholder="Name or team" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Known identifiers and relationship notes<textarea name="relationship_notes" rows="2" placeholder="Known keys, household/client/account relationships, unresolved semantics" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal">{{ setup.get('relationship_notes','') }}</textarea></label>
+      </div>
+    </section>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">04</span><div><h2 class="font-bold text-[#152C6B]">Source acquisition method</h2><p class="mt-1 text-xs text-[#5A6A88]">Choose how source data will be made available. Entity classification is performed from schema and profile evidence after intake.</p></div></div>
+      <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <label class="flex cursor-pointer gap-3 rounded-xl border border-[#D9E3F5] p-4"><input type="radio" name="source_acquisition" value="SAMPLE_FILES" checked><span><b class="block text-sm text-[#152C6B]">Upload representative sample files</b><span class="mt-1 block text-xs leading-5 text-[#5A6A88]">CSV, TSV, Excel or JSON. Platform infers the likely entity and proposes mappings.</span></span></label>
+        <label class="flex cursor-pointer gap-3 rounded-xl border border-[#D9E3F5] p-4"><input type="radio" name="source_acquisition" value="AZURE_CONNECTION"><span><b class="block text-sm text-[#152C6B]">Connect to Azure source storage</b><span class="mt-1 block text-xs leading-5 text-[#5A6A88]">Use the registered Azure details and approved identity; connection must be tested before discovery.</span></span></label>
+      </div>
+      <label class="mt-4 block text-xs font-bold text-[#41506B]">Source systems / locations<input name="source_details" value="{{ setup.get('source_details','') }}" placeholder="Source system names, ADLS paths, storage folders or connection reference" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
+    </section>
+    <div class="flex flex-wrap items-center justify-between gap-3"><p class="max-w-2xl text-xs leading-5 text-[#5A6A88]">Saving records configuration only. No Azure connection is opened, no source data is transferred, and no target load is triggered by this form.</p><button type="submit" class="rounded-xl bg-[#2563EB] px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700">Save migration setup →</button></div>
+  </form>
+</div>
+{% endblock %}
