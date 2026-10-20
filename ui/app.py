@@ -358,9 +358,21 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
     conn = get_db_connection()
     try:
         rows = conn.execute(
-            "SELECT suggestion_id, entity_name, source_field, canonical_field, proposed_rule, confidence_score "
-            "FROM mapping_suggestions WHERE status = ? ORDER BY entity_name, created_utc DESC, source_field",
-            ("PENDING",),
+            """
+            SELECT s.suggestion_id, s.entity_name, s.source_field, s.canonical_field,
+                   s.proposed_rule, s.confidence_score
+            FROM mapping_suggestions AS s
+            WHERE s.status = 'PENDING'
+              AND NOT EXISTS (
+                  SELECT 1 FROM canonical_mappings AS c
+                  WHERE c.migration_id = s.migration_id
+                    AND c.entity_name = s.entity_name
+                    AND c.source_field = s.source_field
+                    AND c.canonical_field = s.canonical_field
+                    AND c.is_confirmed = 1
+              )
+            ORDER BY s.entity_name, s.created_utc DESC, s.source_field
+            """
         ).fetchall()
         mapping_suggestions = [dict(row) for row in rows]
     finally:
@@ -1073,7 +1085,35 @@ async def list_source_mapping_suggestions(status_filter: str = "PENDING"):
     try:
         if status_filter == "ALL":
             rows = conn.execute(
-                "SELECT * FROM mapping_suggestions ORDER BY created_utc DESC, source_field"
+                """
+                SELECT s.*,
+                       CASE WHEN EXISTS (
+                           SELECT 1 FROM canonical_mappings AS c
+                           WHERE c.migration_id = s.migration_id
+                             AND c.entity_name = s.entity_name
+                             AND c.source_field = s.source_field
+                             AND c.canonical_field = s.canonical_field
+                             AND c.is_confirmed = 1
+                       ) THEN 'APPROVED' ELSE s.status END AS effective_status
+                FROM mapping_suggestions AS s
+                ORDER BY s.created_utc DESC, s.source_field
+                """
+            ).fetchall()
+        elif status_filter == "PENDING":
+            rows = conn.execute(
+                """
+                SELECT s.* FROM mapping_suggestions AS s
+                WHERE s.status = 'PENDING'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM canonical_mappings AS c
+                      WHERE c.migration_id = s.migration_id
+                        AND c.entity_name = s.entity_name
+                        AND c.source_field = s.source_field
+                        AND c.canonical_field = s.canonical_field
+                        AND c.is_confirmed = 1
+                  )
+                ORDER BY s.created_utc DESC, s.source_field
+                """
             ).fetchall()
         else:
             rows = conn.execute(
