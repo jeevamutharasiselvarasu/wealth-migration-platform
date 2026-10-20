@@ -1268,27 +1268,18 @@ async def override_agent_logic(
 
 
 @app.post("/api/hitl/approve")
-async def approve_cohort(rep_code: str = Form(...), approver: str = Form(...)):
-    cutover_res = cutover_agent.execute_atomic_cutover(wave_id="WAVE-01", advisor_cohort=rep_code)
-    audit_entry = state_store.record_approval(rep_code, approver, "APPROVED")
-    return JSONResponse({
-        "status": "SUCCESS",
-        "message": f"Cohort {rep_code} approved for atomic cutover.",
-        "cutover_details": cutover_res,
-        "audit_entry": audit_entry
-    })
+async def approve_cohort(request: Request):
+    """Cohort cutover approval is explicitly deferred from the P0 mapping pilot."""
+    get_current_user(request)
+    raise HTTPException(status_code=409, detail="Cohort/cutover approval is deferred in P0. Review source-to-canonical mappings in Mapping Studio.")
 
 
 @app.post("/api/hitl/reject")
-async def reject_cohort(rep_code: str = Form(...), reason: str = Form(...)):
-    audit_entry = state_store.record_approval(rep_code, "Domain SME", f"REJECTED: {reason}")
-    return JSONResponse({
-        "status": "REJECTED",
-        "message": f"Cohort {rep_code} returned for analyst review.",
-        "audit_entry": audit_entry
-    })
+async def reject_cohort(request: Request):
+    """Cohort rejection is explicitly deferred from the P0 mapping pilot."""
+    get_current_user(request)
+    raise HTTPException(status_code=409, detail="Cohort/cutover review is deferred in P0. Reject mapping proposals in Mapping Studio with a reason.")
 
-# --- HOUSEHOLD ENDPOINTS ---
 
 @app.post("/api/pilot/household/profile")
 async def profile_pilot_household_file(file: UploadFile = File(...)):
