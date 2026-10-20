@@ -77,7 +77,7 @@
       </div>
       <label class="mt-4 block text-xs font-bold text-[#41506B]">Source systems / locations<input name="source_details" value="{{ setup.get('source_details','') }}" placeholder="Source system names, ADLS paths, storage folders or connection reference" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
     </section>
-    <div class="flex flex-wrap items-center justify-between gap-3"><p class="max-w-2xl text-xs leading-5 text-[#5A6A88]">Saving records configuration only. Discovery infers entity scope from the supplied files; a reviewer must confirm each inferred entity before mapping. No Azure connection is opened and no target load is triggered by this form.</p><button type="submit" class="rounded-xl bg-[#2563EB] px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700">Save setup & discover source files →</button></div>
+    <div class="flex flex-wrap items-center justify-between gap-3"><p class="max-w-2xl text-xs leading-5 text-[#5A6A88]">Saving records configuration only. Discovery infers entity scope from the supplied files; a reviewer must confirm each inferred entity before mapping. No Azure connection is opened and no target load is triggered by this form.</p><button form="migration-setup-form" type="submit" class="rounded-xl bg-[#2563EB] px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700">Save setup & discover source files →</button></div>
   </form>
 </div>
 {% endblock %}
