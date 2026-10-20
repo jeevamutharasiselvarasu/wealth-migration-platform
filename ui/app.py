@@ -237,9 +237,12 @@ async def load_demo_migration(request: Request):
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=500, detail=f"Demo source file could not be read: {source_path.name}") from exc
         headers = list(records[0].keys()) if records else []
+        # Use the file's stated purpose for entity classification. Dictionary notes may
+        # mention linked entities and should remain mapping evidence, not make a
+        # relationship extract ambiguous during entity inference.
         inference = infer_entity_from_headers(
             headers,
-            context=" ".join([str(item.get("context", "")), str(item.get("dictionary_notes", ""))]),
+            context=str(item.get("context", "")),
         )
         if not inference.get("entity") or inference.get("status") == "NEEDS_CLARIFICATION":
             raise HTTPException(status_code=500, detail=f"Demo source file needs better inference evidence: {source_path.name}")
