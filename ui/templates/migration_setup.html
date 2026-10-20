@@ -20,10 +20,8 @@
         <label class="text-xs font-bold text-[#41506B]">Canonical schema / contract version<input name="canonical_version" value="{{ setup.get('canonical_version','') }}" required placeholder="Version or target schema document reference" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"></label>
         <label class="text-xs font-bold text-[#41506B]">Target owner / SME<input name="target_owner" value="{{ setup.get('target_owner','') }}" placeholder="Name or team responsible for target rules" class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-3 font-normal"></label>
       </div>
-      <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        {% for entity in ['Account','Household','Client'] %}
-        <label class="flex items-center gap-2 rounded-lg border border-[#D9E3F5] bg-[#F8FAFD] p-3 text-xs font-bold text-[#152C6B]"><input type="checkbox" name="entities" value="{{ entity }}" checked>{{entity}} <span class="ml-auto text-[9px] font-mono text-teal-700">P0</span></label>
-        {% endfor %}
+      <div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+        <b>P0 candidate boundary: Account · Household · Client.</b> Do not choose entity scope here. After source intake, XODUS will infer the likely entity from schema/profile evidence and ask an authorised reviewer to confirm or reject the classification before mapping is enabled.
       </div>
     </section>
     <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
@@ -38,7 +36,7 @@
       </div>
     </section>
     <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-      <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">03</span><div><h2 class="font-bold text-[#152C6B]">Knowledge and mapping evidence</h2><p class="mt-1 text-xs text-[#5A6A88]">Register where the platform should find the data dictionary, target schema, business rules and SME knowledge. Reference documents can also be uploaded in Firm Knowledge.</p><a href="/firm-knowledge" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-xs font-bold text-blue-700">Open Firm Knowledge to upload reference documents →</a></div></div>
+      <div class="flex items-start gap-3"><span class="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">03</span><div><h2 class="font-bold text-[#152C6B]">Knowledge and mapping evidence</h2><p class="mt-1 text-xs text-[#5A6A88]">Register where the platform should find the data dictionary, target schema, business rules and SME knowledge. Add knowledge references here as part of the migration setup. Source-specific clarifications will be requested during discovery when evidence is insufficient.</p></div></div>
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <label class="text-xs font-bold text-[#41506B]">Data dictionary / schema reference<input name="knowledge_schema_ref" value="{{ setup.get('knowledge_schema_ref','') }}" placeholder="Document URL, repository path or asset name" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
         <label class="text-xs font-bold text-[#41506B]">Business rules / Confluence / Drive references<input name="knowledge_rules_ref" value="{{ setup.get('knowledge_rules_ref','') }}" placeholder="URLs or document references" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
@@ -54,7 +52,7 @@
       </div>
       <label class="mt-4 block text-xs font-bold text-[#41506B]">Source systems / locations<input name="source_details" value="{{ setup.get('source_details','') }}" placeholder="Source system names, ADLS paths, storage folders or connection reference" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-3 font-normal"></label>
     </section>
-    <div class="flex flex-wrap items-center justify-between gap-3"><p class="max-w-2xl text-xs leading-5 text-[#5A6A88]">Saving records configuration only. No Azure connection is opened, no source data is transferred, and no target load is triggered by this form.</p><button type="submit" class="rounded-xl bg-[#2563EB] px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700">Save migration setup →</button></div>
+    <div class="flex flex-wrap items-center justify-between gap-3"><p class="max-w-2xl text-xs leading-5 text-[#5A6A88]">Saving records configuration only. Discovery infers entity scope from the supplied files; a reviewer must confirm each inferred entity before mapping. No Azure connection is opened and no target load is triggered by this form.</p><button type="submit" class="rounded-xl bg-[#2563EB] px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700">Save setup & discover source files →</button></div>
   </form>
 </div>
 {% endblock %}
