@@ -266,7 +266,7 @@ async def load_demo_migration(request: Request):
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
-    return RedirectResponse(url="/migration-setup?demo_loaded=1", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(manifest.get('knowledge_files', []))} knowledge assets registered. Review each inferred file below."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout")
@@ -323,11 +323,11 @@ async def entity_selection_view(request: Request):
 async def entity_sample_files_view(request: Request, uploaded: str = "", notice: str = ""):
     user = get_current_user(request)
     source_uploads = []
-    for entity, roles in getattr(state_store, "entity_source_files", {}).items():
+    for entity, files in getattr(state_store, "entity_source_files", {}).items():
         if entity not in {"Account", "Household", "Client"}:
             continue
-        for role, record in roles.items():
-            source_uploads.append({**record, "inferred_entity": entity, "source_role": role})
+        for file_id, record in files.items():
+            source_uploads.append({**record, "file_id": file_id, "inferred_entity": entity})
     source_uploads.sort(key=lambda item: item.get("uploaded_at", ""), reverse=True)
     return render_template_with_context(
         request=request,
@@ -731,7 +731,9 @@ async def confirm_entity_inference(
     user = get_current_user(request) if request is not None else {"name": "Unknown reviewer"}
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
-    record = state_store.entity_sample_files.get(entity_name)
+    file_id = str((await request.form()).get("file_id", "")).strip() if request is not None else ""
+    entity_files = state_store.entity_source_files.get(entity_name, {})
+    record = entity_files.get(file_id) if file_id else state_store.entity_sample_files.get(entity_name)
     if not record or not record.get("inference"):
         raise HTTPException(status_code=404, detail=f"No inferred source file is awaiting confirmation for {entity_name}.")
     normalized_decision = decision.strip().upper()
@@ -746,7 +748,8 @@ async def confirm_entity_inference(
         "comments": comments.strip(),
         "reviewed_utc": datetime.now(timezone.utc).isoformat(),
     }
-    state_store.entity_scopes[entity_name] = "IN_SCOPE" if normalized_decision == "APPROVE" else "PENDING_DISCOVERY"
+    approved_for_entity = any(item.get("inference_approval_status") == "APPROVED" for item in entity_files.values())
+    state_store.entity_scopes[entity_name] = "IN_SCOPE" if approved_for_entity else "PENDING_DISCOVERY"
     state_store.audit_log.append({
         "event": "ENTITY_INFERENCE_REVIEWED",
         "actor": user.get("name", "Unknown reviewer"),
@@ -799,14 +802,15 @@ def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[s
     }
 
 
-def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow") -> Dict[str, Any]:
+def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow", file_id: str = "") -> Dict[str, Any]:
     """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
     scope_entity = "Client" if entity_name == "Client" else entity_name
     if scope_entity not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the P0 MCL workflow.")
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
-    uploaded = state_store.entity_sample_files.get(entity_name)
+    entity_files = state_store.entity_source_files.get(entity_name, {})
+    uploaded = entity_files.get(file_id) if file_id else state_store.entity_sample_files.get(entity_name)
     if uploaded and uploaded.get("inference") and uploaded.get("inference_approval_status") != "APPROVED":
         raise HTTPException(status_code=409, detail=f"Entity inference for {entity_name} must be approved before mapping.")
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
@@ -902,12 +906,12 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
 
 
 @app.post("/api/entities/map-uploaded-file")
-async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):
+async def map_uploaded_entity_file(entity_name: str = Form(...), file_id: str = Form(""), request: Request = None):
     """Profile and map an uploaded MCL CSV or another explicitly supported canonical source entity."""
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
     try:
-        result = _map_uploaded_source_entity(entity_name)
+        result = _map_uploaded_source_entity(entity_name, file_id=file_id)
     except HTTPException:
         raise
     except Exception as exc:
