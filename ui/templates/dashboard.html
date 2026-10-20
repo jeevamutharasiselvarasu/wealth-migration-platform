@@ -20,7 +20,7 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
             <div class="text-xs text-[#5a6a88] font-medium">P0 Canonical Entities</div>
-            <div class="text-xl font-extrabold text-[#152c6b]">Account, Client, Household</div>
+            <div class="text-xl font-extrabold text-[#152c6b]">Account, Household, Client</div>
             <div class="text-xs text-blue-600 font-mono font-semibold">Only supported entity scope</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
@@ -70,39 +70,5 @@
         </div>
         <p class="mt-3 text-[11px] leading-5 text-[#5a6a88]">P0 stops at reviewed source-to-canonical mapping. Target loading and wave assignment are not executed in this phase.</p>
     </section>
-
-    <!-- Future cohort criteria are visible for planning, but deliberately not activated in P0. -->
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="flex items-start justify-between gap-4 border-b border-[#e9eff9] pb-3">
-            <div><h2 class="text-base font-bold text-[#152c6b]">Future Wave / Cohort Segregation Conditions</h2>
-            <p class="text-xs text-[#5a6a88] mt-1">Planning criteria for a later phase. No waves are assigned in P0; thresholds must be agreed with business owners and validated against source telemetry.</p></div>
-            <span class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-mono font-bold text-amber-700">NOT ACTIVE IN P0</span>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">1. Data-quality readiness</h3><p class="text-xs text-[#5a6a88]">Group records by validation status: critical keys present, required fields complete, duplicate checks passed, and documented relationships resolvable.</p><p class="text-[10px] font-mono text-teal-700">Evidence: profile + validation results</p></div>
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">2. AUM bands (if reliable)</h3><p class="text-xs text-[#5a6a88]">Use agreed AUM ranges only when a trusted, dated AUM field and its currency/valuation date are available. Business owner defines the bands.</p><p class="text-[10px] font-mono text-teal-700">Evidence: validated AUM + valuation date</p></div>
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">3. Source / custodian readiness</h3><p class="text-xs text-[#5a6a88]">Separate cohorts only where source systems or custodians require materially different mapping, operational handling, or validation.</p><p class="text-[10px] font-mono text-teal-700">Evidence: source profile + owner confirmation</p></div>
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">4. Relationship completeness</h3><p class="text-xs text-[#5a6a88]">Prioritize records with documented Account–Client and Client–Household links; isolate unresolved or orphan relationships for remediation.</p><p class="text-[10px] font-mono text-teal-700">Evidence: documented keys + MCL checks</p></div>
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">5. Complexity / exception load</h3><p class="text-xs text-[#5a6a88]">Keep records with unusual registrations, unsupported formats, or high exception counts in a separately managed remediation cohort.</p><p class="text-[10px] font-mono text-teal-700">Evidence: exception counts + reviewed rules</p></div>
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2"><h3 class="text-xs font-bold text-[#152c6b]">6. Telemetry-driven readiness</h3><p class="text-xs text-[#5a6a88]">Later, read ADLS processing telemetry and update cohort eligibility from measured completion, validation, and reconciliation status—not arbitrary wave numbers.</p><p class="text-[10px] font-mono text-teal-700">Evidence: ADLS telemetry (future phase)</p></div>
-        </div>
-        <p class="text-[11px] text-[#5a6a88]">Guardrail: do not assign waves until source data is profiled, definitions are approved, thresholds are documented, and cohort decisions are auditable.</p>
-    </div>
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-5 shadow-sm"><h2 class="text-sm font-bold text-[#152c6b]">P0 Scope Boundary</h2><p class="text-xs text-[#5a6a88] mt-1">This phase profiles source files and prepares reviewed mappings for Account, Client, and Household only. Wave assignment, ADLS telemetry-driven actuation, and canonical-to-target mapping remain deferred.</p></div>
-
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="flex items-center justify-between border-b border-[#e9eff9] pb-3">
-            <div><h2 class="text-base font-bold text-[#152c6b]">Knowledge Base Findings</h2><p class="text-xs text-[#5a6a88]">Extracted from uploaded dictionaries, source analysis, and reusable mapping notes. All findings remain review-required.</p></div>
-            <span class="text-xs font-mono text-blue-700">{{ dashboard.knowledge_asset_count|default(0) }} assets · {{ dashboard.knowledge_column_count|default(0) }} columns</span>
-        </div>
-        {% if dashboard.knowledge_assets %}
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {% for asset in dashboard.knowledge_assets %}
-            <div class="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3 space-y-1"><div class="font-bold text-xs text-[#152c6b]">{{ asset.filename }}</div><div class="text-[10px] text-blue-700">{{ asset.category }} · {{ asset.status }}</div><p class="text-xs text-[#5a6a88]">{{ asset.summary }}</p>{% if asset.columns %}<p class="text-[10px] font-mono text-slate-600">{{ asset.columns|join(', ') }}</p>{% endif %}</div>
-            {% endfor %}
-        </div>
-        {% else %}<p class="text-xs text-[#5a6a88]">No parsed knowledge assets available yet. Upload a source data dictionary or Markdown mapping rule in Firm Knowledge Studio.</p>{% endif %}
-        <div class="bg-[#f8fafc] rounded-xl border border-[#e2e8f0] p-4"><h3 class="font-bold text-xs text-[#152c6b] mb-2">Transferable Source → Canonical Knowledge</h3>{% if dashboard.transferable_knowledge %}<ul class="list-disc pl-4 space-y-1 text-xs text-[#5a6a88]">{% for rule in dashboard.transferable_knowledge %}<li>{{ rule }}</li>{% endfor %}</ul>{% else %}<p class="text-xs text-[#5a6a88]">No mapping instructions extracted yet. Upload a documented rule or data dictionary; extracted suggestions require human review.</p>{% endif %}</div>
-    </div>
 
 {% endblock %}
