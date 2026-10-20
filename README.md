@@ -3,7 +3,7 @@
 
 An enterprise-grade, metadata-driven data migration platform built for wealth management acquisition migrations (specifically **Core Cap Wealth Management → Simplicity Wealth**). 
 
-The platform decouples control plane governance from data plane execution, normalizes raw legacy extracts (Amplify TAMP & Black Diamond) into a fixed 15-entity canonical taxonomy, enforces strict mathematical invariants (Rep-as-PM sleeve weights $\sum = 1.0000$, AUM drift $\le 0.5000\%$), and dispatches reconciled packages into target destinations (**Salesforce SPARC** CRM and **Orion Eclipse** Trading)[cite: 1, 2, 4, 5, 88].
+The platform decouples control plane governance from data plane execution, normalizes raw legacy extracts (Amplify TAMP & Black Diamond) into a fixed three-entity canonical taxonomy, enforces strict mathematical invariants (Rep-as-PM sleeve weights $\sum = 1.0000$, AUM drift $\le 0.5000\%$), and dispatches reconciled packages into target destinations (**Salesforce SPARC** CRM and **Orion Eclipse** Trading)[cite: 1, 2, 4, 5, 88].
 
 ---
 
@@ -28,7 +28,7 @@ The platform decouples control plane governance from data plane execution, norma
  │                      FASTAPI CONTROL PLANE (Metadata & Orchestration)                   │
  │  ┌─────────────────────────┐  ┌─────────────────────────────┐  ┌─────────────────────┐  │
  │  │ Wealth Kernel Taxonomy  │  │ Rulebook Compiler & Engine  │  │ SQLite DB & Audit   │  │
- │  │ (15 Fixed Entities)     │  │ (Expressions & Crosswalks)  │  │ (App_Data/db.py)    │  │
+ │  │ (3 Fixed Entities)     │  │ (Expressions & Crosswalks)  │  │ (App_Data/db.py)    │  │
  │  └────────────┬────────────┘  └──────────────┬──────────────┘  └──────────┬──────────┘  │
  └───────────────┼──────────────────────────────┼────────────────────────────┼─────────────┘
                  │ Read Contracts               │ Input / Output             │ Artifact
@@ -50,19 +50,19 @@ The platform decouples control plane governance from data plane execution, norma
 
 ## ⚡ Core Invariants & Fixed Platform Standards
 
-1. **15-Entity Canonical Taxonomy (Read-Only)**:
+1. **Three-Entity Pilot Canonical Taxonomy (Read-Only)**:
 
 
-* **Master Entities**: Account, Household, Party, Advisor/Rep, Model, Security Master.
+* **Pilot Entities**: Account, Household, Client.
 
 
-* **Relationship Entities**: Sleeve/Allocation, Account Owner.
+* **Deferred**: Relationship entities and allocation structures.
 
 
-* **Event & Snapshot Entities**: Position (Snapshot), Transaction, Performance Period, Tax Lot.
+* **Deferred**: Event and snapshot entities.
 
 
-* **Archival Entities**: Documents & Statements, Terminated Accounts.
+* **Deferred**: Archival entities.
 
 
 
