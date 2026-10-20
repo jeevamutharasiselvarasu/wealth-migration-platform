@@ -27,17 +27,17 @@
             <span class="text-slate-300">→</span>
             <div class="flex items-center space-x-2 text-slate-500 shrink-0">
                 <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">05</span>
-                <span>05. Waves & Rules</span>
+                <span>05. Rules & Review</span>
             </div>
             <span class="text-slate-300">→</span>
             <div class="flex items-center space-x-2 text-slate-500 shrink-0">
                 <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">06</span>
-                <span>06. ADF Artifacts</span>
+                <span>06. Lineage & Audit</span>
             </div>
             <span class="text-slate-300">→</span>
             <div class="flex items-center space-x-2 text-slate-500 shrink-0">
                 <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">07</span>
-                <span>07. Monitor</span>
+                <span>07. Validation</span>
             </div>
         </div>
     </div>
@@ -47,27 +47,21 @@
         <div class="flex items-center space-x-3">
             <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">05</span>
             <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Source-to-Canonical Mapping & Agent Pipeline Studio</h1>
-                <p class="text-xs text-[#5a6a88]">Evaluate in-scope entities, review field mapping confidence, and generate deployable ADF transformation bundles.</p>
+                <h1 class="text-lg font-bold text-[#152c6b]">Mapping & Transformation Studio</h1>
+                <p class="text-xs text-[#5a6a88]">Review source-to-canonical mapping recommendations, supporting evidence, lineage and unresolved fields for Account, Household and Client.</p>
             </div>
         </div>
         
-        <div class="flex items-center space-x-3">
-            <button type="button" onclick="downloadAdfPackage()" 
-                    class="bg-white hover:bg-slate-50 text-[#152c6b] border border-[#d9e3f5] font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center space-x-1.5">
-                <span>📦 Export ADF Bundle (.zip)</span>
-            </button>
-            <button type="button" onclick="runPipelineTrigger('REP-9981', 'WAVE-01')" 
-                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
-                <span>▶ Run Source-to-Canonical Mapping</span>
-            </button>
+        <div class="flex items-center gap-2">
+            <a href="/entity-sample-files" class="bg-white hover:bg-slate-50 text-[#152c6b] border border-[#d9e3f5] font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm">← Source files</a>
+            <span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-mono font-bold text-amber-800">P0 · REVIEW ONLY</span>
         </div>
     </div>
 
     <!-- Live Execution Alert Box -->
     <div id="pipeline-status-alert" class="hidden p-4 rounded-xl text-xs font-mono font-semibold transition-all"></div>
 
-    <!-- Migration Readiness & Mapping Telemetry Banner -->
+    <!-- Mapping Review Summary -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
             <div class="text-xs text-[#5a6a88] font-medium">Latest Run Mapping Confidence</div>
