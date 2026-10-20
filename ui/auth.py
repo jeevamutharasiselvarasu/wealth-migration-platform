@@ -43,6 +43,13 @@ class SessionManager:
             return session_id
         return None
 
+    def select_role(self, session_id: str, role: str) -> bool:
+        allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"}
+        if role not in allowed_roles or session_id not in self.active_sessions:
+            return False
+        self.active_sessions[session_id]["role"] = role
+        return True
+
     def get_session(self, request: Request) -> Optional[Dict[str, str]]:
         session_id = request.cookies.get("session_id")
         if session_id and session_id in self.active_sessions:
