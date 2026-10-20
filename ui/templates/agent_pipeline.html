@@ -1,395 +1,56 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div class="space-y-6 max-w-6xl">
-    <!-- Guided Workflow Step Indicator Bar -->
-    <div class="bg-white p-4 rounded-2xl border border-[#d9e3f5] shadow-sm">
-        <div class="flex items-center justify-between text-xs font-mono overflow-x-auto gap-2 pb-1">
-            <div class="flex items-center space-x-2 text-teal-700 font-bold shrink-0">
-                <span class="h-6 w-6 rounded-full bg-teal-100 flex items-center justify-center text-[11px]">✓</span>
-                <span>01. Files Uploaded</span>
-            </div>
-            <span class="text-slate-300">→</span>
-            <div class="flex items-center space-x-2 text-teal-700 font-bold shrink-0">
-                <span class="h-6 w-6 rounded-full bg-teal-100 flex items-center justify-center text-[11px]">✓</span>
-                <span>02. Scopes Defined</span>
-            </div>
-            <span class="text-slate-300">→</span>
-            <div class="flex items-center space-x-2 text-blue-700 font-bold shrink-0">
-                <span class="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-[11px]">03</span>
-                <span>03. Source Mapping</span>
-            </div>
-            <span class="text-slate-300">→</span>
-            <div class="flex items-center space-x-2 text-slate-500 shrink-0">
-                <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">04</span>
-                <span>04. Validation & Confidence</span>
-            </div>
-            <span class="text-slate-300">→</span>
-            <div class="flex items-center space-x-2 text-slate-500 shrink-0">
-                <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">05</span>
-                <span>05. Rules & Review</span>
-            </div>
-            <span class="text-slate-300">→</span>
-            <div class="flex items-center space-x-2 text-slate-500 shrink-0">
-                <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">06</span>
-                <span>06. Lineage & Audit</span>
-            </div>
-            <span class="text-slate-300">→</span>
-            <div class="flex items-center space-x-2 text-slate-500 shrink-0">
-                <span class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px]">07</span>
-                <span>07. Validation</span>
-            </div>
-        </div>
+<div class="mx-auto max-w-6xl space-y-5">
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"><div>
+      <div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workflow · Step 3</div>
+      <h1 class="mt-2 text-xl font-bold text-[#152C6B]">Mapping studio & human review</h1>
+      <p class="mt-2 max-w-3xl text-xs leading-5 text-[#5A6A88]">Review source-to-canonical proposals inferred from uploaded files. Each proposal includes the detected entity, source and canonical fields, transformation and confidence. Approval creates a reusable rule; rejection requires a reason and does not create a rule.</p>
+    </div><span class="w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[9px] font-bold text-amber-800">P0 · APPROVAL REQUIRED</span></div>
+    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SCOPE</div><b class="mt-1 block text-sm text-[#152C6B]">Account · Household · Client</b></div>
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">MAPPING DIRECTION</div><b class="mt-1 block text-sm text-teal-700">Source → Canonical</b></div>
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">RELEASE CONTROL</div><b class="mt-1 block text-sm text-amber-700">Human approval</b></div>
     </div>
+  </section>
 
-    <!-- Header Action Banner -->
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
-        <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">05</span>
-            <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Mapping & Transformation Studio</h1>
-                <p class="text-xs text-[#5a6a88]">Review source-to-canonical mapping recommendations, supporting evidence, lineage and unresolved fields for Account, Household and Client.</p>
-            </div>
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Pending mapping proposals</h2><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><a href="/entity-sample-files" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">← Source discovery</a></div>
+    {% if mapping_suggestions %}
+    <div class="mt-3 space-y-3">
+      {% for suggestion in mapping_suggestions %}
+      <article class="rounded-xl border border-[#D9E3F5] p-4">
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-start">
+          <div><div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">{{ suggestion.entity_name }} · Source field</div><div class="mt-1 break-words text-sm font-bold text-[#152C6B]">{{ suggestion.source_field }}</div></div>
+          <div><div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Proposed canonical field</div><div class="mt-1 break-words text-sm font-bold text-teal-700">{{ suggestion.canonical_field|default('UNRESOLVED') }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">Rule: <span class="font-mono">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span></div></div>
+          <div class="rounded-lg bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">CONFIDENCE</div><div class="mt-1 text-sm font-bold text-[#152C6B]">{{ ((suggestion.confidence_score|float) * 100)|round(1) }}%</div><div class="mt-1 text-[9px] text-amber-700">Suggestion only</div></div>
         </div>
-        
-        <div class="flex items-center gap-2">
-            <a href="/entity-sample-files" class="bg-white hover:bg-slate-50 text-[#152c6b] border border-[#d9e3f5] font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm">← Source files</a>
-            <span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-mono font-bold text-amber-800">P0 · REVIEW ONLY</span>
-        </div>
+        <form action="/api/mapping-suggestions/{{ suggestion.suggestion_id }}/review" method="post" class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-[minmax(8rem,1fr)_minmax(12rem,2fr)_auto_auto]">
+          <input name="reviewer" value="{{ user_name }}" required aria-label="Reviewer" class="rounded-lg border border-[#C3D2EC] p-2.5 text-xs">
+          <input name="comments" placeholder="Approval note or required rejection reason" required aria-label="Review comments" class="rounded-lg border border-[#C3D2EC] p-2.5 text-xs">
+          <button name="decision" value="APPROVED" class="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800">Approve mapping</button>
+          <button name="decision" value="REJECTED" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800 hover:bg-rose-100">Reject</button>
+        </form>
+      </article>
+      {% endfor %}
     </div>
+    {% else %}
+    <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center"><div class="font-bold text-[#152C6B]">No pending mapping proposals</div><p class="mt-1 text-xs text-[#5A6A88]">Run “Profile & suggest mappings” from the discovered source inventory to create review items.</p><a href="/entity-sample-files" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Open discovered files →</a></div>
+    {% endif %}
+  </section>
 
-    <!-- Live Execution Alert Box -->
-    <div id="pipeline-status-alert" class="hidden p-4 rounded-xl text-xs font-mono font-semibold transition-all"></div>
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Information requests · Unmapped required fields</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Required canonical fields without a supported source mapping create questions for the source owner or SME. Provide field definitions, source locations or an approved derivation reference—no defaults are invented.</p></div><span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[9px] font-bold text-amber-800">{{ information_requests|selectattr('status','equalto','OPEN')|list|length }} OPEN</span></div>
+    {% if information_requests %}
+    <div class="mt-3 space-y-3">{% for request in information_requests|reverse %}
+      <article class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
+        <div class="flex flex-wrap items-start justify-between gap-2"><div><div class="font-mono text-[9px] text-[#8A97B2]">{{ request.request_id }} · {{ request.entity }}</div><h3 class="mt-1 text-xs font-bold text-[#152C6B]">{{ request.canonical_field }}</h3><p class="mt-1 text-xs leading-5 text-[#5A6A88]">{{ request.question }}</p><p class="mt-1 text-[10px] text-[#8A97B2]">Source file: {{ request.source_file|default('Not identified') }}</p></div><span class="rounded-md border px-2 py-1 text-[9px] font-mono {% if request.status == 'ANSWERED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ request.status }}</span></div>
+        {% if request.status == 'OPEN' %}<form action="/api/mapping-gaps/{{ request.request_id }}/response" method="post" class="mt-3 flex flex-col gap-2 md:flex-row"><input name="response_text" required placeholder="SME response: field definition, source column or approved derivation reference" class="min-w-0 flex-1 rounded-lg border border-[#C3D2EC] bg-white p-2.5 text-xs"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Record response</button></form>{% else %}<p class="mt-2 rounded-lg bg-white p-3 text-xs text-[#41506B]"><b>Response:</b> {{ request.response }} <span class="text-[#8A97B2]">· {{ request.responded_by|default('') }}</span></p>{% endif %}
+      </article>
+    {% endfor %}</div>
+    {% else %}<div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] p-5 text-center text-xs text-[#5A6A88]">No information requests yet. Requests are generated when profiling and mapping identify missing required canonical fields.</div>{% endif %}
+  </section>
 
-    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3">
-            <div><h2 class="text-sm font-bold text-[#152C6B]">Information requests · Unmapped required fields</h2>
-            <p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">When a required canonical field has no supported source mapping, request field definitions, a source location or an approved business derivation from the source owner / SME. No default is invented.</p></div>
-            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[9px] font-bold text-amber-800">{{ information_requests|selectattr('status','equalto','OPEN')|list|length }} OPEN</span>
-        </div>
-        {% if information_requests %}
-        <div class="mt-3 space-y-3">
-        {% for request in information_requests|reverse %}
-          <article class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
-            <div class="flex flex-wrap items-start justify-between gap-2"><div><div class="font-mono text-[9px] text-[#8A97B2]">{{ request.request_id }} · {{ request.entity }}</div><h3 class="mt-1 text-xs font-bold text-[#152C6B]">{{ request.canonical_field }}</h3><p class="mt-1 text-xs leading-5 text-[#5A6A88]">{{ request.question }}</p>{% if request.source_file %}<p class="mt-1 text-[10px] text-[#8A97B2]">Source file: {{ request.source_file }}</p>{% endif %}</div><span class="rounded-md border px-2 py-1 text-[9px] font-mono {% if request.status == 'ANSWERED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ request.status }}</span></div>
-            {% if request.status == 'OPEN' %}
-            <form action="/api/mapping-gaps/{{ request.request_id }}/response" method="post" class="mt-3 flex flex-col gap-2 md:flex-row"><input name="response_text" required placeholder="SME response: source field, definition or approved derivation reference" class="min-w-0 flex-1 rounded-lg border border-[#C3D2EC] bg-white p-2.5 text-xs"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Record response</button></form>
-            {% else %}<p class="mt-2 rounded-lg bg-white p-3 text-xs text-[#41506B]"><b>Response:</b> {{ request.response }} <span class="text-[#8A97B2]">· {{ request.responded_by|default('') }}</span></p>{% endif %}
-          </article>
-        {% endfor %}
-        </div>
-        {% else %}<div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] p-5 text-center text-xs text-[#5A6A88]">No information requests yet. Requests are generated after profiling and mapping identifies missing required canonical fields.</div>{% endif %}
-    </section>
-
-    <!-- Mapping Review Summary -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Latest Run Mapping Confidence</div>
-            <div id="metric-confidence" class="text-2xl font-extrabold text-[#152c6b] font-mono">—</div>
-            <div class="text-[10px] text-teal-700 font-mono font-semibold">AWAITING VALIDATION</div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">In-Scope Entities Evaluated</div>
-            <div class="text-2xl font-extrabold text-[#152c6b] font-mono">3 Entities</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">Account, Household, Client</div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Column Mapping Review</div>
-            <div class="text-2xl font-extrabold text-blue-700 font-mono">ACTIVE</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">Human approval required</div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Canonical Mapping Status</div>
-            <div class="text-2xl font-extrabold text-teal-700 font-mono">PENDING</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">Awaiting reviewed mapping evidence</div>
-        </div>
-    </div>
-
-    <section class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="border-b border-[#e9eff9] pb-3">
-            <h2 class="text-sm font-bold text-[#152c6b]">P0 Source Files & Column Approval</h2>
-            <p class="text-xs text-[#5a6a88]">Entity-level view of uploaded source roles and column mapping proposals. Files remain separate until joins are configured; nothing is approved automatically.</p>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {% for entity in ["Account", "Household", "Client"] %}
-            <div class="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2">
-                <h3 class="text-xs font-bold text-[#152c6b]">{{ entity }} → {{ entity }} canonical</h3>
-                {% set entity_files = source_files.get(entity, {}) %}
-                {% if entity_files %}
-                    {% for role, file in entity_files.items() %}
-                    <div class="border border-[#d9e3f5] bg-white rounded-lg p-2">
-                        <div class="flex justify-between gap-2"><span class="text-[10px] font-bold text-slate-700">{{ role }}</span><span class="text-[10px] text-teal-700">{{ file.status }}</span></div>
-                        <div class="text-xs font-mono break-all">{{ file.filename }}</div>
-                        <div class="text-[10px] text-[#5a6a88]">{{ file.row_count }} rows · {{ file.column_count }} columns</div>
-                    </div>
-                    {% endfor %}
-                {% else %}<p class="text-xs text-[#5a6a88]">No source files uploaded for this entity.</p>{% endif %}
-            </div>
-        {% endfor %}
-        </div>
-        <div class="space-y-2">
-            <h3 class="text-xs font-bold text-[#152c6b]">Pending per-column decisions</h3>
-            {% if mapping_suggestions %}
-                {% for suggestion in mapping_suggestions %}
-                <div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-center border border-[#e2e8f0] rounded-xl p-3 text-xs">
-                    <div><div class="font-bold">{{ suggestion.entity_name }}</div><div class="text-[10px] text-slate-500">{{ suggestion.source_field }}</div></div>
-                    <div class="font-mono">→ {{ suggestion.canonical_field or "No candidate" }}</div>
-                    <div><span class="text-slate-500">Transform</span><div class="font-bold">{{ suggestion.proposed_rule or "DIRECT_COPY" }}</div></div>
-                    <div><span class="text-slate-500">Confidence</span><div>{{ "%.0f"|format((suggestion.confidence_score or 0) * 100) }}%</div></div>
-                    <form action="/api/mapping-suggestions/{{ suggestion.suggestion_id }}/review" method="POST" class="md:col-span-2 flex flex-wrap items-center gap-1">
-                        <input name="reviewer" placeholder="Reviewer" required class="min-w-24 border rounded p-1 text-xs">
-                        <input name="comments" placeholder="Review note / rejection reason (required)" required class="min-w-24 flex-1 border rounded p-1 text-xs">
-                        <button name="decision" value="APPROVED" class="bg-teal-700 text-white rounded px-2 py-1">Approve</button>
-                        <button name="decision" value="REJECTED" class="bg-rose-700 text-white rounded px-2 py-1">Reject</button>
-                    </form>
-                </div>
-                {% endfor %}
-            {% else %}<p class="text-xs text-[#5a6a88]">No pending column proposals. Upload files and run source mapping to create reviewable suggestions.</p>{% endif %}
-        </div>
-    </section>
-
-    <section class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="border-b border-[#e9eff9] pb-3">
-            <h2 class="text-sm font-bold text-[#152c6b]">P0 Source-to-Canonical Mapping</h2>
-            <p class="text-xs text-[#5a6a88]">Only Account, Household, and Client are supported. Mapping proposals remain pending until a named reviewer approves each column. Canonical-to-target mapping, wave assignment, sleeves, positions, and trading are deferred.</p>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            {% for entity in ["Account", "Client", "Household"] %}
-            <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-3">
-                <h3 class="font-bold text-sm text-[#152c6b]">{{ entity }}</h3>
-                {% set entity_files = source_files.get(entity, {}) %}
-                {% if entity_files %}
-                    {% for role, file in entity_files.items() %}
-                    <div class="bg-white border border-[#d9e3f5] rounded-lg p-2">
-                        <div class="flex justify-between gap-2"><span class="font-bold">{{ role }}</span><span class="text-teal-700">{{ file.status }}</span></div>
-                        <div class="font-mono break-all">{{ file.filename }}</div>
-                        <div class="text-[#5a6a88]">{{ file.row_count }} rows · {{ file.column_count }} columns</div>
-                    </div>
-                    {% endfor %}
-                {% else %}<p class="text-[#5a6a88]">No source files uploaded.</p>{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <div class="space-y-2">
-            <h3 class="text-xs font-bold text-[#152c6b]">Pending per-column decisions</h3>
-            {% if mapping_suggestions %}
-                {% for suggestion in mapping_suggestions %}
-                <div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-center border border-[#e2e8f0] rounded-xl p-3 text-xs">
-                    <div><div class="font-bold">{{ suggestion.entity_name }}</div><div class="text-[10px] text-slate-500">{{ suggestion.source_field }}</div></div>
-                    <div class="font-mono">→ {{ suggestion.canonical_field or "No candidate" }}</div>
-                    <div><span class="text-slate-500">Transform</span><div class="font-bold">{{ suggestion.proposed_rule or "DIRECT_COPY" }}</div></div>
-                    <div><span class="text-slate-500">Confidence</span><div>{{ "%.0f"|format((suggestion.confidence_score or 0) * 100) }}%</div></div>
-                    <form action="/api/mapping-suggestions/{{ suggestion.suggestion_id }}/review" method="POST" class="md:col-span-2 flex flex-wrap items-center gap-1">
-                        <input name="reviewer" placeholder="Reviewer" required class="min-w-24 border rounded p-1 text-xs">
-                        <input name="comments" placeholder="Review note (optional)" class="min-w-24 flex-1 border rounded p-1 text-xs">
-                        <button name="decision" value="APPROVED" class="bg-teal-700 text-white rounded px-2 py-1">Approve</button>
-                        <button name="decision" value="REJECTED" class="bg-rose-700 text-white rounded px-2 py-1">Reject</button>
-                    </form>
-                </div>
-                {% endfor %}
-            {% else %}<p class="text-xs text-[#5a6a88]">No pending proposals. Upload sample files and run mapping to create column-level review items.</p>{% endif %}
-        </div>
-    </section>
-
-    <div id="agent-inspector-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end transition-all">
-    <div class="bg-white w-full max-w-4xl h-full border-l border-[#d9e3f5] p-6 overflow-y-auto space-y-6 flex flex-col justify-between shadow-2xl">
-        
-        <div class="space-y-6">
-            <!-- Modal Header -->
-            <div class="flex justify-between items-start border-b border-[#e9eff9] pb-4">
-                <div>
-                    <div class="flex items-center space-x-3">
-                        <h2 id="modal-agent-name" class="text-xl font-bold text-[#152c6b]">Agent Deep Dive Inspector</h2>
-                        <span id="modal-agent-status" class="bg-blue-50 text-blue-700 border border-blue-200 text-xs px-2.5 py-0.5 rounded font-mono font-semibold">
-                            ACTIVE
-                        </span>
-                    </div>
-                    <p id="modal-agent-phase" class="text-xs text-[#5a6a88] mt-1 font-mono">Phase 1: Discovery Agents</p>
-                </div>
-                <button type="button" onclick="closeAgentInspector()" class="text-[#8a97b2] hover:text-[#1c2a4a] text-xl font-bold p-1">✕</button>
-            </div>
-
-            <!-- Discrepancies & Alert Banner -->
-            <div id="modal-warnings-box" class="hidden bg-amber-50 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-800 space-y-1">
-                <div class="font-bold flex items-center space-x-2">
-                    <span>⚠️ Source-to-Canonical Telemetry / Interventions:</span>
-                </div>
-                <div id="modal-warnings-list" class="font-mono text-[11px] text-amber-900 whitespace-pre-wrap"></div>
-            </div>
-
-            <!-- Side-by-Side 3-Pane Inspection Views -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                
-                <!-- Pane 1: Source Input Data -->
-                <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-2 flex flex-col">
-                    <div class="font-bold text-blue-700 uppercase tracking-wider text-[11px] border-b border-[#e2e8f0] pb-1">
-                        1. Raw Source Input Data
-                    </div>
-                    <pre id="modal-source-input" class="bg-white p-3 rounded-lg border border-[#e2e8f0] font-mono text-[10px] text-[#1c2a4a] overflow-x-auto flex-1 max-h-80"></pre>
-                </div>
-
-                <!-- Pane 2: Applied Transformation SQL & Mapping Logic (Editable) -->
-                <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-2 flex flex-col">
-                    <div class="flex justify-between items-center border-b border-[#e2e8f0] pb-1">
-                        <span class="font-bold text-blue-700 uppercase tracking-wider text-[11px]">2. Source-to-Canonical Logic</span>
-                        <span class="text-[9px] text-teal-700 font-mono font-semibold">EDITABLE</span>
-                    </div>
-                    <textarea id="modal-transform-logic" rows="12" 
-                              class="w-full bg-white border border-[#cbd5e1] rounded-lg p-3 font-mono text-[10px] text-teal-800 focus:outline-none focus:border-blue-500 flex-1 resize-none"></textarea>
-                </div>
-
-                <!-- Pane 3: Target Staged Output Payload -->
-                <div class="bg-[#f8fafc] p-4 rounded-xl border border-[#e2e8f0] space-y-2 flex flex-col">
-                    <div class="font-bold text-blue-700 uppercase tracking-wider text-[11px] border-b border-[#e2e8f0] pb-1">
-                        3. Canonical Target Payload
-                    </div>
-                    <pre id="modal-target-output" class="bg-white p-3 rounded-lg border border-[#e2e8f0] font-mono text-[10px] text-[#1c2a4a] overflow-x-auto flex-1 max-h-80"></pre>
-                </div>
-            </div>
-
-            <!-- Intervention Reason / Notes -->
-            <div class="space-y-1">
-                <label class="block text-xs font-semibold text-[#1c2a4a]">Human Override Reason / Analyst Note</label>
-                <input type="text" id="modal-override-notes" value="Adjusted source-to-canonical crosswalk rule."
-                       class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-xs text-[#1c2a4a] font-mono focus:outline-none focus:border-blue-500">
-            </div>
-        </div>
-
-        <!-- Footer Actions -->
-        <div class="flex justify-between items-center border-t border-[#e9eff9] pt-4 mt-6">
-            <button type="button" onclick="closeAgentInspector()" class="bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] px-4 py-2 rounded-xl text-xs font-semibold">
-                Cancel
-            </button>
-
-            <div class="flex items-center space-x-3">
-                <button type="button" onclick="saveAgentOverride()" 
-                        class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-5 py-2 rounded-xl text-xs transition shadow">
-                    ✍️ Apply Transformation Override
-                </button>
-                <button type="button" onclick="closeAgentInspector()" 
-                        class="bg-teal-600 hover:bg-teal-500 text-white font-bold px-5 py-2 rounded-xl text-xs transition shadow">
-                    ✓ Approve Agent Step
-                </button>
-            </div>
-        </div>
-    </div>
+  <section class="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-900"><b>P0 boundary:</b> mapping recommendations and metadata may be reviewed here. This screen does not execute target loading, reverse mapping, wave assignment or production cutover.</section>
 </div>
-
-<script>
-let currentInspectedAgent = null;
-
-async function openAgentInspector(agentId) {
-    currentInspectedAgent = agentId;
-    const modal = document.getElementById('agent-inspector-modal');
-    modal.classList.remove('hidden');
-
-    try {
-        const response = await fetch(`/api/pipeline/agent-detail/${agentId}`);
-        const result = await response.json();
-        
-        if (result.status === 'SUCCESS') {
-            const d = result.detail;
-            document.getElementById('modal-agent-name').textContent = d.name;
-            document.getElementById('modal-agent-phase').textContent = d.phase;
-            document.getElementById('modal-agent-status').textContent = d.status;
-
-            document.getElementById('modal-source-input').textContent = JSON.stringify(d.inputs, null, 2);
-            document.getElementById('modal-transform-logic').value = d.transformation_logic;
-            document.getElementById('modal-target-output').textContent = JSON.stringify(d.outputs, null, 2);
-
-            const warnBox = document.getElementById('modal-warnings-box');
-            const warnList = document.getElementById('modal-warnings-list');
-            if (d.warnings && d.warnings.length > 0) {
-                warnList.textContent = d.warnings.join('\n');
-                warnBox.classList.remove('hidden');
-            } else {
-                warnBox.classList.add('hidden');
-            }
-        }
-    } catch (error) {
-        console.error('Failed to load agent trace detail:', error);
-    }
-}
-
-function closeAgentInspector() {
-    document.getElementById('agent-inspector-modal').classList.add('hidden');
-}
-
-async function saveAgentOverride() {
-    if (!currentInspectedAgent) return;
-
-    const newLogic = document.getElementById('modal-transform-logic').value;
-    const notes = document.getElementById('modal-override-notes').value;
-
-    const formData = new FormData();
-    formData.append('agent_id', currentInspectedAgent);
-    formData.append('new_logic', newLogic);
-    formData.append('override_notes', notes);
-
-    try {
-        const response = await fetch('/api/pipeline/override-agent', {
-            method: 'POST',
-            body: formData
-        });
-        const result = await response.json();
-
-        if (result.status === 'SUCCESS') {
-            alert(`Human override saved for Agent '${currentInspectedAgent}'!`);
-            closeAgentInspector();
-            window.location.reload();
-        }
-    } catch (error) {
-        console.error('Override error:', error);
-    }
-}
-
-async function downloadAdfPackage() {
-    try {
-        const res = await fetch('/api/runs/RUN-REP-9981-WAVE-01/export-package?mode=local');
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Server returned HTTP ${res.status}: ${errText}`);
-        }
-        const data = await res.json();
-        if (data.zipDownloadPath) {
-            window.location.href = data.zipDownloadPath;
-        } else {
-            alert("Package exported locally to " + data.targetLocation);
-        }
-    } catch (e) {
-        alert("Generating package error: " + e.message);
-    }
-}
-
-async function runPipelineTrigger(repCode, waveId) {
-    const alertBox = document.getElementById('pipeline-status-alert');
-    alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-blue-50 border border-blue-200 text-blue-800";
-    alertBox.textContent = `Running source-to-canonical mapping for ${repCode} (${waveId})...`;
-    alertBox.classList.remove('hidden');
-
-    try {
-        const formData = new FormData();
-        formData.append('rep_code', repCode);
-        formData.append('wave_id', waveId);
-
-        const response = await fetch('/api/pipeline/run', {
-            method: 'POST',
-            body: formData
-        });
-        const result = await response.json();
-
-        if (result.status === 'SUCCESS') {
-            alertBox.className = "p-4 rounded-xl text-xs font-mono font-semibold bg-teal-50 border border-teal-200 text-teal-800";
-            const readiness = result.result.migration_readiness || {};
-            alertBox.textContent = `Pipeline Executed! Overall Confidence: ${Math.round((readiness.overall_confidence_score || 1.0)*100)}% | Readiness: ${readiness.readiness_status || 'READY'} | Status: PENDING HITL APPROVAL`;
-            setTimeout(() => { window.location.href = '/hitl'; }, 1800);
-        }
-    } catch (error) {
-        console.error('Pipeline execution error:', error);
-    }
-}
-</script>
 {% endblock %}
