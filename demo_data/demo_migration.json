@@ -56,7 +56,7 @@
     },
     {
       "path": "demo_data/source_files/household_accounts.csv",
-      "context": "Household-to-account association extract.",
+      "context": "Household association extract.",
       "dictionary_notes": "Household ID identifies the group; account number identifies an associated account."
     },
     {
