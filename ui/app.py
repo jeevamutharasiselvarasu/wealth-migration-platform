@@ -292,7 +292,7 @@ async def dashboard_overview(request: Request):
         request=request,
         template_name="dashboard.html",
         extra_context={
-            "page_title": "2. Dashboard Overview",
+            "page_title": "Migration Dashboard",
             "user_name": user["name"],
             "user_role": user["role"],
             "dashboard": state_store.generated_dashboard,
@@ -308,7 +308,7 @@ async def firm_knowledge_studio(request: Request):
         request=request,
         template_name="firm_knowledge.html",
         extra_context={
-            "page_title": "1. Firm Knowledge Studio",
+            "page_title": "Knowledge Assets",
             "user_name": user["name"],
             "user_role": user["role"],
             "form": state_store.questionnaire_data,
@@ -338,7 +338,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
         request=request,
         template_name="entity_sample_files.html",
         extra_context={
-            "page_title": "Source Discovery & Profiling",
+            "page_title": "Source Discovery & Entity Inference",
             "user_name": user["name"],
             "user_role": user["role"],
             "selected_entities": state_store.get_source_upload_entities(),
@@ -379,7 +379,7 @@ async def agent_pipeline_view(request: Request):
         request=request,
         template_name="agent_pipeline.html",
         extra_context={
-            "page_title": "5. Agent Pipeline Studio",
+            "page_title": "Mapping Studio & Transformation Rules",
             "user_name": user["name"],
             "user_role": user["role"],
             "firm_context": state_store.questionnaire_data,
@@ -412,7 +412,7 @@ async def hitl_approval_queue(request: Request):
         request=request,
         template_name="hitl_queue.html",
         extra_context={
-            "page_title": "6. HITL Approval Queue",
+            "page_title": "Mapping Review & Information Requests",
             "user_name": user["name"],
             "user_role": user["role"],
             "cohort": cohort,
@@ -429,7 +429,7 @@ async def reconciliation_dashboard(request: Request):
         request=request,
         template_name="reconciliation.html",
         extra_context={
-            "page_title": "7. Reconciliation & Drift",
+            "page_title": "Validation & Exception Management",
             "user_name": user["name"],
             "user_role": user["role"],
             "pipeline_runs": state_store.pipeline_runs,
