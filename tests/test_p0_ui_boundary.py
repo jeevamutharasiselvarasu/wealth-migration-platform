@@ -29,3 +29,17 @@ def test_p0_navigation_exposes_only_control_plane_workflow():
     assert 'href="/hitl"' not in navigation
     assert 'href="/reconciliation"' not in navigation
     assert "DATA PLANE (SPECIALIST)" not in navigation
+
+
+def test_dashboard_exposes_only_the_three_entity_p0_flow():
+    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
+    for entity in ("Account", "Household", "Client"):
+        assert entity in dashboard
+    for stage in (
+        "Discover & profile",
+        "Map & capture lineage",
+        "Review & approve",
+        "Validate & record",
+    ):
+        assert stage in dashboard
+    assert "Target loading and wave assignment are not executed in this phase." in dashboard
