@@ -1099,7 +1099,11 @@ async def get_mcl_run_lineage(mcl_run_id: str):
 
 
 @app.post("/api/knowledge/file-upload")
-async def upload_firm_file(category: str = Form(...), file: UploadFile = File(...)):
+async def upload_firm_file(
+    category: str = Form(...),
+    file: UploadFile = File(...),
+    return_to: str = Form("/firm-knowledge"),
+):
     filename = file.filename or ""
     allowed_extensions = {".md", ".txt", ".csv", ".tsv", ".json", ".xlsx", ".xlsm", ".xls"}
     if Path(filename).suffix.lower() not in allowed_extensions:
@@ -1109,7 +1113,8 @@ async def upload_firm_file(category: str = Form(...), file: UploadFile = File(..
         state_store.add_firm_file(filename, category, content)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
+    destination = return_to if return_to in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
+    return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/pipeline/run")
