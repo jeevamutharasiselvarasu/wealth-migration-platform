@@ -102,3 +102,11 @@ def test_mapping_review_supports_approval_rejection_and_information_requests():
     assert "rejection reason" in studio.lower()
     assert 'mapping_information_requests' in app
     assert '/api/mapping-gaps/{request_id}/response' in app
+
+
+def test_target_contract_is_a_required_prerequisite_for_migration_setup():
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'name="canonical_version"' in setup
+    assert 'required placeholder="Version or target schema document reference"' in setup
+    assert "Target system and canonical schema / contract reference are required" in app
