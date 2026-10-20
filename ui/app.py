@@ -288,6 +288,7 @@ async def agent_pipeline_view(request: Request):
             "pipeline_run": latest_run,
             "source_files": source_files,
             "mapping_suggestions": mapping_suggestions,
+            "information_requests": state_store.questionnaire_data.get("mapping_information_requests", []),
         }
     )
 
@@ -727,8 +728,37 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     mapping["entity"] = entity_name
     mapping["canonical_entity"] = "Client" if entity_name == "Client" else entity_name
     mapping["run_id"] = run_id
+    # Derive information requests from required canonical fields that remain unmapped.
+    # These requests are questions for the source owner/SME, never auto-filled defaults.
+    mapped_canonical = {
+        str(item.get("canonical_field") or item.get("target_field") or "")
+        for item in mapping.get("field_lineages", [])
+    }
+    required_fields = SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS.get(entity_name, [])
+    requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
+    existing_open = {
+        (item.get("entity"), item.get("canonical_field"))
+        for item in requests if item.get("status") == "OPEN"
+    }
+    for canonical_field in required_fields:
+        if canonical_field not in mapped_canonical and (entity_name, canonical_field) not in existing_open:
+            requests.append({
+                "request_id": f"RFI-{uuid.uuid4().hex[:10].upper()}",
+                "migration_id": migration_id,
+                "entity": entity_name,
+                "canonical_field": canonical_field,
+                "source_file": uploaded["filename"],
+                "status": "OPEN",
+                "question": f"Which source field or approved business rule supplies required field {canonical_field}?",
+                "requested_by": actor,
+                "created_utc": datetime.now(timezone.utc).isoformat(),
+                "response": "",
+            })
     # Mapper output is a preview; suggestions require human approval before canonical use.
     mapping["approval_status"] = "PENDING_REVIEW" if mapping.get("field_lineages") else "NO_PROPOSALS"
+    mapping["information_requests_created"] = [
+        item for item in requests if item.get("entity") == entity_name and item.get("source_file") == uploaded["filename"] and item.get("status") == "OPEN"
+    ]
     state_store.persist_mapping_lineage(mapping, run_id=run_id, actor=actor)
     return {
         "status": mapping.get("status", "UNKNOWN"),
@@ -844,6 +874,27 @@ async def map_mcl_uploaded_files():
         "relationship_validation": relationship_validation,
         "execution_boundary": execution_boundary,
     })
+
+
+@app.post("/api/mapping-gaps/{request_id}/response")
+async def respond_to_mapping_information_request(request_id: str, request: Request,
+                                                 response_text: str = Form(...)):
+    user = get_current_user(request)
+    answer = response_text.strip()
+    if not answer:
+        raise HTTPException(status_code=400, detail="A response is required.")
+    requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
+    item = next((entry for entry in requests if entry.get("request_id") == request_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Information request not found.")
+    if item.get("status") != "OPEN":
+        raise HTTPException(status_code=409, detail="This information request is already closed.")
+    item["response"] = answer
+    item["responded_by"] = user["name"]
+    item["responded_utc"] = datetime.now(timezone.utc).isoformat()
+    item["status"] = "ANSWERED"
+    state_store.audit_log.append({"event":"MAPPING_INFORMATION_RESPONSE","actor":user["name"],"timestamp_utc":item["responded_utc"],"details":{"request_id":request_id,"entity":item.get("entity"),"canonical_field":item.get("canonical_field")}})
+    return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/api/mapping-suggestions")
