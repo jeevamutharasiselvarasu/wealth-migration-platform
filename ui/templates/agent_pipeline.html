@@ -65,14 +65,14 @@
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
             <div class="text-xs text-[#5a6a88] font-medium">Latest Run Mapping Confidence</div>
-            <div id="metric-confidence" class="text-2xl font-extrabold text-teal-700 font-mono">98%</div>
-            <div class="text-[10px] text-teal-700 font-mono font-semibold">HIGH QUALITY · READY</div>
+            <div id="metric-confidence" class="text-2xl font-extrabold text-[#152c6b] font-mono">—</div>
+            <div class="text-[10px] text-teal-700 font-mono font-semibold">AWAITING VALIDATION</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
             <div class="text-xs text-[#5a6a88] font-medium">In-Scope Entities Evaluated</div>
             <div class="text-2xl font-extrabold text-[#152c6b] font-mono">3 Entities</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">Account, Client, Household</div>
+            <div class="text-[10px] text-[#5a6a88] font-mono">Account, Household, Client</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
@@ -82,9 +82,9 @@
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">Target Mapping</div>
-            <div class="text-2xl font-extrabold text-teal-700 font-mono">STAGED</div>
-            <div class="text-[10px] text-[#5a6a88] font-mono">Deferred from P0</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Canonical Mapping Status</div>
+            <div class="text-2xl font-extrabold text-teal-700 font-mono">PENDING</div>
+            <div class="text-[10px] text-[#5a6a88] font-mono">Awaiting reviewed mapping evidence</div>
         </div>
     </div>
 
@@ -134,7 +134,7 @@
     <section class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
         <div class="border-b border-[#e9eff9] pb-3">
             <h2 class="text-sm font-bold text-[#152c6b]">P0 Source-to-Canonical Mapping</h2>
-            <p class="text-xs text-[#5a6a88]">Only Account, Client, and Household are supported. Mapping proposals remain pending until a named reviewer approves each column. Canonical-to-target mapping, wave assignment, sleeves, positions, and trading are deferred.</p>
+            <p class="text-xs text-[#5a6a88]">Only Account, Household, and Client are supported. Mapping proposals remain pending until a named reviewer approves each column. Canonical-to-target mapping, wave assignment, sleeves, positions, and trading are deferred.</p>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             {% for entity in ["Account", "Client", "Household"] %}
