@@ -62,8 +62,8 @@ def get_current_user(request: Request) -> Dict[str, str]:
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
         "request": request,
-        "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
-        "firm_name": state_store.questionnaire_data.get("firm_name", "Core Cap Wealth Management"),
+        "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"),
+        "firm_name": state_store.questionnaire_data.get("firm_name", "New Migration"),
         "adls_connected": state_store.adls_connected,
         "adls_container": state_store.adls_container,
         "kernel_specs": getattr(state_store, "kernel_specs", {})
