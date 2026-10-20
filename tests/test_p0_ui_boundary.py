@@ -59,3 +59,44 @@ def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
     assert "HIGH QUALITY · READY" not in pipeline
     assert "P0 · REVIEW ONLY" in pipeline
     assert "Canonical-to-target mapping, wave assignment" in pipeline
+
+
+
+def test_persona_selection_is_a_separate_step_after_login():
+    login = (ROOT / "ui" / "templates" / "login.html").read_text()
+    persona = (ROOT / "ui" / "templates" / "persona_selection.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'name="role"' not in login
+    assert 'name="role"' in persona
+    assert '@app.get("/persona-selection"' in app
+    assert '@app.post("/persona-selection"' in app
+    assert 'RedirectResponse(url="/persona-selection"' in app
+
+
+def test_migration_setup_collects_target_azure_knowledge_and_source_before_discovery():
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    for token in ("Target system and canonical contract", "Azure environment and access",
+                  "Knowledge and mapping evidence", "Source acquisition method",
+                  "SAMPLE_FILES", "AZURE_CONNECTION", "Account", "Household", "Client"):
+        assert token in setup
+    assert "Do not paste secrets" in setup
+    assert "target loading" in setup.lower()
+
+
+def test_source_discovery_does_not_ask_user_to_assign_entity():
+    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    inference = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text()
+    assert 'name="entity_name"' not in source
+    assert "infer_entity_from_headers" in inference
+    assert "NEEDS_CLARIFICATION" in inference
+    assert "data_dictionary_notes" in source
+
+
+def test_mapping_review_supports_approval_rejection_and_information_requests():
+    app = (ROOT / "ui" / "app.py").read_text()
+    studio = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    assert 'value="APPROVED"' in studio
+    assert 'value="REJECTED"' in studio
+    assert "rejection reason" in studio.lower()
+    assert 'mapping_information_requests' in app
+    assert '/api/mapping-gaps/{request_id}/response' in app
