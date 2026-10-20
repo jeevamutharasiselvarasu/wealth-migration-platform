@@ -179,7 +179,7 @@ class SchemaMapperAgent:
                             applied_rule = f"REG_TYPE_LOOKUP ({raw_val} -> {transformed_val})"
 
                     # Client / Party Type Crosswalk
-                    elif target_key == "PARTY_TYPE":
+                    elif target_key in ("PARTY_TYPE", "CLIENT_TYPE"):
                         norm_party = str(raw_val).strip().upper()
                         if norm_party in self.CLIENT_TYPE_CROSSWALK:
                             transformed_val = self.CLIENT_TYPE_CROSSWALK[norm_party]
