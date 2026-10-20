@@ -68,9 +68,9 @@ class SchemaMapperAgent:
         "ESTABLISHED_DT": "OPEN_DATE",
 
         # Client / Party Attributes
-        "LEGACY_CLIENT_ID": "PARTY_ID",
-        "CLIENT_ID": "PARTY_ID",
-        "PARTY_SRC_ID": "PARTY_ID",
+        "LEGACY_CLIENT_ID": "CLIENT_ID",
+        "CLIENT_ID": "CLIENT_ID",
+        "PARTY_SRC_ID": "CLIENT_ID",
         "FULL_LEGAL_NAME": "LEGAL_NAME",
         "LEGAL_NAME": "LEGAL_NAME",
         "CLIENT_FIRST_NAME": "FIRST_NAME",
@@ -79,8 +79,8 @@ class SchemaMapperAgent:
         "LAST_NAME": "LAST_NAME",
         "TAX_IDENTIFIER": "TAX_ID",
         "SSN_TIN": "TAX_ID",
-        "CLIENT_TYPE_RAW": "PARTY_TYPE",
-        "PARTY_TYPE_SRC": "PARTY_TYPE",
+        "CLIENT_TYPE_RAW": "CLIENT_TYPE",
+        "PARTY_TYPE_SRC": "CLIENT_TYPE",
         "EMAIL_ADDR": "EMAIL",
         "PRIMARY_EMAIL": "EMAIL",
         "PHONE_NUM": "PHONE",
@@ -113,8 +113,8 @@ class SchemaMapperAgent:
     MANDATORY_CANONICAL_FIELDS = {
         "Account": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "OPEN_DATE"],
         "Household": ["HH_ID", "HH_NAME", "REP_CODE"],
-        "Party": ["PARTY_ID", "LEGAL_NAME", "PARTY_TYPE"],
-        "Client": ["PARTY_ID", "LEGAL_NAME", "PARTY_TYPE"],
+        "Party": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
+        "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
         "Sleeve": ["ACCT_NUM", "SLEEVE_ID", "TARGET_PCT"],
         "Position": ["ACCT_NUM", "CUSIP", "MARKET_VALUE"],
         "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
