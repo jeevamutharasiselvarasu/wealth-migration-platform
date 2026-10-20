@@ -166,11 +166,13 @@ async def save_migration_setup(request: Request):
             raise HTTPException(status_code=400, detail="Azure connection mode requires: " + ", ".join(missing_azure) + ".")
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     state_store.questionnaire_data["migration_id"] = state_store.questionnaire_data.get("migration_id") or f"MIG-{uuid.uuid4().hex[:10].upper()}"
-    state_store.questionnaire_data["migration_name"] = setup["migration_name"]
-    state_store.questionnaire_data["target_system"] = setup["target_system"]
-    state_store.questionnaire_data["source_systems"] = setup["source_details"]
+    state_store.update_questionnaire_from_form({
+        "firm_name": setup["migration_name"],
+        "migration_name": setup["migration_name"],
+        "target_system": setup["target_system"],
+        "source_systems": setup["source_details"],
+    })
     state_store.questionnaire_data["migration_setup"] = setup
-    state_store.questionnaire_data["last_updated"] = datetime.now(timezone.utc).isoformat()
     for entity in {"Account", "Household", "Client"}:
         state_store.entity_scopes[entity] = "IN_SCOPE" if entity in selected_entities else "OUT_OF_SCOPE"
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
