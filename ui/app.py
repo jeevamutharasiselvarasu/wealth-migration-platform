@@ -158,7 +158,7 @@ async def save_migration_setup(request: Request):
     }
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     state_store.questionnaire_data["migration_id"] = state_store.questionnaire_data.get("migration_id") or f"MIG-{uuid.uuid4().hex[:10].upper()}"
-    state_store.questionnaire_data["firm_name"] = setup["migration_name"]
+    state_store.questionnaire_data["migration_name"] = setup["migration_name"]
     state_store.questionnaire_data["target_system"] = setup["target_system"]
     state_store.questionnaire_data["source_systems"] = setup["source_details"]
     state_store.questionnaire_data["migration_setup"] = setup
@@ -590,7 +590,7 @@ async def upload_entity_sample_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     headers = list(records[0].keys()) if records else []
-    inference = infer_entity_from_headers(headers)
+    inference = infer_entity_from_headers(headers, context=" ".join([source_context, data_dictionary_notes]))
     if inference["status"] == "NEEDS_CLARIFICATION":
         return JSONResponse({
             "status": "NEEDS_CLARIFICATION",
