@@ -498,7 +498,7 @@ class WorkspaceStateStore:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 f"AUD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
-                self.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+                self.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"),
                 action,
                 "AUDIT_LINEAGE",
                 action,
@@ -512,7 +512,7 @@ class WorkspaceStateStore:
             pass
 
     def _build_dashboard_from_form(self) -> Dict[str, Any]:
-        firm_name = self.questionnaire_data.get("firm_name", "Core Cap Wealth Management")
+        firm_name = self.questionnaire_data.get("firm_name", "New Migration")
         knowledge_assets = self.firm_knowledge_docs
         transferable_rules = [rule for doc in knowledge_assets for rule in doc.get("transferable_knowledge", [])]
         return {
