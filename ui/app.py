@@ -791,7 +791,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
 
 
 @app.post("/api/entities/map-uploaded-file")
-async def map_uploaded_entity_file(request: Request, entity_name: str = Form(...)):
+async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):
     """Profile and map an uploaded MCL CSV or another explicitly supported canonical source entity."""
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
@@ -815,7 +815,7 @@ async def map_uploaded_entity_file(request: Request, entity_name: str = Form(...
         "wave_assignment": "DISABLED",
         "canonical_output_status": "PREVIEW_ONLY_PENDING_APPROVAL",
     }
-    if "text/html" in request.headers.get("accept", ""):
+    if request is not None and "text/html" in request.headers.get("accept", ""):
         return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
     return JSONResponse(result)
 
@@ -943,10 +943,10 @@ async def list_source_mapping_suggestions(status_filter: str = "PENDING"):
 @app.post("/api/mapping-suggestions/{suggestion_id}/review")
 async def review_source_mapping_suggestion(
     suggestion_id: str,
-    request: Request,
     decision: str = Form(...),
     reviewer: str = Form(...),
     comments: str = Form(""),
+    request: Request = None,
 ):
     """Record an explicit approve/reject decision and prevent repeat review."""
     normalized = decision.strip().upper()
@@ -1016,7 +1016,7 @@ async def review_source_mapping_suggestion(
             "SELECT * FROM mapping_suggestions WHERE suggestion_id = ?", (suggestion_id,)
         ).fetchone()
         conn.commit()
-        if "text/html" in request.headers.get("accept", ""):
+        if request is not None and "text/html" in request.headers.get("accept", ""):
             return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
         return JSONResponse({"status": "SUCCESS", "suggestion": dict(updated)})
     except HTTPException:
