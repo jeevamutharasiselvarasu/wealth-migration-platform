@@ -65,13 +65,13 @@ def infer_entity_from_headers(headers: list[str], context: str = "") -> dict[str
     best_entity, best_score = ranked[0]
     second_score = ranked[1][1]
     # Require a positive score, a unique winner, and at least one identity signature.
-    if best_score <= 0 or best_score == second_score or not evidence[best_entity]["signature_fields"]:
+    if best_score <= 0 or best_score == second_score or (not evidence[best_entity]["signature_fields"] and not evidence[best_entity].get("context_terms")):
         return {"status": "NEEDS_CLARIFICATION", "entity": None, "confidence": 0.0,
                 "scores": scores, "evidence": evidence,
                 "message": "The columns do not uniquely identify Account, Household or Client. Provide a data dictionary or explain the key fields."}
     total = sum(scores.values()) or 1
     confidence = round(best_score / total, 3)
-    status = "INFERRED" if confidence >= 0.6 else "NEEDS_REVIEW"
+    status = "INFERRED" if confidence >= 0.6 and evidence[best_entity]["signature_fields"] else "NEEDS_REVIEW"
     return {"status": status, "entity": best_entity, "confidence": confidence,
             "scores": scores, "evidence": evidence,
             "message": ("Entity inferred from column names and canonical field evidence." if status == "INFERRED"
