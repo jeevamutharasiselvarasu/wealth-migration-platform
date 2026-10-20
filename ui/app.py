@@ -762,7 +762,7 @@ async def confirm_entity_inference(
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "details": {"entity": entity_name, "filename": record.get("filename"), "decision": normalized_decision, "comments": comments.strip()},
     })
-    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/entity-sample-files#source-file-{quote_plus(file_id)}", status_code=status.HTTP_303_SEE_OTHER)
 
 def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     """Strip row-level canonical output and raw samples from all preview API responses."""
