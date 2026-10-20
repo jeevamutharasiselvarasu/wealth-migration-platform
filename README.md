@@ -244,23 +244,10 @@ Open `[http://127.0.0.1:8000](http://127.0.0.1:8000)` in your web browser.
 
 ---
 
-## 🔐 Credentials & Pre-Seeded User Personas
+## Demo login and seeded migration inputs
 
-| Role | Email | Password | Scope & Permissions |
-| --- | --- | --- | --- |
-| **Platform Admin** | `jeeva@simplicitywealth.com` | `password123` | Full system control, overrides, and cutover sign-off
+The local demo account is loaded from `demo_data/demo_users.json`; the password is stored as a SHA-256 digest rather than plaintext in application code. Sign in with the configured demo account and the demo password supplied for this workspace. The demo admin can then select a persona on the separate persona-selection screen.
 
- |
-| **Migration Analyst** | `analyst@simplicitywealth.com` | `password123` | Scope configuration, schema mapping, and sample uploads
+On **Migration Setup**, choose **Load demo data set** to populate the migration details from `demo_data/demo_migration.json`. The loader also reads the synthetic Account, Household and Client CSV files under `demo_data/source_files/` and the sample knowledge documents under `demo_data/knowledge/`. The manifest and files are editable input data; the loader infers entity types from file contents and leaves each classification pending human confirmation.
 
- |
-| **Domain SME** | `sme@simplicitywealth.com` | `password123` | Sleeve math validation and HITL cutover sign-off
-
- |
-| **Validation Specialist** | `specialist@simplicitywealth.com` | `password123` | Post-load AUM drift audit and reconciliation sign-off
-
- |
-
-```
-
-```
+Demo authentication is enabled for local demonstration by default. Set `XODUS_DEMO_MODE=false` in the environment before any shared or production deployment. The demo account is not a production identity provider, and the sample target contract and source data are illustrative only.
