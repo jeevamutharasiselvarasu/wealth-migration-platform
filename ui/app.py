@@ -231,17 +231,9 @@ async def firm_knowledge_studio(request: Request):
 
 @app.get("/entity-selection", response_class=HTMLResponse)
 async def entity_selection_view(request: Request):
-    user = get_current_user(request)
-    return render_template_with_context(
-        request=request,
-        template_name="entity_selection.html",
-        extra_context={
-            "page_title": "3. Entity Scope Selector",
-            "user_name": user["name"],
-            "user_role": user["role"],
-            "menu_card": state_store.get_full_menu_card()
-        }
-    )
+    # Entity scope is now part of source discovery and human confirmation, not a separate manual pre-step.
+    get_current_user(request)
+    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/entity-sample-files", response_class=HTMLResponse)
@@ -662,6 +654,8 @@ async def confirm_entity_inference(
     normalized_decision = decision.strip().upper()
     if normalized_decision not in {"APPROVE", "REJECT"}:
         raise HTTPException(status_code=400, detail="Decision must be APPROVE or REJECT.")
+    if normalized_decision == "REJECT" and not comments.strip():
+        raise HTTPException(status_code=400, detail="A rejection reason is required.")
     record["inference_approval_status"] = "APPROVED" if normalized_decision == "APPROVE" else "REJECTED"
     record["inference_review"] = {
         "decision": normalized_decision,
