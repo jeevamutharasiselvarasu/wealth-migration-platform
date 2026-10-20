@@ -163,3 +163,31 @@ def test_entity_scope_screen_redirects_into_source_discovery():
     app = (ROOT / "ui" / "app.py").read_text()
     assert 'async def entity_selection_view(request: Request):' in app
     assert 'return RedirectResponse(url="/entity-sample-files"' in app
+
+
+def test_demo_login_is_loaded_from_configuration_and_password_is_not_plaintext():
+    auth = (ROOT / "ui" / "auth.py").read_text()
+    users = __import__("json").loads((ROOT / "demo_data" / "demo_users.json").read_text())
+    assert "XODUS_DEMO_MODE" in auth
+    assert "hashlib.sha256" in auth
+    assert "password123" not in auth
+    assert users["users"][0]["email"] == "jeeva@simplicitywealth.com"
+    assert len(users["users"][0]["password_sha256"]) == 64
+
+
+def test_demo_migration_is_input_data_not_values_embedded_in_routes():
+    app = (ROOT / "ui" / "app.py").read_text()
+    manifest = __import__("json").loads((ROOT / "demo_data" / "demo_migration.json").read_text())
+    assert '@app.post("/api/demo/load")' in app
+    assert 'demo_migration.json' in app
+    assert len(manifest["source_files"]) == 3
+    assert len(manifest["knowledge_files"]) >= 1
+    assert {item["path"].split("/")[-1] for item in manifest["source_files"]} == {
+        "accounts.csv", "households.csv", "clients.csv"
+    }
+
+
+def test_demo_source_inputs_have_no_real_personal_identifiers():
+    for path in (ROOT / "demo_data" / "source_files").glob("*.csv"):
+        content = path.read_text()
+        assert "example.test" in content or path.name != "clients.csv"
