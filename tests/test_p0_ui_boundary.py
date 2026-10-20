@@ -191,3 +191,14 @@ def test_demo_source_inputs_have_no_real_personal_identifiers():
     for path in (ROOT / "demo_data" / "source_files").glob("*.csv"):
         content = path.read_text()
         assert "example.test" in content or path.name != "clients.csv"
+
+
+def test_entity_inference_business_rules_are_externalized_to_configuration():
+    service = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text()
+    rules = __import__("json").loads((ROOT / "knowledge" / "entity_inference_rules.json").read_text())
+    assert "load_entity_inference_rules" in service
+    assert "entity_inference_rules.json" in service
+    assert "ALIASES =" not in service
+    assert "ENTITY_FIELDS =" not in service
+    assert set(rules["entities"]) == {"Account", "Household", "Client"}
+    assert "minimum_confidence" in rules["decision"]
