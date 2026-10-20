@@ -60,7 +60,7 @@
     <section class="rounded-2xl border border-[#d9e3f5] bg-white p-6 shadow-sm">
         <div class="flex flex-col gap-2 border-b border-[#e9eff9] pb-3 md:flex-row md:items-center md:justify-between">
             <div><h2 class="text-base font-bold text-[#152c6b]">Platform flow</h2><p class="mt-1 text-xs text-[#5a6a88]">Configure the target contract first, register Azure and knowledge references, then let discovery infer source entities before mapping.</p></div>
-            <a href="/migration-setup" class="w-fit rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">Set up migration →</a>
+            {% if migration_setup and migration_setup.get("target_system") %}<a href="/entity-sample-files" class="w-fit rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">Continue to source discovery →</a>{% else %}<a href="/migration-setup" class="w-fit rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">Set up migration →</a>{% endif %}
         </div>
         <div class="grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="rounded-xl border border-[#d9e3f5] bg-[#f8fafc] p-4"><div class="font-mono text-[10px] font-bold text-blue-700">01</div><h3 class="mt-2 text-sm font-bold text-[#152c6b]">Discover & profile</h3><p class="mt-1 text-xs leading-5 text-[#5a6a88]">Upload representative source files, inspect schema and profile quality.</p></div>
