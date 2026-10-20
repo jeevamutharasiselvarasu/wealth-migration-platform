@@ -19,14 +19,14 @@ class WorkspaceStateStore:
     def __init__(self):
         init_db()
         self.active_role: str = "Platform Admin"
-        self.adls_connected: bool = True
-        self.adls_container: str = "stg-corecap-data"
+        self.adls_connected: bool = False
+        self.adls_container: str = ""
 
         # 1. Configurable Acquisition Discovery Context
         self.questionnaire_data: Dict[str, Any] = {
-            "firm_name": "Core Cap Wealth Management",
-            "migration_id": "MIG-CORECAP-2026",
-            "source_systems": "Amplify; Black Diamond",
+            "firm_name": "New Migration",
+            "migration_id": "MIG-UNCONFIGURED",
+            "source_systems": "",
             "business_data_owner": "",
             "mapping_approver": "",
             "identifier_relationship_notes": "",
