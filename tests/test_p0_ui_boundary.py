@@ -27,7 +27,7 @@ def test_p0_navigation_exposes_only_control_plane_workflow():
     for route in ('/firm-knowledge', '/entity-selection', '/entity-sample-files', '/agent-pipeline'):
         assert f'href="{route}"' in navigation
     assert 'href="/hitl"' not in navigation
-    assert 'href="/reconciliation"' not in navigation
+    assert 'href="/reconciliation"' in navigation
     assert "DATA PLANE (SPECIALIST)" not in navigation
 
 
@@ -43,3 +43,19 @@ def test_dashboard_exposes_only_the_three_entity_p0_flow():
     ):
         assert stage in dashboard
     assert "Target loading and wave assignment are not executed in this phase." in dashboard
+
+
+def test_global_ui_shell_matches_agentic_demo_visual_language():
+    shell = (ROOT / "ui" / "templates" / "base.html").read_text()
+    for token in ("Space Grotesk", "IBM Plex Mono", "#152C6B", "xa-topbar", "xa-sidebar", "xa-right"):
+        assert token in shell
+    for entity in ("Account", "Household", "Client"):
+        assert entity in shell
+
+
+def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
+    pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    assert ">98%</div>" not in pipeline
+    assert "HIGH QUALITY · READY" not in pipeline
+    assert "P0 · REVIEW ONLY" in pipeline
+    assert "Canonical-to-target mapping, wave assignment" in pipeline
