@@ -23,7 +23,15 @@
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Pending mapping proposals</h2><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><a href="/entity-sample-files" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">← Source discovery</a></div>
     {% if mapping_suggestions %}
     <div class="mt-3 space-y-3">
+      {% set ns = namespace(current_entity='') %}
       {% for suggestion in mapping_suggestions %}
+      {% if ns.current_entity != suggestion.entity_name %}
+      <div class="mt-5 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+        <div><div class="font-mono text-[9px] uppercase tracking-wider text-blue-700">Entity review queue</div><h3 class="mt-1 text-sm font-bold text-[#152C6B]">{{ suggestion.entity_name }}</h3></div>
+        <span class="rounded-full border border-blue-200 bg-white px-3 py-1 font-mono text-[9px] text-blue-700">SOURCE → CANONICAL</span>
+      </div>
+      {% set ns.current_entity = suggestion.entity_name %}
+      {% endif %}
       <article class="rounded-xl border border-[#D9E3F5] p-4">
         <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-start">
           <div><div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">{{ suggestion.entity_name }} · Source field</div><div class="mt-1 break-words text-sm font-bold text-[#152C6B]">{{ suggestion.source_field }}</div></div>
