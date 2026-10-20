@@ -905,6 +905,12 @@ async def map_uploaded_entity_file(entity_name: str = Form(...), request: Reques
         raise HTTPException(status_code=500, detail=f"Mapping failed; no success was reported: {type(exc).__name__}: {exc}") from exc
     # Keep generated canonical-shaped rows inside the workflow for validation only.
     # The API never exposes them as reusable/approved output.
+    if file_id:
+        for files in state_store.entity_source_files.values():
+            for record in files.values():
+                if record.get("file_id") == file_id:
+                    record["mapping_generated"] = True
+                    record["last_mapping_run_id"] = result.get("run_id")
     mapping_preview = result.get("mapping", {})
     mapping_preview["preview_record_count"] = len(mapping_preview.pop("mapped_records", []))
     mapping_preview["mapped_records_withheld"] = True
