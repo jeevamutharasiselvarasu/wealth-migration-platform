@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-5xl space-y-6">
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-6 shadow-sm">
+    <div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workspace identity · Step 2</div>
+    <h1 class="mt-2 text-2xl font-bold text-[#152C6B]">Choose your persona</h1>
+    <p class="mt-2 max-w-3xl text-sm leading-6 text-[#5A6A88]">Choose the workspace for your responsibilities. Navigation and available actions are scoped to the selected role. You can switch persona later without signing in again.</p>
+  </section>
+  <form action="/persona-selection" method="post" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    {% for role in personas %}
+    <label class="group cursor-pointer rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+      <input class="peer sr-only" type="radio" name="role" value="{{ role.id }}" required {% if loop.first %}checked{% endif %}>
+      <div class="flex items-start gap-4">
+        <span class="grid h-12 w-12 flex-none place-items-center rounded-xl {% if role.id == 'Validation Specialist' %}bg-teal-600{% elif role.id == 'Domain SME' %}bg-amber-500{% else %}bg-blue-600{% endif %} font-mono text-sm font-bold text-white">{{ role.initials }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center justify-between gap-2"><h2 class="text-base font-bold text-[#152C6B]">{{ role.label }}</h2><span class="persona-check text-[10px] font-bold text-blue-700 opacity-0">SELECTED ✓</span></div>
+          <p class="mt-1 text-xs font-bold uppercase tracking-wide text-[#8A97B2]">{{ role.plane }}</p>
+          <p class="mt-3 text-sm leading-6 text-[#5A6A88]">{{ role.description }}</p>
+          <div class="mt-4 flex flex-wrap gap-1.5">{% for stage in role.stages %}<span class="rounded-md border border-[#D9E3F5] bg-[#F4F7FC] px-2 py-1 text-[10px] font-mono text-[#41506B]">{{ stage }}</span>{% endfor %}</div>
+        </div>
+      </div>
+    </label>
+    {% endfor %}
+    <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
+      <p class="text-xs text-[#5A6A88]">Signed in as <b class="text-[#152C6B]">{{ user_name }}</b>. Persona selection controls workspace scope; it does not grant additional system permissions.</p>
+      <button class="rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700" type="submit">Enter selected workspace →</button>
+    </div>
+  </form>
+</div>
+<style>
+label:has(input:checked){border-color:#2563EB;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+label:has(input:checked) .persona-check{opacity:1}
+</style>
+{% endblock %}
