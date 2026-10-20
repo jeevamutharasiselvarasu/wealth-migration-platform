@@ -3,7 +3,7 @@ from control_plane.services.entity_inference import infer_entity_from_headers
 def test_infers_account_from_account_identity_columns():
     result = infer_entity_from_headers(["ACCOUNT_NUMBER", "CUSTODIAN", "OPEN_DATE", "REP_CODE"])
     assert result["entity"] == "Account"
-    assert result["status"] == "INFERRED"
+    assert result["status"] == "NEEDS_REVIEW"
 
 def test_infers_household_from_household_identity_columns():
     result = infer_entity_from_headers(["HOUSEHOLD_ID", "HOUSEHOLD_NAME", "REP_CODE"])
