@@ -82,7 +82,8 @@ async def login_page(request: Request, error: str = None):
 @app.post("/login")
 async def process_login(email: str = Form(...), password: str = Form(...)):
     # Authentication and persona selection are intentionally separate steps.
-    session_id = session_mgr.authenticate(email, password, "Platform Admin")
+    default_role = session_mgr.authorized_users.get(email.lower(), {}).get("default_role", "Migration Analyst")
+    session_id = session_mgr.authenticate(email, password, default_role)
     if not session_id:
         return RedirectResponse(url="/login?error=Invalid+credentials+provided", status_code=status.HTTP_303_SEE_OTHER)
     response = RedirectResponse(url="/persona-selection", status_code=status.HTTP_303_SEE_OTHER)
@@ -107,6 +108,8 @@ async def persona_selection_page(request: Request):
          "description":"Review field completeness, keys, relationships, data-quality exceptions and reconciliation evidence.",
          "stages":["Validation","Exceptions","Evidence"]},
     ]
+    allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"} if user["role"] == "Platform Admin" else {user["role"]}
+    personas = [persona for persona in personas if persona["id"] in allowed_roles]
     return render_template_with_context(request, "persona_selection.html", {
         "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"], "personas":personas
     })
@@ -114,6 +117,9 @@ async def persona_selection_page(request: Request):
 
 @app.post("/persona-selection")
 async def select_persona(request: Request, role: str = Form(...)):
+    user = get_current_user(request)
+    if user["role"] != "Platform Admin" and role != user["role"]:
+        raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")
     session_id = request.cookies.get("session_id")
     if not session_id or not session_mgr.select_role(session_id, role):
         raise HTTPException(status_code=403, detail="The selected persona is not available for this session.")
