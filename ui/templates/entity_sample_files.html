@@ -1,265 +1,60 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div class="space-y-6 max-w-6xl">
-    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
-        <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">04</span>
-            <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Source Discovery & Profiling</h1>
-                <p class="text-xs text-[#5a6a88]">Register representative source files for Account, Household and Client. Inspect schema, quality and lineage before source-to-canonical mapping.</p>
-            </div>
-        </div>
-        
-        <div class="flex items-center gap-2"><button id="run-mcl-flow" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow">Run full MCL flow</button><a href="/agent-pipeline" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow flex items-center space-x-2">
-            <span>Proceed to Agent Pipeline Studio</span>
-            <span>→</span>
-        </a></div>
+<div class="mx-auto max-w-6xl space-y-5">
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div><div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workflow · Step 2</div>
+        <h1 class="mt-2 text-xl font-bold text-[#152C6B]">Source discovery & entity inference</h1>
+        <p class="mt-2 max-w-3xl text-xs leading-5 text-[#5A6A88]">Upload representative source files without assigning an entity. XODUS inspects headers and canonical-field evidence to infer Account, Household or Client, then proposes mapping candidates. Ambiguous files are held for clarification rather than guessed.</p>
+      </div>
+      <span class="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 font-mono text-[9px] font-bold text-blue-700">P0 · 3 ENTITIES</span>
     </div>
-    <div id="mcl-flow-result" class="hidden bg-white border border-[#b7e4d3] rounded-2xl p-4 text-xs"></div>
-
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 space-y-4 shadow-sm">
-        <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">
-            <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Active In-Scope Source Files</h2>
-            <span class="text-xs text-[#5a6a88] font-mono">{{ selected_entities|length }} In-Scope Entities</span>
-        </div>
-
-        <div class="space-y-4">
-            {% for ent in selected_entities %}
-            <div class="bg-[#f8fafc] p-5 rounded-2xl border border-[#e2e8f0] space-y-3">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#e9eff9] pb-3">
-                    <div class="space-y-1">
-                        <div class="flex items-center space-x-3">
-                            <span class="font-bold text-[#152c6b] text-base">{{ ent.entity_name }}</span>{% if ent.entity_name == "Client" %}<span class="text-[10px] text-purple-700">Source Client → canonical Client</span>{% endif %}
-                            <span class="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold">
-                                {{ ent.current_scope }}
-                            </span>
-                            <span class="bg-slate-200 text-[#1c2a4a] text-[10px] px-2.5 py-0.5 rounded font-mono font-semibold">
-                                Expected: {{ ent.expected_file }}
-                            </span>
-                        </div>
-                        <div class="text-xs text-[#5a6a88]">{{ ent.grain }}</div>
-                    </div>
-
-                    <div class="flex items-center space-x-3">
-                        {% if ent.sample_file_info %}
-                            <div class="text-right">
-                                <div class="text-xs font-mono text-teal-700 font-bold">{{ ent.sample_file_info.filename }}</div>
-                                <div class="text-[10px] text-[#5a6a88]">{{ ent.sample_file_info.row_count }} Rows • {{ ent.sample_file_info.column_count }} Columns • {{ ent.sample_file_info.status }}</div>
-                                <div class="flex items-center justify-end gap-2 mt-2">
-                                    {% if ent.entity_name in ["Account", "Household", "Client"] %}
-                                    <button type="button" class="map-uploaded-file bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold" data-entity="{{ ent.entity_name }}" data-result-id="mapping-result-{{ loop.index }}">Profile & Map Uploaded File</button>
-                                    {% else %}
-                                    <span class="text-[10px] text-[#5a6a88]">Mapping module not enabled in P0</span>
-                                    {% endif %}
-                                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_auto] items-center gap-2">
-                                        <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
-                                        <input type="hidden" name="source_role" value="{{ 'ACCOUNT_MASTER' if ent.entity_name == 'Account' else 'ENTITY_MASTER' }}">
-                                        <label class="sr-only" for="replace-file-{{ loop.index }}">{{ 'Account Master source file' if ent.entity_name == 'Account' else ent.entity_name ~ ' source file' }}</label>
-                                        <input id="replace-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="w-full min-w-0 text-xs">
-                                        <button type="submit" class="bg-slate-200 hover:bg-slate-300 text-[#1c2a4a] px-2 py-1.5 rounded-lg text-xs font-bold">Replace</button>
-                                    </form>
-                                </div>
-                            </div>
-                            <span class="h-3 w-3 rounded-full bg-teal-500"></span>
-                        {% else %}
-                            <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
-                                <input type="hidden" name="entity_name" value="{{ ent.entity_name }}">
-                                <input type="hidden" name="source_role" value="{{ 'ACCOUNT_MASTER' if ent.entity_name == 'Account' else 'ENTITY_MASTER' }}">
-                                <label for="upload-file-{{ loop.index }}" class="text-xs font-semibold text-[#152c6b]">{{ 'Account Master source file' if ent.entity_name == 'Account' else ent.entity_name ~ ' source file' }}</label>
-                                <input id="upload-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block w-full min-w-0 text-xs text-[#5a6a88] file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-bold">
-                                <button type="submit" class="bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] px-3.5 py-1.5 rounded-lg border border-[#cbd5e1] text-xs font-bold transition">
-                                    Upload & Profile
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                </div>
-
-                {% if ent.entity_name == "Account" %}
-                <div class="rounded-xl border border-[#d9e3f5] bg-white p-4 space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                            <div class="font-bold text-[#152c6b]">Name &amp; Address</div>
-                            <div class="text-xs text-[#5a6a88]">Additional Account source file; retained separately from Account Master.</div>
-                        </div>
-                        {% if ent.source_files and ent.source_files.get("NAME_ADDRESS") %}
-                        <div class="text-right text-xs">
-                            <div class="font-mono font-bold text-teal-700">{{ ent.source_files.get("NAME_ADDRESS").filename }}</div>
-                            <div class="text-[#5a6a88]">{{ ent.source_files.get("NAME_ADDRESS").row_count }} Rows • {{ ent.source_files.get("NAME_ADDRESS").column_count }} Columns • {{ ent.source_files.get("NAME_ADDRESS").status }}</div>
-                        </div>
-                        {% else %}
-                        <span class="text-xs text-[#8a97b2]">No file uploaded</span>
-                        {% endif %}
-                    </div>
-                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
-                        <input type="hidden" name="entity_name" value="Account">
-                        <input type="hidden" name="source_role" value="NAME_ADDRESS">
-                        <label for="name-address-file-{{ loop.index }}" class="text-xs font-semibold text-[#152c6b]">Name &amp; Address source file</label>
-                        <input id="name-address-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block max-w-64 text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white font-bold">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold">Upload &amp; Validate</button>
-                    </form>
-                </div>
-                {% endif %}
-
-                {% if ent.entity_name == "Account" %}
-                <div class="rounded-xl border border-[#d9e3f5] bg-white p-4 space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                            <div class="font-bold text-[#152c6b]">Account Type</div>
-                            <div class="text-xs text-[#5a6a88]">Additional Account source file; retained separately from Account Master and Name &amp; Address.</div>
-                        </div>
-                        {% if ent.source_files and ent.source_files.get("ACCOUNT_TYPE") %}
-                        <div class="text-right text-xs">
-                            <div class="font-mono font-bold text-teal-700">{{ ent.source_files.get("ACCOUNT_TYPE").filename }}</div>
-                            <div class="text-[#5a6a88]">{{ ent.source_files.get("ACCOUNT_TYPE").row_count }} Rows • {{ ent.source_files.get("ACCOUNT_TYPE").column_count }} Columns • {{ ent.source_files.get("ACCOUNT_TYPE").status }}</div>
-                        </div>
-                        {% else %}
-                        <span class="text-xs text-[#8a97b2]">No file uploaded</span>
-                        {% endif %}
-                    </div>
-                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
-                        <input type="hidden" name="entity_name" value="Account">
-                        <input type="hidden" name="source_role" value="ACCOUNT_TYPE">
-                        <label for="account-type-file-{{ loop.index }}" class="text-xs font-semibold text-[#152c6b]">Account Type source file</label>
-                        <input id="account-type-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block max-w-64 text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white font-bold">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold">Upload &amp; Validate</button>
-                    </form>
-                </div>
-                {% endif %}
-
-                {% if ent.entity_name in ["Household", "Client"] %}
-                {% set extra_role = "HOUSEHOLD_MAPPING" if ent.entity_name == "Household" else "CLIENT_MODEL" %}
-                {% set extra_label = "Household Mapping" if ent.entity_name == "Household" else "Client Model" %}
-                <div class="rounded-xl border border-[#d9e3f5] bg-white p-4 space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div><div class="font-bold text-[#152c6b]">{{ extra_label }}</div><div class="text-xs text-[#5a6a88]">Additional source file retained separately for the {{ ent.entity_name }} canonical entity.</div></div>
-                        {% if ent.source_files and ent.source_files.get(extra_role) %}
-                        <div class="text-right text-xs"><div class="font-mono font-bold text-teal-700">{{ ent.source_files.get(extra_role).filename }}</div><div class="text-[#5a6a88]">{{ ent.source_files.get(extra_role).row_count }} Rows • {{ ent.source_files.get(extra_role).column_count }} Columns • {{ ent.source_files.get(extra_role).status }}</div></div>
-                        {% else %}<span class="text-xs text-[#8a97b2]">No file uploaded</span>{% endif %}
-                    </div>
-                    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
-                        <input type="hidden" name="entity_name" value="{{ ent.entity_name }}"><input type="hidden" name="source_role" value="{{ extra_role }}">
-                        <label for="extra-file-{{ loop.index }}" class="text-xs font-semibold text-[#152c6b]">{{ extra_label }} source file</label>
-                        <input id="extra-file-{{ loop.index }}" type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="block max-w-64 text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white font-bold">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold">Upload &amp; Validate</button>
-                    </form>
-                </div>
-                {% endif %}
-                <div id="mapping-result-{{ loop.index }}" class="hidden mt-3 bg-white border border-[#d9e3f5] rounded-xl p-4 text-xs"></div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1 font-mono">
-                    <div class="bg-white p-3 rounded-xl border border-[#e2e8f0]">
-                        <span class="text-[#8a97b2] block text-[10px]">MANDATORY CANONICAL KEYS</span>
-                        <span class="text-blue-700 font-bold">{{ ent.required_fields|join(', ') }}</span>
-                    </div>
-
-                    <div class="bg-white p-3 rounded-xl border border-[#e2e8f0]">
-                        <span class="text-[#8a97b2] block text-[10px]">CUSTODIAN CROSSWALKS</span>
-                        <span class="text-teal-700 font-bold">SCHW ➔ SCHWAB | FID ➔ FIDELITY</span>
-                    </div>
-
-                    <div class="bg-white p-3 rounded-xl border border-[#e2e8f0]">
-                        <span class="text-[#8a97b2] block text-[10px]">TARGET DELEGATION</span>
-                        <span class="text-[#1c2a4a] font-bold">Deferred to Phase 2 Packaging</span>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SUPPORTED ENTITY 01</div><b class="mt-1 block text-sm text-[#152C6B]">Account</b><span class="text-[10px] text-[#5A6A88]">Account identity and registration fields</span></div>
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SUPPORTED ENTITY 02</div><b class="mt-1 block text-sm text-[#152C6B]">Household</b><span class="text-[10px] text-[#5A6A88]">Household key, name and relationships</span></div>
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SUPPORTED ENTITY 03</div><b class="mt-1 block text-sm text-[#152C6B]">Client</b><span class="text-[10px] text-[#5A6A88]">Client key, legal name and type</span></div>
     </div>
+  </section>
+
+  {% if uploaded_entity %}
+  <div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs text-teal-900"><b>File analysed.</b> The source columns were classified as <b>{{ uploaded_entity }}</b>. Review the inferred file below before running mapping.</div>
+  {% endif %}
+  {% if notice %}
+  <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">{{ notice }}</div>
+  {% endif %}
+
+  {% if acquisition_method == 'AZURE_CONNECTION' %}
+  <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+    <div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 text-amber-800"><icon name="cloud" size="lg" /></span><div><h2 class="font-bold text-amber-900">Azure source connection selected</h2><p class="mt-1 text-xs leading-5 text-amber-900">The setup records the Azure environment and approved access method, but a live connector is not yet verified. Configure managed identity / Key Vault access and connection testing before enabling automated discovery. Do not enter secrets here.</p><a href="/migration-setup" class="mt-3 inline-block rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">Review Azure setup →</a></div></div>
+  </section>
+  {% else %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex items-start gap-3"><span class="grid h-9 w-9 flex-none place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">IN</span><div><h2 class="font-bold text-[#152C6B]">Add source files</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">No entity dropdown is used. Inference is based on the headers and the canonical field catalog. For ambiguous files, include the data dictionary or describe the business meaning of the key fields.</p></div></div>
+    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+      <label class="text-xs font-bold text-[#41506B]">Source file <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" required class="mt-2 block w-full rounded-lg border border-[#D9E3F5] bg-[#F8FAFD] p-3 text-xs font-normal"></label>
+      <label class="text-xs font-bold text-[#41506B]">Source system / file purpose (optional) <input type="text" name="source_context" placeholder="e.g. account register export; CRM client master" class="mt-2 w-full rounded-lg border border-[#D9E3F5] p-3 text-xs font-normal"></label>
+      <label class="text-xs font-bold text-[#41506B] md:col-span-2">Data dictionary / column definitions (optional) <textarea name="data_dictionary_notes" rows="2" placeholder="Paste field definitions or provide the key and relationship meaning if headers are ambiguous." class="mt-2 w-full rounded-lg border border-[#D9E3F5] p-3 text-xs font-normal"></textarea></label>
+      <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-3"><span class="text-[10px] leading-5 text-[#8A97B2]">Supported formats: CSV, TSV, XLSX, XLSM, XLS, JSON. Use masked or representative samples.</span><button type="submit" class="rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white hover:bg-blue-700">Analyse file & infer entity →</button></div>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Discovered source inventory</h2><p class="mt-1 text-xs text-[#5A6A88]">Detected entities are system recommendations, not user-assigned labels. Mapping remains pending until reviewed.</p></div><a href="/agent-pipeline" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">Open mapping review →</a></div>
+    {% if source_uploads %}
+    <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[620px] text-left"><thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">File</th><th class="p-3">Inferred entity</th><th class="p-3">Shape</th><th class="p-3">Inference</th><th class="p-3">Next action</th></tr></thead><tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for file in source_uploads %}<tr><td class="p-3"><div class="font-bold text-[#152C6B]">{{ file.filename }}</div><div class="mt-1 text-[9px] text-[#8A97B2]">{{ file.source_role }}</div></td><td class="p-3"><span class="rounded-md border border-teal-200 bg-teal-50 px-2 py-1 font-bold text-teal-800">{{ file.inferred_entity }}</span></td><td class="p-3 text-[#5A6A88]">{{ file.row_count }} rows · {{ file.column_count }} columns</td><td class="p-3"><span class="font-mono text-[#41506B]">{{ file.inference.status if file.inference else 'INFERRED' }}</span><div class="mt-1 text-[9px] text-[#8A97B2]">{% if file.inference %}Confidence {{ file.inference.confidence }}{% else %}Previously registered{% endif %}</div></td><td class="p-3"><form action="/api/entities/map-uploaded-file" method="post"><input type="hidden" name="entity_name" value="{{ file.inferred_entity }}"><button class="rounded-lg bg-[#2563EB] px-3 py-2 text-[10px] font-bold text-white hover:bg-blue-700">Profile & suggest mappings</button></form></td></tr>{% endfor %}</tbody></table></div>
+    {% else %}
+    <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-8 text-center"><div class="font-bold text-[#152C6B]">No source files discovered yet</div><p class="mt-1 text-xs text-[#5A6A88]">Add a sample file or configure the Azure source connection to begin discovery.</p></div>
+    {% endif %}
+  </section>
+
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <h2 class="font-bold text-[#152C6B]">What happens when information is missing?</h2>
+    <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div class="rounded-xl bg-[#F8FAFD] p-3"><b class="text-xs text-[#152C6B]">1. Ambiguous entity</b><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Hold the file and request field definitions / key semantics instead of guessing.</p></div>
+      <div class="rounded-xl bg-[#F8FAFD] p-3"><b class="text-xs text-[#152C6B]">2. Unmapped canonical field</b><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Create an information request for the source owner or SME, with the missing field and evidence.</p></div>
+      <div class="rounded-xl bg-[#F8FAFD] p-3"><b class="text-xs text-[#152C6B]">3. Review decision</b><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Approve a supported mapping or reject it with comments. Rejected proposals do not become reusable rules.</p></div>
+    </div>
+  </section>
 </div>
-
-<script>
-document.querySelectorAll('.map-uploaded-file').forEach((button) => {
-  button.addEventListener('click', async () => {
-    const entity = button.dataset.entity;
-    const result = document.getElementById(button.dataset.resultId);
-    const originalLabel = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Mapping…';
-    if (result) {
-      result.classList.remove('hidden');
-      result.textContent = 'Profiling the uploaded CSV and applying source-to-canonical rules…';
-    }
-    try {
-      const form = new FormData();
-      form.append('entity_name', entity);
-      const response = await fetch('/api/entities/map-uploaded-file', { method: 'POST', body: form });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || 'Mapping request failed.');
-      const mapping = payload.mapping || {};
-      const warnings = mapping.warnings || [];
-      const missing = mapping.missing_required || [];
-      const unmapped = mapping.unmapped_fields || [];
-      const summary = [
-        'Status: ' + (payload.status || 'UNKNOWN'),
-        'Run: ' + payload.run_id,
-        'Source: ' + payload.source_file,
-        'Rows profiled: ' + ((payload.profile || {}).row_count ?? 0),
-        'Mapped fields: ' + ((mapping.mapped_fields || []).length),
-        'Unmapped columns: ' + (unmapped.length ? unmapped.join(', ') : 'None'),
-        'Missing required fields: ' + (missing.length ? missing.join(', ') : 'None'),
-        'Confidence: ' + (mapping.confidence_score ?? 0),
-        'Warnings: ' + (warnings.length ? warnings.join(' | ') : 'None'),
-        'Target loading: NOT_RUN · Wave assignment: DISABLED'
-      ];
-      if (result) {
-        result.replaceChildren();
-        const heading = document.createElement('strong');
-        heading.textContent = 'Mapping result';
-        const pre = document.createElement('pre');
-        pre.className = 'whitespace-pre-wrap mt-2 text-[#1c2a4a]';
-        pre.textContent = summary.join('\n');
-        result.append(heading, pre);
-      }
-      button.textContent = 'Re-run Mapping';
-    } catch (error) {
-      if (result) {
-        result.classList.remove('hidden');
-        result.textContent = 'Mapping failed: ' + error.message;
-      }
-      button.textContent = originalLabel;
-    } finally {
-      button.disabled = false;
-    }
-  });
-});
-document.getElementById('run-mcl-flow')?.addEventListener('click', async (event) => {
-  const button = event.currentTarget;
-  const result = document.getElementById('mcl-flow-result');
-  button.disabled = true;
-  button.textContent = 'Running MCL…';
-  result.classList.remove('hidden');
-  result.textContent = 'Profiling Account, Household, and Client; mapping canonical fields; validating keys and relationships…';
-  try {
-    const response = await fetch('/api/entities/map-mcl', { method: 'POST' });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || 'MCL flow failed.');
-    const lines = ['Overall status: ' + payload.status, 'MCL run: ' + payload.mcl_run_id];
-    Object.entries(payload.entities || {}).forEach(([name, entity]) => {
-      lines.push(name + ' → ' + entity.canonical_entity + ': ' + entity.status);
-      lines.push('  Source: ' + entity.source_file + ' · Rows: ' + ((entity.profile || {}).row_count || 0));
-      lines.push('  Mapped fields: ' + (((entity.mapping || {}).mapped_fields || []).length));
-      lines.push('  Unmapped fields: ' + ((((entity.mapping || {}).unmapped_fields || []).join(', ')) || 'None'));
-      lines.push('  Missing required: ' + ((((entity.mapping || {}).missing_required || []).join(', ')) || 'None'));
-      lines.push('  Confidence: ' + ((entity.mapping || {}).confidence_score || 0));
-    });
-    lines.push('Relationship validation: ' + ((payload.relationship_validation || {}).status || 'UNKNOWN'));
-    ((payload.relationship_validation || {}).key_checks || []).forEach(item => lines.push(item.status + ' key ' + item.entity + '.' + item.field + ': ' + item.message));
-    ((payload.relationship_validation || {}).relationship_checks || []).forEach(item => lines.push(item.status + ' relationship ' + item.from_entity + '.' + item.from_field + ' → ' + item.to_entity + '.' + item.to_field + ': ' + item.message));
-    lines.push('Target loading: NOT_RUN · Wave assignment: DISABLED');
-    result.replaceChildren();
-    const heading = document.createElement('strong'); heading.textContent = 'MCL end-to-end result';
-    const pre = document.createElement('pre'); pre.className = 'whitespace-pre-wrap mt-2 text-[#1c2a4a]'; pre.textContent = lines.join('\n');
-    result.append(heading, pre);
-    button.textContent = 'Re-run full MCL flow';
-  } catch (error) {
-    result.textContent = 'MCL flow blocked/failed: ' + error.message;
-    button.textContent = 'Retry full MCL flow';
-  } finally { button.disabled = false; }
-});
-
-</script>
-
 {% endblock %}
