@@ -76,7 +76,13 @@ def render_template_with_context(request: Request, template_name: str, extra_con
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = None):
-    return templates.TemplateResponse(request=request, name="login.html", context={"error": error})
+    demo_user = next(iter(session_mgr.authorized_users.values()), None) if session_mgr.demo_mode else None
+    demo_email = next(iter(session_mgr.authorized_users.keys()), "") if session_mgr.demo_mode else ""
+    return templates.TemplateResponse(request=request, name="login.html", context={
+        "error": error,
+        "demo_mode": bool(demo_user),
+        "demo_email": demo_email,
+    })
 
 
 @app.post("/login")
@@ -129,11 +135,13 @@ async def select_persona(request: Request, role: str = Form(...)):
 
 
 @app.get("/migration-setup", response_class=HTMLResponse)
-async def migration_setup_page(request: Request):
+async def migration_setup_page(request: Request, demo_loaded: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
     return render_template_with_context(request, "migration_setup.html", {
-        "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup
+        "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
+        "demo_loaded": demo_loaded == "1",
+        "demo_available": session_mgr.demo_mode,
     })
 
 
@@ -172,7 +180,9 @@ async def save_migration_setup(request: Request):
         if missing_azure:
             raise HTTPException(status_code=400, detail="Azure connection mode requires: " + ", ".join(missing_azure) + ".")
     # Configuration metadata only: never store secrets or claim a live Azure connection.
-    state_store.questionnaire_data["migration_id"] = state_store.questionnaire_data.get("migration_id") or f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    current_migration_id = str(state_store.questionnaire_data.get("migration_id", ""))
+    if not current_migration_id or current_migration_id == "MIG-UNCONFIGURED":
+        state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
     state_store.update_questionnaire_from_form({
         "firm_name": setup["migration_name"],
         "migration_name": setup["migration_name"],
@@ -184,6 +194,79 @@ async def save_migration_setup(request: Request):
         state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/demo/load")
+async def load_demo_migration(request: Request):
+    """Load the sample migration from editable JSON/CSV/Markdown inputs, not code constants."""
+    user = get_current_user(request)
+    if not session_mgr.demo_mode:
+        raise HTTPException(status_code=404, detail="Demo mode is disabled.")
+    manifest_path = Path(root_dir) / "demo_data" / "demo_migration.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="Demo migration configuration could not be loaded.") from exc
+
+    setup = dict(manifest.get("migration_setup", {}))
+    if not setup.get("target_system") or not setup.get("canonical_version"):
+        raise HTTPException(status_code=500, detail="Demo migration configuration is missing target contract details.")
+
+    state_store.questionnaire_data["migration_setup"] = setup
+    state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    state_store.update_questionnaire_from_form({
+        "firm_name": setup.get("migration_name", ""),
+        "migration_name": setup.get("migration_name", ""),
+        "target_system": setup.get("target_system", ""),
+        "source_systems": setup.get("source_details", ""),
+    })
+    state_store.entity_sample_files.clear()
+    state_store.entity_source_files.clear()
+    for entity in {"Account", "Household", "Client"}:
+        state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
+
+    loaded_files = []
+    for item in manifest.get("source_files", []):
+        source_path = (Path(root_dir) / item["path"]).resolve()
+        if not source_path.is_relative_to(Path(root_dir).resolve()):
+            raise HTTPException(status_code=400, detail="Demo source path is outside the repository.")
+        try:
+            content = source_path.read_bytes()
+            records = read_source_records(source_path.name, content)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=500, detail=f"Demo source file could not be read: {source_path.name}") from exc
+        headers = list(records[0].keys()) if records else []
+        inference = infer_entity_from_headers(
+            headers,
+            context=" ".join([str(item.get("context", "")), str(item.get("dictionary_notes", ""))]),
+        )
+        if not inference.get("entity") or inference.get("status") == "NEEDS_CLARIFICATION":
+            raise HTTPException(status_code=500, detail=f"Demo source file needs better inference evidence: {source_path.name}")
+        entity_name = inference["entity"]
+        source_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
+        record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
+        record["inference"] = inference
+        record["inference_approval_status"] = "PENDING"
+        record["source_context"] = str(item.get("context", ""))
+        record["data_dictionary_notes"] = str(item.get("dictionary_notes", ""))
+        loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
+
+    for item in manifest.get("knowledge_files", []):
+        knowledge_path = (Path(root_dir) / item["path"]).resolve()
+        if not knowledge_path.is_relative_to(Path(root_dir).resolve()):
+            raise HTTPException(status_code=400, detail="Demo knowledge path is outside the repository.")
+        try:
+            state_store.add_firm_file(knowledge_path.name, str(item["category"]), knowledge_path.read_bytes())
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=500, detail=f"Demo knowledge asset could not be loaded: {knowledge_path.name}") from exc
+
+    state_store.audit_log.append({
+        "event": "DEMO_MIGRATION_LOADED",
+        "actor": user["name"],
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
+    })
+    return RedirectResponse(url="/migration-setup?demo_loaded=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout")
