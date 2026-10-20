@@ -206,7 +206,12 @@ class WorkspaceStateStore:
         }
         # Store every file independently. A single entity can have many source extracts.
         entity_files = self.entity_source_files.setdefault(entity_name, {})
-        entity_files[record["file_id"]] = record
+        # Preserve the historical role-key lookup for the first file of each role.
+        # Additional extracts of the same role get a unique key instead of overwriting it.
+        storage_key = record["source_role"]
+        if storage_key in entity_files:
+            storage_key = record["source_role"] + ":" + record["filename"] + ":" + record["file_id"]
+        entity_files[storage_key] = record
         # Preserve compatibility for legacy entity-level endpoints by pointing at the latest upload.
         if record["source_role"] in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
             self.entity_sample_files[entity_name] = record
