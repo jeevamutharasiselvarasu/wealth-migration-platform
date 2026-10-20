@@ -45,6 +45,32 @@
     <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">{% for doc in knowledge_docs %}<div class="rounded-lg border border-teal-100 bg-white p-3"><div class="text-xs font-bold text-[#152C6B]">{{ doc.filename }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">{{ doc.category|default("knowledge") }}</div></div>{% endfor %}</div>
   </section>
   {% endif %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="border-b border-[#E9EFF9] pb-3"><h2 class="font-bold text-[#152C6B]">Entity-level scope approval</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Approve all files for an entity in one action when every file has a confident, matching inference and signature-field evidence. If even one file is ambiguous, needs review, or was rejected, the bulk action is blocked and individual review remains available.</p></div>
+    <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+      {% for entity in ['Account','Household','Client'] %}
+      {% set summary = entity_approval_summary.get(entity, {}) %}
+      <article class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
+        <div class="flex items-center justify-between"><h3 class="font-bold text-[#152C6B]">{{ entity }}</h3><span class="font-mono text-[9px] text-[#8A97B2]">{{ summary.get('total',0) }} FILES</span></div>
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-teal-700">{{ summary.get('approved',0) }}</div><div class="text-[9px] text-[#5A6A88]">Approved</div></div>
+          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-amber-700">{{ summary.get('pending',0) }}</div><div class="text-[9px] text-[#5A6A88]">Pending</div></div>
+          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-red-700">{{ summary.get('rejected',0) }}</div><div class="text-[9px] text-[#5A6A88]">Rejected</div></div>
+        </div>
+        {% if summary.get('total',0) > 0 %}
+        <form action="/api/entities/confirm-entity" method="post" class="mt-3 space-y-2" onsubmit="return confirm('Approve every registered {{ entity }} source file in one action? This is allowed only when all files pass the evidence gate.');">
+          <input type="hidden" name="entity_name" value="{{ entity }}">
+          <input name="comments" placeholder="Optional approval note" class="w-full rounded-lg border border-[#D9E3F5] bg-white p-2 text-[10px]">
+          <button type="submit" class="w-full rounded-lg bg-teal-700 px-3 py-2.5 text-[10px] font-bold text-white hover:bg-teal-800">Approve all {{ entity }} files →</button>
+        </form>
+        {% else %}
+        <div class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] p-3 text-center text-[10px] text-[#8A97B2]">Upload and infer files before entity approval.</div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
   <section id="discovered-source-inventory" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Discovered source inventory · {{ source_uploads|length }} files</h2><p class="mt-1 text-xs text-[#5A6A88]">Multiple source files can belong to the same entity. Detected entities are system recommendations. Confirm or reject each inferred entity before its source file can enter profiling and mapping. Once files are confirmed, generate proposals for all approved files here.</p></div><div class="flex flex-wrap gap-2"><form action="/api/entities/map-approved-files" method="post"><button class="rounded-lg bg-[#2563EB] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Profile approved files & generate mappings →</button></form><a href="/agent-pipeline#pending-mappings" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">Open Mapping Studio →</a></div></div>
     {% if source_uploads %}
