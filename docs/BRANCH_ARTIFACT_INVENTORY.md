@@ -1,7 +1,7 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited tree snapshot: `a292475d8dd543d43d739cc438d367b98951506e`
+- Audited tree snapshot: `a46b99b395cbd0b7c2c73d9960d2b38db11da154`
 - Method: Git recursive tree (**110 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
 - This report is committed separately from the audited tree snapshot; update the snapshot/count after any subsequent repository changes.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
@@ -270,7 +270,7 @@
 
 ## Cleanup follow-up — 2026-10-21
 
-Current verified branch head before this inventory update: `a292475d8dd543d43d739cc438d367b98951506e`. The recursive tree contains **110 tracked files** (counting blobs, not directory tree entries).
+Current verified branch head before this inventory update: `a46b99b395cbd0b7c2c73d9960d2b38db11da154`. The recursive tree contains **110 tracked files** (counting blobs, not directory tree entries).
 
 Completed cleanup:
 - The active rendered page templates are `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
