@@ -54,7 +54,7 @@ The local demo identity is configured through `demo_data/demo_users.json` and ap
 
 - `ui/` — FastAPI routes, session/persona handling, templates, and browser components.
 - `control_plane/` — canonical kernel, rule/metadata compilation, profiling, inference, validation, and integration scaffolding.
-- `agents/` — mapping/orchestration components; presence of an agent module does not mean every agent is active in the P0 user flow.
+- `agents/` — mapping and validation components; the legacy cohort orchestrator was removed from P0.
 - `data_plane/` — local source-file persistence, validation, and telemetry helpers. Legacy custodian connectors and target-system adapters are intentionally absent from P0; target loading remains deferred.
 - `knowledge/` and `demo_data/` — editable knowledge assets, inference rules, demo manifest, and synthetic source files.
 - `tests/` — contract, UI-boundary, inference, mapping, and service tests.
