@@ -303,8 +303,9 @@ async def agent_studio(request: Request):
     return render_template_with_context(request, "agent_studio.html", {
         "page_title": "Agent Studio", "user_name": user["name"], "user_role": user["role"],
         "selected_entities": selected, "source_files": files,
-        "analysis_results": [record.get("agent_analysis") for group in state_store.entity_source_files.values()
-                             for record in group.values() if record.get("agent_analysis")],
+        "analysis_results": [record.get("agent_analysis") for entity, group in state_store.entity_source_files.items()
+                             if entity in selected for record in group.values()
+                             if record.get("agent_analysis") and record["agent_analysis"].get("classification", {}).get("entity") in selected],
     })
 
 
