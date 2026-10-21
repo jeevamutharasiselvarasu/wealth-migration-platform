@@ -33,3 +33,28 @@ def test_agent_studio_is_part_of_primary_navigation_and_has_deferred_execution_n
     assert "Agents classify, profile and recommend" in page
     assert "No source values are transformed" in page
     assert "wave assignment remains deferred" in page
+
+
+def test_dashboard_renders_only_entities_selected_in_migration_setup():
+    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'for entity in in_scope_entities|default([])' in dashboard
+    assert '"in_scope_entities": [entity for entity in ("Account", "Household", "Client") if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])]' in app
+    assert 'Account, Household, Client</div>' not in dashboard
+    assert 'ENTITY 02</span><span' not in dashboard
+
+
+def test_platform_knowledge_is_not_stored_under_demo_data_or_registered_as_migration_input():
+    manifest = (ROOT / "demo_data" / "demo_migration.json").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    assert (ROOT / "platform_knowledge" / "canonical_contract.md").exists()
+    assert (ROOT / "platform_knowledge" / "source_mapping_notes.md").exists()
+    assert not (ROOT / "demo_data" / "knowledge" / "canonical_contract.md").exists()
+    assert not (ROOT / "demo_data" / "knowledge" / "source_mapping_notes.md").exists()
+    assert '"knowledge_files"' not in manifest
+    assert 'platform_knowledge/canonical_contract.md' in manifest
+    assert 'platform_knowledge/source_mapping_notes.md' in manifest
+    assert 'platform_knowledge/canonical_contract.md' in setup
+    assert 'platform_knowledge/source_mapping_notes.md' in setup
+    assert 'for item in manifest.get("knowledge_files", [])' not in app
