@@ -295,6 +295,8 @@ async def agent_studio(request: Request):
     selected = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
     files = []
     for entity, entity_files in state_store.entity_source_files.items():
+        if entity not in selected:
+            continue
         for record in entity_files.values():
             files.append({**record, "scope_status": "IN_SCOPE" if entity in selected else "OUT_OF_SCOPE",
                           "stored_entity": entity})
@@ -439,7 +441,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
                     "approved": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "APPROVED"),
                     "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in {"APPROVED", "REJECTED"}),
                     "rejected": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "REJECTED"),
-                } for entity in ("Account", "Household", "Client")
+                } for entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
             },
         }
     )
@@ -452,12 +454,15 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
     conn = get_db_connection()
     try:
         active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))
+        selected_scope = [e for e in state_store.questionnaire_data.get("migration_setup", {}).get("entities", []) if e in {"Account", "Household", "Client"}]
+        scope_placeholders = ", ".join("?" for _ in selected_scope) or "''"
         rows = conn.execute(
-            """
+            f"""
             SELECT s.suggestion_id, s.entity_name, s.source_field, s.canonical_field,
                    s.proposed_rule, s.confidence_score
             FROM mapping_suggestions AS s
             WHERE s.migration_id = ? AND s.status = 'PENDING'
+              AND s.entity_name IN ({scope_placeholders})
               AND NOT EXISTS (
                   SELECT 1 FROM canonical_mappings AS c
                   WHERE c.migration_id = s.migration_id
@@ -468,7 +473,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
               )
             ORDER BY s.entity_name, s.created_utc DESC, s.source_field
             """,
-            (active_migration_id,),
+            (active_migration_id, *selected_scope),
         ).fetchall()
         mapping_suggestions = [dict(row) for row in rows]
     finally:
@@ -477,10 +482,10 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
     source_files = {
         entity: dict(files)
         for entity, files in getattr(state_store, "entity_source_files", {}).items()
-        if entity in {"Account", "Household", "Client"}
+        if entity in selected_scope and entity in {"Account", "Household", "Client"}
     }
     for entity, record in getattr(state_store, "entity_sample_files", {}).items():
-        if entity in {"Account", "Household", "Client"}:
+        if entity in selected_scope and entity in {"Account", "Household", "Client"}:
             source_files.setdefault(entity, {}).setdefault(record.get("source_role", "ENTITY_MASTER"), record)
 
     return render_template_with_context(
@@ -494,7 +499,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "pipeline_run": latest_run,
             "source_files": source_files,
             "mapping_suggestions": mapping_suggestions,
-            "information_requests": state_store.questionnaire_data.get("mapping_information_requests", []),
+            "information_requests": [item for item in state_store.questionnaire_data.get("mapping_information_requests", []) if item.get("entity") in selected_scope],
             "notice": notice,
             "error": error,
         }
@@ -819,11 +824,13 @@ async def submit_questionnaire(
 @app.post("/api/entities/save-scopes")
 async def save_entity_scopes(request: Request):
     form_data = await request.form()
-    scopes_map = {}
+    configured_scope = set(state_store.questionnaire_data.get("migration_setup", {}).get("entities", []))
+    scopes_map = {entity: "OUT_OF_SCOPE" for entity in ("Account", "Household", "Client") if entity not in configured_scope}
     for key, value in form_data.items():
         if key.startswith("scope_"):
             entity_name = key.replace("scope_", "")
-            scopes_map[entity_name] = str(value)
+            if entity_name in configured_scope and entity_name in {"Account", "Household", "Client"}:
+                scopes_map[entity_name] = str(value)
 
     state_store.save_entity_scopes(scopes_map)
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
