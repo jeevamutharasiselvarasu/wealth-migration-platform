@@ -16,7 +16,7 @@
 
 ## Findings that change the cleanup plan
 
-1. The current recursive tree has **133 files** and is not truncated.
+1. The audited recursive tree has **131 tracked file blobs** (directory entries are counted separately) and is not truncated.
 2. The 11 files under `ui/static/components/` were removed after checking all active templates and the base template: none loads these files, and the templates contain no references to their paths. This removes orphaned assets, not the active server-rendered workflow.
 3. The current tree does **not** contain `App_Data/controlplane.db`, a `dist/` package, generated `App_Data/Storage/` outputs, or tracked `__pycache__/` files. Do not schedule deletions for files absent from this snapshot.
 4. `ui/app.py` currently imports the orchestrator, schema mapper, cutover agent, audit agent, storage manager, profiler, MCL validation, source adapter, entity inference, wave rules, ADF client/exporter, and database layer. These modules are **not safe to remove solely because they sound legacy**.
