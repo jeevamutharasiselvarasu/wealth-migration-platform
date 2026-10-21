@@ -10,8 +10,8 @@
     "azure_storage_account": "",
     "azure_container": "",
     "azure_access_method": "PENDING",
-    "knowledge_schema_ref": "demo_data/knowledge/canonical_contract.md",
-    "knowledge_rules_ref": "demo_data/knowledge/source_mapping_notes.md",
+    "knowledge_schema_ref": "platform_knowledge/canonical_contract.md",
+    "knowledge_rules_ref": "platform_knowledge/source_mapping_notes.md",
     "knowledge_sme": "Demo Data Steward",
     "relationship_notes": "CoreCap account records may reference clients and households. Household membership and account association extracts are candidate relationship evidence only; validate keys and cardinality before approval.",
     "source_acquisition": "SAMPLE_FILES",
@@ -69,16 +69,6 @@
       "path": "demo_data/source_files/client_tax_profile.csv",
       "context": "Client tax profile extract.",
       "dictionary_notes": "Party source ID and party name identify the client; tax identifier is a sensitive attribute and the demo value is synthetic."
-    }
-  ],
-  "knowledge_files": [
-    {
-      "path": "demo_data/knowledge/canonical_contract.md",
-      "category": "data_dictionary"
-    },
-    {
-      "path": "demo_data/knowledge/source_mapping_notes.md",
-      "category": "mapping_reference"
     }
   ]
 }
