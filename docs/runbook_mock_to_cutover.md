@@ -1,5 +1,7 @@
 # Operational Runbook: Core Cap to Simplicity Wealth Data Migration
 
+> **Status: legacy / future-state reference only.** This runbook describes a historical mock-to-cutover workflow and is not the operating procedure for the current XODUS-AMP P0 pilot. P0 is limited to source-to-canonical mapping for Account, Household, and Client; target loading, cutover execution, wave assignment, sleeve math, and post-load reconciliation are not enabled as P0 capabilities. Use `README.md` and `docs/P0_FOUNDATION_CORRECTNESS.md` for the active P0 boundary.
+
 ## Program Overview
 - **Migration ID:** MIG-CORECAP-2026
 - **Acquisition Scope:** Core Cap (~120 Advisors) -> Simplicity Wealth
