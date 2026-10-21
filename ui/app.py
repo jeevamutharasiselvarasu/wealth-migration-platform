@@ -160,6 +160,7 @@ async def save_migration_setup(request: Request):
         raise HTTPException(status_code=400, detail="Select at least one in-scope entity: Account, Household, or Client.")
     setup = {
         "migration_name": str(form.get("migration_name", "")).strip(),
+        "source_firm": str(form.get("source_firm", "CoreCap")).strip() or "CoreCap",
         "target_system": str(form.get("target_system", "")).strip(),
         "canonical_version": str(form.get("canonical_version", "")).strip(),
         "target_owner": str(form.get("target_owner", "")).strip(),
@@ -197,12 +198,8 @@ async def save_migration_setup(request: Request):
         "source_systems": setup["source_details"],
     })
     state_store.questionnaire_data["migration_setup"] = setup
-    selected_entities = [entity for entity in setup.get("entities", ["Account", "Household", "Client"]) if entity in {"Account", "Household", "Client"}]
-    if not selected_entities:
-        raise HTTPException(status_code=500, detail="Demo migration must configure at least one in-scope entity.")
-    setup["entities"] = selected_entities
     for entity in {"Account", "Household", "Client"}:
-        state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE" if entity in selected_entities else "OUT_OF_SCOPE"
+        state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -223,6 +220,10 @@ async def load_demo_migration(request: Request):
     if not setup.get("target_system") or not setup.get("canonical_version"):
         raise HTTPException(status_code=500, detail="Demo migration configuration is missing target contract details.")
 
+    selected_entities = [entity for entity in setup.get("entities", ["Account", "Household", "Client"]) if entity in {"Account", "Household", "Client"}]
+    if not selected_entities:
+        raise HTTPException(status_code=500, detail="Demo migration must configure at least one in-scope entity.")
+    setup["entities"] = selected_entities
     state_store.questionnaire_data["migration_setup"] = setup
     state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
     state_store.update_questionnaire_from_form({
@@ -234,7 +235,7 @@ async def load_demo_migration(request: Request):
     state_store.entity_sample_files.clear()
     state_store.entity_source_files.clear()
     for entity in {"Account", "Household", "Client"}:
-        state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
+        state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
 
     loaded_files = []
     for item in manifest.get("source_files", []):
@@ -257,6 +258,9 @@ async def load_demo_migration(request: Request):
         if not inference.get("entity") or inference.get("status") == "NEEDS_CLARIFICATION":
             raise HTTPException(status_code=500, detail=f"Demo source file needs better inference evidence: {source_path.name}")
         entity_name = inference["entity"]
+        if entity_name not in selected_entities:
+            loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": "EXCLUDED_OUT_OF_SCOPE"})
+            continue
         source_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
         record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
         record["inference"] = inference
