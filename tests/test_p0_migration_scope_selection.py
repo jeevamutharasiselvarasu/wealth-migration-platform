@@ -26,13 +26,17 @@ def test_upload_and_approval_routes_enforce_selected_entity_scope():
     assert 'entity_name not in configured_scope' in app
 
 
-def test_agent_studio_is_part_of_primary_navigation_and_has_deferred_execution_notice():
+def test_agent_assistance_is_integrated_into_source_discovery():
     nav = (ROOT / "ui" / "templates" / "base.html").read_text()
-    page = (ROOT / "ui" / "templates" / "agent_studio.html").read_text()
-    assert 'href="/agent-studio"' in nav
-    assert "Agents classify, profile and recommend" in page
-    assert "No source values are transformed" in page
-    assert "wave assignment remains deferred" in page
+    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert 'href="/agent-studio"' not in nav
+    assert "Agent assistance runs inside Source Discovery automatically." in nav
+    assert "Agent-assisted analysis · automatic" in discovery
+    assert "Suggested source → canonical fields" in discovery
+    assert 'MigrationAgentCoordinator().analyze(' in app
+    assert "inference_approval_status" in discovery
+    assert "wave assignment remains deferred" not in nav
 
 
 def test_dashboard_renders_only_entities_selected_in_migration_setup():
