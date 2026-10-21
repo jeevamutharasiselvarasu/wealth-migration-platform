@@ -1,8 +1,9 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited commit (pre-report-update snapshot): `711b898335815a7e7bac64fbd240760579c6728b`
-- Method: Git recursive tree (133 tracked files), plus inspection of the active FastAPI entry point, primary navigation, P0 boundary tests, README, dependencies, and Compose configuration.
+- Audited tree snapshot: `a985684e29943f573d9d2201930c4a77031b4605`
+- Method: Git recursive tree (133 tracked files), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, and Compose configuration.
+- This report is committed separately from the audited tree snapshot; update the snapshot/count after any subsequent repository changes.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
 - **Removal decisions are evidence-based and scope-limited.** Source modules still require import, runtime route, test, deployment, and documentation checks before removal.
 
@@ -248,7 +249,7 @@
 - `data_plane/storage/amplify_positions.csv`, `data_plane/storage/amplify_sleeves.csv`, `data_plane/storage/blackdiamond_performance.csv` only if no test/script/loader depends on them.
 
 ### Tier 2 — consolidate/decide
-- `ui/templates/firm_knowledge.html` remains an active route target and must be retained until its knowledge-registration behavior is intentionally consolidated into Migration Setup. Other candidate templates still require route/include verification before removal.
+- The current tree contains no `ui/templates/knowledge_studio.html`, `ui/templates/questionnaire.html`, `ui/templates/entity_selection.html`, or `ui/templates/hitl_queue.html`; do not queue deletions for paths that are absent. `ui/templates/firm_knowledge.html` remains an active route target and must be retained until its knowledge-registration behavior is intentionally consolidated into Migration Setup.
 - Duplicate sample data under `knowledge/sample_file/` and `test_files/`: keep canonical demo data under `demo_data/source_files/` and purpose-built mapping fixtures under `sample_data/p0_mapping_tests/`; update references before deleting duplicates.
 - Legacy firm/migration-specific knowledge documents: retain only what the current knowledge loader actually registers or what the demo intentionally showcases.
 
@@ -269,16 +270,22 @@
 
 ## Cleanup follow-up — 2026-10-21
 
-Validated against branch commit `d4a9a08e476f1c7a3bd394862b16b0a26ceccbf1` before this follow-up:
-- The current route/template flow renders `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
-- `entity_card.html` and `entity_menu_card.html` had no references in `ui/app.py` and were not included by any active template. They have now been removed as unreferenced legacy templates.
-- `README.md` was rewritten to match the three-entity source-to-canonical P0 workflow and to stop describing legacy cutover/wave/target-loading features as active implementation.
-- The prototype trio (`ui/static/prototype.html`, `.css`, `.js`) was removed in the preceding cleanup.
+Current verified branch head at the time of this audit: `a985684e29943f573d9d2201930c4a77031b4605`. The recursive tree contains **133 tracked files**.
 
-Still **do not delete yet**:
-- The `ui/static/components/*.js` directory has been removed after verifying that the active base template and inspected page templates do not load those assets. This check establishes that the scripts were not wired into the current rendered UI; it does not replace runtime testing of the active workflows.
-- Legacy cutover, connector, sleeve math, ADF, and wave modules. Several are imported by `ui/app.py` or exercised by tests; remove only after separating the current P0 path and updating the test contract.
-- `firm_knowledge.html` and `/firm-knowledge`: both are currently routed and rendered. Consolidation is a navigation/product decision, not a safe orphan deletion.
-- Multiple overlapping fixture directories. Compare their consumers before deleting duplicates.
+Completed cleanup:
+- The active rendered page templates are `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
+- `entity_card.html` and `entity_menu_card.html` were removed after confirming no active route/template references.
+- The prototype trio (`ui/static/prototype.html`, `.css`, `.js`) and 11 unreferenced files under `ui/static/components/` were removed after checking active template references.
+- README content was aligned to the three-entity source-to-canonical P0 workflow.
+- Latest CI for the audited head completed successfully: [Python tests, run 471](https://github.com/jeevamutharasiselvarasu/wealth-migration-platform/actions/runs/39608188188).
 
-Current branch after the template cleanup has 144 tracked files. CI for the latest cleanup commit is queued/running at the time of this note; do not treat it as passed until the run completes.
+Second-pass dependency findings:
+- The current `ui/templates/` tree does not contain `knowledge_studio.html`, `questionnaire.html`, `entity_selection.html`, or `hitl_queue.html`; remove these from cleanup queues rather than attempting deletions of absent paths.
+- `/firm-knowledge` still renders `firm_knowledge.html`; preserve it until the knowledge-registration flow is intentionally consolidated.
+- `tests/test_sleeve_math.py` tests `data_plane.core.sleeve_engine.SleeveMathEngine`, not the wrapper in `agents/logic/sleeve_math_agent.py`. Sleeve functionality is outside P0, but remove the module/test/engine only as one coordinated scope decision, after a branch-wide reference check.
+- `agents/operational/loader_agent.py` has no confirmed active UI role in the inspected route flow, but loader-related modules must not be deleted until a complete import/test/deployment reference scan is verified.
+- `scripts/create_test_sample_files.py` generates legacy Amplify/transaction/sleeve fixtures under `test_files/`; `scripts/generate_mock_data.py` writes positions/sleeves/performance fixtures under `data_plane/storage/`. These are not the nine-file P0 demo pack, but their consumers and docs must be updated before deleting the scripts or fixtures.
+- `demo_data/source_files/` contains the nine current Account, Household and Client sample files. `sample_data/p0_mapping_tests/` has separate approval/rejection fixtures described by its README. Keep these distinct.
+- `knowledge/sample_file/`, `test_files/`, and tracked `data_plane/storage/` contain legacy Amplify/transaction/sleeve/performance data. They are cleanup candidates, not yet safe deletions: remove only after updating or retiring their generator, imports, tests, Docker mounts and documentation together.
+
+Do not delete the active ADF/wave/cutover boundaries or Docker/Bicep files in isolation. Current P0 must remain local/demo-capable and must not assign actual waves, load target data, or run cutover.
