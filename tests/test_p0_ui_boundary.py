@@ -270,7 +270,8 @@ def test_mapping_studio_only_shows_pending_proposals_for_active_migration():
     route = app.split('@app.get("/agent-pipeline"', 1)[1].split('@app.get("/reconciliation"', 1)[0]
     assert 'active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))' in route
     assert "WHERE s.migration_id = ? AND s.status = 'PENDING'" in route
-    assert '(active_migration_id,),' in route
+    assert '(active_migration_id, *selected_scope),' in route
+    assert 'AND s.entity_name IN ({scope_placeholders})' in route
 
 
 def test_dashboard_explains_wave_conditions_without_assigning_p0_records():
