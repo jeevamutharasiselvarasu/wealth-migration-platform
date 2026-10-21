@@ -26,7 +26,7 @@
         <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-[10px] text-[#8A97B2]">MIGRATION</div><div class="mt-1 font-bold text-[#152C6B]">{{ migration_setup.get("migration_name", dashboard.firm_name) }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">{{ migration_id }}</div></div>
         <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-[10px] text-[#8A97B2]">TARGET CONTRACT</div><div class="mt-1 font-bold text-[#152C6B]">{{ migration_setup.get("target_system", "Not configured") }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">Canonical version: {{ migration_setup.get("canonical_version", "Not specified") }}</div></div>
         <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-[10px] text-[#8A97B2]">SOURCE ACQUISITION</div><div class="mt-1 font-bold text-[#152C6B]">{{ migration_setup.get("source_acquisition", "SAMPLE_FILES")|replace("_", " ") }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">Connection: {{ migration_setup.get("azure_access_method", "PENDING")|replace("_", " ") }}</div></div>
-        <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-[10px] text-[#8A97B2]">KNOWLEDGE & SCOPE</div><div class="mt-1 font-bold text-[#152C6B]">{{ knowledge_docs_count|default(0) }} registered assets</div><div class="mt-1 text-[10px] text-[#5A6A88]">Account · Household · Client</div></div>
+        <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-[10px] text-[#8A97B2]">KNOWLEDGE & SCOPE</div><div class="mt-1 font-bold text-[#152C6B]">{{ knowledge_docs_count|default(0) }} registered assets</div><div class="mt-1 text-[10px] text-[#5A6A88]">{{ (in_scope_entities|default([]))|join(" · ") if in_scope_entities|default([]) else "No entities selected" }}</div></div>
       </div>
       <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
         <div class="rounded-xl border border-[#D9E3F5] p-3"><div class="text-[10px] font-bold text-[#5A6A88]">Azure environment</div><p class="mt-1 text-xs text-[#152C6B]">Subscription: {{ migration_setup.get("azure_subscription_id") or "Not configured" }} · Resource group: {{ migration_setup.get("azure_resource_group") or "Not configured" }}</p><p class="mt-1 text-[10px] text-[#5A6A88]">Storage: {{ migration_setup.get("azure_storage_account") or "Not configured" }} / {{ migration_setup.get("azure_container") or "Not configured" }}</p></div>
@@ -37,12 +37,12 @@
     <section class="rounded-2xl border border-blue-200 bg-blue-50 p-5"><h2 class="font-bold text-[#152C6B]">Migration setup is not complete</h2><p class="mt-1 text-xs text-[#41506B]">Complete the target contract, access method and knowledge references before source discovery.</p><a href="/migration-setup" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Start migration setup →</a></section>
     {% endif %}
 
-    <!-- P0 metrics: entity scope and mapping boundary only -->
+    <!-- P0 metrics: reflect saved migration scope, not the full supported entity catalogue. -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
-            <div class="text-xs text-[#5a6a88] font-medium">P0 Canonical Entities</div>
-            <div class="text-xl font-extrabold text-[#152c6b]">Account, Household, Client</div>
-            <div class="text-xs text-blue-600 font-mono font-semibold">Only supported entity scope</div>
+            <div class="text-xs text-[#5a6a88] font-medium">Selected P0 Entities</div>
+            <div class="text-xl font-extrabold text-[#152c6b]">{{ in_scope_entities|default([])|join(", ") if in_scope_entities|default([]) else "None selected" }}</div>
+            <div class="text-xs text-blue-600 font-mono font-semibold">Based on saved Migration Setup</div>
         </div>
         <div class="bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm space-y-1">
             <div class="text-xs text-[#5a6a88] font-medium">Mapping Direction</div>
@@ -56,26 +56,26 @@
         </div>
     </div>
 
-    <!-- Three-entity pilot cards: generic source inputs, fixed canonical entities. -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4" aria-label="Three-entity pilot scope">
+    <!-- Only selected entities are presented as in scope. -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4" aria-label="Selected migration entity scope">
+      {% for entity in in_scope_entities|default([]) %}
         <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">ENTITY 01</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
-            <h2 class="mt-3 text-base font-bold text-[#152c6b]">Account</h2>
-            <p class="mt-1 text-xs text-[#5a6a88]">Account identity, custodian, representative, registration and opening date.</p>
-            <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">ACCT_NUM · CUSTODIAN_CODE · REP_CODE · REG_TYPE · OPEN_DATE</p>
+            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">SELECTED ENTITY</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
+            <h2 class="mt-3 text-base font-bold text-[#152c6b]">{{ entity }}</h2>
+            {% if entity == "Account" %}
+              <p class="mt-1 text-xs text-[#5a6a88]">Account identity, custodian, representative, registration and opening date.</p>
+              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">ACCT_NUM · CUSTODIAN_CODE · REP_CODE · REG_TYPE · OPEN_DATE</p>
+            {% elif entity == "Household" %}
+              <p class="mt-1 text-xs text-[#5a6a88]">Household identity, display name and representative.</p>
+              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">HH_ID · HH_NAME · REP_CODE</p>
+            {% elif entity == "Client" %}
+              <p class="mt-1 text-xs text-[#5a6a88]">Client identity, legal name and client type.</p>
+              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">CLIENT_ID · LEGAL_NAME · CLIENT_TYPE</p>
+            {% endif %}
         </article>
-        <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">ENTITY 02</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
-            <h2 class="mt-3 text-base font-bold text-[#152c6b]">Household</h2>
-            <p class="mt-1 text-xs text-[#5a6a88]">Household identity, display name and representative.</p>
-            <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">HH_ID · HH_NAME · REP_CODE</p>
-        </article>
-        <article class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold text-blue-700">ENTITY 03</span><span class="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-mono text-blue-700">IN SCOPE</span></div>
-            <h2 class="mt-3 text-base font-bold text-[#152c6b]">Client</h2>
-            <p class="mt-1 text-xs text-[#5a6a88]">Client identity, legal name, tax identifier and client type.</p>
-            <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">CLIENT_ID · LEGAL_NAME · TAX_ID · CLIENT_TYPE</p>
-        </article>
+      {% else %}
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">No migration entities are selected. Edit Migration Setup and select at least one entity.</div>
+      {% endfor %}
     </section>
 
     <section class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
