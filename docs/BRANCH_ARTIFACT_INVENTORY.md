@@ -1,8 +1,8 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited tree snapshot: `4485e5f8f6032ab10b9a29974155a9b6dc2fea83`
-- Method: Git recursive tree (**123 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
+- Audited tree snapshot: `a292475d8dd543d43d739cc438d367b98951506e`
+- Method: Git recursive tree (**110 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
 - This report is committed separately from the audited tree snapshot; update the snapshot/count after any subsequent repository changes.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
 - **Removal decisions are evidence-based and scope-limited.** Source modules still require import, runtime route, test, deployment, and documentation checks before removal.
@@ -16,7 +16,7 @@
 
 ## Findings that change the cleanup plan
 
-1. The audited recursive tree has **123 tracked file blobs** (directory entries are counted separately) and is not truncated.
+1. The audited recursive tree has **110 tracked file blobs** (directory entries are counted separately) and is not truncated.
 2. The 11 files under `ui/static/components/` were removed after checking all active templates and the base template: none loads these files, and the templates contain no references to their paths. This removes orphaned assets, not the active server-rendered workflow.
 3. The current tree does **not** contain `App_Data/controlplane.db`, a `dist/` package, generated `App_Data/Storage/` outputs, or tracked `__pycache__/` files. Do not schedule deletions for files absent from this snapshot.
 4. `ui/app.py` currently imports the orchestrator, schema mapper, cutover agent, audit agent, storage manager, profiler, MCL validation, source adapter, entity inference, wave rules, ADF client/exporter, and database layer. These modules are **not safe to remove solely because they sound legacy**.
@@ -33,10 +33,10 @@
 | `.github/workflows/tests.yml` | KEEP | CI workflow |
 | `.gitignore` | KEEP | Ignore generated/local outputs; ensure rules cover `*.py[cod]`, `__pycache__/`, local DBs and runtime storage |
 | `Dockerfile.control_plane` | KEEP / REVIEW | Referenced by Compose; verify image starts the current app |
-| `Dockerfile.data_plane` | KEEP / REVIEW | Referenced by Compose; data-plane runtime is deferred but Compose currently uses it |
-| `README.md` | KEEP — UPDATE | Current docs contain stale claims about legacy agents, target adapters and test counts |
+| `Dockerfile.data_plane` | REMOVED | Retired worker image depended on the legacy cohort orchestrator; Compose now runs only the control-plane demo app |
+| `README.md` | KEEP — UPDATED | Documents the sample-file P0 boundary and removal of legacy connectors/target adapters |
 | `architecture.html` | KEEP / REVIEW | Architecture reference; align to generic P0 flow and label future-state features |
-| `docker-compose.yml` | KEEP / REVIEW | Deploys two services and mounts runtime storage; align with supported local demo architecture |
+| `docker-compose.yml` | KEEP — UPDATED | Runs the control-plane demo app only; legacy worker and fixture mounts removed |
 | `requirements.txt` | KEEP — REVIEW DEPENDENCIES | Some packages may only serve deferred connectors; remove dependencies only after import scan |
 | `pytest.ini` | KEEP | Test configuration |
 | `docs/P0_FOUNDATION_CORRECTNESS.md` | KEEP — UPDATE | P0 correctness decisions |
@@ -49,7 +49,7 @@
 | `agents/__init__.py` | KEEP | Python package |
 | `agents/discovery/__init__.py` | KEEP | Python package |
 | `agents/discovery/ai_foundry_mapper.py` | KEEP / REVIEW | Potential AI integration; no AI agent is currently part of P0. Retain only if referenced or clearly future-state |
-| `agents/discovery/extractor_agent.py` | KEEP / REVIEW | Extraction helper; trace imports and tests |
+| `agents/discovery/extractor_agent.py` | REMOVED | Removed with the legacy cohort orchestrator and custodian-specific connectors |
 | `agents/discovery/schema_mapper_agent.py` | KEEP | Imported by `ui/app.py`; mapping logic |
 | `agents/logic/__init__.py` | KEEP | Python package |
 | `agents/logic/compliance_validator_agent.py` | KEEP / REVIEW | Trace import and tests; compliance checks may be future-state |
@@ -60,7 +60,7 @@
 | `agents/operational/cutover_agent.py` | KEEP / REVIEW | Imported and instantiated by `ui/app.py`; cutover feature is deferred, so remove only after decoupling active import |
 | `agents/operational/loader_agent.py` | REMOVED | No references found in the scanned application, test, script, or infrastructure files; target loading is deferred from P0.
 | `agents/operational/reconciler_agent.py` | KEEP / REVIEW | Reconciliation is in P0; confirm active implementation path vs `data_plane/validation/reconciler.py` |
-| `agents/orchestrator.py` | KEEP / REVIEW | Imported by `ui/app.py`; inspect if its legacy multi-agent pipeline is exposed or only compatibility code |
+| `agents/orchestrator.py` | REMOVED | Legacy Sleeve/Position/Transaction cohort path retired; UI endpoint now returns an explicit P0-boundary response |
 
 ### Control plane
 
@@ -88,16 +88,16 @@
 | Path | Disposition | Reason / action |
 |---|---|---|
 | `data_plane/__init__.py` | KEEP | Python package |
-| `data_plane/adapters/__init__.py` | KEEP | Python package |
-| `data_plane/adapters/base_adapter.py` | KEEP / REVIEW | Adapter abstraction; trace usage |
-| `data_plane/adapters/orion_eclipse_adapter.py` | REMOVE CANDIDATE | Named target adapter is outside generic P0; no target loading. Verify imports/deployment first |
-| `data_plane/adapters/salesforce_sparc_adapter.py` | REMOVE CANDIDATE | Named target adapter is outside generic P0; verify imports/deployment first |
-| `data_plane/connectors/amplify_connector.py` | REMOVE CANDIDATE | Custodian-specific connector outside sample-file-first P0; check tests/imports first |
-| `data_plane/connectors/blackdiamond_connector.py` | REMOVE CANDIDATE | Custodian-specific connector outside sample-file-first P0; check tests/imports first |
+| `data_plane/adapters/__init__.py` | REMOVED | Empty package removed after target adapters were retired |
+| `data_plane/adapters/base_adapter.py` | REMOVED | No active P0 target-adapter interface remains |
+| `data_plane/adapters/orion_eclipse_adapter.py` | REMOVED | Target loading is deferred; no active P0 imports found |
+| `data_plane/adapters/salesforce_sparc_adapter.py` | REMOVED | Target loading is deferred; no active P0 imports found |
+| `data_plane/connectors/amplify_connector.py` | REMOVED | Removed after retiring `ExtractorAgent` and the legacy cohort pipeline |
+| `data_plane/connectors/blackdiamond_connector.py` | REMOVED | Removed after retiring `ExtractorAgent` and the legacy cohort pipeline |
 | `data_plane/core/sleeve_engine.py` | REMOVE CANDIDATE | Sleeve/allocation execution is deferred |
-| `data_plane/storage/amplify_positions.csv` | REMOVE CANDIDATE | Legacy connector fixture; keep only if referenced by tests or mock-data flow |
-| `data_plane/storage/amplify_sleeves.csv` | REMOVE CANDIDATE | Legacy sleeve fixture; outside P0 unless referenced by tests |
-| `data_plane/storage/blackdiamond_performance.csv` | REMOVE CANDIDATE | Legacy connector fixture; keep only if referenced |
+| `data_plane/storage/amplify_positions.csv` | REMOVED | Legacy mock output removed with generator and connector chain |
+| `data_plane/storage/amplify_sleeves.csv` | REMOVED | Legacy mock output removed with generator and connector chain |
+| `data_plane/storage/blackdiamond_performance.csv` | REMOVED | Legacy mock output removed with generator and connector chain |
 | `data_plane/storage_manager.py` | KEEP / REVIEW | Imported by `ui/app.py`; separate runtime storage from committed fixture data |
 | `data_plane/telemetry/instrumentation.py` | KEEP / REVIEW | Cross-cutting telemetry; trace runtime use |
 | `data_plane/validation/reconciler.py` | KEEP / REVIEW | Reconciliation supports P0; check for duplicate reconciler implementation |
@@ -159,7 +159,7 @@
 | Path | Disposition | Reason / action |
 |---|---|---|
 | `scripts/create_test_sample_files.py` | REMOVED | Unreferenced legacy generator removed with its out-of-scope generated fixtures; canonical demo and mapping-test fixtures remain |
-| `scripts/generate_mock_data.py` | KEEP / REVIEW | Legacy connector/sleeve mock data; remove if not part of the supported demo or tests |
+| `scripts/generate_mock_data.py` | REMOVED | Legacy data generator retired with the cohort orchestrator and its tests |
 
 ### Additional test inputs
 
@@ -181,9 +181,9 @@
 | `tests/test_knowledge_asset_extraction.py` | KEEP / REVIEW | Keep if current knowledge upload/extraction is supported |
 | `tests/test_mcl_api.py` | KEEP | MCL API coverage |
 | `tests/test_mcl_flow.py` | KEEP | MCL workflow coverage |
-| `tests/test_orchestrator.py` | KEEP / REVIEW | Keep if orchestrator remains part of current application; otherwise remove with module |
+| `tests/test_orchestrator.py` | REMOVED | Obsolete legacy pipeline tests replaced by P0/deferred-execution boundary tests |
 | `tests/test_p0_entity_scope_contract.py` | KEEP | P0 scope contract |
-| `tests/test_p0_ui_boundary.py` | KEEP | Current UI/workflow regression tests |
+| `tests/test_p0_ui_boundary.py` | KEEP | Current UI/workflow regression tests |\n| `tests/test_deferred_execution_boundaries.py` | KEEP | Confirms legacy pipeline retirement, no wave assignment, and honest ADF mock behavior |
 | `tests/test_pilot_account_mapping.py` | KEEP | Account mapping regression tests |
 | `tests/test_pilot_households_clients.py` | KEEP | Household and Client mapping regression tests |
 | `tests/test_reconciliation.py` | KEEP | Validation/reconciliation coverage |
@@ -245,8 +245,8 @@
 - `ui/templates/entity_selection.html` because the route redirects to discovery, if no includes render it.
 - `ui/templates/hitl_queue.html` if no route renders it.
 - `data_plane/core/sleeve_engine.py` and `tests/test_sleeve_math.py` remain a separate legacy sleeve-math group. They are still internally referenced by tests; remove only with an explicit scope decision and coordinated test changes.
-- `data_plane/adapters/orion_eclipse_adapter.py`, `data_plane/adapters/salesforce_sparc_adapter.py`, `data_plane/connectors/amplify_connector.py`, `data_plane/connectors/blackdiamond_connector.py` only after active import/fixture/test scan.
-- `data_plane/storage/amplify_positions.csv`, `data_plane/storage/amplify_sleeves.csv`, `data_plane/storage/blackdiamond_performance.csv` only if no test/script/loader depends on them.
+- COMPLETED: removed both named target adapters, the unused base adapter interface, and both custodian connectors after retiring the only dependent extractor/orchestrator chain.
+- COMPLETED: removed the three tracked legacy connector CSV outputs together with `scripts/generate_mock_data.py` and the obsolete orchestrator tests.
 
 ### Tier 2 — consolidate/decide
 - The current tree contains no `ui/templates/knowledge_studio.html`, `ui/templates/questionnaire.html`, `ui/templates/entity_selection.html`, or `ui/templates/hitl_queue.html`; do not queue deletions for paths that are absent. `ui/templates/firm_knowledge.html` remains an active route target and must be retained until its knowledge-registration behavior is intentionally consolidated into Migration Setup.
@@ -270,7 +270,7 @@
 
 ## Cleanup follow-up — 2026-10-21
 
-Current verified branch head before this inventory update: `4485e5f8f6032ab10b9a29974155a9b6dc2fea83`. The recursive tree contains **123 tracked files** (counting blobs, not directory tree entries).
+Current verified branch head before this inventory update: `a292475d8dd543d43d739cc438d367b98951506e`. The recursive tree contains **110 tracked files** (counting blobs, not directory tree entries).
 
 Completed cleanup:
 - The active rendered page templates are `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
@@ -284,9 +284,9 @@ Second-pass dependency findings:
 - `/firm-knowledge` still renders `firm_knowledge.html`; preserve it until the knowledge-registration flow is intentionally consolidated.
 - `agents/logic/sleeve_math_agent.py` was removed after a scan of application, test, script, and infrastructure Python files found no reference to the wrapper. `data_plane.core.sleeve_engine.SleeveMathEngine` remains used by `tests/test_sleeve_math.py` and was not removed.
 - `agents/operational/loader_agent.py` was removed after a scan of application, test, script, and infrastructure Python files found no reference to the wrapper. No target-loading routes or execution modules were changed.
-- `scripts/create_test_sample_files.py` and the legacy `test_files/` sleeve, terminated-account and transaction fixtures were removed as one cleanup group. P0 Account/Client/Household files in `test_files/` were retained; `scripts/generate_mock_data.py` and its `data_plane/storage/` outputs remain because `tests/test_orchestrator.py` still depends on them.
+- `scripts/create_test_sample_files.py` and legacy `test_files/` sleeve, terminated-account and transaction fixtures were removed. P0 Account/Client/Household files in `test_files/` were retained. The next coordinated pass removed `scripts/generate_mock_data.py`, its tracked `data_plane/storage/` outputs, and the legacy cohort tests together.
 - `demo_data/source_files/` contains the nine current Account, Household and Client sample files. `sample_data/p0_mapping_tests/` has separate approval/rejection fixtures described by its README. Keep these distinct.
-- The four redundant/out-of-scope CSVs under `knowledge/sample_file/` were removed; the directory no longer serves as a competing source fixture catalog. Remaining legacy data under `data_plane/storage/` is still coupled to `scripts/generate_mock_data.py`, `ExtractorAgent`, `AgenticOrchestrator`, and `tests/test_orchestrator.py`, so it remains pending a coordinated refactor.
+- The four redundant/out-of-scope CSVs under `knowledge/sample_file/` were removed; the directory no longer serves as a competing source fixture catalog. The legacy connector/sample-data group is now removed. `data_plane/storage_manager.py` remains because the active UI uses it for file persistence; it is separate from the deleted tracked legacy CSV directory.
 
 Do not delete the active ADF/wave/cutover boundaries or Docker/Bicep files in isolation. Current P0 must remain local/demo-capable and must not assign actual waves, load target data, or run cutover.
 
@@ -295,5 +295,14 @@ Do not delete the active ADF/wave/cutover boundaries or Docker/Bicep files in is
 
 - Removed `scripts/create_test_sample_files.py` and the legacy `test_files/amplify_sleeves.csv`, `test_files/terminated_accounts.csv`, and `test_files/transactions.csv` fixtures. Retained `test_files/accounts.csv`, `test_files/clients.csv`, and `test_files/households.csv` as the P0-shaped inputs.
 - Removed all four redundant/out-of-scope CSVs under `knowledge/sample_file/`; the canonical nine-file demo pack remains in `demo_data/source_files/`, and approval/rejection test cases remain in `sample_data/p0_mapping_tests/`.
-- The recursive tree snapshot now has 123 tracked file blobs before this inventory update (down from 131). This is a source-fixture cleanup only; no active P0 route, entity inference, mapping, lineage, or approval logic was changed.
-- Connector removal is intentionally deferred: `agents/orchestrator.py` imports `ExtractorAgent`, which imports both Amplify and Black Diamond connectors. `tests/test_orchestrator.py` also uses `scripts/generate_mock_data.py` and the tracked `data_plane/storage/` fixtures. Removing these requires replacing or retiring the legacy orchestrator/test path as a single tested change.
+- The recursive tree snapshot now has 110 tracked file blobs before this inventory update (down from 131). The legacy cohort route is explicitly disabled; entity inference, mapping, lineage, human approval, and validation routes remain the P0 workflow.
+- The legacy dependency chain has now been removed as a coordinated change: the UI no longer imports or instantiates `AgenticOrchestrator`; `/api/pipeline/run` returns HTTP 409 with directions to the P0 Mapping Studio flow; the old orchestrator, extractor, Amplify/Black Diamond connectors, target adapters, mock-data generator, tracked legacy storage CSVs, worker Dockerfile, and Compose worker service were removed. `tests/test_deferred_execution_boundaries.py` preserves the wave-disabled and ADF-mock assertions.
+
+
+### Cleanup follow-up — 2026-10-21 (legacy connector dependency group)
+
+- Removed the legacy cohort orchestration chain and its dependencies: `agents/orchestrator.py`, `agents/discovery/extractor_agent.py`, both custodian connectors, both named target adapters plus their unused base interface, `scripts/generate_mock_data.py`, three tracked legacy storage CSVs, and `Dockerfile.data_plane`.
+- Removed the `data_plane_worker` Compose service and its `data_plane/storage` bind mounts. The supported local container entry point is the control-plane UI; uploaded file persistence continues through `data_plane/storage_manager.py` and `App_Data/Storage`.
+- The old `/api/pipeline/run` endpoint is retained only as a compatibility response: it now requires a signed-in session and returns HTTP 409 explaining that the legacy cohort pipeline is retired and directing users to Source Discovery, Mapping Studio, and Mapping Review for Account, Household, and Client.
+- `tests/test_orchestrator.py` was replaced by `tests/test_deferred_execution_boundaries.py`, retaining the checks that wave conditions are displayed but not assigned and that ADF mock mode never claims a real run. The new test also guards the legacy route boundary and P0 mapping route presence.
+- The current recursive tree snapshot contains 110 tracked file blobs before this inventory update. The nine demo source files, dedicated mapping approval/rejection fixtures, inference rules, canonical model, and active P0 workflow code are retained.
