@@ -25,6 +25,7 @@ from control_plane.services.wave_rules import CohortConditionEngine, WaveConditi
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import get_db_connection
+from agents.p0_agent_suite import MigrationAgentCoordinator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DataMigrationWorkbench")
@@ -152,8 +153,11 @@ async def migration_setup_page(request: Request, demo_loaded: str = ""):
 async def save_migration_setup(request: Request):
     user = get_current_user(request)
     form = await request.form()
-    # Entity scope is discovered from source evidence after setup; setup defines the P0 candidate boundary.
-    selected_entities = ["Account", "Household", "Client"]
+    # Explicit scope selection controls downstream P0 workflows.
+    allowed_entities = {"Account", "Household", "Client"}
+    selected_entities = [entity for entity in form.getlist("entities") if entity in allowed_entities]
+    if not selected_entities:
+        raise HTTPException(status_code=400, detail="Select at least one in-scope entity: Account, Household, or Client.")
     setup = {
         "migration_name": str(form.get("migration_name", "")).strip(),
         "target_system": str(form.get("target_system", "")).strip(),
@@ -193,8 +197,12 @@ async def save_migration_setup(request: Request):
         "source_systems": setup["source_details"],
     })
     state_store.questionnaire_data["migration_setup"] = setup
+    selected_entities = [entity for entity in setup.get("entities", ["Account", "Household", "Client"]) if entity in {"Account", "Household", "Client"}]
+    if not selected_entities:
+        raise HTTPException(status_code=500, detail="Demo migration must configure at least one in-scope entity.")
+    setup["entities"] = selected_entities
     for entity in {"Account", "Household", "Client"}:
-        state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
+        state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE" if entity in selected_entities else "OUT_OF_SCOPE"
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
