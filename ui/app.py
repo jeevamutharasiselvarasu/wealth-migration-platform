@@ -380,12 +380,13 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
     latest_run = state_store.pipeline_runs[-1] if state_store.pipeline_runs else None
     conn = get_db_connection()
     try:
+        active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))
         rows = conn.execute(
             """
             SELECT s.suggestion_id, s.entity_name, s.source_field, s.canonical_field,
                    s.proposed_rule, s.confidence_score
             FROM mapping_suggestions AS s
-            WHERE s.status = 'PENDING'
+            WHERE s.migration_id = ? AND s.status = 'PENDING'
               AND NOT EXISTS (
                   SELECT 1 FROM canonical_mappings AS c
                   WHERE c.migration_id = s.migration_id
@@ -395,7 +396,8 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
                     AND c.is_confirmed = 1
               )
             ORDER BY s.entity_name, s.created_utc DESC, s.source_field
-            """
+            """,
+            (active_migration_id,),
         ).fetchall()
         mapping_suggestions = [dict(row) for row in rows]
     finally:
