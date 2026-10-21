@@ -210,7 +210,8 @@ def test_demo_migration_is_input_data_not_values_embedded_in_routes():
     assert '@app.post("/api/demo/load")' in app
     assert 'demo_migration.json' in app
     assert len(manifest["source_files"]) >= 6
-    assert len(manifest["knowledge_files"]) >= 2
+    assert "platform_knowledge/canonical_contract.md" in manifest["migration_setup"]["knowledge_schema_ref"]
+    assert "platform_knowledge/source_mapping_notes.md" in manifest["migration_setup"]["knowledge_rules_ref"]
     filenames = {item["path"].split("/")[-1] for item in manifest["source_files"]}
     assert {"accounts.csv", "households.csv", "clients.csv"}.issubset(filenames)
     assert any(name.startswith("account_") for name in filenames)
