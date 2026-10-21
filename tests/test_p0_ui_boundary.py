@@ -166,12 +166,14 @@ def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
     assert 'RedirectResponse(url="/agent-pipeline"' in app
 
 
-def test_migration_setup_defers_entity_scope_until_source_discovery():
+def test_migration_setup_persists_explicit_entity_scope_selection():
     app = (ROOT / "ui" / "app.py").read_text()
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
-    assert 'selected_entities = ["Account", "Household", "Client"]' in app
-    assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY"' in app
-    assert "Do not choose entity scope here" in setup
+    assert 'form.getlist("entities")' in app
+    assert "Select at least one in-scope entity" in app
+    assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"' in app
+    assert 'name="entities"' in setup
+    assert "Unselected entities are excluded" in setup
     assert 'href="/firm-knowledge"' not in setup
 
 
