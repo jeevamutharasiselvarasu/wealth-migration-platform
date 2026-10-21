@@ -1,8 +1,8 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited tree snapshot: `a985684e29943f573d9d2201930c4a77031b4605`
-- Method: Git recursive tree (133 tracked files), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, and Compose configuration.
+- Audited tree snapshot: `2a58a47099d8af55ab77e561569f19d488766d86`
+- Method: Git recursive tree (**131 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
 - This report is committed separately from the audited tree snapshot; update the snapshot/count after any subsequent repository changes.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
 - **Removal decisions are evidence-based and scope-limited.** Source modules still require import, runtime route, test, deployment, and documentation checks before removal.
@@ -54,11 +54,11 @@
 | `agents/logic/__init__.py` | KEEP | Python package |
 | `agents/logic/compliance_validator_agent.py` | KEEP / REVIEW | Trace import and tests; compliance checks may be future-state |
 | `agents/logic/data_quality_agent.py` | KEEP / REVIEW | Data-quality functionality may support validation; trace usage |
-| `agents/logic/sleeve_math_agent.py` | REMOVE CANDIDATE | Sleeve math is outside the three-entity source-to-canonical P0; keep only if an active import/test requires it |
+| `agents/logic/sleeve_math_agent.py` | REMOVED | Wrapper had no references in the scanned application, test, script, or infrastructure files. The separate `SleeveMathEngine` and its tests remain untouched.
 | `agents/operational/__init__.py` | KEEP | Python package |
 | `agents/operational/audit_agent.py` | KEEP | Imported by `ui/app.py`; audit responsibility |
 | `agents/operational/cutover_agent.py` | KEEP / REVIEW | Imported and instantiated by `ui/app.py`; cutover feature is deferred, so remove only after decoupling active import |
-| `agents/operational/loader_agent.py` | REMOVE CANDIDATE | Target loading is deferred; trace imports/tests before removal |
+| `agents/operational/loader_agent.py` | REMOVED | No references found in the scanned application, test, script, or infrastructure files; target loading is deferred from P0.
 | `agents/operational/reconciler_agent.py` | KEEP / REVIEW | Reconciliation is in P0; confirm active implementation path vs `data_plane/validation/reconciler.py` |
 | `agents/orchestrator.py` | KEEP / REVIEW | Imported by `ui/app.py`; inspect if its legacy multi-agent pipeline is exposed or only compatibility code |
 
@@ -244,7 +244,7 @@
 - `ui/static/prototype.html`, `ui/static/prototype.css`, `ui/static/prototype.js` as a unit, if nothing links to them.
 - `ui/templates/entity_selection.html` because the route redirects to discovery, if no includes render it.
 - `ui/templates/hitl_queue.html` if no route renders it.
-- `agents/logic/sleeve_math_agent.py`, `data_plane/core/sleeve_engine.py`, `tests/test_sleeve_math.py` as a coordinated removal set if no active P0 dependency remains.
+- `data_plane/core/sleeve_engine.py` and `tests/test_sleeve_math.py` remain a separate legacy sleeve-math group. They are still internally referenced by tests; remove only with an explicit scope decision and coordinated test changes.
 - `data_plane/adapters/orion_eclipse_adapter.py`, `data_plane/adapters/salesforce_sparc_adapter.py`, `data_plane/connectors/amplify_connector.py`, `data_plane/connectors/blackdiamond_connector.py` only after active import/fixture/test scan.
 - `data_plane/storage/amplify_positions.csv`, `data_plane/storage/amplify_sleeves.csv`, `data_plane/storage/blackdiamond_performance.csv` only if no test/script/loader depends on them.
 
@@ -270,20 +270,20 @@
 
 ## Cleanup follow-up — 2026-10-21
 
-Current verified branch head at the time of this audit: `a985684e29943f573d9d2201930c4a77031b4605`. The recursive tree contains **133 tracked files**.
+Current verified branch head at the time of this audit: `2a58a47099d8af55ab77e561569f19d488766d86`. The recursive tree contains **131 tracked files** (counting blobs, not directory tree entries).
 
 Completed cleanup:
 - The active rendered page templates are `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
 - `entity_card.html` and `entity_menu_card.html` were removed after confirming no active route/template references.
 - The prototype trio (`ui/static/prototype.html`, `.css`, `.js`) and 11 unreferenced files under `ui/static/components/` were removed after checking active template references.
 - README content was aligned to the three-entity source-to-canonical P0 workflow.
-- Latest CI for the audited head completed successfully: [Python tests, run 471](https://github.com/jeevamutharasiselvarasu/wealth-migration-platform/actions/runs/39608188188).
+- CI for the preceding inventory commit completed successfully: [Python tests, run 471](https://github.com/jeevamutharasiselvarasu/wealth-migration-platform/actions/runs/39608188188). The subsequent cleanup commits require their own CI confirmation.
 
 Second-pass dependency findings:
 - The current `ui/templates/` tree does not contain `knowledge_studio.html`, `questionnaire.html`, `entity_selection.html`, or `hitl_queue.html`; remove these from cleanup queues rather than attempting deletions of absent paths.
 - `/firm-knowledge` still renders `firm_knowledge.html`; preserve it until the knowledge-registration flow is intentionally consolidated.
-- `tests/test_sleeve_math.py` tests `data_plane.core.sleeve_engine.SleeveMathEngine`, not the wrapper in `agents/logic/sleeve_math_agent.py`. Sleeve functionality is outside P0, but remove the module/test/engine only as one coordinated scope decision, after a branch-wide reference check.
-- `agents/operational/loader_agent.py` has no confirmed active UI role in the inspected route flow, but loader-related modules must not be deleted until a complete import/test/deployment reference scan is verified.
+- `agents/logic/sleeve_math_agent.py` was removed after a scan of application, test, script, and infrastructure Python files found no reference to the wrapper. `data_plane.core.sleeve_engine.SleeveMathEngine` remains used by `tests/test_sleeve_math.py` and was not removed.
+- `agents/operational/loader_agent.py` was removed after a scan of application, test, script, and infrastructure Python files found no reference to the wrapper. No target-loading routes or execution modules were changed.
 - `scripts/create_test_sample_files.py` generates legacy Amplify/transaction/sleeve fixtures under `test_files/`; `scripts/generate_mock_data.py` writes positions/sleeves/performance fixtures under `data_plane/storage/`. These are not the nine-file P0 demo pack, but their consumers and docs must be updated before deleting the scripts or fixtures.
 - `demo_data/source_files/` contains the nine current Account, Household and Client sample files. `sample_data/p0_mapping_tests/` has separate approval/rejection fixtures described by its README. Keep these distinct.
 - `knowledge/sample_file/`, `test_files/`, and tracked `data_plane/storage/` contain legacy Amplify/transaction/sleeve/performance data. They are cleanup candidates, not yet safe deletions: remove only after updating or retiring their generator, imports, tests, Docker mounts and documentation together.
