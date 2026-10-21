@@ -117,9 +117,14 @@ async def persona_selection_page(request: Request):
     assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])
     allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"} if assigned_role == "Platform Admin" else {assigned_role}
     personas = [persona for persona in personas if persona["id"] in allowed_roles]
-    return render_template_with_context(request, "persona_selection.html", {
-        "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"], "personas":personas
+    response = render_template_with_context(request, "persona_selection.html", {
+        "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"],
+        "selected_role":user["role"], "personas":personas
     })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.post("/persona-selection")
