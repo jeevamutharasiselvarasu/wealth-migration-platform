@@ -124,6 +124,31 @@ def test_azure_connection_requires_environment_identifiers_without_collecting_se
     assert "Do not paste secrets" in setup
 
 
+def test_persona_selection_is_not_cached_and_back_navigation_shows_active_role():
+    app = (ROOT / "ui" / "app.py").read_text()
+    persona = (ROOT / "ui" / "templates" / "persona_selection.html").read_text()
+    assert 'response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"' in app
+    assert 'response.headers["Pragma"] = "no-cache"' in app
+    assert '"selected_role":user["role"]' in app
+    assert '{% if role.id == selected_role %}checked{% endif %}' in persona
+    assert '{% if loop.first %}checked{% endif %}' not in persona
+
+
+def test_entity_level_approval_ui_and_backend_are_evidence_gated():
+    app = (ROOT / "ui" / "app.py").read_text()
+    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    studio = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    assert '@app.post("/api/entities/confirm-entity")' in app
+    assert 'inference.get("status") != "INFERRED"' in app
+    assert 'record.get("inference_approval_status") == "REJECTED"' in app
+    assert 'Approve all {{ entity }} files' in source
+    assert '@app.post("/api/mapping-suggestions/approve-entity")' in app
+    assert "BEGIN IMMEDIATE" in app
+    assert "SUPPORTED_APPROVED_TRANSFORMS" in app
+    assert 'Approve all {{ suggestion.entity_name }} mappings' in studio
+    assert "ENTITY_LEVEL_MAPPING_APPROVED" in app
+
+
 def test_persona_switch_is_limited_to_roles_assigned_to_authenticated_user():
     app = (ROOT / "ui" / "app.py").read_text()
     assert 'assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])' in app
