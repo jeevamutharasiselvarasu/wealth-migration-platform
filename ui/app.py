@@ -13,7 +13,6 @@ from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.state import state_store
-from agents.orchestrator import AgenticOrchestrator
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
@@ -34,7 +33,6 @@ app = FastAPI(title="Data Migration Workbench", version="3.5.0")
 
 ui_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(ui_dir, ".."))
-storage_dir = os.path.join(root_dir, "data_plane", "storage")
 
 static_dir = os.path.join(ui_dir, "static")
 templates_dir = os.path.join(ui_dir, "templates")
@@ -45,7 +43,6 @@ os.makedirs(templates_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
 
-orchestrator = AgenticOrchestrator(source_dir=storage_dir)
 schema_mapper = SchemaMapperAgent()
 cutover_agent = CutoverAgent()
 audit_agent = AuditAgent()
@@ -1541,24 +1538,17 @@ async def upload_firm_file(
 
 
 @app.post("/api/pipeline/run")
-async def execute_agent_pipeline(rep_code: str = Form("REP-9981")):
-    """Run source-to-canonical mapping for explicitly selected IN_SCOPE entities only."""
-    scoped_entities = [
-        entity["entity_name"]
-        for entities in state_store.get_full_menu_card().values()
-        for entity in entities
-        if entity.get("current_scope") == "IN_SCOPE"
-    ]
-    migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
-    logger.info("Starting source-to-canonical mapping for %s across %s explicitly in-scope entities", rep_code, len(scoped_entities))
-    pipeline_result = orchestrator.run_cohort_pipeline(
-        rep_code=rep_code,
-        in_scope_entity_names=scoped_entities,
-        migration_id=migration_id,
+async def execute_agent_pipeline(request: Request, rep_code: str = Form("REP-9981")):
+    """Retain a clear compatibility response for the retired legacy cohort pipeline."""
+    get_current_user(request)
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "The legacy cohort pipeline is retired from P0. Use Source Discovery, "
+            "Mapping Studio, and Mapping Review for Account, Household, and Client. "
+            "No cohort execution, target loading, or wave assignment is available."
+        ),
     )
-    state_store.record_pipeline_run(pipeline_result)
-    status_code = 200 if pipeline_result.get("status") not in {"BLOCKED_NO_SCOPE"} else 409
-    return JSONResponse({"status": pipeline_result.get("status", "UNKNOWN"), "result": pipeline_result}, status_code=status_code)
 
 
 @app.get("/api/pipeline/agent-detail/{agent_id}")
