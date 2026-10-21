@@ -285,3 +285,18 @@ def test_dashboard_explains_wave_conditions_without_assigning_p0_records():
     assert "condition.threshold_value" in dashboard
     assert "condition.business_rationale" in dashboard
     assert "No records or entities are assigned to a wave by this dashboard." in dashboard
+
+
+def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_navigation_step():
+    app = (ROOT / "ui" / "app.py").read_text()
+    navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
+    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    assert 'MigrationAgentCoordinator().analyze(' in app
+    assert 'record["agent_analysis"] = agent_analysis' in app
+    assert 'return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)' in app
+    assert 'href="/agent-studio"' not in navigation
+    assert "Agent assistance runs inside Source Discovery automatically." in navigation
+    assert "Agent-assisted analysis · automatic" in discovery
+    assert "Suggested source → canonical fields" in discovery
+    assert "Confirm entity" in discovery and "Reject" in discovery
+
