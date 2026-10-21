@@ -194,6 +194,7 @@ async def save_migration_setup(request: Request):
     state_store.update_questionnaire_from_form({
         "firm_name": setup["migration_name"],
         "migration_name": setup["migration_name"],
+        "source_systems": setup["source_details"],
         "target_system": setup["target_system"],
         "source_systems": setup["source_details"],
     })
@@ -378,7 +379,7 @@ async def dashboard_overview(request: Request):
                     "approved": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "APPROVED"),
                     "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in {"APPROVED", "REJECTED"}),
                     "rejected": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "REJECTED"),
-                } for entity in ("Account", "Household", "Client")
+                } for entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
             }
         }
     )
@@ -411,8 +412,10 @@ async def entity_selection_view(request: Request):
 async def entity_sample_files_view(request: Request, uploaded: str = "", notice: str = ""):
     user = get_current_user(request)
     source_uploads = []
+    migration_setup = state_store.questionnaire_data.get("migration_setup", {})
+    in_scope_entities = set(migration_setup.get("entities", []))
     for entity, files in getattr(state_store, "entity_source_files", {}).items():
-        if entity not in {"Account", "Household", "Client"}:
+        if entity not in in_scope_entities or entity not in {"Account", "Household", "Client"}:
             continue
         for file_id, record in files.items():
             source_uploads.append({**record, "file_id": record.get("file_id", file_id), "inferred_entity": entity})
@@ -858,6 +861,10 @@ async def upload_entity_sample_file(
         notice = f"Could not confidently infer an entity for {file.filename or 'the uploaded file'}. Add the data dictionary and explain key/relationship semantics, then upload again."
         return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice), status_code=status.HTTP_303_SEE_OTHER)
     entity_name = inference["entity"]
+    configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
+    if entity_name not in configured_scope:
+        notice = f"{entity_name} was inferred from {file.filename or 'the uploaded file'}, but that entity is out of scope for this migration. The file was not registered for downstream processing."
+        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice), status_code=status.HTTP_303_SEE_OTHER)
     normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
     try:
         record = state_store.attach_entity_sample_file(
@@ -931,6 +938,9 @@ async def confirm_entity_inference(
     user = get_current_user(request) if request is not None else {"name": "Unknown reviewer"}
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
+    configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
+    if entity_name not in configured_scope:
+        raise HTTPException(status_code=409, detail=f"{entity_name} is not selected in Migration Setup and cannot be approved or mapped.")
     file_id = str((await request.form()).get("file_id", "")).strip() if request is not None else ""
     entity_files = state_store.entity_source_files.get(entity_name, {})
     record = next((item for item in entity_files.values() if item.get("file_id") == file_id), None) if file_id else state_store.entity_sample_files.get(entity_name)
@@ -1148,8 +1158,9 @@ async def map_all_approved_source_files(request: Request):
     """Create mapping proposals for every approved source file not mapped yet."""
     user = get_current_user(request)
     approved_files = []
+    configured_scope = set(state_store.questionnaire_data.get("migration_setup", {}).get("entities", []))
     for entity_name, files in state_store.entity_source_files.items():
-        if entity_name not in {"Account", "Household", "Client"}:
+        if entity_name not in configured_scope or entity_name not in {"Account", "Household", "Client"}:
             continue
         for record in files.values():
             if record.get("inference_approval_status") == "APPROVED" and not record.get("mapping_generated"):
