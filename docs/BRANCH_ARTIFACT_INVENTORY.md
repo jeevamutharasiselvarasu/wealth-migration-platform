@@ -1,10 +1,10 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited commit: `f1db078687a235a1b614541464a0e12e7b1e012a`
-- Method: Git recursive tree (153 tracked files), plus inspection of the active FastAPI entry point, primary navigation, P0 boundary tests, README, dependencies, and Compose configuration.
+- Audited commit (pre-report-update snapshot): `711b898335815a7e7bac64fbd240760579c6728b`
+- Method: Git recursive tree (133 tracked files), plus inspection of the active FastAPI entry point, primary navigation, P0 boundary tests, README, dependencies, and Compose configuration.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
-- **This report marks candidates; it does not delete files.** Before removing source modules, verify all imports, runtime routes, test references, deployment use and documentation references.
+- **Removal decisions are evidence-based and scope-limited.** Source modules still require import, runtime route, test, deployment, and documentation checks before removal.
 
 ## Status legend
 
@@ -15,7 +15,8 @@
 
 ## Findings that change the cleanup plan
 
-1. The current recursive tree has **153 files** and is not truncated.
+1. The current recursive tree has **133 files** and is not truncated.
+2. The 11 files under `ui/static/components/` were removed after checking all active templates and the base template: none loads these files, and the templates contain no references to their paths. This removes orphaned assets, not the active server-rendered workflow.
 2. The current tree does **not** contain `App_Data/controlplane.db`, a `dist/` package, generated `App_Data/Storage/` outputs, or tracked `__pycache__/` files. Do not schedule deletions for files absent from this snapshot.
 3. `ui/app.py` currently imports the orchestrator, schema mapper, cutover agent, audit agent, storage manager, profiler, MCL validation, source adapter, entity inference, wave rules, ADF client/exporter, and database layer. These modules are **not safe to remove solely because they sound legacy**.
 4. `docker-compose.yml` references both Dockerfiles, `App_Data`, and `data_plane/storage`; `README.md` references scripts and multiple legacy capabilities. Deployment/docs must be aligned before removing those references.
@@ -197,17 +198,17 @@
 | `ui/auth.py` | KEEP | Session authentication and persona boundaries |
 | `ui/models.py` | KEEP / REVIEW | Pydantic models; trace usage |
 | `ui/state.py` | KEEP | Workspace state |
-| `ui/static/components/discovery.js` | KEEP / REVIEW | Check if referenced by current templates |
-| `ui/static/components/execution.js` | REMOVE CANDIDATE / REVIEW | Execution UI may be legacy; check script references and active routes |
-| `ui/static/components/ingestion.js` | KEEP / REVIEW | Check template references; likely file-ingestion UI |
-| `ui/static/components/login.js` | KEEP / REVIEW | Check login template reference |
-| `ui/static/components/migration-knowledge.js` | KEEP / REVIEW | Knowledge behavior may be duplicated/consolidated; check script references |
-| `ui/static/components/migration-setup.js` | KEEP / REVIEW | Check setup template reference |
-| `ui/static/components/reconciliation.js` | KEEP / REVIEW | Validation/reconciliation UI; check script references |
-| `ui/static/components/role-selection.js` | KEEP / REVIEW | Check persona template reference |
-| `ui/static/components/rule-editor.js` | KEEP / REVIEW | Check if current mapping studio references it |
-| `ui/static/components/rulebook-editor.js` | REMOVE CANDIDATE / REVIEW | May be legacy parallel rulebook UI; check script references |
-| `ui/static/components/workspace-shell.js` | KEEP / REVIEW | Check active shell references |
+| `ui/static/components/discovery.js` | REMOVED | No active template or base-shell script reference; orphaned asset removed |
+| `ui/static/components/execution.js` | REMOVED | No active template or base-shell script reference; orphaned asset removed |
+| `ui/static/components/ingestion.js` | REMOVED | Active ingestion is server-rendered; no template or base-shell script reference |
+| `ui/static/components/login.js` | REMOVED | Login template has no external component-script reference |
+| `ui/static/components/migration-knowledge.js` | REMOVED | Knowledge UI is server-rendered; no template or base-shell script reference |
+| `ui/static/components/migration-setup.js` | REMOVED | Migration setup template has no external component-script reference |
+| `ui/static/components/reconciliation.js` | REMOVED | Reconciliation template has no external component-script reference |
+| `ui/static/components/role-selection.js` | REMOVED | Persona selection is server-rendered; no external component-script reference |
+| `ui/static/components/rule-editor.js` | REMOVED | Mapping studio template has no external component-script reference |
+| `ui/static/components/rulebook-editor.js` | REMOVED | No active template or base-shell script reference; orphaned asset removed |
+| `ui/static/components/workspace-shell.js` | REMOVED | Base template does not load the shell component; orphaned asset removed |
 | `ui/static/prototype.css` | REMOVE CANDIDATE | Prototype styling file; keep only if prototype page or active template loads it |
 | `ui/static/prototype.html` | REMOVE CANDIDATE | Standalone prototype; not part of named P0 navigation unless explicitly linked |
 | `ui/static/prototype.js` | REMOVE CANDIDATE | Prototype behavior; remove with prototype page if unreferenced |
@@ -247,7 +248,7 @@
 - `data_plane/storage/amplify_positions.csv`, `data_plane/storage/amplify_sleeves.csv`, `data_plane/storage/blackdiamond_performance.csv` only if no test/script/loader depends on them.
 
 ### Tier 2 — consolidate/decide
-- `ui/templates/firm_knowledge.html`, `ui/templates/knowledge_studio.html`, `ui/templates/knowledge_ingestion.html`, `ui/templates/questionnaire.html`, and `ui/static/components/migration-knowledge.js`: consolidate into Migration Setup only after moving any useful upload/reference behavior.
+- `ui/templates/firm_knowledge.html` remains an active route target and must be retained until its knowledge-registration behavior is intentionally consolidated into Migration Setup. Other candidate templates still require route/include verification before removal.
 - Duplicate sample data under `knowledge/sample_file/` and `test_files/`: keep canonical demo data under `demo_data/source_files/` and purpose-built mapping fixtures under `sample_data/p0_mapping_tests/`; update references before deleting duplicates.
 - Legacy firm/migration-specific knowledge documents: retain only what the current knowledge loader actually registers or what the demo intentionally showcases.
 
@@ -275,7 +276,7 @@ Validated against branch commit `d4a9a08e476f1c7a3bd394862b16b0a26ceccbf1` befor
 - The prototype trio (`ui/static/prototype.html`, `.css`, `.js`) was removed in the preceding cleanup.
 
 Still **do not delete yet**:
-- The remaining `ui/static/components/*.js` files. They have no direct filename references in the currently inspected templates/app, but a safe removal requires tracing inline event handlers and DOM IDs against each file and checking whether any test expects the component assets.
+- The `ui/static/components/*.js` directory has been removed after verifying that the active base template and inspected page templates do not load those assets. This check establishes that the scripts were not wired into the current rendered UI; it does not replace runtime testing of the active workflows.
 - Legacy cutover, connector, sleeve math, ADF, and wave modules. Several are imported by `ui/app.py` or exercised by tests; remove only after separating the current P0 path and updating the test contract.
 - `firm_knowledge.html` and `/firm-knowledge`: both are currently routed and rendered. Consolidation is a navigation/product decision, not a safe orphan deletion.
 - Multiple overlapping fixture directories. Compare their consumers before deleting duplicates.
