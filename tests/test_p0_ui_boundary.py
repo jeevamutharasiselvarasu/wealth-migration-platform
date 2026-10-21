@@ -3,15 +3,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_p0_ui_does_not_render_deferred_wealth_modules_or_wave_planning():
+def test_p0_ui_does_not_render_deferred_wealth_modules_or_assign_waves():
     pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
     dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
     knowledge = (ROOT / "ui" / "templates" / "firm_knowledge.html").read_text()
     for deferred in ("Sleeve Math Agent", "Sleeve / Allocation", "Position (Snapshot)", "Execute 9-Agent Pipeline", "Restricted Models"):
         assert deferred not in pipeline
     assert "Primary Custodian Rails" not in dashboard
-    assert "Condition ID" not in dashboard
-    assert "Practical Segregation Conditions" not in dashboard
+    assert "Condition-based wave segregation" in dashboard
+    assert "CONFIGURED · NOT EVALUATED" in dashboard
+    assert "No records or entities are assigned to a wave by this dashboard." in dashboard
     assert "name=\"sleeve_invariant\"" not in knowledge
     assert "name=\"aum_drift_gate\"" not in knowledge
 
@@ -24,9 +25,10 @@ def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
 
 def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow():
     navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
-    for route in ('/persona-selection', '/migration-setup', '/entity-sample-files', '/agent-pipeline', '/hitl', '/reconciliation'):
+    for route in ('/persona-selection', '/migration-setup', '/entity-sample-files', '/agent-pipeline#pending-mappings', '/reconciliation'):
         assert f'href="{route}"' in navigation
     assert 'href="/firm-knowledge"' not in navigation
+    assert 'href="/hitl"' not in navigation
     assert "Persona / Role" in navigation
     assert "Source Discovery & Entity Scope" in navigation
     assert "DATA PLANE (SPECIALIST)" not in navigation
@@ -259,3 +261,22 @@ def test_source_inventory_uses_file_level_review_for_multiple_extracts():
     assert 'name="file_id" value="{{ file.file_id }}"' in source
     assert 'item.get("file_id") == file_id' in app
     assert 'Entity review queue' in (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+
+
+def test_mapping_studio_only_shows_pending_proposals_for_active_migration():
+    app = (ROOT / "ui" / "app.py").read_text()
+    route = app.split('@app.get("/agent-pipeline"', 1)[1].split('@app.get("/reconciliation"', 1)[0]
+    assert 'active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))' in route
+    assert "WHERE s.migration_id = ? AND s.status = 'PENDING'" in route
+    assert '(active_migration_id,),' in route
+
+
+def test_dashboard_explains_wave_conditions_without_assigning_p0_records():
+    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text()
+    assert '"wave_conditions": CohortConditionEngine.get_condition_catalog()' in app
+    assert "condition.condition_name" in dashboard
+    assert "condition.parameter" in dashboard
+    assert "condition.threshold_value" in dashboard
+    assert "condition.business_rationale" in dashboard
+    assert "No records or entities are assigned to a wave by this dashboard." in dashboard
