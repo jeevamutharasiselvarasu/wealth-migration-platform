@@ -282,6 +282,10 @@ async def load_demo_migration(request: Request):
 
 @app.get("/agent-studio", response_class=HTMLResponse)
 async def agent_studio(request: Request):
+    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
+
+async def _legacy_agent_studio_disabled(request: Request):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
     selected = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
@@ -339,7 +343,7 @@ async def analyze_source_file_with_agents(request: Request, file_id: str):
         "details": {"file_id": file_id, "filename": record["filename"],
                     "scope": selected, "classification_status": analysis["classification"].get("status")},
     })
-    return RedirectResponse(url="/agent-studio", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout")
@@ -877,6 +881,26 @@ async def upload_entity_sample_file(
     record["inference_approval_status"] = "PENDING"
     record["source_context"] = source_context.strip()
     record["data_dictionary_notes"] = data_dictionary_notes.strip()
+    # Agent-assisted discovery runs automatically at ingestion; reviewer approval stays separate.
+    try:
+        agent_analysis = MigrationAgentCoordinator().analyze(
+            records,
+            context=" ".join([source_context.strip(), data_dictionary_notes.strip()]),
+            in_scope=configured_scope,
+        )
+        agent_analysis["file_id"] = record["file_id"]
+        agent_analysis["filename"] = record["filename"]
+        agent_analysis["analyzed_by"] = "XODUS discovery"
+        agent_analysis["analyzed_utc"] = datetime.now(timezone.utc).isoformat()
+        record["agent_analysis"] = agent_analysis
+    except (ValueError, KeyError, TypeError):
+        record["agent_analysis"] = {
+            "classification": {"status": "NEEDS_REVIEW", "entity": entity_name, "message": "Automated analysis needs review; entity approval remains pending."},
+            "profile": {"row_count": len(records), "column_count": len(headers), "candidate_key_fields": []},
+            "mapping": {"proposals": []},
+            "review": {"status": "NEEDS_REVIEW", "blockers": ["Agent analysis did not complete; review the source file manually."]},
+            "file_id": record["file_id"], "filename": record["filename"],
+        }
     state_store.audit_log.append({
         "event":"SOURCE_ENTITY_INFERRED","actor":"SourceDiscovery","timestamp_utc":datetime.now(timezone.utc).isoformat(),
         "details":{"filename":record["filename"],"entity":entity_name,"confidence":inference["confidence"],"status":inference["status"]}
