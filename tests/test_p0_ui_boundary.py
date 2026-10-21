@@ -244,7 +244,8 @@ def test_demo_manifest_includes_multiple_files_for_each_supported_entity():
     assert any("account_" in path for path in paths)
     assert any("household_" in path for path in paths)
     assert any("client_" in path for path in paths)
-    assert len(manifest["knowledge_files"]) >= 2
+    assert "platform_knowledge/canonical_contract.md" in manifest["migration_setup"]["knowledge_schema_ref"]
+    assert "platform_knowledge/source_mapping_notes.md" in manifest["migration_setup"]["knowledge_rules_ref"]
 
 
 def test_setup_forms_are_not_nested_and_demo_load_lands_in_discovery():
