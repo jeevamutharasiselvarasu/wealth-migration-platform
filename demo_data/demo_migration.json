@@ -1,8 +1,8 @@
 {
   "migration_setup": {
-    "migration_name": "Three-Entity Sample Migration",
-    "target_system": "Canonical Migration Sandbox",
-    "canonical_version": "demo-canonical-v1",
+    "migration_name": "CoreCap to Simplicity - Wealth Migration Demo",
+    "target_system": "Simplicity",
+    "canonical_version": "Simplicity-MCL-v1",
     "target_owner": "Demo Data Steward",
     "azure_tenant_id": "",
     "azure_subscription_id": "",
@@ -13,15 +13,16 @@
     "knowledge_schema_ref": "demo_data/knowledge/canonical_contract.md",
     "knowledge_rules_ref": "demo_data/knowledge/source_mapping_notes.md",
     "knowledge_sme": "Demo Data Steward",
-    "relationship_notes": "Account links to Client and may link to Household; Household groups related Clients and/or Accounts. Confirm these relationships with the data owner.",
+    "relationship_notes": "CoreCap account records may reference clients and households. Household membership and account association extracts are candidate relationship evidence only; validate keys and cardinality before approval.",
     "source_acquisition": "SAMPLE_FILES",
-    "source_details": "demo_data/source_files/*.csv (synthetic sample files)",
+    "source_details": "CoreCap synthetic sample files (demo_data/source_files/*.csv)",
     "entities": [
       "Account",
       "Household",
       "Client"
     ],
-    "configuration_status": "DEMO_PRELOADED"
+    "configuration_status": "DEMO_PRELOADED",
+    "source_firm": "CoreCap"
   },
   "source_files": [
     {
