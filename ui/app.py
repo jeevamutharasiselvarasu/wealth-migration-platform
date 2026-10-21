@@ -270,14 +270,6 @@ async def load_demo_migration(request: Request):
         record["data_dictionary_notes"] = str(item.get("dictionary_notes", ""))
         loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
 
-    for item in manifest.get("knowledge_files", []):
-        knowledge_path = (Path(root_dir) / item["path"]).resolve()
-        if not knowledge_path.is_relative_to(Path(root_dir).resolve()):
-            raise HTTPException(status_code=400, detail="Demo knowledge path is outside the repository.")
-        try:
-            state_store.add_firm_file(knowledge_path.name, str(item["category"]), knowledge_path.read_bytes())
-        except (OSError, ValueError) as exc:
-            raise HTTPException(status_code=500, detail=f"Demo knowledge asset could not be loaded: {knowledge_path.name}") from exc
 
     state_store.audit_log.append({
         "event": "DEMO_MIGRATION_LOADED",
@@ -375,6 +367,7 @@ async def dashboard_overview(request: Request):
             "dashboard": state_store.generated_dashboard,
             "migration_setup": state_store.questionnaire_data.get("migration_setup", {}),
             "knowledge_docs_count": len(state_store.firm_knowledge_docs),
+            "in_scope_entities": [entity for entity in ("Account", "Household", "Client") if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])],
             "wave_conditions": CohortConditionEngine.get_condition_catalog(),
             "entity_approval_summary": {
                 entity: {
