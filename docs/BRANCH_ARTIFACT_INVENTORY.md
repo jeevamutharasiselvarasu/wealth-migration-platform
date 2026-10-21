@@ -1,8 +1,8 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited tree snapshot: `2a58a47099d8af55ab77e561569f19d488766d86`
-- Method: Git recursive tree (**131 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
+- Audited tree snapshot: `4485e5f8f6032ab10b9a29974155a9b6dc2fea83`
+- Method: Git recursive tree (**123 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
 - This report is committed separately from the audited tree snapshot; update the snapshot/count after any subsequent repository changes.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
 - **Removal decisions are evidence-based and scope-limited.** Source modules still require import, runtime route, test, deployment, and documentation checks before removal.
@@ -16,7 +16,7 @@
 
 ## Findings that change the cleanup plan
 
-1. The audited recursive tree has **131 tracked file blobs** (directory entries are counted separately) and is not truncated.
+1. The audited recursive tree has **123 tracked file blobs** (directory entries are counted separately) and is not truncated.
 2. The 11 files under `ui/static/components/` were removed after checking all active templates and the base template: none loads these files, and the templates contain no references to their paths. This removes orphaned assets, not the active server-rendered workflow.
 3. The current tree does **not** contain `App_Data/controlplane.db`, a `dist/` package, generated `App_Data/Storage/` outputs, or tracked `__pycache__/` files. Do not schedule deletions for files absent from this snapshot.
 4. `ui/app.py` currently imports the orchestrator, schema mapper, cutover agent, audit agent, storage manager, profiler, MCL validation, source adapter, entity inference, wave rules, ADF client/exporter, and database layer. These modules are **not safe to remove solely because they sound legacy**.
@@ -134,10 +134,10 @@
 | `knowledge/migration/MIG-CORECAP-2026/validations/VAL-AUM-DRIFT-001.md` | REMOVE CANDIDATE / REVIEW | AUM drift validation is not part of current three-entity mapping flow unless explicitly used as a business rule |
 | `knowledge/migration/MIG-CORECAP-2026/waves/WAVE-PLAN-001.md` | REMOVE CANDIDATE | P0 must not assign waves; keep only as future-state design reference outside active demo knowledge |
 | `knowledge/p0_wealth_entity_model.md` | KEEP | P0 entity model reference |
-| `knowledge/sample_file/accounts.csv` | REMOVE CANDIDATE | Duplicate/older account fixture; compare references against canonical demo source files |
-| `knowledge/sample_file/amplify_sleeves.csv` | REMOVE CANDIDATE | Sleeve fixture outside P0 |
-| `knowledge/sample_file/terminated_accounts.csv` | KEEP / REVIEW | May be useful for exceptions; verify test and loader references |
-| `knowledge/sample_file/transactions.csv` | REMOVE CANDIDATE / REVIEW | Transaction-level processing is not a named P0 entity; keep only if tests need it |
+| `knowledge/sample_file/accounts.csv` | REMOVED | Duplicate legacy fixture removed; canonical Account fixture remains under `demo_data/source_files/` |
+| `knowledge/sample_file/amplify_sleeves.csv` | REMOVED | Out-of-scope sleeve fixture removed |
+| `knowledge/sample_file/terminated_accounts.csv` | REMOVED | Legacy terminated-account fixture removed; P0 exception handling remains covered by mapping/validation tests |
+| `knowledge/sample_file/transactions.csv` | REMOVED | Out-of-scope transaction fixture removed |
 | `knowledge/source_profile.json` | KEEP / REVIEW | Legacy source profile; confirm whether discovery consumes it |
 
 ### Sample mapping tests
@@ -158,7 +158,7 @@
 
 | Path | Disposition | Reason / action |
 |---|---|---|
-| `scripts/create_test_sample_files.py` | KEEP / REVIEW | Test fixture generator; keep if reproducible tests use it |
+| `scripts/create_test_sample_files.py` | REMOVED | Unreferenced legacy generator removed with its out-of-scope generated fixtures; canonical demo and mapping-test fixtures remain |
 | `scripts/generate_mock_data.py` | KEEP / REVIEW | Legacy connector/sleeve mock data; remove if not part of the supported demo or tests |
 
 ### Additional test inputs
@@ -166,11 +166,11 @@
 | Path | Disposition | Reason / action |
 |---|---|---|
 | `test_files/accounts.csv` | REMOVE CANDIDATE | Likely overlaps other account fixtures; confirm references |
-| `test_files/amplify_sleeves.csv` | REMOVE CANDIDATE | Sleeve fixture outside P0; confirm test references |
+| `test_files/amplify_sleeves.csv` | REMOVED | Out-of-scope sleeve fixture removed |
 | `test_files/clients.csv` | REMOVE CANDIDATE / REVIEW | Likely overlaps demo and mapping-test client fixtures; keep if tests reference it |
 | `test_files/households.csv` | REMOVE CANDIDATE / REVIEW | Likely overlaps other household fixtures; keep if tests reference it |
-| `test_files/terminated_accounts.csv` | REMOVE CANDIDATE / REVIEW | Potential duplicate exception fixture; confirm references |
-| `test_files/transactions.csv` | REMOVE CANDIDATE | Transactions are outside named P0 entity scope unless referenced by tests |
+| `test_files/terminated_accounts.csv` | REMOVED | Legacy terminated-account fixture removed |
+| `test_files/transactions.csv` | REMOVED | Out-of-scope transaction fixture removed |
 
 ### Tests
 
@@ -270,7 +270,7 @@
 
 ## Cleanup follow-up — 2026-10-21
 
-Current verified branch head at the time of this audit: `2a58a47099d8af55ab77e561569f19d488766d86`. The recursive tree contains **131 tracked files** (counting blobs, not directory tree entries).
+Current verified branch head before this inventory update: `4485e5f8f6032ab10b9a29974155a9b6dc2fea83`. The recursive tree contains **123 tracked files** (counting blobs, not directory tree entries).
 
 Completed cleanup:
 - The active rendered page templates are `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
@@ -284,8 +284,16 @@ Second-pass dependency findings:
 - `/firm-knowledge` still renders `firm_knowledge.html`; preserve it until the knowledge-registration flow is intentionally consolidated.
 - `agents/logic/sleeve_math_agent.py` was removed after a scan of application, test, script, and infrastructure Python files found no reference to the wrapper. `data_plane.core.sleeve_engine.SleeveMathEngine` remains used by `tests/test_sleeve_math.py` and was not removed.
 - `agents/operational/loader_agent.py` was removed after a scan of application, test, script, and infrastructure Python files found no reference to the wrapper. No target-loading routes or execution modules were changed.
-- `scripts/create_test_sample_files.py` generates legacy Amplify/transaction/sleeve fixtures under `test_files/`; `scripts/generate_mock_data.py` writes positions/sleeves/performance fixtures under `data_plane/storage/`. These are not the nine-file P0 demo pack, but their consumers and docs must be updated before deleting the scripts or fixtures.
+- `scripts/create_test_sample_files.py` and the legacy `test_files/` sleeve, terminated-account and transaction fixtures were removed as one cleanup group. P0 Account/Client/Household files in `test_files/` were retained; `scripts/generate_mock_data.py` and its `data_plane/storage/` outputs remain because `tests/test_orchestrator.py` still depends on them.
 - `demo_data/source_files/` contains the nine current Account, Household and Client sample files. `sample_data/p0_mapping_tests/` has separate approval/rejection fixtures described by its README. Keep these distinct.
-- `knowledge/sample_file/`, `test_files/`, and tracked `data_plane/storage/` contain legacy Amplify/transaction/sleeve/performance data. They are cleanup candidates, not yet safe deletions: remove only after updating or retiring their generator, imports, tests, Docker mounts and documentation together.
+- The four redundant/out-of-scope CSVs under `knowledge/sample_file/` were removed; the directory no longer serves as a competing source fixture catalog. Remaining legacy data under `data_plane/storage/` is still coupled to `scripts/generate_mock_data.py`, `ExtractorAgent`, `AgenticOrchestrator`, and `tests/test_orchestrator.py`, so it remains pending a coordinated refactor.
 
 Do not delete the active ADF/wave/cutover boundaries or Docker/Bicep files in isolation. Current P0 must remain local/demo-capable and must not assign actual waves, load target data, or run cutover.
+
+
+### Cleanup follow-up — 2026-10-21 (legacy fixture group)
+
+- Removed `scripts/create_test_sample_files.py` and the legacy `test_files/amplify_sleeves.csv`, `test_files/terminated_accounts.csv`, and `test_files/transactions.csv` fixtures. Retained `test_files/accounts.csv`, `test_files/clients.csv`, and `test_files/households.csv` as the P0-shaped inputs.
+- Removed all four redundant/out-of-scope CSVs under `knowledge/sample_file/`; the canonical nine-file demo pack remains in `demo_data/source_files/`, and approval/rejection test cases remain in `sample_data/p0_mapping_tests/`.
+- The recursive tree snapshot now has 123 tracked file blobs before this inventory update (down from 131). This is a source-fixture cleanup only; no active P0 route, entity inference, mapping, lineage, or approval logic was changed.
+- Connector removal is intentionally deferred: `agents/orchestrator.py` imports `ExtractorAgent`, which imports both Amplify and Black Diamond connectors. `tests/test_orchestrator.py` also uses `scripts/generate_mock_data.py` and the tracked `data_plane/storage/` fixtures. Removing these requires replacing or retiring the legacy orchestrator/test path as a single tested change.
