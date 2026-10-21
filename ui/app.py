@@ -283,6 +283,65 @@ async def load_demo_migration(request: Request):
     return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(manifest.get('knowledge_files', []))} knowledge assets registered. Review each inferred file below."), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.get("/agent-studio", response_class=HTMLResponse)
+async def agent_studio(request: Request):
+    user = get_current_user(request)
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    selected = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
+    files = []
+    for entity, entity_files in state_store.entity_source_files.items():
+        for record in entity_files.values():
+            files.append({**record, "scope_status": "IN_SCOPE" if entity in selected else "OUT_OF_SCOPE",
+                          "stored_entity": entity})
+    return render_template_with_context(request, "agent_studio.html", {
+        "page_title": "Agent Studio", "user_name": user["name"], "user_role": user["role"],
+        "selected_entities": selected, "source_files": files,
+        "analysis_results": [record.get("agent_analysis") for group in state_store.entity_source_files.values()
+                             for record in group.values() if record.get("agent_analysis")],
+    })
+
+
+@app.post("/api/agents/analyze/{file_id}")
+async def analyze_source_file_with_agents(request: Request, file_id: str):
+    user = get_current_user(request)
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    selected = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
+    if not selected:
+        raise HTTPException(status_code=400, detail="Select at least one in-scope entity in Migration Setup first.")
+    found = None
+    for entity, entity_files in state_store.entity_source_files.items():
+        for record in entity_files.values():
+            if record.get("file_id") == file_id:
+                found = (entity, record)
+                break
+        if found:
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Source file was not found.")
+    entity, record = found
+    try:
+        content = Path(record["stored_path"]).read_bytes()
+        records = read_source_records(record["filename"], content)
+        analysis = MigrationAgentCoordinator().analyze(
+            records, context=record.get("source_context", ""),
+            in_scope=selected,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="The source file could not be analyzed.") from exc
+    analysis["file_id"] = file_id
+    analysis["filename"] = record["filename"]
+    analysis["analyzed_by"] = user["name"]
+    analysis["analyzed_utc"] = datetime.now(timezone.utc).isoformat()
+    record["agent_analysis"] = analysis
+    state_store.audit_log.append({
+        "event": "P0_AGENT_ANALYSIS_COMPLETED", "actor": user["name"],
+        "timestamp_utc": analysis["analyzed_utc"],
+        "details": {"file_id": file_id, "filename": record["filename"],
+                    "scope": selected, "classification_status": analysis["classification"].get("status")},
+    })
+    return RedirectResponse(url="/agent-studio", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/logout")
 async def logout(request: Request):
     session_id = request.cookies.get("session_id")
