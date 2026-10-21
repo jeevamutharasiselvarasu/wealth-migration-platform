@@ -9,7 +9,7 @@
   <form action="/persona-selection" method="post" class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {% for role in personas %}
     <label class="group cursor-pointer rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
-      <input class="peer sr-only" type="radio" name="role" value="{{ role.id }}" required {% if loop.first %}checked{% endif %}>
+      <input class="peer sr-only" type="radio" name="role" value="{{ role.id }}" required {% if role.id == selected_role %}checked{% endif %}>
       <div class="flex items-start gap-4">
         <span class="grid h-12 w-12 flex-none place-items-center rounded-xl {% if role.id == 'Validation Specialist' %}bg-teal-600{% elif role.id == 'Domain SME' %}bg-amber-500{% else %}bg-blue-600{% endif %} font-mono text-sm font-bold text-white">{{ role.initials }}</span>
         <div class="min-w-0 flex-1">
