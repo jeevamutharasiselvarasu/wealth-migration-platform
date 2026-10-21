@@ -264,3 +264,20 @@
 4. Confirm sample demo loader registers all nine files and knowledge docs.
 5. Confirm no target load, reverse mapping or wave assignment is accidentally exposed.
 6. Re-run recursive tree inventory and confirm generated outputs are not tracked.
+
+
+## Cleanup follow-up — 2026-10-21
+
+Validated against branch commit `d4a9a08e476f1c7a3bd394862b16b0a26ceccbf1` before this follow-up:
+- The current route/template flow renders `login.html`, `persona_selection.html`, `migration_setup.html`, `dashboard.html`, `firm_knowledge.html`, `entity_sample_files.html`, `agent_pipeline.html`, and `reconciliation.html`.
+- `entity_card.html` and `entity_menu_card.html` had no references in `ui/app.py` and were not included by any active template. They have now been removed as unreferenced legacy templates.
+- `README.md` was rewritten to match the three-entity source-to-canonical P0 workflow and to stop describing legacy cutover/wave/target-loading features as active implementation.
+- The prototype trio (`ui/static/prototype.html`, `.css`, `.js`) was removed in the preceding cleanup.
+
+Still **do not delete yet**:
+- The remaining `ui/static/components/*.js` files. They have no direct filename references in the currently inspected templates/app, but a safe removal requires tracing inline event handlers and DOM IDs against each file and checking whether any test expects the component assets.
+- Legacy cutover, connector, sleeve math, ADF, and wave modules. Several are imported by `ui/app.py` or exercised by tests; remove only after separating the current P0 path and updating the test contract.
+- `firm_knowledge.html` and `/firm-knowledge`: both are currently routed and rendered. Consolidation is a navigation/product decision, not a safe orphan deletion.
+- Multiple overlapping fixture directories. Compare their consumers before deleting duplicates.
+
+Current branch after the template cleanup has 144 tracked files. CI for the latest cleanup commit is queued/running at the time of this note; do not treat it as passed until the run completes.
