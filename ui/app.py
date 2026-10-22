@@ -869,7 +869,7 @@ async def upload_entity_sample_file(
         normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
         try:
             record = state_store.attach_entity_sample_file(entity_name, filename, content, source_role=normalized_role)
-            publish_event("SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")), "source_file", str(record["file_id"]), {"entity": entity_name, "filename": record["filename"], "source_role": normalized_role, "row_count": record["row_count"], "column_count": record["column_count"]}, "migration-analyst")
+            publish_event("SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")), "source_file", str(record["file_id"]), {**record, "entity": entity_name, "source_role": normalized_role}, "migration-analyst")
         except ValueError as exc:
             failed.append(f"{filename}: {str(exc)}")
             continue
@@ -1461,11 +1461,14 @@ async def get_workflow_state(migration_id: Optional[str] = None):
 
 
 @app.post("/api/workflow/replay")
-async def replay_workflow_events(migration_id: Optional[str] = Form(None)):
-    """Re-apply unprocessed event projections safely after recovery/restart."""
+async def replay_workflow_events(migration_id: Optional[str] = Form(None), rebuild: bool = Form(False)):
+    """Replay pending events, or rebuild projections from the complete journal."""
     active_id = str(migration_id or state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-    replayed = replay_events(active_id)
-    return JSONResponse({"migration_id": active_id, "events_replayed": replayed, "status": "SUCCESS"})
+    replayed = replay_events(active_id, rebuild=rebuild)
+    if rebuild:
+        state_store.hydrate_from_durable_state()
+    return JSONResponse({"migration_id": active_id, "events_replayed": replayed,
+                         "projection_rebuilt": rebuild, "status": "SUCCESS"})
 
 
 @app.get("/api/mapping-suggestions")
