@@ -1008,27 +1008,41 @@ async def confirm_entity_inference(
         }
     else:
         selected_entity = (target_entity or entity_name).strip()
-        if selected_entity not in {"Account", "Household", "Client"}:
-            raise HTTPException(status_code=400, detail="Select Account, Household or Client to classify this file.")
-        configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
-        if selected_entity not in configured_scope:
-            raise HTTPException(status_code=409, detail=f"{selected_entity} is not selected in Migration Setup. Re-enable it before classifying this file.")
         old_entity = current_entity
-        if old_entity != selected_entity:
-            state_store.entity_source_files.setdefault(old_entity, {}).pop(file_id, None)
-            state_store.entity_source_files.setdefault(selected_entity, {})[file_id] = record
-        record["inferred_entity"] = selected_entity
-        record["inference"]["entity"] = selected_entity
-        record["inference"]["status"] = "INFERRED"
-        record["inference_approval_status"] = "APPROVED"
-        record["discovery_status"] = "APPROVED"
-        record["inference_review"] = {
-            "decision": "APPROVE", "reviewer": user.get("name", "Unknown reviewer"),
-            "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
-            "previous_entity": old_entity, "confirmed_entity": selected_entity,
-        }
-        reviewed_entity = selected_entity
-        state_store.entity_scopes[selected_entity] = "IN_SCOPE"
+        if selected_entity == "OUT_OF_SCOPE":
+            # Preserve the file in its current inventory bucket; only its eligibility changes.
+            record["inferred_entity"] = "Out of scope"
+            record["inference"]["entity"] = "Out of scope"
+            record["inference"]["status"] = "OUT_OF_SCOPE"
+            record["inference_approval_status"] = "NOT_REQUIRED"
+            record["discovery_status"] = "OUT_OF_SCOPE"
+            record["inference_review"] = {
+                "decision": "OUT_OF_SCOPE", "reviewer": user.get("name", "Unknown reviewer"),
+                "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
+                "previous_entity": old_entity, "confirmed_entity": "Out of scope",
+            }
+            reviewed_entity = "Out of scope"
+        else:
+            if selected_entity not in {"Account", "Household", "Client"}:
+                raise HTTPException(status_code=400, detail="Select Account, Household, Client or Out of scope.")
+            configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
+            if selected_entity not in configured_scope:
+                raise HTTPException(status_code=409, detail=f"{selected_entity} is not selected in Migration Setup. Re-enable it before classifying this file.")
+            if old_entity != selected_entity:
+                state_store.entity_source_files.setdefault(old_entity, {}).pop(file_id, None)
+                state_store.entity_source_files.setdefault(selected_entity, {})[file_id] = record
+            record["inferred_entity"] = selected_entity
+            record["inference"]["entity"] = selected_entity
+            record["inference"]["status"] = "INFERRED"
+            record["inference_approval_status"] = "APPROVED"
+            record["discovery_status"] = "APPROVED"
+            record["inference_review"] = {
+                "decision": "APPROVE", "reviewer": user.get("name", "Unknown reviewer"),
+                "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
+                "previous_entity": old_entity, "confirmed_entity": selected_entity,
+            }
+            reviewed_entity = selected_entity
+            state_store.entity_scopes[selected_entity] = "IN_SCOPE"
 
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     publish_event("ENTITY_INFERENCE_REVIEWED", migration_id, "source_file", str(record.get("file_id", file_id)),
