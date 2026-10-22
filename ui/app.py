@@ -267,6 +267,7 @@ async def load_demo_migration(request: Request):
         record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
         record["inference"] = inference
         record["inference_approval_status"] = "PENDING"
+        record["discovery_status"] = ("NEEDS_CLARIFICATION" if entity_name == "Needs clarification" else "OUT_OF_SCOPE" if entity_name not in configured_scope else "PENDING_REVIEW")
         record["source_context"] = str(item.get("context", ""))
         record["data_dictionary_notes"] = str(item.get("dictionary_notes", ""))
         loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
@@ -396,10 +397,12 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
     migration_setup = state_store.questionnaire_data.get("migration_setup", {})
     in_scope_entities = set(migration_setup.get("entities", []))
     for entity, files in getattr(state_store, "entity_source_files", {}).items():
-        if entity not in in_scope_entities or entity not in {"Account", "Household", "Client"}:
-            continue
         for file_id, record in files.items():
-            source_uploads.append({**record, "file_id": record.get("file_id", file_id), "inferred_entity": entity})
+            inferred_entity = record.get("inference", {}).get("entity") or (entity if entity in {"Account", "Household", "Client"} else "Needs clarification")
+            selected = inferred_entity in in_scope_entities
+            review_status = record.get("inference_approval_status", "PENDING")
+            display_status = "NEEDS_CLARIFICATION" if inferred_entity not in {"Account", "Household", "Client"} else "OUT_OF_SCOPE" if not selected else review_status
+            source_uploads.append({**record, "file_id": record.get("file_id", file_id), "inferred_entity": inferred_entity, "display_status": display_status, "scope_eligible": selected})
     source_uploads.sort(key=lambda item: item.get("uploaded_at", ""), reverse=True)
     return render_template_with_context(
         request=request,
@@ -849,22 +852,13 @@ async def upload_entity_sample_file(
             failed.append(f"{filename}: {str(exc)}")
             continue
 
-        if inference.get("status") == "NEEDS_CLARIFICATION" or not inference.get("entity"):
-            state_store.questionnaire_data.setdefault("source_inference_clarifications", []).append({
-                "filename": filename, "headers": headers,
-                "source_context": source_context.strip(),
-                "data_dictionary_notes": data_dictionary_notes.strip(),
-                "inference": inference,
-                "information_required": ["Review the candidate entities and evidence.", "Optionally clarify key-field or relationship semantics if still ambiguous."],
-                "created_utc": datetime.now(timezone.utc).isoformat(),
-            })
+        if inference.get("status") == "NEEDS_CLARIFICATION" or inference.get("entity") not in {"Account", "Household", "Client"}:
+            entity_name = "Needs clarification"
             needs_review.append(filename)
-            continue
-
-        entity_name = inference["entity"]
-        if entity_name not in configured_scope:
-            excluded.append(f"{filename} ({entity_name})")
-            continue
+        else:
+            entity_name = inference["entity"]
+            if entity_name not in configured_scope:
+                excluded.append(f"{filename} ({entity_name})")
 
         normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
         try:
@@ -903,6 +897,8 @@ async def upload_entity_sample_file(
             "details": {"filename": filename, "entity": entity_name,
                         "confidence": inference.get("confidence"), "status": inference.get("status")},
         })
+        if entity_name == "Needs clarification":
+            continue
         if entity_name == "Needs clarification":
             continue
         registered.append(f"{filename} → {entity_name}")
