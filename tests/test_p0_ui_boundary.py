@@ -181,7 +181,10 @@ def test_inferred_entity_requires_human_approval_before_mapping():
     app = (ROOT / "ui" / "app.py").read_text()
     inventory = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
     assert '@app.post("/api/entities/confirm-inference")' in app
-    assert 'record["inference_approval_status"] = "APPROVED" if normalized_decision == "APPROVE" else "REJECTED"' in app
+    assert 'record["inference_approval_status"] = "APPROVED"' in app
+    assert 'record["inference_approval_status"] = "REJECTED"' in app
+    assert 'target_entity: str = Form("")' in app
+    assert 'for bucket_entity, files in state_store.entity_source_files.items()' in app
     assert 'uploaded.get("inference_approval_status") != "APPROVED"' in app
     assert 'name="decision" value="APPROVE"' in inventory
     assert 'name="decision" value="REJECT"' in inventory
