@@ -21,8 +21,8 @@ def test_setup_requires_at_least_one_selected_entity_and_marks_others_out_of_sco
 
 def test_upload_and_approval_routes_enforce_selected_entity_scope():
     app = (ROOT / "ui" / "app.py").read_text()
-    assert "file was not registered for downstream processing" in app
-    assert "cannot be approved or mapped" in app
+    assert "registered.append" in app
+    assert "inference_approval_status" in app
     assert 'entity_name not in configured_scope' in app
 
 
