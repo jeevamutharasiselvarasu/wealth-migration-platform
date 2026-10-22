@@ -267,7 +267,7 @@ async def load_demo_migration(request: Request):
         record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
         record["inference"] = inference
         record["inference_approval_status"] = "PENDING"
-        record["discovery_status"] = ("NEEDS_CLARIFICATION" if entity_name == "Needs clarification" else "OUT_OF_SCOPE" if entity_name not in configured_scope else "PENDING_REVIEW")
+        record["discovery_status"] = "PENDING_REVIEW"
         record["source_context"] = str(item.get("context", ""))
         record["data_dictionary_notes"] = str(item.get("dictionary_notes", ""))
         loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
