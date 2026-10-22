@@ -837,7 +837,8 @@ async def upload_entity_sample_file(
             records = read_source_records(filename, content)
             headers = list(records[0].keys()) if records else []
             # Always attempt inference from file evidence first; context is optional enrichment.
-            inference = infer_entity_from_headers(headers, context=shared_context)
+            from control_plane.services.entity_classification_agent import classify_source_file
+            inference = classify_source_file(headers, records=records, context=shared_context)
         except (ValueError, OSError) as exc:
             failed.append(f"{filename}: {str(exc)}")
             continue
