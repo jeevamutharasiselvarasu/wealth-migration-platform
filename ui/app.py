@@ -25,7 +25,7 @@ from control_plane.services.wave_rules import CohortConditionEngine, WaveConditi
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import get_db_connection
-from control_plane.services.workflow_event_engine import publish_event, read_events
+from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
 
 logging.basicConfig(level=logging.INFO)
@@ -1218,6 +1218,10 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         item for item in requests if item.get("entity") == entity_name and item.get("source_file") == uploaded["filename"] and item.get("status") == "OPEN"
     ]
     state_store.persist_mapping_lineage(mapping, run_id=run_id, actor=actor)
+    publish_event("MAPPING_PROPOSALS_GENERATED", str(migration_id), "mapping_run", str(run_id),
+                  {"entity": entity_name, "source_file": uploaded["filename"],
+                   "proposal_count": len(mapping.get("field_lineages", [])),
+                   "information_request_count": len(mapping.get("information_requests_created", []))}, actor)
     return {
         "status": mapping.get("status", "UNKNOWN"),
         "run_id": run_id,
@@ -1400,8 +1404,49 @@ async def respond_to_mapping_information_request(request_id: str, request: Reque
     item["responded_by"] = user["name"]
     item["responded_utc"] = datetime.now(timezone.utc).isoformat()
     item["status"] = "ANSWERED"
+    conn = get_db_connection()
+    try:
+        updated = conn.execute(
+            """UPDATE mapping_information_requests
+               SET response = ?, status = 'ANSWERED'
+               WHERE request_id = ? AND status = 'OPEN'""",
+            (answer, request_id),
+        )
+        if updated.rowcount != 1:
+            conn.rollback()
+            raise HTTPException(status_code=409, detail="This information request was changed by another workflow action.")
+        conn.commit()
+    finally:
+        conn.close()
+    migration_id = str(item.get("migration_id", state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")))
+    publish_event("MAPPING_INFORMATION_REQUEST_CHANGED", migration_id, "information_request", request_id,
+                  {"entity": item.get("entity"), "canonical_field": item.get("canonical_field"), "status": "ANSWERED", "response": answer},
+                  user["name"])
     state_store.audit_log.append({"event":"MAPPING_INFORMATION_RESPONSE","actor":user["name"],"timestamp_utc":item["responded_utc"],"details":{"request_id":request_id,"entity":item.get("entity"),"canonical_field":item.get("canonical_field")}})
     return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/api/workflow/state")
+async def get_workflow_state(migration_id: Optional[str] = None):
+    """Return durable workflow projections and the event sequence for cross-module refresh."""
+    active_id = str(migration_id or state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    return JSONResponse({
+        "migration_id": active_id,
+        "event_sequence": __import__("control_plane.services.workflow_event_engine", fromlist=["latest_event_sequence"]).latest_event_sequence(active_id),
+        "migration": get_projection(active_id, "migration", active_id),
+        "entities": {
+            entity: get_projection(active_id, "entity", entity)
+            for entity in ("Account", "Client", "Household")
+        },
+    })
+
+
+@app.post("/api/workflow/replay")
+async def replay_workflow_events(migration_id: Optional[str] = Form(None)):
+    """Re-apply unprocessed event projections safely after recovery/restart."""
+    active_id = str(migration_id or state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    replayed = replay_events(active_id)
+    return JSONResponse({"migration_id": active_id, "events_replayed": replayed, "status": "SUCCESS"})
 
 
 @app.get("/api/mapping-suggestions")
