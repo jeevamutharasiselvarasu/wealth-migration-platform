@@ -190,7 +190,7 @@ def test_inferred_entity_requires_human_approval_before_mapping():
     assert 'uploaded.get("inference_approval_status") != "APPROVED"' in app
     assert 'name="decision" value="APPROVE"' in inventory
     assert 'name="decision" value="REJECT"' in inventory
-    assert "A rejection reason is required." in app
+    assert "Enter a rejection reason before rejecting this file." in app
 
 
 def test_entity_scope_screen_redirects_into_source_discovery():
@@ -303,7 +303,7 @@ def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_nav
     assert "Agent assistance runs inside Source Discovery automatically." in navigation
     assert "Agent-assisted analysis · automatic" in discovery
     assert "Suggested source → canonical fields" in discovery
-    assert "Confirm entity" in discovery and "Reject" in discovery
+    assert "Confirm classification" in discovery and "Reject file" in discovery
 
 
 
