@@ -391,7 +391,7 @@ async def entity_selection_view(request: Request):
 
 
 @app.get("/entity-sample-files", response_class=HTMLResponse)
-async def entity_sample_files_view(request: Request, uploaded: str = "", notice: str = ""):
+async def entity_sample_files_view(request: Request, uploaded: str = "", notice: str = "", error: str = ""):
     user = get_current_user(request)
     source_uploads = []
     migration_setup = state_store.questionnaire_data.get("migration_setup", {})
@@ -416,6 +416,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             "source_uploads": source_uploads,
             "uploaded_entity": uploaded,
             "notice": notice,
+            "error": error,
             "acquisition_method": state_store.questionnaire_data.get("migration_setup", {}).get("source_acquisition", "SAMPLE_FILES"),
             "knowledge_docs": state_store.firm_knowledge_docs,
             "entity_approval_summary": {
