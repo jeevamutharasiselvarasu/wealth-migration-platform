@@ -91,8 +91,8 @@ def test_source_discovery_does_not_ask_user_to_assign_entity():
     source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
     inference = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text()
     assert '<select name="entity_name"' not in source
-    assert "Analyse file & infer entity" in source
-    assert "infer_entity_from_headers" in inference
+    assert "Analyse files & infer entities" in source
+    assert "classify_source_file" in (ROOT / "control_plane" / "services" / "entity_classification_agent.py").read_text()
     assert "NEEDS_CLARIFICATION" in inference
     assert "data_dictionary_notes" in source
 
