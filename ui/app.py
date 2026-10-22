@@ -25,6 +25,7 @@ from control_plane.services.wave_rules import CohortConditionEngine, WaveConditi
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import get_db_connection
+from control_plane.services.workflow_event_engine import publish_event, read_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
 
 logging.basicConfig(level=logging.INFO)
@@ -797,6 +798,8 @@ async def submit_questionnaire(
         "identifier_relationship_notes": identifier_relationship_notes.strip(),
     }
     state_store.update_questionnaire_from_form(form_payload)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, form_payload, "business-data-owner")
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -812,6 +815,8 @@ async def save_entity_scopes(request: Request):
                 scopes_map[entity_name] = str(value)
 
     state_store.save_entity_scopes(scopes_map)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    publish_event("ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id, {"scopes": scopes_map}, "migration-analyst")
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -864,6 +869,7 @@ async def upload_entity_sample_file(
         normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
         try:
             record = state_store.attach_entity_sample_file(entity_name, filename, content, source_role=normalized_role)
+            publish_event("SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")), "source_file", str(record["file_id"]), {"entity": entity_name, "filename": record["filename"], "source_role": normalized_role, "row_count": record["row_count"], "column_count": record["column_count"]}, "migration-analyst")
         except ValueError as exc:
             failed.append(f"{filename}: {str(exc)}")
             continue
@@ -1473,6 +1479,7 @@ async def review_source_mapping_suggestion(
         ).fetchone()
         conn.commit()
         _sync_mapping_information_requests(str(row["migration_id"]))
+        publish_event("MAPPING_REVIEWED", str(row["migration_id"]), "mapping_suggestion", suggestion_id, {"entity": row["entity_name"], "source_field": row["source_field"], "canonical_field": row["canonical_field"], "decision": normalized}, reviewer_name)
         if request is not None and "text/html" in request.headers.get("accept", ""):
             return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
         return JSONResponse({"status": "SUCCESS", "suggestion": dict(updated)})
@@ -1599,6 +1606,7 @@ async def approve_entity_mapping_suggestions(
             approved_count += 1
         conn.commit()
         _sync_mapping_information_requests(migration_id)
+        publish_event("ENTITY_MAPPINGS_APPROVED", migration_id, "entity", entity_name, {"approved_count": approved_count, "comments": comments.strip()}, reviewer_name)
         state_store.audit_log.append({
             "event": "ENTITY_LEVEL_MAPPING_APPROVED",
             "actor": reviewer_name,
