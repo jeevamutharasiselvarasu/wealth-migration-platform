@@ -75,3 +75,42 @@ def test_spine_referential_integrity():
     )
     assert client_household["status"] == "PROPOSED"
     assert client_household["orphan_count"] == 0
+
+
+def test_approved_client_type_lookup_rule_family_executes_from_descriptive_proposal():
+    mapper = SchemaMapperAgent(
+        approved_transformations={
+            "CLIENT_TYPE_RAW": "CLIENT_TYPE_LOOKUP (INDIVIDUAL -> INDIVIDUAL)"
+        }
+    )
+    result = mapper.map_source_to_canonical(
+        "Client",
+        [{"LEGACY_CLIENT_ID": "CL-1", "FULL_LEGAL_NAME": "Jane Doe", "CLIENT_TYPE_RAW": "INDV"}],
+    )
+    assert result["mapped_records"][0]["CLIENT_TYPE"] == "INDIVIDUAL"
+    lineage = next(item for item in result["field_lineages"] if item["source_field"] == "CLIENT_TYPE_RAW")
+    assert lineage["rule_applied"] == "APPROVED_CLIENT_TYPE_LOOKUP"
+
+
+def test_approved_lookup_and_format_rule_families_are_supported():
+    mapper = SchemaMapperAgent(
+        approved_transformations={
+            "CUST_CODE_SRC": "CUSTODIAN_LOOKUP (SCHW -> SCHWAB)",
+            "REGISTRATION_SRC_TYPE": "REG_TYPE_LOOKUP (INDV -> INDIVIDUAL)",
+            "ACCOUNT_OPEN_DT": "DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)",
+        }
+    )
+    result = mapper.map_source_to_canonical(
+        "Account",
+        [{
+            "LEGACY_ACCT_NO": "A-1",
+            "CUST_CODE_SRC": "SCHW",
+            "ADVISOR_REP_NUM": "77",
+            "REGISTRATION_SRC_TYPE": "INDV",
+            "ACCOUNT_OPEN_DT": "3/7/2024",
+        }],
+    )
+    record = result["mapped_records"][0]
+    assert record["CUSTODIAN_CODE"] == "SCHWAB"
+    assert record["REG_TYPE"] == "INDIVIDUAL"
+    assert record["OPEN_DATE"] == "2024-03-7"
