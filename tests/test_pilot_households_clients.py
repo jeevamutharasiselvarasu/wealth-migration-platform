@@ -113,4 +113,4 @@ def test_approved_lookup_and_format_rule_families_are_supported():
     record = result["mapped_records"][0]
     assert record["CUSTODIAN_CODE"] == "SCHWAB"
     assert record["REG_TYPE"] == "INDIVIDUAL"
-    assert record["OPEN_DATE"] == "2024-03-7"
+    assert record["OPEN_DATE"] == "2024-03-07"
