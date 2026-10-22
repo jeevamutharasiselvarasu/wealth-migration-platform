@@ -398,7 +398,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
     in_scope_entities = set(migration_setup.get("entities", []))
     for entity, files in getattr(state_store, "entity_source_files", {}).items():
         for file_id, record in files.items():
-            inferred_entity = record.get("inference", {}).get("entity") or (entity if entity in {"Account", "Household", "Client"} else "Needs clarification")
+            inferred_entity = "Needs clarification" if entity == "Needs clarification" else (record.get("inference", {}).get("entity") or entity)
             selected = inferred_entity in in_scope_entities
             review_status = record.get("inference_approval_status", "PENDING")
             display_status = "NEEDS_CLARIFICATION" if inferred_entity not in {"Account", "Household", "Client"} else "OUT_OF_SCOPE" if not selected else review_status
