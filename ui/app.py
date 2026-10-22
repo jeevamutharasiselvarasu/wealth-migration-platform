@@ -834,7 +834,7 @@ async def upload_entity_sample_file(
     if not configured_scope:
         raise HTTPException(status_code=400, detail="Select at least one in-scope entity in Migration Setup first.")
 
-    registered, needs_review, excluded, failed = [], [], [], []
+    registered, needs_review, excluded, failed, duplicates = [], [], [], [], []
     shared_context = " ".join([source_context.strip(), data_dictionary_notes.strip()]).strip()
     for file in files:
         filename = file.filename or "unknown-file"
@@ -869,6 +869,9 @@ async def upload_entity_sample_file(
         normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
         try:
             record = state_store.attach_entity_sample_file(entity_name, filename, content, source_role=normalized_role)
+            if record.pop("_duplicate_upload", False):
+                duplicates.append(filename)
+                continue
             publish_event("SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")), "source_file", str(record["file_id"]), {**record, "entity": entity_name, "source_role": normalized_role}, "migration-analyst")
         except ValueError as exc:
             failed.append(f"{filename}: {str(exc)}")
@@ -906,6 +909,7 @@ async def upload_entity_sample_file(
     if needs_review: summary.append(f"{len(needs_review)} needs review ({', '.join(needs_review)})")
     if excluded: summary.append(f"{len(excluded)} excluded as out of scope ({', '.join(excluded)})")
     if failed: summary.append(f"{len(failed)} failed validation ({'; '.join(failed)})")
+    if duplicates: summary.append(f"{len(duplicates)} identical re-uploads recognized; existing records preserved ({', '.join(duplicates)})")
     notice = ". ".join(summary) + ". Optional source details and dictionaries can improve ambiguous results, but are not required to attempt inference."
     return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
 
