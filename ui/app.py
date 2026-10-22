@@ -429,9 +429,10 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
 async def agent_pipeline_view(request: Request, notice: str = "", error: str = ""):
     user = get_current_user(request)
     latest_run = state_store.pipeline_runs[-1] if state_store.pipeline_runs else None
+    active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))
+    _sync_mapping_information_requests(active_migration_id)
     conn = get_db_connection()
     try:
-        active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))
         selected_scope = [e for e in state_store.questionnaire_data.get("migration_setup", {}).get("entities", []) if e in {"Account", "Household", "Client"}]
         scope_placeholders = ", ".join("?" for _ in selected_scope) or "''"
         rows = conn.execute(
@@ -1022,6 +1023,41 @@ def _get_approved_mapping_rules(migration_id: str, entity_name: str) -> Dict[str
         conn.close()
 
 
+def _sync_mapping_information_requests(migration_id: str) -> None:
+    """Keep information-request status derived from the approved mapping catalog."""
+    requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
+    conn = get_db_connection()
+    try:
+        approved = {
+            (str(row["entity_name"]), str(row["canonical_field"]))
+            for row in conn.execute(
+                """
+                SELECT DISTINCT entity_name, canonical_field
+                FROM canonical_mappings
+                WHERE migration_id = ? AND is_confirmed = 1
+                """,
+                (migration_id,),
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    now = datetime.now(timezone.utc).isoformat()
+    for item in requests:
+        if str(item.get("migration_id", migration_id)) != migration_id:
+            continue
+        key = (str(item.get("entity", "")), str(item.get("canonical_field", "")))
+        if key in approved:
+            if item.get("status") != "RESOLVED":
+                item["status"] = "RESOLVED"
+                item["resolved_utc"] = now
+                item["resolution"] = "Approved source-to-canonical mapping exists."
+        elif item.get("status") == "RESOLVED":
+            item["status"] = "OPEN"
+            item.pop("resolved_utc", None)
+            item.pop("resolution", None)
+
+
 def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[str, str]:
     """Backward-compatible field alias view of explicitly approved rules."""
     return {
@@ -1098,12 +1134,13 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     }
     required_fields = SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS.get(entity_name, [])
     requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
-    existing_open = {
+    existing_requests = {
         (item.get("entity"), item.get("canonical_field"))
-        for item in requests if item.get("status") == "OPEN"
+        for item in requests
+        if str(item.get("migration_id", migration_id)) == str(migration_id)
     }
     for canonical_field in required_fields:
-        if canonical_field not in mapped_canonical and (entity_name, canonical_field) not in existing_open:
+        if canonical_field not in mapped_canonical and (entity_name, canonical_field) not in existing_requests:
             requests.append({
                 "request_id": f"RFI-{uuid.uuid4().hex[:10].upper()}",
                 "migration_id": migration_id,
@@ -1116,6 +1153,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
                 "created_utc": datetime.now(timezone.utc).isoformat(),
                 "response": "",
             })
+    _sync_mapping_information_requests(str(migration_id))
     # Mapper output is a preview; suggestions require human approval before canonical use.
     mapping["approval_status"] = "PENDING_REVIEW" if mapping.get("field_lineages") else "NO_PROPOSALS"
     mapping["information_requests_created"] = [
@@ -1434,6 +1472,7 @@ async def review_source_mapping_suggestion(
             "SELECT * FROM mapping_suggestions WHERE suggestion_id = ?", (suggestion_id,)
         ).fetchone()
         conn.commit()
+        _sync_mapping_information_requests(str(row["migration_id"]))
         if request is not None and "text/html" in request.headers.get("accept", ""):
             return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
         return JSONResponse({"status": "SUCCESS", "suggestion": dict(updated)})
