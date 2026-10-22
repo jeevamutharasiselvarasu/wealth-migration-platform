@@ -47,6 +47,102 @@ class WorkspaceStateStore:
         self.pipeline_runs: List[Dict[str, Any]] = []
         self.audit_log: List[Dict[str, Any]] = []
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
+        # Rehydrate durable workflow facts before any request handler reads state.
+        self.hydrate_from_durable_state()
+
+    def hydrate_from_durable_state(self) -> None:
+        """Restore the active migration's UI-facing state from SQLite and upload files."""
+        from control_plane.services.workflow_event_engine import get_projection, read_events, replay_events
+
+        conn = get_db_connection()
+        try:
+            row = conn.execute(
+                """SELECT migration_id FROM workflow_events
+                   WHERE event_type = 'MIGRATION_CONTEXT_UPDATED'
+                   ORDER BY occurred_utc DESC, event_id DESC LIMIT 1"""
+            ).fetchone()
+            migration_id = str(row["migration_id"]) if row else str(
+                self.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")
+            )
+        finally:
+            conn.close()
+
+        if migration_id and migration_id != "MIG-UNCONFIGURED":
+            replay_events(migration_id, rebuild=False)
+            projection = get_projection(migration_id, "migration", migration_id)
+            context = projection.get("context", {})
+            if isinstance(context, dict):
+                self.questionnaire_data.update(context)
+            self.questionnaire_data["migration_id"] = migration_id
+            scopes = projection.get("scopes", {})
+            if isinstance(scopes, dict):
+                self.save_entity_scopes(scopes)
+
+            for event in read_events(migration_id, limit=5000):
+                payload = event.get("payload", {})
+                if event["event_type"] == "SOURCE_FILE_UPLOADED":
+                    record = dict(payload)
+                    record.setdefault("file_id", event["aggregate_id"])
+                    entity = record.get("entity") or record.get("entity_name")
+                    if entity not in self.P0_ENTITIES:
+                        continue
+                    stored_path = record.get("stored_path")
+                    if stored_path and Path(stored_path).is_file():
+                        try:
+                            records = read_source_records(record.get("filename", "source.csv"), Path(stored_path).read_bytes())
+                            record.setdefault("columns", list(records[0].keys()) if records else [])
+                            record.setdefault("row_count", len(records))
+                            record.setdefault("column_count", len(record.get("columns", [])))
+                        except (OSError, ValueError):
+                            pass
+                    role = str(record.get("source_role", "ENTITY_MASTER"))
+                    key = role
+                    entity_files = self.entity_source_files.setdefault(entity, {})
+                    if key in entity_files:
+                        key = role + ":" + str(record.get("filename", "source")) + ":" + event["aggregate_id"]
+                    entity_files[key] = record
+                    if role in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
+                        self.entity_sample_files[entity] = record
+                elif event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED":
+                    doc = dict(payload)
+                    if doc and not any(existing.get("id") == doc.get("id") for existing in self.firm_knowledge_docs):
+                        self.firm_knowledge_docs.append(doc)
+
+        conn = get_db_connection()
+        try:
+            request_rows = conn.execute(
+                """SELECT request_id, migration_id, entity_name, canonical_field, source_file,
+                          status, question, requested_by, created_utc, resolved_utc, resolution, response
+                   FROM mapping_information_requests WHERE migration_id = ?
+                   ORDER BY created_utc, request_id""",
+                (migration_id,),
+            ).fetchall()
+            self.questionnaire_data["mapping_information_requests"] = [
+                {"request_id": row["request_id"], "migration_id": row["migration_id"],
+                 "entity": row["entity_name"], "canonical_field": row["canonical_field"],
+                 "source_file": row["source_file"], "status": row["status"],
+                 "question": row["question"], "requested_by": row["requested_by"],
+                 "created_utc": row["created_utc"], "resolved_utc": row["resolved_utc"],
+                 "resolution": row["resolution"], "response": row["response"]}
+                for row in request_rows
+            ]
+            run_rows = conn.execute(
+                """SELECT mcl_run_id, status, entity_summary_json, relationship_summary_json,
+                          execution_boundary_json, executed_utc
+                   FROM mcl_execution_runs WHERE migration_id = ? ORDER BY executed_utc""",
+                (migration_id,),
+            ).fetchall()
+            self.pipeline_runs = [
+                {"run_id": row["mcl_run_id"], "status": row["status"],
+                 "entity_summary": json.loads(row["entity_summary_json"] or "{}"),
+                 "relationship_summary": json.loads(row["relationship_summary_json"] or "{}"),
+                 "execution_boundary": json.loads(row["execution_boundary_json"] or "{}"),
+                 "executed_utc": row["executed_utc"]}
+                for row in run_rows
+            ]
+        finally:
+            conn.close()
+        self.generated_dashboard = self._build_dashboard_from_form()
 
     def update_kernel_specs(self, updated_by: str, sleeve_invariant: str, sleeve_tolerance: str, aum_drift_gate: str) -> Dict[str, Any]:
         """Updates Kernel invariants when executed by Platform Admin or Domain SME."""
