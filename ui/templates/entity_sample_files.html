@@ -99,8 +99,18 @@
   <form action="/api/entities/confirm-inference" method="post" class="min-w-[190px] space-y-2">
     <input type="hidden" name="entity_name" value="{{ file.inferred_entity }}">
     <input type="hidden" name="file_id" value="{{ file.file_id }}">
-    <label class="block text-[9px] text-[#5A6A88]">Reviewer note (required for rejection)<input name="comments" placeholder="Confirm or explain rejection" class="mt-1 w-full rounded border border-[#D9E3F5] p-2 text-[10px]"></label>
-    <div class="flex flex-wrap gap-1"><button name="decision" value="APPROVE" class="rounded-lg bg-teal-700 px-2 py-2 text-[10px] font-bold text-white">Confirm entity</button><button name="decision" value="REJECT" onclick="return confirm('Reject this inferred entity classification?')" class="rounded-lg border border-red-200 bg-white px-2 py-2 text-[10px] font-bold text-red-700">Reject</button></div>
+    {% if file.inferred_entity not in ['Account','Household','Client'] or not file.scope_eligible %}
+    <label class="block text-[9px] font-bold text-[#5A6A88]">Classify this file as
+      <select name="target_entity" required class="mt-1 w-full rounded border border-[#D9E3F5] bg-white p-2 text-[10px]">
+        <option value="">Select an in-scope entity…</option>
+        {% for candidate in ['Account','Household','Client'] %}
+        {% if candidate in in_scope_entities %}<option value="{{ candidate }}">{{ candidate }}</option>{% endif %}
+        {% endfor %}
+      </select>
+    </label>
+    {% else %}<input type="hidden" name="target_entity" value="{{ file.inferred_entity }}">{% endif %}
+    <label class="block text-[9px] text-[#5A6A88]">Reviewer note (required for rejection)<input name="comments" placeholder="Explain classification or rejection" class="mt-1 w-full rounded border border-[#D9E3F5] p-2 text-[10px]"></label>
+    <div class="flex flex-wrap gap-1"><button name="decision" value="APPROVE" class="rounded-lg bg-teal-700 px-2 py-2 text-[10px] font-bold text-white">Confirm classification</button><button name="decision" value="REJECT" onclick="return confirm('Reject this source file? It will remain in the inventory as rejected.')" class="rounded-lg border border-red-200 bg-white px-2 py-2 text-[10px] font-bold text-red-700">Reject file</button></div>
   </form>
 {% endif %}
 </td></tr>{% endfor %}</tbody></table></div>
