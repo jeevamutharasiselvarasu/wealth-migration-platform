@@ -57,18 +57,21 @@ class WorkspaceStateStore:
 
         conn = get_db_connection()
         try:
+            has_events = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workflow_events'"
+            ).fetchone() is not None
             row = conn.execute(
                 """SELECT migration_id FROM workflow_events
                    WHERE event_type = 'MIGRATION_CONTEXT_UPDATED'
                    ORDER BY occurred_utc DESC, event_id DESC LIMIT 1"""
-            ).fetchone()
+            ).fetchone() if has_events else None
             migration_id = str(row["migration_id"]) if row else str(
                 self.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")
             )
         finally:
             conn.close()
 
-        if migration_id and migration_id != "MIG-UNCONFIGURED":
+        if has_events and migration_id and migration_id != "MIG-UNCONFIGURED":
             replay_events(migration_id, rebuild=False)
             projection = get_projection(migration_id, "migration", migration_id)
             context = projection.get("context", {})
@@ -111,13 +114,16 @@ class WorkspaceStateStore:
 
         conn = get_db_connection()
         try:
+            has_requests = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mapping_information_requests'"
+            ).fetchone() is not None
             request_rows = conn.execute(
                 """SELECT request_id, migration_id, entity_name, canonical_field, source_file,
                           status, question, requested_by, created_utc, resolved_utc, resolution, response
                    FROM mapping_information_requests WHERE migration_id = ?
                    ORDER BY created_utc, request_id""",
                 (migration_id,),
-            ).fetchall()
+            ).fetchall() if has_requests else []
             self.questionnaire_data["mapping_information_requests"] = [
                 {"request_id": row["request_id"], "migration_id": row["migration_id"],
                  "entity": row["entity_name"], "canonical_field": row["canonical_field"],
@@ -127,12 +133,15 @@ class WorkspaceStateStore:
                  "resolution": row["resolution"], "response": row["response"]}
                 for row in request_rows
             ]
+            has_mcl_runs = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mcl_execution_runs'"
+            ).fetchone() is not None
             run_rows = conn.execute(
                 """SELECT mcl_run_id, status, entity_summary_json, relationship_summary_json,
                           execution_boundary_json, executed_utc
                    FROM mcl_execution_runs WHERE migration_id = ? ORDER BY executed_utc""",
                 (migration_id,),
-            ).fetchall()
+            ).fetchall() if has_mcl_runs else []
             self.pipeline_runs = [
                 {"run_id": row["mcl_run_id"], "status": row["status"],
                  "entity_summary": json.loads(row["entity_summary_json"] or "{}"),
