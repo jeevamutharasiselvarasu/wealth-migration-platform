@@ -903,14 +903,16 @@ async def upload_entity_sample_file(
             "details": {"filename": filename, "entity": entity_name,
                         "confidence": inference.get("confidence"), "status": inference.get("status")},
         })
+        if entity_name == "Needs clarification":
+            continue
         registered.append(f"{filename} → {entity_name}")
 
     summary = [f"Batch complete: {len(registered)} classified and registered"]
     if needs_review: summary.append(f"{len(needs_review)} needs review ({', '.join(needs_review)})")
-    if excluded: summary.append(f"{len(excluded)} excluded as out of scope ({', '.join(excluded)})")
+    if excluded: summary.append(f"{len(excluded)} retained as out of scope ({', '.join(excluded)})")
     if failed: summary.append(f"{len(failed)} failed validation ({'; '.join(failed)})")
     if duplicates: summary.append(f"{len(duplicates)} identical re-uploads recognized; existing records preserved ({', '.join(duplicates)})")
-    notice = ". ".join(summary) + ". Optional source details and dictionaries can improve ambiguous results, but are not required to attempt inference."
+    notice = ". ".join(summary) + ". Files are retained even when out of scope or awaiting clarification. Re-uploading identical content is idempotent; same-name files with different content remain separate."
     return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
 
 
