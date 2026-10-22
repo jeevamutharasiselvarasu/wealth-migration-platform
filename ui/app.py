@@ -1034,6 +1034,28 @@ def _sync_mapping_information_requests(migration_id: str) -> None:
     requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
     conn = get_db_connection()
     try:
+        # Upsert in-memory requests before reloading the durable projection. The unique
+        # migration/entity/field key prevents duplicate open requests across reruns.
+        for item in requests:
+            item_migration = str(item.get("migration_id", migration_id))
+            if not item.get("request_id") or not item.get("entity") or not item.get("canonical_field"):
+                continue
+            conn.execute(
+                """INSERT INTO mapping_information_requests
+                (request_id, migration_id, entity_name, canonical_field, source_file, status,
+                 question, requested_by, created_utc, resolved_utc, resolution, response)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(migration_id, entity_name, canonical_field) DO UPDATE SET
+                    source_file = excluded.source_file,
+                    question = excluded.question,
+                    requested_by = excluded.requested_by,
+                    response = CASE WHEN excluded.response != '' THEN excluded.response
+                                    ELSE mapping_information_requests.response END""",
+                (item["request_id"], item_migration, str(item["entity"]), str(item["canonical_field"]),
+                 item.get("source_file"), item.get("status", "OPEN"), item.get("question", ""),
+                 item.get("requested_by", ""), item.get("created_utc", datetime.now(timezone.utc).isoformat()),
+                 item.get("resolved_utc"), item.get("resolution"), item.get("response", "")),
+            )
         approved = {
             (str(row["entity_name"]), str(row["canonical_field"]))
             for row in conn.execute(
@@ -1045,8 +1067,23 @@ def _sync_mapping_information_requests(migration_id: str) -> None:
                 (migration_id,),
             ).fetchall()
         }
+        # Reload the durable requests so a fresh application process sees the same work.
+        persisted_requests = conn.execute(
+            """SELECT request_id, migration_id, entity_name, canonical_field, source_file,
+                      status, question, requested_by, created_utc, resolved_utc, resolution, response
+               FROM mapping_information_requests ORDER BY created_utc, request_id"""
+        ).fetchall()
     finally:
         conn.close()
+
+    requests[:] = [{
+        "request_id": row["request_id"], "migration_id": row["migration_id"],
+        "entity": row["entity_name"], "canonical_field": row["canonical_field"],
+        "source_file": row["source_file"], "status": row["status"],
+        "question": row["question"], "requested_by": row["requested_by"],
+        "created_utc": row["created_utc"], "resolved_utc": row["resolved_utc"],
+        "resolution": row["resolution"], "response": row["response"],
+    } for row in persisted_requests]
 
     now = datetime.now(timezone.utc).isoformat()
     for item in requests:
@@ -1062,6 +1099,21 @@ def _sync_mapping_information_requests(migration_id: str) -> None:
             item["status"] = "OPEN"
             item.pop("resolved_utc", None)
             item.pop("resolution", None)
+
+    # Persist the projection after reconciling against the approved mapping catalog.
+    conn = get_db_connection()
+    try:
+        for item in requests:
+            conn.execute(
+                """UPDATE mapping_information_requests
+                   SET status = ?, resolved_utc = ?, resolution = ?, response = ?
+                   WHERE request_id = ?""",
+                (item.get("status", "OPEN"), item.get("resolved_utc"),
+                 item.get("resolution"), item.get("response", ""), item["request_id"]),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[str, str]:
