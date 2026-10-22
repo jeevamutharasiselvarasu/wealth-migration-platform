@@ -52,7 +52,8 @@ class WorkspaceStateStore:
 
     def hydrate_from_durable_state(self) -> None:
         """Restore the active migration's UI-facing state from SQLite and upload files."""
-        from control_plane.services.workflow_event_engine import get_projection, read_events, replay_events
+        from control_plane.services.workflow_event_engine import _ensure_event_table, get_projection, read_events, replay_events
+        _ensure_event_table()
 
         conn = get_db_connection()
         try:
