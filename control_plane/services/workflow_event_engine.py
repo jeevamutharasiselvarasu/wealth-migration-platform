@@ -177,20 +177,67 @@ def read_events(migration_id: str, after_event_id: Optional[str] = None, limit: 
         conn.close()
 
 
-def replay_events(migration_id: str, after_event_id: Optional[str] = None, limit: int = 5000) -> int:
-    """Idempotently rebuild/update projections from the durable event journal."""
-    events = read_events(migration_id, after_event_id=after_event_id, limit=limit)
+def replay_events(
+    migration_id: str,
+    after_event_id: Optional[str] = None,
+    limit: int = 5000,
+    rebuild: bool = False,
+) -> int:
+    """Replay events incrementally, or rebuild projections even when stale receipts remain.
+
+    Rebuild clears only this migration's projections and their receipts, then replays
+    the complete ordered journal in bounded pages. The event journal is never changed.
+    """
+    if not migration_id:
+        raise ValueError("migration_id is required")
+    _ensure_event_table()
     conn = get_db_connection()
+    replayed = 0
     try:
-        for event in events:
-            _apply_projection(conn, event)
-        conn.commit()
-        return len(events)
+        if rebuild:
+            event_ids = conn.execute(
+                "SELECT event_id FROM workflow_events WHERE migration_id = ?",
+                (migration_id,),
+            ).fetchall()
+            conn.execute(
+                "DELETE FROM workflow_state_projection WHERE migration_id = ?",
+                (migration_id,),
+            )
+            conn.executemany(
+                "DELETE FROM workflow_projection_receipts WHERE event_id = ?",
+                [(row["event_id"],) for row in event_ids],
+            )
+            conn.commit()
+            after_event_id = None
+        conn.close()
+        conn = None
+        checkpoint = after_event_id
+        while True:
+            events = read_events(migration_id, after_event_id=checkpoint, limit=limit)
+            if not events:
+                break
+            conn = get_db_connection()
+            try:
+                for event in events:
+                    _apply_projection(conn, event)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+            replayed += len(events)
+            checkpoint = events[-1]["event_id"]
+            if len(events) < max(1, min(int(limit), 5000)):
+                break
+        return replayed
     except Exception:
-        conn.rollback()
+        if conn is not None:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def get_projection(migration_id: str, aggregate_type: str, aggregate_id: str) -> Dict[str, Any]:
