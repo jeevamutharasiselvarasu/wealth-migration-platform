@@ -310,7 +310,7 @@ class SchemaMapperAgent:
                     approved_expression = self.approved_transformations.get(raw_key)
                     if approved_expression:
                         transformed_val = self._apply_approved_transformation(raw_val, approved_expression)
-                        applied_rule = f"APPROVED_{approved_expression}"
+                        applied_rule = f"APPROVED_{self.transformation_family(approved_expression)}"
 
                     if target_key in canonical_row:
                         field_collisions.add(f"{target_key} <- {raw_key}")
