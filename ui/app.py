@@ -1602,14 +1602,18 @@ async def review_source_mapping_suggestion(
         if row["status"] != "PENDING":
             raise HTTPException(status_code=409, detail=f"Mapping suggestion is already {row['status']}.")
         proposed_expression = str(row["proposed_rule"] or "DIRECT_COPY").strip().upper()
-        if normalized == "APPROVED" and proposed_expression not in SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Cannot approve unsupported transformation '{proposed_expression}'. "
-                    "Use one of: " + ", ".join(sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS))
-                ),
+        if normalized == "APPROVED" and not SchemaMapperAgent.supports_transformation(proposed_expression):
+            detail = (
+                f"The rule '{proposed_expression}' is not executable yet. "
+                "Register a safe transformation handler before approving it for execution."
             )
+            if request is not None and "text/html" in request.headers.get("accept", ""):
+                conn.rollback()
+                return RedirectResponse(
+                    url="/agent-pipeline?error=" + quote_plus(detail) + "#pending-mappings",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+            raise HTTPException(status_code=400, detail=detail)
         conn.execute(
             "UPDATE mapping_suggestions SET status = ?, reviewer = ?, review_comments = ?, reviewed_utc = ? "
             "WHERE suggestion_id = ? AND status = 'PENDING'",
@@ -1713,8 +1717,8 @@ async def approve_entity_mapping_suggestions(
             rule = str(row["proposed_rule"] or "DIRECT_COPY").strip().upper()
             if not source_field or not canonical_field:
                 blockers.append(f"{source_field or '(missing source field)'}: unresolved canonical field")
-            if rule not in SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS:
-                blockers.append(f"{source_field or '(missing source field)'}: unsupported rule {rule}")
+            if not SchemaMapperAgent.supports_transformation(rule):
+                blockers.append(f"{source_field or '(missing source field)'}: rule '{rule}' has no registered safe execution handler")
             prior_target = source_targets.get(source_field)
             if prior_target and prior_target != canonical_field:
                 blockers.append(f"{source_field}: conflicting canonical targets {prior_target} and {canonical_field}")
