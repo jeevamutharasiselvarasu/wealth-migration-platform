@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import hashlib
 from pathlib import Path
 import json
 import pandas as pd
@@ -88,7 +89,7 @@ class WorkspaceStateStore:
                     record = dict(payload)
                     record.setdefault("file_id", event["aggregate_id"])
                     entity = record.get("entity") or record.get("entity_name")
-                    if entity not in self.P0_ENTITIES:
+                    if entity not in self.P0_ENTITIES and entity != "Needs clarification":
                         continue
                     stored_path = record.get("stored_path")
                     if stored_path and Path(stored_path).is_file():
@@ -323,6 +324,15 @@ class WorkspaceStateStore:
 
         safe_entity = re.sub(r"[^A-Za-z0-9_-]+", "_", entity_name).strip("_") or "entity"
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name)
+        content_sha256 = hashlib.sha256(content_bytes).hexdigest()
+        migration_id = self.questionnaire_data.get("migration_id", "UNCONFIGURED")
+        # Exact same bytes in the same migration/entity are an idempotent re-upload.
+        # Same-name files with different bytes remain distinct source assets.
+        for existing in self.entity_source_files.get(entity_name, {}).values():
+            if (existing.get("migration_id") == migration_id
+                    and existing.get("content_sha256") == content_sha256):
+                existing["_duplicate_upload"] = True
+                return existing
         upload_dir = SOURCE_UPLOAD_ROOT / safe_entity
         upload_dir.mkdir(parents=True, exist_ok=True)
         stored_path = upload_dir / f"{uuid.uuid4().hex}_{safe_name}"
@@ -330,10 +340,11 @@ class WorkspaceStateStore:
 
         record = {
             "file_id": uuid.uuid4().hex,
+            "content_sha256": content_sha256,
             "filename": Path(filename).name,
             "source_role": str(source_role or "ENTITY_MASTER").strip().upper(),
             "entity_name": entity_name,
-            "migration_id": self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+            "migration_id": migration_id,
             "stored_path": str(stored_path.resolve()),
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(content_bytes),
