@@ -184,6 +184,8 @@ def test_inferred_entity_requires_human_approval_before_mapping():
     assert 'record["inference_approval_status"] = "APPROVED"' in app
     assert 'record["inference_approval_status"] = "REJECTED"' in app
     assert 'target_entity: str = Form("")' in app
+    assert 'if selected_entity == "OUT_OF_SCOPE":' in app
+    assert 'record["discovery_status"] = "OUT_OF_SCOPE"' in app
     assert 'for bucket_entity, files in state_store.entity_source_files.items()' in app
     assert 'uploaded.get("inference_approval_status") != "APPROVED"' in app
     assert 'name="decision" value="APPROVE"' in inventory
