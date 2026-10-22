@@ -967,45 +967,79 @@ async def confirm_entity_inference(
     entity_name: str = Form(...),
     decision: str = Form(...),
     comments: str = Form(""),
+    target_entity: str = Form(""),
     request: Request = None,
 ):
-    """Require human confirmation of inferred entity before mapping is enabled."""
+    """Allow rejection of any retained file and explicit reclassification into an in-scope entity."""
     user = get_current_user(request) if request is not None else {"name": "Unknown reviewer"}
-    if entity_name not in {"Account", "Household", "Client"}:
-        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
-    configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
-    if entity_name not in configured_scope:
-        raise HTTPException(status_code=409, detail=f"{entity_name} is not selected in Migration Setup and cannot be approved or mapped.")
-    file_id = str((await request.form()).get("file_id", "")).strip() if request is not None else ""
-    entity_files = state_store.entity_source_files.get(entity_name, {})
-    record = next((item for item in entity_files.values() if item.get("file_id") == file_id), None) if file_id else state_store.entity_sample_files.get(entity_name)
-    if not record or not record.get("inference"):
-        raise HTTPException(status_code=404, detail=f"No inferred source file is awaiting confirmation for {entity_name}.")
+    form = await request.form() if request is not None else {}
+    file_id = str(form.get("file_id", "")).strip()
     normalized_decision = decision.strip().upper()
     if normalized_decision not in {"APPROVE", "REJECT"}:
         raise HTTPException(status_code=400, detail="Decision must be APPROVE or REJECT.")
     if normalized_decision == "REJECT" and not comments.strip():
         raise HTTPException(status_code=400, detail="A rejection reason is required.")
-    record["inference_approval_status"] = "APPROVED" if normalized_decision == "APPROVE" else "REJECTED"
-    record["inference_review"] = {
-        "decision": normalized_decision,
-        "reviewer": user.get("name", "Unknown reviewer"),
-        "comments": comments.strip(),
-        "reviewed_utc": datetime.now(timezone.utc).isoformat(),
-    }
-    approved_for_entity = any(item.get("inference_approval_status") == "APPROVED" for item in entity_files.values())
-    state_store.entity_scopes[entity_name] = "IN_SCOPE" if approved_for_entity else "PENDING_DISCOVERY"
+
+    record = None
+    current_entity = None
+    for bucket_entity, files in state_store.entity_source_files.items():
+        for item in files.values():
+            if item.get("file_id") == file_id:
+                record, current_entity = item, bucket_entity
+                break
+        if record:
+            break
+    if record is None and entity_name in {"Account", "Household", "Client"}:
+        record = state_store.entity_sample_files.get(entity_name)
+        current_entity = entity_name if record else None
+    if not record:
+        raise HTTPException(status_code=404, detail="No retained source file was found for this review.")
+    if not record.get("inference"):
+        record["inference"] = {}
+
+    if normalized_decision == "REJECT":
+        record["inference_approval_status"] = "REJECTED"
+        record["discovery_status"] = "REJECTED"
+        reviewed_entity = record.get("inference", {}).get("entity") or current_entity or entity_name
+        record["inference_review"] = {
+            "decision": "REJECT", "reviewer": user.get("name", "Unknown reviewer"),
+            "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
+        }
+    else:
+        selected_entity = (target_entity or entity_name).strip()
+        if selected_entity not in {"Account", "Household", "Client"}:
+            raise HTTPException(status_code=400, detail="Select Account, Household or Client to classify this file.")
+        configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
+        if selected_entity not in configured_scope:
+            raise HTTPException(status_code=409, detail=f"{selected_entity} is not selected in Migration Setup. Re-enable it before classifying this file.")
+        old_entity = current_entity
+        if old_entity != selected_entity:
+            state_store.entity_source_files.setdefault(old_entity, {}).pop(file_id, None)
+            state_store.entity_source_files.setdefault(selected_entity, {})[file_id] = record
+        record["inferred_entity"] = selected_entity
+        record["inference"]["entity"] = selected_entity
+        record["inference"]["status"] = "INFERRED"
+        record["inference_approval_status"] = "APPROVED"
+        record["discovery_status"] = "APPROVED"
+        record["inference_review"] = {
+            "decision": "APPROVE", "reviewer": user.get("name", "Unknown reviewer"),
+            "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
+            "previous_entity": old_entity, "confirmed_entity": selected_entity,
+        }
+        reviewed_entity = selected_entity
+        state_store.entity_scopes[selected_entity] = "IN_SCOPE"
+
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     publish_event("ENTITY_INFERENCE_REVIEWED", migration_id, "source_file", str(record.get("file_id", file_id)),
-                  {"entity": entity_name, "filename": record.get("filename"),
+                  {"entity": reviewed_entity, "previous_entity": current_entity, "filename": record.get("filename"),
                    "decision": normalized_decision, "inference_approval_status": record["inference_approval_status"],
                    "inference": record.get("inference"), "inference_review": record["inference_review"],
-                   "scope": state_store.entity_scopes[entity_name]}, user.get("name", "Unknown reviewer"))
+                   "scope": state_store.entity_scopes.get(reviewed_entity, "OUT_OF_SCOPE")}, user.get("name", "Unknown reviewer"))
     state_store.audit_log.append({
-        "event": "ENTITY_INFERENCE_REVIEWED",
-        "actor": user.get("name", "Unknown reviewer"),
+        "event": "ENTITY_INFERENCE_REVIEWED", "actor": user.get("name", "Unknown reviewer"),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "details": {"entity": entity_name, "filename": record.get("filename"), "decision": normalized_decision, "comments": comments.strip()},
+        "details": {"entity": reviewed_entity, "previous_entity": current_entity,
+                    "filename": record.get("filename"), "decision": normalized_decision, "comments": comments.strip()},
     })
     return RedirectResponse(url=f"/entity-sample-files#source-file-{quote_plus(file_id)}", status_code=status.HTTP_303_SEE_OTHER)
 
