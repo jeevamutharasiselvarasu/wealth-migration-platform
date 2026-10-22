@@ -1375,6 +1375,11 @@ async def map_mcl_uploaded_files():
             relationship_validation=relationship_validation,
             execution_boundary=execution_boundary,
         )
+        migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+        publish_event("MCL_EXECUTION_SUMMARY_PERSISTED", migration_id, "mcl_run", str(mcl_run_id),
+                      {"status": overall_status, "entities": list(entity_results.keys()),
+                       "relationship_status": relationship_validation.get("status"),
+                       "execution_boundary": execution_boundary}, "migration-analyst")
     except Exception as exc:
         logger.exception("Could not persist MCL execution summary for %s", mcl_run_id)
         raise HTTPException(status_code=500, detail=f"MCL results were produced but batch lineage could not be persisted for {mcl_run_id}: {type(exc).__name__}: {exc}") from exc
