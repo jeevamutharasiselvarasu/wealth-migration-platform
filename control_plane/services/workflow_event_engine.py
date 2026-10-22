@@ -79,6 +79,16 @@ def _apply_projection(conn, event: Dict[str, Any]) -> None:
     elif event["event_type"] == "MAPPING_INFORMATION_REQUEST_CHANGED":
         requests = state.setdefault("information_requests", {})
         requests[event["aggregate_id"]] = payload
+    elif event["event_type"] == "ENTITY_INFERENCE_REVIEWED":
+        state["inference_review"] = payload
+    elif event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED":
+        assets = state.setdefault("knowledge_assets", {})
+        assets[event["aggregate_id"]] = payload
+    elif event["event_type"] == "MAPPING_PROPOSALS_GENERATED":
+        state["mapping_proposal_run"] = payload
+    elif event["event_type"] == "MCL_EXECUTION_SUMMARY_PERSISTED":
+        state["mcl_execution"] = payload
+    state["latest_payload"] = payload
     # Store bounded event references, not an unbounded duplicate of the event log.
     state["events"] = (state["events"] + [event["event_id"]])[-100:]
     conn.execute(
