@@ -942,6 +942,14 @@ async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(..
         }
         approved_files.append(record.get("filename", "source file"))
     state_store.entity_scopes[entity_name] = "IN_SCOPE"
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    publish_event("ENTITY_INFERENCE_REVIEWED", migration_id, "entity", entity_name,
+                  {"decision": "APPROVE_ENTITY", "scope": "IN_SCOPE",
+                   "files": [{"file_id": item.get("file_id"), "filename": item.get("filename"),
+                              "inference_approval_status": item.get("inference_approval_status"),
+                              "inference_review": item.get("inference_review")}
+                             for item in entity_files.values()],
+                   "comments": comments.strip()}, user.get("name", "Unknown reviewer"))
     state_store.audit_log.append({
         "event": "ENTITY_LEVEL_INFERENCE_APPROVED",
         "actor": user.get("name", "Unknown reviewer"),
@@ -985,6 +993,12 @@ async def confirm_entity_inference(
     }
     approved_for_entity = any(item.get("inference_approval_status") == "APPROVED" for item in entity_files.values())
     state_store.entity_scopes[entity_name] = "IN_SCOPE" if approved_for_entity else "PENDING_DISCOVERY"
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    publish_event("ENTITY_INFERENCE_REVIEWED", migration_id, "source_file", str(record.get("file_id", file_id)),
+                  {"entity": entity_name, "filename": record.get("filename"),
+                   "decision": normalized_decision, "inference_approval_status": record["inference_approval_status"],
+                   "inference": record.get("inference"), "inference_review": record["inference_review"],
+                   "scope": state_store.entity_scopes[entity_name]}, user.get("name", "Unknown reviewer"))
     state_store.audit_log.append({
         "event": "ENTITY_INFERENCE_REVIEWED",
         "actor": user.get("name", "Unknown reviewer"),
@@ -1775,7 +1789,10 @@ async def upload_firm_file(
         raise HTTPException(status_code=400, detail="Knowledge assets must be Markdown, text, CSV/TSV, JSON, or Excel files.")
     content = await file.read()
     try:
-        state_store.add_firm_file(filename, category, content)
+        doc_record = state_store.add_firm_file(filename, category, content)
+        migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+        publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", str(doc_record["id"]),
+                      doc_record, "knowledge-curator")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     destination = return_to if return_to in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
