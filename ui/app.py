@@ -816,78 +816,90 @@ async def save_entity_scopes(request: Request):
 
 @app.post("/api/entities/upload-sample-file")
 async def upload_entity_sample_file(
-    file: UploadFile = File(...),
+    request: Request,
+    files: List[UploadFile] = File(...),
     source_role: str = Form("ENTITY_MASTER"),
     source_context: str = Form(""),
     data_dictionary_notes: str = Form(""),
 ):
-    """Inspect headers and infer the canonical entity; callers do not assign an entity manually."""
-    content = await file.read()
-    try:
-        records = read_source_records(file.filename or "", content)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    headers = list(records[0].keys()) if records else []
-    inference = infer_entity_from_headers(headers, context=" ".join([source_context, data_dictionary_notes]))
-    if inference["status"] == "NEEDS_CLARIFICATION":
-        state_store.questionnaire_data.setdefault("source_inference_clarifications", []).append({
-            "filename": file.filename or "Unknown file",
-            "headers": headers,
-            "source_context": source_context.strip(),
-            "data_dictionary_notes": data_dictionary_notes.strip(),
-            "inference": inference,
-            "information_required": [
-                "Provide the source data dictionary or field definitions.",
-                "Identify the business meaning of the likely primary key.",
-                "Clarify whether the file primarily describes an Account, Household or Client.",
-            ],
-            "created_utc": datetime.now(timezone.utc).isoformat(),
-        })
-        notice = f"Could not confidently infer an entity for {file.filename or 'the uploaded file'}. Add the data dictionary and explain key/relationship semantics, then upload again."
-        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice), status_code=status.HTTP_303_SEE_OTHER)
-    entity_name = inference["entity"]
+    """Batch-inspect files. Optional context refines inference but is never required to attempt it."""
+    get_current_user(request)
     configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
-    if entity_name not in configured_scope:
-        notice = f"{entity_name} was inferred from {file.filename or 'the uploaded file'}, but that entity is out of scope for this migration. The file was not registered for downstream processing."
-        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice), status_code=status.HTTP_303_SEE_OTHER)
-    normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
-    try:
-        record = state_store.attach_entity_sample_file(
-            entity_name, file.filename or "", content, source_role=normalized_role
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    record["inference"] = inference
-    record["inference_approval_status"] = "PENDING"
-    record["source_context"] = source_context.strip()
-    record["data_dictionary_notes"] = data_dictionary_notes.strip()
-    # Agent-assisted discovery runs automatically at ingestion; reviewer approval stays separate.
-    try:
-        agent_analysis = MigrationAgentCoordinator().analyze(
-            records,
-            context=" ".join([source_context.strip(), data_dictionary_notes.strip()]),
-            in_scope=configured_scope,
-        )
-        agent_analysis["file_id"] = record["file_id"]
-        agent_analysis["filename"] = record["filename"]
-        agent_analysis["analyzed_by"] = "XODUS discovery"
-        agent_analysis["analyzed_utc"] = datetime.now(timezone.utc).isoformat()
-        record["agent_analysis"] = agent_analysis
-    except (ValueError, KeyError, TypeError):
-        record["agent_analysis"] = {
-            "classification": {"status": "NEEDS_REVIEW", "entity": entity_name, "message": "Automated analysis needs review; entity approval remains pending."},
-            "profile": {"row_count": len(records), "column_count": len(headers), "candidate_key_fields": []},
-            "mapping": {"proposals": []},
-            "review": {"status": "NEEDS_REVIEW", "blockers": ["Agent analysis did not complete; review the source file manually."]},
-            "file_id": record["file_id"], "filename": record["filename"],
-        }
-    state_store.audit_log.append({
-        "event":"SOURCE_ENTITY_INFERRED","actor":"SourceDiscovery","timestamp_utc":datetime.now(timezone.utc).isoformat(),
-        "details":{"filename":record["filename"],"entity":entity_name,"confidence":inference["confidence"],"status":inference["status"]}
-    })
-    return RedirectResponse(url="/entity-sample-files?uploaded=" + entity_name, status_code=status.HTTP_303_SEE_OTHER)
+    if not configured_scope:
+        raise HTTPException(status_code=400, detail="Select at least one in-scope entity in Migration Setup first.")
 
+    registered, needs_review, excluded, failed = [], [], [], []
+    shared_context = " ".join([source_context.strip(), data_dictionary_notes.strip()]).strip()
+    for file in files:
+        filename = file.filename or "unknown-file"
+        try:
+            content = await file.read()
+            records = read_source_records(filename, content)
+            headers = list(records[0].keys()) if records else []
+            # Always attempt inference from file evidence first; context is optional enrichment.
+            inference = infer_entity_from_headers(headers, context=shared_context)
+        except (ValueError, OSError) as exc:
+            failed.append(f"{filename}: {str(exc)}")
+            continue
 
+        if inference.get("status") == "NEEDS_CLARIFICATION" or not inference.get("entity"):
+            state_store.questionnaire_data.setdefault("source_inference_clarifications", []).append({
+                "filename": filename, "headers": headers,
+                "source_context": source_context.strip(),
+                "data_dictionary_notes": data_dictionary_notes.strip(),
+                "inference": inference,
+                "information_required": ["Review the candidate entities and evidence.", "Optionally clarify key-field or relationship semantics if still ambiguous."],
+                "created_utc": datetime.now(timezone.utc).isoformat(),
+            })
+            needs_review.append(filename)
+            continue
+
+        entity_name = inference["entity"]
+        if entity_name not in configured_scope:
+            excluded.append(f"{filename} ({entity_name})")
+            continue
+
+        normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
+        try:
+            record = state_store.attach_entity_sample_file(entity_name, filename, content, source_role=normalized_role)
+        except ValueError as exc:
+            failed.append(f"{filename}: {str(exc)}")
+            continue
+        record["inference"] = inference
+        record["inference_approval_status"] = "PENDING"
+        record["source_context"] = source_context.strip()
+        record["data_dictionary_notes"] = data_dictionary_notes.strip()
+        try:
+            agent_analysis = MigrationAgentCoordinator().analyze(
+                records, context=shared_context, in_scope=configured_scope,
+            )
+            agent_analysis["file_id"] = record["file_id"]
+            agent_analysis["filename"] = record["filename"]
+            agent_analysis["analyzed_by"] = "XODUS discovery"
+            agent_analysis["analyzed_utc"] = datetime.now(timezone.utc).isoformat()
+            record["agent_analysis"] = agent_analysis
+        except (ValueError, KeyError, TypeError):
+            record["agent_analysis"] = {
+                "classification": {"status": "NEEDS_REVIEW", "entity": entity_name, "message": "Automated analysis needs review; entity approval remains pending."},
+                "profile": {"row_count": len(records), "column_count": len(headers), "candidate_key_fields": []},
+                "mapping": {"proposals": []},
+                "review": {"status": "NEEDS_REVIEW", "blockers": ["Agent analysis did not complete; review the source file manually."]},
+                "file_id": record["file_id"], "filename": record["filename"],
+            }
+        state_store.audit_log.append({
+            "event": "SOURCE_ENTITY_INFERRED", "actor": "SourceDiscovery",
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "details": {"filename": filename, "entity": entity_name,
+                        "confidence": inference.get("confidence"), "status": inference.get("status")},
+        })
+        registered.append(f"{filename} → {entity_name}")
+
+    summary = [f"Batch complete: {len(registered)} classified and registered"]
+    if needs_review: summary.append(f"{len(needs_review)} needs review ({', '.join(needs_review)})")
+    if excluded: summary.append(f"{len(excluded)} excluded as out of scope ({', '.join(excluded)})")
+    if failed: summary.append(f"{len(failed)} failed validation ({'; '.join(failed)})")
+    notice = ". ".join(summary) + ". Optional source details and dictionaries can improve ambiguous results, but are not required to attempt inference."
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/confirm-entity")
