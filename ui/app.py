@@ -977,9 +977,9 @@ async def confirm_entity_inference(
     file_id = str(form.get("file_id", "")).strip()
     normalized_decision = decision.strip().upper()
     if normalized_decision not in {"APPROVE", "REJECT"}:
-        raise HTTPException(status_code=400, detail="Decision must be APPROVE or REJECT.")
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Choose Confirm classification or Reject file.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
     if normalized_decision == "REJECT" and not comments.strip():
-        raise HTTPException(status_code=400, detail="A rejection reason is required.")
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a rejection reason before rejecting this file.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
 
     record = None
     current_entity = None
@@ -1730,8 +1730,8 @@ async def approve_entity_mapping_suggestions(
                 blockers.append(f"{source_field}: already approved to {existing['canonical_field']}")
         if blockers:
             conn.rollback()
-            message = f"Entity-level mapping approval blocked for {entity_name}. Resolve: " + "; ".join(blockers)
-            return RedirectResponse(url="/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
+            message = f"Cannot approve all {entity_name} mappings yet. {len(blockers)} validation issue(s): " + "; ".join(blockers)
+            return RedirectResponse(url="/agent-pipeline?error=" + quote_plus(message) + "#pending-mappings", status_code=status.HTTP_303_SEE_OTHER)
 
         approved_count = 0
         for row in rows:
