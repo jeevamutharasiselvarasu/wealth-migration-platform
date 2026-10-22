@@ -1598,6 +1598,7 @@ async def approve_entity_mapping_suggestions(
             )
             approved_count += 1
         conn.commit()
+        _sync_mapping_information_requests(migration_id)
         state_store.audit_log.append({
             "event": "ENTITY_LEVEL_MAPPING_APPROVED",
             "actor": reviewer_name,
