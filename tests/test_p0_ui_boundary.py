@@ -305,3 +305,14 @@ def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_nav
     assert "Suggested source → canonical fields" in discovery
     assert "Confirm entity" in discovery and "Reject" in discovery
 
+
+
+def test_workflow_validation_errors_use_actionable_ui_modals_not_raw_json():
+    app = (ROOT / "ui" / "app.py").read_text()
+    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    mapping = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    assert 'Enter a rejection reason before rejecting this file.' in app
+    assert 'url="/agent-pipeline?error=" + quote_plus(message)' in app
+    assert 'id="workflow-error-modal"' in discovery
+    assert 'id="workflow-error-modal"' in mapping
+    assert 'Cannot approve all {entity_name} mappings yet.' in app
