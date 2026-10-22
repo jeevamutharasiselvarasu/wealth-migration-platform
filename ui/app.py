@@ -412,6 +412,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             "user_name": user["name"],
             "user_role": user["role"],
             "selected_entities": state_store.get_source_upload_entities(),
+            "in_scope_entities": in_scope_entities,
             "source_uploads": source_uploads,
             "uploaded_entity": uploaded,
             "notice": notice,
