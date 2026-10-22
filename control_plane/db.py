@@ -156,5 +156,28 @@ def init_db() -> None:
         );
     """)
 
+    # Durable information requests; UI state is a projection of this table.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mapping_information_requests (
+            request_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            canonical_field TEXT NOT NULL,
+            source_file TEXT,
+            status TEXT NOT NULL DEFAULT 'OPEN',
+            question TEXT NOT NULL,
+            requested_by TEXT,
+            created_utc TEXT NOT NULL,
+            resolved_utc TEXT,
+            resolution TEXT,
+            response TEXT NOT NULL DEFAULT '',
+            UNIQUE (migration_id, entity_name, canonical_field)
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_mapping_information_requests_status
+        ON mapping_information_requests (migration_id, status, entity_name)
+    """)
+
     conn.commit()
     conn.close()
