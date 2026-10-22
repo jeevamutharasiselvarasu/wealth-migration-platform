@@ -146,7 +146,7 @@ def test_entity_level_approval_ui_and_backend_are_evidence_gated():
     assert 'Approve all {{ entity }} files' in source
     assert '@app.post("/api/mapping-suggestions/approve-entity")' in app
     assert "BEGIN IMMEDIATE" in app
-    assert "SUPPORTED_APPROVED_TRANSFORMS" in app
+    assert "supports_transformation(rule)" in app
     assert 'Approve all {{ suggestion.entity_name }} mappings' in studio
     assert "ENTITY_LEVEL_MAPPING_APPROVED" in app
 
