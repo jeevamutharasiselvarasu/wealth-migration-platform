@@ -102,10 +102,11 @@
     {% if file.inferred_entity not in ['Account','Household','Client'] or not file.scope_eligible %}
     <label class="block text-[9px] font-bold text-[#5A6A88]">Classify this file as
       <select name="target_entity" required class="mt-1 w-full rounded border border-[#D9E3F5] bg-white p-2 text-[10px]">
-        <option value="">Select an in-scope entity…</option>
+        <option value="">Select an entity or scope outcome…</option>
         {% for candidate in ['Account','Household','Client'] %}
         {% if candidate in in_scope_entities %}<option value="{{ candidate }}">{{ candidate }}</option>{% endif %}
         {% endfor %}
+        <option value="OUT_OF_SCOPE">Out of scope</option>
       </select>
     </label>
     {% else %}<input type="hidden" name="target_entity" value="{{ file.inferred_entity }}">{% endif %}
