@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="mx-auto max-w-6xl space-y-5">
+  {% if error %}<div id="workflow-error-modal" role="alertdialog" aria-modal="true" aria-labelledby="workflow-error-title" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+  <section class="w-full max-w-xl rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl">
+    <div class="flex items-start gap-3"><div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-lg font-bold text-rose-700">!</div><div class="min-w-0 flex-1"><h2 id="workflow-error-title" class="text-base font-bold text-slate-900">Action needs attention</h2><p class="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{{ error }}</p></div></div>
+    <div class="mt-5 flex justify-end"><button type="button" onclick="document.getElementById('workflow-error-modal').remove()" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white">Review and fix</button></div>
+  </section>
+</div>{% endif %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
       <div><div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workflow · Step 2</div>
