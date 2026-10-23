@@ -154,6 +154,15 @@ class WorkspaceStateStore:
                     reviewed_scope = payload.get("scope")
                     if reviewed_entity in self.P0_ENTITIES and reviewed_scope in {"IN_SCOPE", "OUT_OF_SCOPE", "PHASE_2", "ARCHIVE_ONLY"}:
                         self.entity_scopes[reviewed_entity] = reviewed_scope
+                elif event["event_type"] == "MAPPING_PROPOSALS_GENERATED":
+                    file_id = str(payload.get("file_id", ""))
+                    if file_id:
+                        for files in self.entity_source_files.values():
+                            for record in files.values():
+                                if str(record.get("file_id", "")) == file_id:
+                                    record["mapping_generated"] = True
+                                    record["last_mapping_run_id"] = payload.get("run_id") or event.get("aggregate_id")
+                                    break
                 elif event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED":
                     doc = dict(payload)
                     if doc and not any(existing.get("id") == doc.get("id") for existing in self.firm_knowledge_docs):
