@@ -190,8 +190,7 @@ async def save_migration_setup(request: Request):
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     current_migration_id = str(state_store.questionnaire_data.get("migration_id", ""))
     if not current_migration_id or current_migration_id == "MIG-UNCONFIGURED":
-        migration_id = f"MIG-{uuid.uuid4().hex[:10].upper()}"
-    state_store.questionnaire_data["migration_id"] = migration_id
+        state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
     state_store.update_questionnaire_from_form({
         "firm_name": setup["migration_name"],
         "migration_name": setup["migration_name"],
@@ -226,8 +225,9 @@ async def load_demo_migration(request: Request):
     if not selected_entities:
         raise HTTPException(status_code=500, detail="Demo migration must configure at least one in-scope entity.")
     setup["entities"] = selected_entities
+    migration_id = f"MIG-{uuid.uuid4().hex[:10].upper()}"
     state_store.questionnaire_data["migration_setup"] = setup
-    state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    state_store.questionnaire_data["migration_id"] = migration_id
     state_store.update_questionnaire_from_form({
         "firm_name": setup.get("migration_name", ""),
         "migration_name": setup.get("migration_name", ""),
