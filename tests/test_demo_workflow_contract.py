@@ -49,3 +49,52 @@ def test_demo_knowledge_references_resolve_to_registered_inputs():
         assert path.is_relative_to(ROOT.resolve())
         assert path.is_file(), f"Knowledge reference is missing: {item['path']}"
         assert path.read_bytes().strip()
+
+
+
+def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import control_plane.db as db
+    import ui.state as state_module
+    import ui.app as app_module
+    from control_plane.services.workflow_event_engine import read_events
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "demo-flow.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    session_id = "phase1-demo-test-session"
+    monkeypatch.setitem(
+        app_module.session_mgr.active_sessions,
+        session_id,
+        {"email": "test@example.invalid", "name": "Phase 1 Test", "role": "Platform Admin"},
+    )
+
+    state = WorkspaceStateStore()
+    monkeypatch.setattr(app_module, "state_store", state)
+
+    with TestClient(app_module.app) as client:
+        response = client.post(
+            "/api/demo/load",
+            cookies={"session_id": session_id},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/entity-sample-files?notice=")
+    migration_id = state.questionnaire_data["migration_id"]
+    assert state.questionnaire_data["migration_setup"]["target_system"] == "Simplicity"
+    assert sum(len(files) for files in state.entity_source_files.values()) == 9
+    assert len(state.firm_knowledge_docs) == 2
+
+    events = read_events(migration_id, limit=5000)
+    assert sum(event["event_type"] == "SOURCE_FILE_UPLOADED" for event in events) == 9
+    assert sum(event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED" for event in events) == 2
+
+    restarted = WorkspaceStateStore()
+    assert restarted.questionnaire_data["migration_id"] == migration_id
+    assert restarted.questionnaire_data["migration_setup"]["target_system"] == "Simplicity"
+    assert sum(len(files) for files in restarted.entity_source_files.values()) == 9
+    assert len(restarted.firm_knowledge_docs) == 2
+    assert restarted.generated_dashboard["knowledge_asset_count"] == 2
