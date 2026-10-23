@@ -1579,31 +1579,45 @@ async def respond_to_mapping_information_request(request_id: str, request: Reque
     answer = response_text.strip()
     if not answer:
         raise HTTPException(status_code=400, detail="A response is required.")
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    _sync_mapping_information_requests(migration_id)
     requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
     item = next((entry for entry in requests if entry.get("request_id") == request_id), None)
     if item is None:
         raise HTTPException(status_code=404, detail="Information request not found.")
     if item.get("status") != "OPEN":
         raise HTTPException(status_code=409, detail="This information request is already closed.")
-    item["response"] = answer
-    item["responded_by"] = user["name"]
-    item["responded_utc"] = datetime.now(timezone.utc).isoformat()
-    item["status"] = "ANSWERED"
+    responded_utc = datetime.now(timezone.utc).isoformat()
     conn = get_db_connection()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        durable = conn.execute(
+            "SELECT status FROM mapping_information_requests WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        if durable is None:
+            conn.rollback()
+            raise HTTPException(status_code=409, detail="Information request is not persisted yet; refresh and retry.")
+        if durable["status"] != "OPEN":
+            conn.rollback()
+            item["status"] = durable["status"]
+            raise HTTPException(status_code=409, detail="This information request was changed by another workflow action.")
         updated = conn.execute(
             """UPDATE mapping_information_requests
                SET response = ?, status = 'ANSWERED'
-               WHERE request_id = ? AND status = 'OPEN'""",
+               WHERE request_id = ?""",
             (answer, request_id),
         )
         if updated.rowcount != 1:
             conn.rollback()
-            raise HTTPException(status_code=409, detail="This information request was changed by another workflow action.")
+            raise HTTPException(status_code=409, detail="Could not persist the information request response; refresh and retry.")
         conn.commit()
     finally:
         conn.close()
-    migration_id = str(item.get("migration_id", state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")))
+    item["response"] = answer
+    item["responded_by"] = user["name"]
+    item["responded_utc"] = responded_utc
+    item["status"] = "ANSWERED"
     publish_event("MAPPING_INFORMATION_REQUEST_CHANGED", migration_id, "information_request", request_id,
                   {"entity": item.get("entity"), "canonical_field": item.get("canonical_field"), "status": "ANSWERED", "response": answer},
                   user["name"])
