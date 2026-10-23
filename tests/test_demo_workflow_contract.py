@@ -329,10 +329,12 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
     )
     monkeypatch.setattr(app_module, "state_store", state)
 
+    # Deliberately omit required Account fields so the route must create
+    # actionable information requests rather than silently guessing.
     sample = (
-        b"ACCOUNT_ID,CUST_CODE_SRC,ADVISOR_REP_NUM,REGISTRATION_SRC_TYPE,ACCOUNT_OPEN_DT\n"
-        b"ACC-1001,SCHW,REP-01,INDV_TAXABLE,2021-03-15\n"
-        b"ACC-1002,FID,REP-02,IRA_ROLL,2022-06-20\n"
+        b"ACCOUNT_ID,ACCOUNT_OPEN_DT\n"
+        b"ACC-1001,2021-03-15\n"
+        b"ACC-1002,2022-06-20\n"
     )
 
     async def journey():
@@ -378,6 +380,24 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
             suggestions = pending.json()["suggestions"]
             account_suggestions = [item for item in suggestions if item["entity_name"] == "Account"]
             assert account_suggestions, "The approved source file should create mapping proposals"
+
+            open_requests = [
+                item for item in state.questionnaire_data.get("mapping_information_requests", [])
+                if item.get("status") == "OPEN"
+            ]
+            assert open_requests, "Missing required canonical fields should create information requests"
+            answered = await client.post(
+                f"/api/mapping-gaps/{open_requests[0]['request_id']}/response",
+                content=urlencode([("response_text", "The source firm will provide the missing account attributes in its follow-up extract.")]),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                follow_redirects=False,
+            )
+            assert answered.status_code == 303
+            assert any(
+                item.get("request_id") == open_requests[0]["request_id"] and item.get("status") == "ANSWERED"
+                for item in state.questionnaire_data["mapping_information_requests"]
+            )
+
             suggestion = account_suggestions[0]
             review_body = urlencode([
                 ("decision", "APPROVED"),
