@@ -140,6 +140,8 @@ class WorkspaceStateStore:
                             record["inferred_entity"] = selected_entity
                             if old_entity != selected_entity:
                                 self.entity_source_files[old_entity].pop(file_key, None)
+                                if self.entity_sample_files.get(old_entity, {}).get("file_id") == file_id:
+                                    self.entity_sample_files.pop(old_entity, None)
                                 new_files = self.entity_source_files.setdefault(selected_entity, {})
                                 new_key = str(record.get("source_role", "ENTITY_MASTER"))
                                 if new_key in new_files:
