@@ -395,7 +395,7 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
 
             reconciliation = await client.get("/reconciliation")
             assert reconciliation.status_code == 200
-            assert "Approved Source-to-Canonical Mappings" in reconciliation.text
+            assert "Approved source-to-canonical mappings" in reconciliation.text
             return file_id, suggestion["suggestion_id"]
 
     file_id, suggestion_id = asyncio.run(journey())
