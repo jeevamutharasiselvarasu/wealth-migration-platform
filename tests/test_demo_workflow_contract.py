@@ -386,6 +386,16 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
                 if item.get("status") == "OPEN"
             ]
             assert open_requests, "Missing required canonical fields should create information requests"
+            info_conn = db.get_db_connection()
+            try:
+                persisted_request = info_conn.execute(
+                    "SELECT request_id, status, migration_id FROM mapping_information_requests WHERE request_id = ?",
+                    (open_requests[0]["request_id"],),
+                ).fetchone()
+            finally:
+                info_conn.close()
+            assert persisted_request is not None, f"Information request missing from SQLite: {open_requests[0]['request_id']}"
+            assert persisted_request["status"] == "OPEN", dict(persisted_request)
             answered = await client.post(
                 f"/api/mapping-gaps/{open_requests[0]['request_id']}/response",
                 content=urlencode([("response_text", "The source firm will provide the missing account attributes in its follow-up extract.")]),
