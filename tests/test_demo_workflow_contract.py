@@ -176,3 +176,101 @@ def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
     assert restarted.entity_scopes["Account"] == "PENDING_DISCOVERY"
     assert restarted.entity_scopes["Client"] == "PENDING_DISCOVERY"
     assert restarted.entity_scopes["Household"] == "PENDING_DISCOVERY"
+
+
+
+def test_live_inference_confirmation_moves_file_and_survives_restart(tmp_path, monkeypatch):
+    import asyncio
+    from urllib.parse import urlencode
+
+    import httpx
+
+    import control_plane.db as db
+    import ui.state as state_module
+    import ui.app as app_module
+    from control_plane.services.workflow_event_engine import publish_event
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "reclassification.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    session_id = "phase1-reclassification-session"
+    monkeypatch.setitem(
+        app_module.session_mgr.active_sessions,
+        session_id,
+        {"email": "test@example.invalid", "name": "Data Steward", "role": "Domain SME"},
+    )
+
+    state = WorkspaceStateStore()
+    migration_id = "MIG-LIVE-RECLASSIFICATION"
+    setup = {"entities": ["Account", "Client", "Household"], "target_system": "Simplicity"}
+    state.questionnaire_data.update({
+        "migration_id": migration_id,
+        "migration_setup": setup,
+        "target_system": "Simplicity",
+    })
+    publish_event(
+        "MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id,
+        {"migration_id": migration_id, "migration_setup": setup, "target_system": "Simplicity"},
+        "Data Steward",
+    )
+    publish_event(
+        "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
+        {"scopes": {"Account": "PENDING_DISCOVERY", "Client": "PENDING_DISCOVERY", "Household": "PENDING_DISCOVERY"}},
+        "Data Steward",
+    )
+    record = state.attach_entity_sample_file(
+        "Needs clarification", "ambiguous_source.csv", b"SOURCE_KEY,RECORD_CODE\nA-1,R-1\n"
+    )
+    record["inference"] = {"status": "NEEDS_CLARIFICATION", "entity": None, "evidence": {}}
+    record["inference_approval_status"] = "PENDING"
+    record["discovery_status"] = "PENDING_REVIEW"
+    publish_event(
+        "SOURCE_FILE_UPLOADED", migration_id, "source_file", record["file_id"],
+        app_module._workflow_safe_source_payload(record, "Needs clarification", "ENTITY_MASTER"),
+        "Data Steward",
+    )
+    monkeypatch.setattr(app_module, "state_store", state)
+
+    async def confirm():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver",
+            cookies={"session_id": session_id},
+        ) as client:
+            return await client.post(
+                "/api/entities/confirm-inference",
+                content=urlencode([
+                    ("entity_name", "Needs clarification"),
+                    ("decision", "APPROVE"),
+                    ("comments", "Confirmed by the data steward"),
+                    ("target_entity", "Account"),
+                    ("file_id", record["file_id"]),
+                ]),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                follow_redirects=False,
+            )
+
+    response = asyncio.run(confirm())
+    assert response.status_code == 303
+    assert not any(
+        item.get("file_id") == record["file_id"]
+        for item in state.entity_source_files.get("Needs clarification", {}).values()
+    )
+    moved = next(
+        item for item in state.entity_source_files["Account"].values()
+        if item.get("file_id") == record["file_id"]
+    )
+    assert moved["entity_name"] == "Account"
+    assert moved["inference_approval_status"] == "APPROVED"
+    assert state.entity_sample_files["Account"]["file_id"] == record["file_id"]
+    assert state.entity_scopes["Account"] == "IN_SCOPE"
+
+    restarted = WorkspaceStateStore()
+    restored = next(
+        item for item in restarted.entity_source_files["Account"].values()
+        if item.get("file_id") == record["file_id"]
+    )
+    assert restored["entity_name"] == "Account"
+    assert restored["inference_approval_status"] == "APPROVED"
+    assert restored["inference_review"]["reviewer"] == "Data Steward"
