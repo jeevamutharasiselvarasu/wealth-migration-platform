@@ -134,14 +134,18 @@ class WorkspaceStateStore:
                             if field in reviewed:
                                 record[field] = reviewed[field]
                         selected_entity = str(reviewed.get("entity") or payload.get("entity") or old_entity or "")
-                        if selected_entity in self.P0_ENTITIES and old_entity != selected_entity:
-                            self.entity_source_files[old_entity].pop(file_key, None)
-                            new_files = self.entity_source_files.setdefault(selected_entity, {})
-                            new_key = str(record.get("source_role", "ENTITY_MASTER"))
-                            if new_key in new_files:
-                                new_key = new_key + ":" + str(record.get("filename", "source")) + ":" + file_id
-                            new_files[new_key] = record
-                            old_entity = selected_entity
+                        if selected_entity in self.P0_ENTITIES:
+                            record["entity"] = selected_entity
+                            record["entity_name"] = selected_entity
+                            record["inferred_entity"] = selected_entity
+                            if old_entity != selected_entity:
+                                self.entity_source_files[old_entity].pop(file_key, None)
+                                new_files = self.entity_source_files.setdefault(selected_entity, {})
+                                new_key = str(record.get("source_role", "ENTITY_MASTER"))
+                                if new_key in new_files:
+                                    new_key = new_key + ":" + str(record.get("filename", "source")) + ":" + file_id
+                                new_files[new_key] = record
+                                old_entity = selected_entity
                         if record.get("source_role") in {"ENTITY_MASTER", "ACCOUNT_MASTER"} and old_entity in self.P0_ENTITIES:
                             self.entity_sample_files[old_entity] = record
                     reviewed_entity = str(payload.get("entity") or event.get("aggregate_id") or "")
