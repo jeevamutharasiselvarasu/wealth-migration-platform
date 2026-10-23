@@ -379,16 +379,25 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
             account_suggestions = [item for item in suggestions if item["entity_name"] == "Account"]
             assert account_suggestions, "The approved source file should create mapping proposals"
             suggestion = account_suggestions[0]
+            review_body = urlencode([
+                ("decision", "APPROVED"),
+                ("reviewer", "Data Steward"),
+                ("comments", "Verified against the canonical Account contract"),
+            ])
+            review_headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+            # A signed-in analyst may propose mappings but may not approve them.
+            app_module.session_mgr.active_sessions[session_id]["role"] = "Migration Analyst"
+            forbidden = await client.post(
+                f"/api/mapping-suggestions/{suggestion['suggestion_id']}/review",
+                content=review_body, headers=review_headers, follow_redirects=False,
+            )
+            assert forbidden.status_code == 403
+            app_module.session_mgr.active_sessions[session_id]["role"] = "Domain SME"
 
             reviewed = await client.post(
                 f"/api/mapping-suggestions/{suggestion['suggestion_id']}/review",
-                content=urlencode([
-                    ("decision", "APPROVED"),
-                    ("reviewer", "Data Steward"),
-                    ("comments", "Verified against the canonical Account contract"),
-                ]),
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                follow_redirects=False,
+                content=review_body, headers=review_headers, follow_redirects=False,
             )
             assert reviewed.status_code == 200
             assert reviewed.json()["suggestion"]["status"] == "APPROVED"
