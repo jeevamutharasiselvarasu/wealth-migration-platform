@@ -191,7 +191,8 @@ async def save_migration_setup(request: Request):
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     current_migration_id = str(state_store.questionnaire_data.get("migration_id", ""))
     if not current_migration_id or current_migration_id == "MIG-UNCONFIGURED":
-        state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+        migration_id = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    state_store.questionnaire_data["migration_id"] = migration_id
     state_store.update_questionnaire_from_form({
         "firm_name": setup["migration_name"],
         "migration_name": setup["migration_name"],
@@ -236,8 +237,25 @@ async def load_demo_migration(request: Request):
     })
     state_store.entity_sample_files.clear()
     state_store.entity_source_files.clear()
+    state_store.firm_knowledge_docs.clear()
     for entity in {"Account", "Household", "Client"}:
         state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
+
+    context_payload = {
+        "migration_id": migration_id,
+        "firm_name": setup.get("migration_name", ""),
+        "migration_name": setup.get("migration_name", ""),
+        "source_systems": setup.get("source_details", ""),
+        "target_system": setup.get("target_system", ""),
+        "migration_setup": setup,
+    }
+    state_store.questionnaire_data.update(context_payload)
+    publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
+    publish_event(
+        "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
+        {"scopes": {entity: state_store.entity_scopes[entity] for entity in ("Account", "Household", "Client")}},
+        user["name"],
+    )
 
     loaded_files = []
     for item in manifest.get("source_files", []):
@@ -250,28 +268,56 @@ async def load_demo_migration(request: Request):
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=500, detail=f"Demo source file could not be read: {source_path.name}") from exc
         headers = list(records[0].keys()) if records else []
-        # Use the file's stated purpose for entity classification. Dictionary notes may
-        # mention linked entities and should remain mapping evidence, not make a
-        # relationship extract ambiguous during entity inference.
-        inference = infer_entity_from_headers(
-            headers,
-            context=str(item.get("context", "")),
+        source_context = str(item.get("context", ""))
+        dictionary_notes = str(item.get("dictionary_notes", ""))
+        from control_plane.services.entity_classification_agent import classify_source_file
+        inference = classify_source_file(
+            headers, records=records,
+            context=" ".join(part for part in (source_context, dictionary_notes) if part).strip(),
         )
-        if not inference.get("entity") or inference.get("status") == "NEEDS_CLARIFICATION":
-            raise HTTPException(status_code=500, detail=f"Demo source file needs better inference evidence: {source_path.name}")
-        entity_name = inference["entity"]
-        if entity_name not in selected_entities:
+        entity_name = inference.get("entity")
+        if inference.get("status") == "NEEDS_CLARIFICATION" or entity_name not in {"Account", "Household", "Client"}:
+            entity_name = "Needs clarification"
+        elif entity_name not in selected_entities:
             loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": "EXCLUDED_OUT_OF_SCOPE"})
             continue
-        source_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
+        source_role = str(item.get("source_role") or ("ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"))
         record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
         record["inference"] = inference
+        record["inferred_entity"] = entity_name
         record["inference_approval_status"] = "PENDING"
         record["discovery_status"] = "PENDING_REVIEW"
-        record["source_context"] = str(item.get("context", ""))
-        record["data_dictionary_notes"] = str(item.get("dictionary_notes", ""))
+        record["source_context"] = source_context
+        record["data_dictionary_notes"] = dictionary_notes
+        publish_event(
+            "SOURCE_FILE_UPLOADED", migration_id, "source_file", str(record["file_id"]),
+            {**record, "entity": entity_name, "source_role": source_role}, user["name"],
+        )
         loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
 
+    knowledge_items = manifest.get("knowledge_files") or [
+        {"path": setup.get("knowledge_schema_ref", ""), "category": "data_dictionary"},
+        {"path": setup.get("knowledge_rules_ref", ""), "category": "transformation_rule"},
+    ]
+    registered_knowledge = []
+    for item in knowledge_items:
+        relative_path = str(item.get("path", "")).strip()
+        if not relative_path:
+            continue
+        knowledge_path = (Path(root_dir) / relative_path).resolve()
+        if not knowledge_path.is_relative_to(Path(root_dir).resolve()):
+            raise HTTPException(status_code=400, detail="Demo knowledge path is outside the repository.")
+        try:
+            knowledge_content = knowledge_path.read_bytes()
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Demo knowledge asset could not be read: {knowledge_path.name}") from exc
+        try:
+            doc = state_store.add_firm_file(knowledge_path.name, str(item.get("category", "mapping_reference")), knowledge_content)
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail=f"Demo knowledge asset could not be registered: {knowledge_path.name}") from exc
+        doc["source_path"] = relative_path
+        publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", doc["id"], doc, user["name"])
+        registered_knowledge.append(doc)
 
     state_store.audit_log.append({
         "event": "DEMO_MIGRATION_LOADED",
@@ -279,7 +325,7 @@ async def load_demo_migration(request: Request):
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(manifest.get('knowledge_files', []))} knowledge assets registered. Review each inferred file below."), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered. Review each inferred file below."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/agent-studio", response_class=HTMLResponse)
