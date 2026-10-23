@@ -914,7 +914,6 @@ async def upload_entity_sample_file(
             if record.pop("_duplicate_upload", False):
                 duplicates.append(filename)
                 continue
-            publish_event("SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")), "source_file", str(record["file_id"]), {**record, "entity": entity_name, "source_role": normalized_role}, "migration-analyst")
         except ValueError as exc:
             failed.append(f"{filename}: {str(exc)}")
             continue
@@ -939,6 +938,14 @@ async def upload_entity_sample_file(
                 "review": {"status": "NEEDS_REVIEW", "blockers": ["Agent analysis did not complete; review the source file manually."]},
                 "file_id": record["file_id"], "filename": record["filename"],
             }
+        # Publish only after inference, source context, dictionary notes, and analysis
+        # are attached so the durable event contains the complete reviewable file record.
+        publish_event(
+            "SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")),
+            "source_file", str(record["file_id"]),
+            {**record, "entity": entity_name, "source_role": normalized_role},
+            "migration-analyst",
+        )
         state_store.audit_log.append({
             "event": "SOURCE_ENTITY_INFERRED", "actor": "SourceDiscovery",
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
