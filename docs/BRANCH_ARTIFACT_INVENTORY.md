@@ -1,8 +1,8 @@
 # Branch Artifact Inventory and Removal Assessment
 
 - Branch: `feature/xodus-three-entity-pilot-integrated`
-- Audited tree snapshot: `a46b99b395cbd0b7c2c73d9960d2b38db11da154`
-- Method: Git recursive tree (**110 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
+- Audited tree snapshot: `e781285e32c5eea27e7771271cfcee7f20140e1e`
+- Method: Git recursive tree (**123 tracked files**; blob entries counted separately from tree/directory entries), plus inspection of `ui/app.py`, active templates, P0 boundary tests, README, demo/test fixtures, scripts, `.gitignore`, Compose configuration, and Python import/test references.
 - This report is committed separately from the audited tree snapshot; update the snapshot/count after any subsequent repository changes.
 - Scope baseline: P0 source-to-canonical mapping for Account, Household, Client. Target loading, reverse mapping, actual wave assignment, cutover, sleeve/allocation processing, and production connectors are deferred.
 - **Removal decisions are evidence-based and scope-limited.** Source modules still require import, runtime route, test, deployment, and documentation checks before removal.
@@ -16,7 +16,7 @@
 
 ## Findings that change the cleanup plan
 
-1. The audited recursive tree has **110 tracked file blobs** (directory entries are counted separately) and is not truncated.
+1. The audited recursive tree has **123 tracked file blobs** (directory entries are counted separately) and is not truncated.
 2. The 11 files under `ui/static/components/` were removed after checking all active templates and the base template: none loads these files, and the templates contain no references to their paths. This removes orphaned assets, not the active server-rendered workflow.
 3. The current tree does **not** contain `App_Data/controlplane.db`, a `dist/` package, generated `App_Data/Storage/` outputs, or tracked `__pycache__/` files. Do not schedule deletions for files absent from this snapshot.
 4. `ui/app.py` currently imports the orchestrator, schema mapper, cutover agent, audit agent, storage manager, profiler, MCL validation, source adapter, entity inference, wave rules, ADF client/exporter, and database layer. These modules are **not safe to remove solely because they sound legacy**.
@@ -306,3 +306,16 @@ Do not delete the active ADF/wave/cutover boundaries or Docker/Bicep files in is
 - The old `/api/pipeline/run` endpoint is retained only as a compatibility response: it now requires a signed-in session and returns HTTP 409 explaining that the legacy cohort pipeline is retired and directing users to Source Discovery, Mapping Studio, and Mapping Review for Account, Household, and Client.
 - `tests/test_orchestrator.py` was replaced by `tests/test_deferred_execution_boundaries.py`, retaining the checks that wave conditions are displayed but not assigned and that ADF mock mode never claims a real run. The new test also guards the legacy route boundary and P0 mapping route presence.
 - The current recursive tree snapshot contains 110 tracked file blobs before this inventory update. The nine demo source files, dedicated mapping approval/rejection fixtures, inference rules, canonical model, and active P0 workflow code are retained.
+
+
+## Phase 1 baseline — local end-to-end workflow (2026-10-23)
+
+- Branch HEAD reviewed: `e781285e32c5eea27e7771271cfcee7f20140e1e` (`Align mapping approval contract test with transformation registry`).
+- Current recursive tree: `e781285e32c5eea27e7771271cfcee7f20140e1e`; 123 tracked file blobs. This section supersedes the older audited-tree snapshot for current workflow findings; it does not authorize removal by itself.
+- CI evidence: workflow run [#580](https://github.com/jeevamutharasiselvarasu/wealth-migration-platform/actions/runs/39837798840) completed successfully, including dependency installation, Python compilation and `pytest -q`. This verifies the automated Python suite at that commit; it does **not** verify a browser-driven journey.
+- Current UI entry sequence in `ui/app.py`: login → persona selection → migration setup → dashboard; `/api/demo/load` redirects into Source Discovery. The primary P0 workflow then uses `/entity-sample-files` for upload/inference review, `/api/entities/map-approved-files` to create mapping proposals, `/agent-pipeline` for single/bulk review and information requests, and `/reconciliation` for validation evidence.
+- Existing foundations to preserve: `WorkspaceStateStore` stores uploaded files and rehydrates from SQLite/event history; `source_file_adapter.py` reads CSV/TSV/XLSX/XLSM/XLS/JSON; mapping review and information requests are persisted; MCL validation checks Account, Household and Client keys/relationships.
+- Contract discrepancy to resolve in tests/docs: `tests/test_mcl_flow.py` still names its Client mapping test `test_client_source_maps_to_party_canonical_fields`. Its assertions use Client canonical fields, but the test name preserves obsolete Party terminology. The P0 contract is **Client only; no Party entity**.
+- Workflow duplication to trace before removal: `ui/app.py` contains both the integrated upload → approved-file proposal/review workflow and legacy per-entity `/api/pilot/{account,household,client}/profile|map|lineage` endpoints. Do not delete these handlers until active-template, route, test and import references are verified; the integrated UI should have one clear source of truth.
+- State/persistence verification already represented by focused tests: `tests/test_source_file_lifecycle.py`, `tests/test_workflow_state_restart.py`, `tests/test_workflow_event_engine.py`, `tests/test_mapping_request_propagation.py`, and `tests/test_p0_ui_boundary.py`. These tests are useful foundations, but CI passing does not establish that every form/button completes the entire browser journey.
+- Phase 1 exit criteria: verify the route-to-handler transitions above; exercise single and bulk approve/reject, registered transformation review, information-request response, mapping/lineage persistence after state-store restart, and validation output from the same approved source files. Then run the journey through a browser or HTTP integration test using a clean temporary SQLite/upload directory. No target loading, reverse mapping, wave assignment or new architecture is introduced in this phase.
