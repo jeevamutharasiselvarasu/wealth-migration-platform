@@ -117,6 +117,12 @@ def test_inference_review_decision_survives_workspace_restart(tmp_path, monkeypa
         "ENTITY_INFERENCE_REVIEWED", migration_id, "source_file", record["file_id"],
         review, "Data Steward",
     )
+    engine.publish_event(
+        "MAPPING_PROPOSALS_GENERATED", migration_id, "mapping_run", "RUN-RESTART-MAP",
+        {"entity": "Account", "source_file": "accounts.csv", "file_id": record["file_id"],
+         "run_id": "RUN-RESTART-MAP", "proposal_count": 3},
+        "Migration Analyst",
+    )
 
     restarted = WorkspaceStateStore()
     restored = next(
@@ -131,5 +137,7 @@ def test_inference_review_decision_survives_workspace_restart(tmp_path, monkeypa
     assert restored["inference_approval_status"] == "APPROVED"
     assert restored["discovery_status"] == "APPROVED"
     assert restored["inference_review"]["reviewer"] == "Data Steward"
+    assert restored["mapping_generated"] is True
+    assert restored["last_mapping_run_id"] == "RUN-RESTART-MAP"
     assert restarted.entity_scopes["Account"] == "IN_SCOPE"
 
