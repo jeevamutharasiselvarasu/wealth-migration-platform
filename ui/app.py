@@ -57,6 +57,24 @@ def get_current_user(request: Request) -> Dict[str, str]:
     return session
 
 
+def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, source_role: str) -> Dict[str, Any]:
+    """Persist source metadata and evidence without duplicating sampled client values in the event log."""
+    payload = {**record, "entity": entity_name, "source_role": source_role}
+
+    def remove_samples(value):
+        if isinstance(value, dict):
+            return {
+                key: remove_samples(item)
+                for key, item in value.items()
+                if key not in {"sample_value", "sample_values"}
+            }
+        if isinstance(value, list):
+            return [remove_samples(item) for item in value]
+        return value
+
+    return remove_samples(payload)
+
+
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
         "request": request,
@@ -295,7 +313,7 @@ async def load_demo_migration(request: Request):
         record["data_dictionary_notes"] = dictionary_notes
         publish_event(
             "SOURCE_FILE_UPLOADED", migration_id, "source_file", str(record["file_id"]),
-            {**record, "entity": entity_name, "source_role": source_role}, user["name"],
+            _workflow_safe_source_payload(record, entity_name, source_role), user["name"],
         )
         loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
 
@@ -951,7 +969,7 @@ async def upload_entity_sample_file(
         publish_event(
             "SOURCE_FILE_UPLOADED", str(record.get("migration_id", "MIG-UNCONFIGURED")),
             "source_file", str(record["file_id"]),
-            {**record, "entity": entity_name, "source_role": normalized_role},
+            _workflow_safe_source_payload(record, entity_name, normalized_role),
             "migration-analyst",
         )
         state_store.audit_log.append({
