@@ -64,3 +64,66 @@ def test_state_store_rehydrates_between_workflow_stages(tmp_path, monkeypatch):
     assert third.entity_sample_files["Account"]["filename"] == "accounts.csv"
     assert any(item.get("id") == doc["id"] for item in third.firm_knowledge_docs)
     assert third.generated_dashboard["knowledge_asset_count"] == 1
+
+def test_inference_review_decision_survives_workspace_restart(tmp_path, monkeypatch):
+    import control_plane.db as db
+    import ui.state as state_module
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "review-restart.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    init_db()
+    engine._ensure_event_table()
+
+    first = WorkspaceStateStore()
+    migration_id = "MIG-INFERENCE-RESTART"
+    context = {
+        "migration_id": migration_id,
+        "firm_name": "CoreCap to Simplicity",
+        "migration_setup": {"entities": ["Account", "Client", "Household"]},
+    }
+    first.questionnaire_data.update(context)
+    engine.publish_event(
+        "MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id,
+        context, "analyst",
+    )
+    record = first.attach_entity_sample_file(
+        "Account", "accounts.csv", b"ACCOUNT_ID,CLIENT_ID\nA-1,C-1\n"
+    )
+    record["inference"] = {
+        "status": "INFERRED",
+        "entity": "Account",
+        "evidence": {"Account": {"matched_fields": ["ACCOUNT_ID"], "signature_fields": ["ACCOUNT_ID"]}},
+    }
+    record["inference_approval_status"] = "PENDING"
+    record["discovery_status"] = "PENDING_REVIEW"
+    engine.publish_event(
+        "SOURCE_FILE_UPLOADED", migration_id, "source_file", record["file_id"],
+        {**record, "entity": "Account"}, "analyst",
+    )
+    review = {
+        "decision": "APPROVE",
+        "entity": "Account",
+        "inference": {**record["inference"], "status": "INFERRED", "entity": "Account"},
+        "inference_approval_status": "APPROVED",
+        "discovery_status": "APPROVED",
+        "inference_review": {
+            "decision": "APPROVE", "reviewer": "Data Steward",
+            "comments": "Reviewed header evidence", "reviewed_utc": "2026-10-23T00:00:00+00:00",
+        },
+        "scope": "IN_SCOPE",
+    }
+    engine.publish_event(
+        "ENTITY_INFERENCE_REVIEWED", migration_id, "source_file", record["file_id"],
+        review, "Data Steward",
+    )
+
+    restarted = WorkspaceStateStore()
+    restored = next(
+        item for item in restarted.entity_source_files["Account"].values()
+        if item.get("file_id") == record["file_id"]
+    )
+    assert restored["inference_approval_status"] == "APPROVED"
+    assert restored["discovery_status"] == "APPROVED"
+    assert restored["inference_review"]["reviewer"] == "Data Steward"
+    assert restarted.entity_scopes["Account"] == "IN_SCOPE"
+
