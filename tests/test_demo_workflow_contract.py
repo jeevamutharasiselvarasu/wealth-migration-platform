@@ -121,6 +121,8 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
 
 def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
     import asyncio
+    from urllib.parse import urlencode
+
     import httpx
 
     import control_plane.db as db
@@ -148,7 +150,7 @@ def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
         ) as client:
             return await client.post(
                 "/api/migration/setup",
-                data=[
+                content=urlencode([
                     ("migration_name", "CoreCap to Simplicity"),
                     ("source_firm", "CoreCap"),
                     ("target_system", "Simplicity"),
@@ -157,7 +159,8 @@ def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
                     ("entities", "Account"),
                     ("entities", "Client"),
                     ("entities", "Household"),
-                ],
+                ]),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
                 follow_redirects=False,
             )
 
