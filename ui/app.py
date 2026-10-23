@@ -1247,6 +1247,9 @@ def _sync_mapping_information_requests(migration_id: str) -> None:
                       status, question, requested_by, created_utc, resolved_utc, resolution, response
                FROM mapping_information_requests ORDER BY created_utc, request_id"""
         ).fetchall()
+        # Commit inserts/upserts before closing this connection; otherwise SQLite
+        # rolls them back and the in-memory list can advertise requests that do not exist.
+        conn.commit()
     finally:
         conn.close()
 
