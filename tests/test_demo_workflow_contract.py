@@ -457,3 +457,163 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
         ).fetchone()
     finally:
         conn.close()
+
+
+
+def test_client_bulk_mapping_approval_is_atomic_and_error_popup_keeps_review_anchor(tmp_path, monkeypatch):
+    import asyncio
+    from urllib.parse import parse_qs, urlencode, urlparse
+
+    import httpx
+
+    import control_plane.db as db
+    import ui.app as app_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "client-bulk-review.db")
+    monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    session_id = "phase1-client-bulk-review-session"
+    monkeypatch.setitem(
+        app_module.session_mgr.active_sessions,
+        session_id,
+        {"email": "sme@example.invalid", "name": "Client Reviewer", "role": "Domain SME"},
+    )
+    state = WorkspaceStateStore()
+    migration_id = "MIG-CLIENT-BULK-ATOMIC"
+    state.questionnaire_data.update({
+        "migration_id": migration_id,
+        "target_system": "Simplicity",
+        "migration_setup": {
+            "migration_id": migration_id,
+            "migration_name": "CoreCap to Simplicity",
+            "source_details": "CoreCap",
+            "target_system": "Simplicity",
+            "entities": ["Account", "Client", "Household"],
+        },
+    })
+    monkeypatch.setattr(app_module, "state_store", state)
+    db.init_db()
+
+    conn = db.get_db_connection()
+    try:
+        conn.executemany(
+            """INSERT INTO mapping_suggestions
+               (suggestion_id, run_id, migration_id, entity_name, source_field,
+                canonical_field, proposed_rule, confidence_score, status, created_utc)
+               VALUES (?, ?, ?, 'Client', ?, ?, ?, 0.92, 'PENDING', ?)""",
+            [
+                ("SUG-CLIENT-1", "RUN-CLIENT-1", migration_id, "CLIENT_KEY_SRC", "client_id", "DIRECT_COPY", "2026-10-23T10:00:00Z"),
+                ("SUG-CLIENT-2", "RUN-CLIENT-1", migration_id, "LEGAL_NAME_SRC", "legal_name", "DIRECT_COPY", "2026-10-23T10:01:00Z"),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    async def post_bulk(client, comments="Reviewed Client mappings"):
+        return await client.post(
+            "/api/mapping-suggestions/approve-entity",
+            content=urlencode([
+                ("entity_name", "Client"),
+                ("reviewer", "Untrusted form reviewer"),
+                ("comments", comments),
+            ]),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver",
+            cookies={"session_id": session_id},
+        ) as client:
+            # A valid Client batch is approved together, using the authenticated reviewer.
+            approved = await post_bulk(client)
+            assert approved.status_code == 303
+            assert approved.headers["location"].endswith("#pending-mappings")
+            conn = db.get_db_connection()
+            try:
+                rows = conn.execute(
+                    "SELECT suggestion_id, status, reviewer FROM mapping_suggestions WHERE migration_id = ? ORDER BY suggestion_id",
+                    (migration_id,),
+                ).fetchall()
+                assert [(row["suggestion_id"], row["status"]) for row in rows] == [
+                    ("SUG-CLIENT-1", "APPROVED"), ("SUG-CLIENT-2", "APPROVED")
+                ]
+                assert all(row["reviewer"] == "Client Reviewer" for row in rows)
+                assert conn.execute(
+                    "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND entity_name = 'Client' AND is_confirmed = 1",
+                    (migration_id,),
+                ).fetchone()[0] == 2
+            finally:
+                conn.close()
+
+            # A single unsupported transform must block the entire pending batch.
+            conn = db.get_db_connection()
+            try:
+                conn.executemany(
+                    """INSERT INTO mapping_suggestions
+                       (suggestion_id, run_id, migration_id, entity_name, source_field,
+                        canonical_field, proposed_rule, confidence_score, status, created_utc)
+                       VALUES (?, ?, ?, 'Client', ?, ?, ?, 0.92, 'PENDING', ?)""",
+                    [
+                        ("SUG-CLIENT-3", "RUN-CLIENT-2", migration_id, "CLIENT_STATUS_SRC", "client_status", "DIRECT_COPY", "2026-10-23T10:02:00Z"),
+                        ("SUG-CLIENT-4", "RUN-CLIENT-2", migration_id, "CLIENT_TYPE_SRC", "client_type", "UNSAFE_EVAL", "2026-10-23T10:03:00Z"),
+                    ],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            blocked = await post_bulk(client, "Please validate all rules")
+            assert blocked.status_code == 303
+            location = blocked.headers["location"]
+            assert "#pending-mappings" in location
+            error_text = parse_qs(urlparse(location).query).get("error", [""])[0]
+            assert "UNSAFE_EVAL" in error_text
+
+            conn = db.get_db_connection()
+            try:
+                statuses = conn.execute(
+                    "SELECT status FROM mapping_suggestions WHERE migration_id = ? AND suggestion_id IN ('SUG-CLIENT-3', 'SUG-CLIENT-4') ORDER BY suggestion_id",
+                    (migration_id,),
+                ).fetchall()
+                assert [row["status"] for row in statuses] == ["PENDING", "PENDING"]
+                assert conn.execute(
+                    "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND source_field IN ('CLIENT_STATUS_SRC', 'CLIENT_TYPE_SRC') AND is_confirmed = 1",
+                    (migration_id,),
+                ).fetchone()[0] == 0
+            finally:
+                conn.close()
+
+            # The error route must render the accessible popup and retain the queue anchor.
+            page = await client.get("/agent-pipeline?" + urlencode({"error": error_text}) + "#pending-mappings")
+            assert page.status_code == 200
+            assert 'id="workflow-error-modal"' in page.text
+            assert 'role="alertdialog"' in page.text
+            assert 'id="pending-mappings"' in page.text
+
+            # Once the unsupported rule is corrected, the same pending Client batch can be approved.
+            conn = db.get_db_connection()
+            try:
+                conn.execute(
+                    "UPDATE mapping_suggestions SET proposed_rule = 'DIRECT_COPY' WHERE suggestion_id = 'SUG-CLIENT-4'"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            recovered = await post_bulk(client, "Approved after correcting the registered rule")
+            assert recovered.status_code == 303
+            assert recovered.headers["location"].endswith("#pending-mappings")
+            conn = db.get_db_connection()
+            try:
+                statuses = conn.execute(
+                    "SELECT status FROM mapping_suggestions WHERE migration_id = ? AND suggestion_id IN ('SUG-CLIENT-3', 'SUG-CLIENT-4') ORDER BY suggestion_id",
+                    (migration_id,),
+                ).fetchall()
+                assert [row["status"] for row in statuses] == ["APPROVED", "APPROVED"]
+            finally:
+                conn.close()
+
+    asyncio.run(exercise())
