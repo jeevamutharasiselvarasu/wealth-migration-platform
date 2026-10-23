@@ -53,7 +53,8 @@ def test_demo_knowledge_references_resolve_to_registered_inputs():
 
 
 def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
+    import asyncio
+    import httpx
 
     import control_plane.db as db
     import ui.state as state_module
@@ -74,12 +75,16 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     state = WorkspaceStateStore()
     monkeypatch.setattr(app_module, "state_store", state)
 
-    with TestClient(app_module.app) as client:
-        response = client.post(
-            "/api/demo/load",
-            cookies={"session_id": session_id},
-            follow_redirects=False,
-        )
+    async def post_demo_load():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.post(
+                "/api/demo/load",
+                cookies={"session_id": session_id},
+                follow_redirects=False,
+            )
+
+    response = asyncio.run(post_demo_load())
 
     assert response.status_code == 303
     assert response.headers["location"].startswith("/entity-sample-files?notice=")
