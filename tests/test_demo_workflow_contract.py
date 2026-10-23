@@ -392,7 +392,7 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 follow_redirects=False,
             )
-            assert answered.status_code == 303
+            assert answered.status_code == 303, answered.text
             assert any(
                 item.get("request_id") == open_requests[0]["request_id"] and item.get("status") == "ANSWERED"
                 for item in state.questionnaire_data["mapping_information_requests"]
