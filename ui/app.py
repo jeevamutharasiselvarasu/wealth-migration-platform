@@ -1693,8 +1693,15 @@ async def review_source_mapping_suggestion(
     request: Request = None,
 ):
     """Record an explicit approve/reject decision and prevent repeat review."""
+    if request is not None:
+        user = get_current_user(request)
+        if user.get("role") not in {"Platform Admin", "Domain SME"}:
+            raise HTTPException(status_code=403, detail="Only Platform Admin or Domain SME may approve or reject mappings.")
+        reviewer_name = str(user.get("name", "")).strip()
+    else:
+        # Direct service-level invocation is retained for focused unit tests.
+        reviewer_name = reviewer.strip()
     normalized = decision.strip().upper()
-    reviewer_name = reviewer.strip()
     if normalized not in {"APPROVED", "REJECTED"}:
         raise HTTPException(status_code=400, detail="Decision must be APPROVED or REJECTED.")
     if not reviewer_name:
@@ -1789,7 +1796,9 @@ async def approve_entity_mapping_suggestions(
 ):
     """Approve all pending mappings for one entity atomically, only when every proposal is valid."""
     user = get_current_user(request)
-    reviewer_name = reviewer.strip() or user.get("name", "")
+    if user.get("role") not in {"Platform Admin", "Domain SME"}:
+        raise HTTPException(status_code=403, detail="Only Platform Admin or Domain SME may approve entity mappings.")
+    reviewer_name = str(user.get("name", "")).strip()
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
     if not reviewer_name:
