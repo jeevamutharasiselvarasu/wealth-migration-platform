@@ -1129,6 +1129,8 @@ async def confirm_entity_inference(
                     if str(old_record.get("file_id", "")) == file_id:
                         old_files.pop(old_key, None)
                         break
+                if state_store.entity_sample_files.get(old_entity, {}).get("file_id") == file_id:
+                    state_store.entity_sample_files.pop(old_entity, None)
                 new_files = state_store.entity_source_files.setdefault(selected_entity, {})
                 new_key = str(record.get("source_role", "ENTITY_MASTER"))
                 if new_key in new_files:
