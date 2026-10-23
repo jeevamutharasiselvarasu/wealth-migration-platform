@@ -209,6 +209,7 @@ async def save_migration_setup(request: Request):
     current_migration_id = str(state_store.questionnaire_data.get("migration_id", ""))
     if not current_migration_id or current_migration_id == "MIG-UNCONFIGURED":
         state_store.questionnaire_data["migration_id"] = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    migration_id = str(state_store.questionnaire_data["migration_id"])
     state_store.update_questionnaire_from_form({
         "firm_name": setup["migration_name"],
         "migration_name": setup["migration_name"],
@@ -219,6 +220,20 @@ async def save_migration_setup(request: Request):
     state_store.questionnaire_data["migration_setup"] = setup
     for entity in {"Account", "Household", "Client"}:
         state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
+    context_payload = {
+        "migration_id": migration_id,
+        "firm_name": setup["migration_name"],
+        "migration_name": setup["migration_name"],
+        "source_systems": setup["source_details"],
+        "target_system": setup["target_system"],
+        "migration_setup": setup,
+    }
+    publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
+    publish_event(
+        "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
+        {"scopes": {entity: state_store.entity_scopes[entity] for entity in ("Account", "Household", "Client")}},
+        user["name"],
+    )
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
