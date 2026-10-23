@@ -464,7 +464,7 @@ class WorkspaceStateStore:
 
     def save_entity_scopes(self, scopes_map: Dict[str, str]):
         """Persist only the three entities enabled in the P0 source-to-canonical workflow."""
-        allowed_scopes = {"IN_SCOPE", "PHASE_2", "ARCHIVE_ONLY", "OUT_OF_SCOPE"}
+        allowed_scopes = {"PENDING_DISCOVERY", "IN_SCOPE", "PHASE_2", "ARCHIVE_ONLY", "OUT_OF_SCOPE"}
         for entity_name, scope in scopes_map.items():
             if entity_name in self.P0_ENTITIES and scope in allowed_scopes:
                 self.entity_scopes[entity_name] = scope
