@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto max-w-7xl space-y-5">
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-6 shadow-sm">
+    <div class="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-700">XODUS · P0 agent-assisted demo</div>
+    <h1 class="mt-2 text-2xl font-bold text-[#152C6B]">Agent Studio</h1>
+    <p class="mt-2 max-w-4xl text-sm leading-6 text-[#5A6A88]">CoreCap → Simplicity. Agents classify, profile and recommend source-to-canonical mappings with evidence. They do not approve mappings, transform source data, load Simplicity or assign waves.</p>
+    <div class="mt-4 flex flex-wrap gap-2">{% for entity in selected_entities %}<span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800">{{ entity }} · In scope</span>{% endfor %}{% if not selected_entities %}<span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-900">No entities selected — configure scope first</span>{% endif %}</div>
+    <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+      {% for title,desc in [("Classification","Infer entity from headers and context"),("Profiling","Nulls, uniqueness and sample grain signals"),("Mapping recommendations","Alias evidence; no transformations"),("Review readiness","Surface blockers for human decisions")] %}
+      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="text-sm font-bold text-[#152C6B]">{{ title }}</div><div class="mt-1 text-xs leading-5 text-[#5A6A88]">{{ desc }}</div></div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-bold text-[#152C6B]">Source files</h2><p class="mt-1 text-xs text-[#5A6A88]">Run the bounded agent suite against a file. Only the selected migration scope is eligible for mapping recommendations.</p></div><a href="/migration-setup" class="rounded-lg border border-[#C3D2EC] px-4 py-2 text-xs font-bold text-blue-700">Edit migration scope</a></div>
+    {% if source_files %}
+    <div class="mt-4 space-y-3">
+      {% for file in source_files %}
+      <div class="flex flex-col gap-3 rounded-xl border border-[#D9E3F5] p-4 md:flex-row md:items-center md:justify-between">
+        <div class="min-w-0"><div class="font-bold text-[#152C6B]">{{ file.filename }}</div><div class="mt-1 text-xs text-[#5A6A88]">{{ file.row_count }} rows · {{ file.column_count }} columns · currently stored under {{ file.stored_entity }}</div>
+          {% if file.agent_analysis %}<div class="mt-2 text-xs font-semibold text-teal-800">Agent analysis: {{ file.agent_analysis.classification.status }} · {{ file.agent_analysis.review.status }}</div>{% endif %}
+          {% if file.scope_status == "OUT_OF_SCOPE" %}<div class="mt-2 text-xs font-semibold text-amber-800">Stored under an entity not selected in migration setup; mapping recommendations will be blocked if classified outside selected scope.</div>{% endif %}
+        </div>
+        <form method="post" action="/api/agents/analyze/{{ file.file_id }}"><button type="submit" {% if not selected_entities %}disabled{% endif %} class="shrink-0 rounded-lg bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">Run agents →</button></form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="mt-4 rounded-xl bg-[#F8FAFD] p-4 text-sm text-[#5A6A88]">No source files registered yet. Load the CoreCap demo pack or upload files through Source Discovery first.</p>
+    {% endif %}
+  </section>
+
+  {% if analysis_results %}
+  <section class="space-y-4">
+    <h2 class="text-lg font-bold text-[#152C6B]">Analysis results</h2>
+    {% for result in analysis_results|reverse %}
+    <article class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><div class="text-xs font-bold uppercase tracking-wide text-blue-700">{{ result.filename }}</div><h3 class="mt-1 text-lg font-bold text-[#152C6B]">Classification: {{ result.classification.status }}</h3><p class="mt-1 text-xs text-[#5A6A88]">CoreCap → Simplicity · analyzed by {{ result.analyzed_by }} · scope: {{ result.scope|join(", ") }}</p></div><span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900">Human approval required</span></div>
+      <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-xs font-bold text-[#152C6B]">Inferred entity</div><div class="mt-1 text-sm">{{ result.classification.entity or "Needs clarification / out of scope" }}</div><div class="mt-1 text-xs text-[#5A6A88]">{{ result.classification.message }}</div></div>
+        <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-xs font-bold text-[#152C6B]">Profile</div><div class="mt-1 text-sm">{{ result.profile.row_count }} rows · {{ result.profile.column_count }} columns</div><div class="mt-1 text-xs text-[#5A6A88]">Candidate key fields: {{ result.profile.candidate_key_fields|join(", ") if result.profile.candidate_key_fields else "None identified" }}</div></div>
+        <div class="rounded-xl bg-[#F8FAFD] p-3"><div class="text-xs font-bold text-[#152C6B]">Review readiness</div><div class="mt-1 text-sm">{{ result.review.status }}</div><div class="mt-1 text-xs text-[#5A6A88]">{{ result.review.blockers|length }} issue(s) to review</div></div>
+      </div>
+      {% if result.mapping.proposals %}
+      <div class="mt-4 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b border-[#D9E3F5] text-[#5A6A88]"><th class="p-2">Source field</th><th class="p-2">Canonical suggestion</th><th class="p-2">Evidence</th><th class="p-2">Risk / decision</th></tr></thead><tbody>{% for proposal in result.mapping.proposals %}<tr class="border-b border-[#EDF1F8]"><td class="p-2 font-semibold">{{ proposal.source_field }}</td><td class="p-2">{{ proposal.canonical_field }}</td><td class="p-2">{{ proposal.evidence }}</td><td class="p-2">{{ proposal.risk }} · Not approved</td></tr>{% endfor %}</tbody></table></div>
+      {% else %}<p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">No mapping recommendations generated. Resolve classification or scope first.</p>{% endif %}
+      {% if result.mapping.unresolved_fields %}<div class="mt-4"><h4 class="text-sm font-bold text-[#152C6B]">Unresolved source fields</h4><ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-[#5A6A88]">{% for item in result.mapping.unresolved_fields %}<li><b>{{ item.source_field }}</b> — {{ item.reason }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if result.review.blockers %}<div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3"><h4 class="text-xs font-bold text-amber-900">Review blockers</h4><ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">{% for blocker in result.review.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>{% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+  <section class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4 text-xs leading-5 text-[#41506B]"><b>Safety boundary:</b> all field matches are proposals, not approvals. Sample profiling is not proof of business grain or key semantics. No source values are transformed, no target is loaded, and wave assignment remains deferred.</section>
+</div>
+{% endblock %}

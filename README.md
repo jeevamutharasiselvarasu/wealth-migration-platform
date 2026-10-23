@@ -1,266 +1,70 @@
-```markdown
-# XODUS-AMP Data Migration Workbench
+# XODUS-AMP — Wealth Migration Workbench
 
-An enterprise-grade, metadata-driven data migration platform built for wealth management acquisition migrations (specifically **Core Cap Wealth Management → Simplicity Wealth**). 
+XODUS-AMP supports wealth-management business migration after an acquisition: understanding source-firm files, aligning their meaning to a target firm's canonical contract, documenting lineage, and obtaining human review before mappings are treated as approved.
 
-The platform decouples control plane governance from data plane execution, normalizes raw legacy extracts (Amplify TAMP & Black Diamond) into a fixed 15-entity canonical taxonomy, enforces strict mathematical invariants (Rep-as-PM sleeve weights $\sum = 1.0000$, AUM drift $\le 0.5000\%$), and dispatches reconciled packages into target destinations (**Salesforce SPARC** CRM and **Orion Eclipse** Trading)[cite: 1, 2, 4, 5, 88].
+## Current pilot boundary
 
----
+The current P0 pilot is a **local, sample-file-based source-to-canonical mapping workflow** for exactly three entities:
 
-## 🎨 XODUS-AMP Design & Visual System
+- **Account**
+- **Household**
+- **Client**
 
-* **Header Branding**: Navy `#152C6B` topbar with gradient `XA` logo badge and dynamic acquisition pipeline tags[cite: 108].
-* **Background & Panels**: `#F4F7FC` light workspace background, crisp `#FFFFFF` cards, and `#D9E3F5` subtle structural borders.
-* **Immutable Knowledge Panel**: Step 1 displays the **Built-In Wealth Kernel** explicitly marked as **`READ-ONLY (FIXED)`** to protect core platform taxonomy and mathematical invariants from accidental modification[cite: 110].
+It supports CSV and other tabular source files, source profiling, entity inference from file evidence, mapping suggestions, lineage evidence, human confirmation/review, knowledge-asset registration, and MCL relationship validation.
 
----
+P0 is not a production migration runtime. Reverse/canonical-to-target mapping, target-system loading, production cutover, live AI-agent hosting, and actual wave/cohort assignment are outside the current pilot. The dashboard may describe future cohort-segregation conditions, but it must not imply that records have been assigned to waves. Azure/ADF endpoints are integration scaffolding and configuration must not be represented as a live connection unless actually verified.
 
-## 🏛️ Platform Architecture & Control/Data Plane Isolation
+## Workflow
 
-```text
- ┌────────────────────────────────────────────────────────────────────────────────────────┐
- │                      XODUS-AMP COMMAND CENTER UI (Light Palette)                        │
- │  Step 1: Firm Knowledge  │  Step 2: Dashboard  │  Step 3: Scope  │  Step 4: Samples      │
- │  Step 5: Agent Pipeline  │  Step 6: HITL Queue│  Step 7: Reconciliation & Drift        │
- └───────────────────────────┬──────────────────────────────────┬─────────────────────────┘
-                             │ REST API / Session Cookies       │ REST API / JSON
- ┌───────────────────────────▼──────────────────────────────────┴─────────────────────────┐
- │                      FASTAPI CONTROL PLANE (Metadata & Orchestration)                   │
- │  ┌─────────────────────────┐  ┌─────────────────────────────┐  ┌─────────────────────┐  │
- │  │ Wealth Kernel Taxonomy  │  │ Rulebook Compiler & Engine  │  │ SQLite DB & Audit   │  │
- │  │ (15 Fixed Entities)     │  │ (Expressions & Crosswalks)  │  │ (App_Data/db.py)    │  │
- │  └────────────┬────────────┘  └──────────────┬──────────────┘  └──────────┬──────────┘  │
- └───────────────┼──────────────────────────────┼────────────────────────────┼─────────────┘
-                 │ Read Contracts               │ Input / Output             │ Artifact
- ┌───────────────▼──────────────────────────────▼────────────────────────────▼─────────────┐
- │                      AZURE DATA PLANE (Execution & Staging Engine)                     │
- │  ┌────────────────────────────────────────┐  ┌───────────────────────────────────────┐  │
- │  │ Sleeve Math Engine (Decimal \sum=1.0)  │  │ Reconciler Engine (\le 0.50% Gate)    │  │
- │  └────────────────────────────────────────┘  └───────────────────────────────────────┘  │
- └──────────────────────────────────────────────┬──────────────────────────────────────────┘
-                                                │ LOAD_READY Payloads
- ┌──────────────────────────────────────────────▼──────────────────────────────────────────┐
- │                            TARGET DESTINATIONS & ARCHIVE                                │
- │  Salesforce SPARC (CRM Master)  │  Orion Eclipse (Trading)  │  ADLS Gen2 (WORM Archive) │
- └─────────────────────────────────────────────────────────────────────────────────────────┘
+1. **Persona selection** — choose the role available to the signed-in user.
+2. **Migration Setup** — configure target system and canonical contract, source acquisition mode, and register knowledge references.
+3. **Migration Dashboard** — review setup, source-file classification status, and outstanding work.
+4. **Source Discovery & Entity Inference** — upload or load sample files; inspect evidence and confirm/reject inferred Account, Household, or Client classifications.
+5. **Mapping Studio & Transformation Rules** — profile source fields and review source-to-canonical mapping candidates and lineage.
+6. **Mapping Review & Information Requests** — resolve missing definitions, gaps, and mapping approvals.
+7. **Validation & Exception Management** — inspect relationship/data-quality findings and reconciliation evidence available in the pilot.
 
-```
+The source files and mapping recommendations require human review. Uncertain entity classification should be surfaced for clarification, not silently guessed.
 
----
+## Local setup
 
-## ⚡ Core Invariants & Fixed Platform Standards
-
-1. **15-Entity Canonical Taxonomy (Read-Only)**:
-
-
-* **Master Entities**: Account, Household, Party, Advisor/Rep, Model, Security Master.
-
-
-* **Relationship Entities**: Sleeve/Allocation, Account Owner.
-
-
-* **Event & Snapshot Entities**: Position (Snapshot), Transaction, Performance Period, Tax Lot.
-
-
-* **Archival Entities**: Documents & Statements, Terminated Accounts.
-
-
-
-
-2. **Rep-as-PM Sleeve Math Invariant**:
-* For every multi-sleeve UMA model aggregate, target weights are normalized using 4-decimal precision fixed-point arithmetic.
-
-
-* **Mathematical Invariant**: $\sum_{i=1}^{n} W_{\text{sleeve}, i} = 1.0000 \quad (100.0000\%)$.
-
-
-* Rounding drift adjustment ($\Delta \le 0.0005$) automatically balances the primary sleeve. Sum deviations $> 0.0005$ raise hard exceptions to trigger Step 6 HITL review.
-
-
-
-
-3. **Post-Load AUM Drift Gate**:
-* Staged market values are audited against legacy source extracts.
-
-
-* **Variance Gate**: $V_{\text{AUM}} = \left\vert{} \frac{\text{AUM}_{\text{target}} - \text{AUM}_{\text{source}}}{\text{AUM}_{\text{source}}} \right\vert{} \times 100\% \le 0.5000\%$.
-
-
-* Variances exceeding $0.5000\%$ set status to `FAIL_HOLD`, blocking cutover until SME sign-off [cite-[# 🤖 Master 9-Agent Pipeline Workflow
-
-
-
-The platform orchestrates 9 autonomous agents across 3 execution phases:
-
-### Phase 1: Discovery Agents
-
-* **1. Extractor Agent (`ExtractorAgent`)**: Pulls advisor cohort extracts from Amplify and Black Diamond connectors.
-
-
-* **2. Schema Mapper Agent (`SchemaMapperAgent`)**: Applies crosswalk dictionaries (e.g., `SCHW` $\rightarrow$ `SCHWAB`, `INDV_TAXABLE` $\rightarrow$ `INDIVIDUAL`).
-
-
-* **3. AI Foundry Mapper (`AzureAIFoundryMapper`)**: Integrates Azure AI Foundry GPT-4o zero-shot models to infer unmapped source attributes with confidence scores.
-
-
-
-### Phase 2: Business Logic Agents
-
-* **4. Sleeve Math Agent (`SleeveMathAgent`)**: Enforces UMA sleeve weight decomposition and decimal sum invariants ($\sum = 1.0000$).
-
-
-* **5. Compliance Validator (`ComplianceValidatorAgent`)**: Re-applies Home Office trading overlays and checks restricted security models.
-
-
-* **6. Data Quality Agent (`DataQualityAgent`)**: Audits referential integrity across the canonical relationship spine (Party $\rightarrow$ Household $\rightarrow$ Account $\rightarrow$ Sleeve $\rightarrow$ Position).
-
-
-
-### Phase 3: Operational Execution Agents
-
-* **7. Loader Agent (`LoaderAgent`)**: Transforms records into Salesforce SPARC and Orion Eclipse staging adapter payloads.
-
-
-* **8. Reconciler Agent (`ReconcilerAgent`)**: Computes post-load market value variance against the strict $\le 0.5000\%$ drift gate.
-
-
-* **9. Cutover & Audit Agents (`CutoverAgent` & `AuditAgent`)**: Executes T+0 trade re-routing and generates immutable SHA-256 compliance evidence packs.
-
-
-
----
-
-## 📑 7-Step Migration Lifecycle
-
-1. **Step 1: Firm Knowledge Studio** — Read-Only Wealth Kernel Panel + Interactive Acquisition Discovery Form.
-
-
-2. **Step 2: Dashboard Overview** — Dynamically calculated advisor wave cohort schedules (Pilot, Wave 1, Wave 2, Wave 3).
-
-
-3. **Step 3: Entity Scope Selector** — Interactive Scope Menu Card (`IN_SCOPE`, `PHASE_2`, `ARCHIVE_ONLY`, `OUT_OF_SCOPE`).
-
-
-4. **Step 4: Entity Sample Files** — Targeted CSV upload portal rendered for in-scope entities.
-
-
-5. **Step 5: Agent Pipeline Studio** — Master execution conductor with 3-pane slide-out Inspector Drawer (Raw Source | Editable SQL | Target Output).
-
-
-6. **Step 6: HITL Approval Queue** — Human-in-the-Loop review queue for Rep-as-PM sleeve math invariants and atomic cutover sign-off.
-
-
-7. **Step 7: Reconciliation & Drift** — Financial control total audit comparing source and target market values.
-
-
-
----
-
-## 📁 Repository Directory Structure
-
-```text
-wealth-migration-platform/
-├── agents/                     # Master 9-agent pipeline conductor
-│   ├── discovery/              # Extractor, Schema Mapper, AI Foundry Mapper
-│   ├── logic/                  # Sleeve Math, Compliance, Data Quality
-│   ├── operational/            # Loader, Reconciler, Cutover, Audit
-│   └── orchestrator.py         # 9-agent Master Orchestrator
-├── config/                     # System configuration & logging
-├── control_plane/
-│   ├── compiler/               # Executable rulebook & expression compiler
-│   │   ├── expressions.py      # Safe Expression Evaluator
-│   │   ├── inference.py        # Knowledge Inference Engine
-│   │   └── rulebook.py         # Markdown Rulebook Compiler
-│   ├── kernel/                 # Fixed Wealth Kernel taxonomy (wealth_kernel.py)
-│   ├── registry/               # Crosswalks & asset inventories
-│   ├── db.py                   # SQLite Control Plane database & DDL
-│   └── services/               # ADF client & control services (adf_client.py)
-├── data_plane/
-│   ├── adapters/               # Target adapters (SPARC, Orion)
-│   ├── connectors/             # Source connectors (Amplify, Black Diamond)
-│   ├── core/                   # Sleeve math engine (sleeve_engine.py)
-│   ├── storage/                # Local extract storage & sample CSVs
-│   ├── validation/             # Reconciliation engine (reconciler.py)
-│   └── storage_manager.py      # Hybrid storage manager
-├── knowledge/                  # Knowledge base JSON/Markdown assets
-├── scripts/                    # Mock data generator & test helper scripts
-├── tests/                      # Pytest unit & integration test suite
-├── ui/
-│   ├── app.py                  # FastAPI controller & REST API endpoints
-│   ├── auth.py                 # Session authentication & RBAC manager
-│   ├── models.py               # Pydantic request & response schemas
-│   ├── state.py                # WorkspaceStateStore reactive engine
-│   ├── static/                 # CSS & JavaScript engine
-│   └── templates/              # Jinja2 HTML templates (XODUS-AMP Light Theme)
-├── pytest.ini                  # Pytest configuration
-├── requirements.txt            # Python dependencies
-└── README.md                   # Platform documentation
-
-```
-
----
-
-## 🛠️ Quickstart Guide
-
-### 1. Installation & Environment Setup
-
-Ensure Python 3.11+ is installed, then install platform dependencies:
+Requires Python 3.11 or later.
 
 ```bash
+python -m venv .venv
+# Windows PowerShell:
+.venv\\Scripts\\Activate.ps1
+# macOS/Linux:
+# source .venv/bin/activate
+
 pip install -r requirements.txt
-
-```
-
-### 2. Generate Mock Test Data
-
-Generate sample extracts (`amplify_sleeves.csv`, `amplify_positions.csv`, `blackdiamond_performance.csv`):
-
-```bash
-python scripts/generate_mock_data.py
-
-```
-
-### 3. Run Automated Test Suite
-
-Execute unit and integration tests across sleeve math, reconciliation, and agent orchestration:
-
-```bash
 python -m pytest
-
-```
-
-*Expected output: All 9 unit tests pass in under 1 second with zero warnings.*
-
-### 4. Launch the Control Plane Command Center
-
-Start the FastAPI server:
-
-```bash
 python -m uvicorn ui.app:app --reload --port 8000
-
 ```
 
-Open `[http://127.0.0.1:8000](http://127.0.0.1:8000)` in your web browser.
+Open http://127.0.0.1:8000 in a browser.
 
----
+## Demo data
 
-## 🔐 Credentials & Pre-Seeded User Personas
+On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and sample knowledge documents under `demo_data/knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
 
-| Role | Email | Password | Scope & Permissions |
-| --- | --- | --- | --- |
-| **Platform Admin** | `jeeva@simplicitywealth.com` | `password123` | Full system control, overrides, and cutover sign-off
+The local demo identity is configured through `demo_data/demo_users.json` and application demo-mode settings. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
 
- |
-| **Migration Analyst** | `analyst@simplicitywealth.com` | `password123` | Scope configuration, schema mapping, and sample uploads
+## Repository map
 
- |
-| **Domain SME** | `sme@simplicitywealth.com` | `password123` | Sleeve math validation and HITL cutover sign-off
+- `ui/` — FastAPI routes, session/persona handling, templates, and browser components.
+- `control_plane/` — canonical kernel, rule/metadata compilation, profiling, inference, validation, and integration scaffolding.
+- `agents/` — mapping and validation components; the legacy cohort orchestrator was removed from P0.
+- `data_plane/` — local source-file persistence, validation, and telemetry helpers. Legacy custodian connectors and target-system adapters are intentionally absent from P0; target loading remains deferred.
+- `knowledge/` and `demo_data/` — editable knowledge assets, inference rules, demo manifest, and synthetic source files.
+- `tests/` — contract, UI-boundary, inference, mapping, and service tests.
+- `infrastructure/` — future Azure/Bicep and ADF deployment assets; these do not establish that cloud resources are deployed.
+- `docs/BRANCH_ARTIFACT_INVENTORY.md` — artifact-by-artifact inventory and cleanup recommendations.
 
- |
-| **Validation Specialist** | `specialist@simplicitywealth.com` | `password123` | Post-load AUM drift audit and reconciliation sign-off
+## Safety and scope rules
 
- |
-
-```
-
-```
+- Keep the active entity scope limited to Account, Household, and Client unless scope is explicitly changed.
+- Keep source-to-canonical mapping as the only mapping direction in P0.
+- Do not treat unreviewed suggestions as approved mappings.
+- Do not claim that files were loaded into a target, that a production cutover ran, or that cloud infrastructure is connected based only on local demo state.
+- Preserve source lineage and explainable evidence for classification and mapping decisions.

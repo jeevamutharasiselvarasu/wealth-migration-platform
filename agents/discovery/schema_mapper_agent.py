@@ -127,10 +127,27 @@ class SchemaMapperAgent:
         "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
     }
 
-    # Approved expressions are deliberately declarative; never eval arbitrary rule text.
+    # Declarative rule families emitted by discovery plus simple scalar transforms.
+    # Never eval arbitrary rule text; only registered families are executable.
     SUPPORTED_APPROVED_TRANSFORMS = {
-        "DIRECT_COPY", "ALIAS", "TRIM", "UPPERCASE", "LOWERCASE", "NORMALIZE_WHITESPACE"
+        "DIRECT_COPY", "ALIAS", "TRIM", "UPPERCASE", "LOWERCASE", "NORMALIZE_WHITESPACE",
+        "CLIENT_TYPE_LOOKUP", "CUSTODIAN_LOOKUP", "REG_TYPE_LOOKUP", "PREFIX_FORMAT", "DATE_FORMAT",
     }
+
+    @classmethod
+    def transformation_family(cls, expression: str) -> str:
+        """Extract the registered rule family from a descriptive proposal."""
+        normalized = str(expression or "DIRECT_COPY").strip().upper()
+        if normalized in cls.SUPPORTED_APPROVED_TRANSFORMS:
+            return normalized
+        # Discovery recommendations may include examples in parentheses, e.g.
+        # CLIENT_TYPE_LOOKUP (INDIVIDUAL -> INDIVIDUAL).
+        family = normalized.split("(", 1)[0].strip()
+        return family if family in cls.SUPPORTED_APPROVED_TRANSFORMS else normalized
+
+    @classmethod
+    def supports_transformation(cls, expression: str) -> bool:
+        return cls.transformation_family(expression) in cls.SUPPORTED_APPROVED_TRANSFORMS
 
     def __init__(
         self,
@@ -144,7 +161,7 @@ class SchemaMapperAgent:
         }
         unsupported = {
             source: expression for source, expression in self.approved_transformations.items()
-            if expression not in self.SUPPORTED_APPROVED_TRANSFORMS
+            if not self.supports_transformation(expression)
         }
         if unsupported:
             raise ValueError(
@@ -152,22 +169,40 @@ class SchemaMapperAgent:
                 + ", ".join(f"{source}={expression}" for source, expression in sorted(unsupported.items()))
             )
 
-    @staticmethod
-    def _apply_approved_transformation(value: Any, expression: str) -> Any:
-        """Apply a small, explicit transformation DSL to a source value."""
-        if expression in {"DIRECT_COPY", "ALIAS"}:
+    @classmethod
+    def _apply_approved_transformation(cls, value: Any, expression: str) -> Any:
+        """Apply an approved registered transformation without evaluating arbitrary text."""
+        family = cls.transformation_family(expression)
+        if family in {"DIRECT_COPY", "ALIAS"}:
             return value
         if value is None:
             return None
         text_value = str(value)
-        if expression == "TRIM":
+        if family == "TRIM":
             return text_value.strip()
-        if expression == "UPPERCASE":
+        if family == "UPPERCASE":
             return text_value.upper()
-        if expression == "LOWERCASE":
+        if family == "LOWERCASE":
             return text_value.lower()
-        if expression == "NORMALIZE_WHITESPACE":
+        if family == "NORMALIZE_WHITESPACE":
             return " ".join(text_value.split())
+        if family == "CLIENT_TYPE_LOOKUP":
+            normalized = text_value.strip().upper()
+            return cls.CLIENT_TYPE_CROSSWALK.get(normalized, normalized)
+        if family == "CUSTODIAN_LOOKUP":
+            normalized = text_value.strip().upper()
+            return cls.COMMON_CUSTODIAN_CROSSWALK.get(normalized, normalized)
+        if family == "REG_TYPE_LOOKUP":
+            normalized = text_value.strip().upper()
+            return cls.REGISTRATION_TYPE_CROSSWALK.get(normalized, normalized)
+        if family == "PREFIX_FORMAT":
+            return text_value if text_value.startswith("REP-") else f"REP-{text_value}"
+        if family == "DATE_FORMAT":
+            date_str = text_value.strip()
+            parts = date_str.split("/")
+            if len(parts) == 3:
+                return f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
+            return date_str
         raise ValueError(f"Unsupported approved transformation: {expression}")
 
     def map_source_schema(self, raw_records: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -275,7 +310,7 @@ class SchemaMapperAgent:
                     approved_expression = self.approved_transformations.get(raw_key)
                     if approved_expression:
                         transformed_val = self._apply_approved_transformation(raw_val, approved_expression)
-                        applied_rule = f"APPROVED_{approved_expression}"
+                        applied_rule = f"APPROVED_{self.transformation_family(approved_expression)}"
 
                     if target_key in canonical_row:
                         field_collisions.add(f"{target_key} <- {raw_key}")

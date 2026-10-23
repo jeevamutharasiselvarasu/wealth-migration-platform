@@ -1,0 +1,4 @@
+CLIENT_ID,LEGAL_NAME,CLIENT_TYPE,EMAIL_ADDR,CONTACT_STATUS
+C-2001,Alex Morgan,INDIVIDUAL,alex.morgan@example.test,ACTIVE
+C-2002,Jordan Morgan,INDIVIDUAL,jordan.morgan@example.test,ACTIVE
+C-2003,West Family Trust,TRUST,west.trust@example.test,ACTIVE

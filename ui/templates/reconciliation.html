@@ -1,61 +1,104 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="space-y-6 max-w-6xl">
-    <!-- Header Banner -->
-    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
-        <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-teal-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">07</span>
-            <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Reconciliation & AUM Drift Gate</h1>
-                <p class="text-xs text-[#5a6a88]">Post-load market value reconciliation audit against the gate tolerance ({{ drift_gate }}).</p>
+<div class="space-y-5 max-w-6xl">
+    <nav aria-label="Validation workflow navigation" class="flex flex-wrap gap-2">
+        <a href="/agent-pipeline" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">← Mapping & approvals</a>
+        <a href="/entity-sample-files" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">Source inventory</a>
+        <a href="/hitl" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">Open review queue</a>
+    </nav>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div class="flex items-start gap-3">
+                <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-teal-600 font-mono text-sm font-bold text-white">05</span>
+                <div>
+                    <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-teal-700">Validation & exception handling</div>
+                    <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Mapping Validation Review</h1>
+                    <p class="mt-1 max-w-2xl text-xs leading-5 text-[#5A6A88]">Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
+                </div>
             </div>
+            <span class="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 font-mono text-[9px] font-bold text-blue-700">P0 · SOURCE → CANONICAL</span>
         </div>
-    </div>
+    </section>
 
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 shadow-sm">
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-[#1c2a4a]">
-                <thead class="bg-[#f8fafc] text-[#5a6a88] text-xs uppercase font-mono border-b border-[#e2e8f0]">
-                    <tr>
-                        <th class="p-3">Advisor Code</th>
-                        <th class="p-3">Source AUM ($)</th>
-                        <th class="p-3">Orion Staged AUM ($)</th>
-                        <th class="p-3">Variance %</th>
-                        <th class="p-3">Gate Status</th>
-                    </tr>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+            <div><h2 class="text-sm font-bold text-[#152C6B]">Approved source-to-canonical mappings</h2>
+            <p class="mt-1 text-xs leading-5 text-[#5A6A88]">Persisted mapping catalogue for this migration. Approved rules can be reused for later files belonging to the same entity.</p></div>
+            <div class="flex gap-2"><span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 font-mono text-[10px] font-bold text-teal-800">{{ approved_mappings|length }} APPROVED</span>
+            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[10px] font-bold text-amber-800">{{ pending_count }} PENDING</span></div>
+        </div>
+        {% if approved_mappings %}
+        <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[760px] text-left">
+            <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Transformation</th><th class="p-3">Confidence</th><th class="p-3">Reviewer</th><th class="p-3">Approved at</th></tr></thead>
+            <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
+            {% for mapping in approved_mappings %}
+            <tr><td class="p-3 font-bold text-[#152C6B]">{{ mapping.entity_name }}</td><td class="p-3 font-mono">{{ mapping.source_field }}</td><td class="p-3 font-mono font-bold text-teal-700">{{ mapping.canonical_field }}</td><td class="p-3 font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td class="p-3">{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="p-3">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="p-3 text-[#5A6A88]">{{ mapping.reviewed_utc|default(mapping.updated_utc|default('—')) }}</td></tr>
+            {% endfor %}
+            </tbody></table></div>
+        {% else %}
+        <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center"><div class="font-bold text-[#152C6B]">No approved mappings recorded for this migration yet</div>
+        <p class="mt-1 text-xs text-[#5A6A88]">Approve a proposal in Mapping Studio. It should appear here once approval is saved.</p>
+        <a href="/agent-pipeline#pending-mappings" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Open Mapping Studio →</a></div>
+        {% endif %}
+    </section>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="border-b border-[#E9EFF9] pb-3"><h2 class="text-sm font-bold text-[#152C6B]">Mapping lineage & run evidence</h2>
+        <p class="mt-1 text-xs leading-5 text-[#5A6A88]">Field-level lineage from profiling and mapping runs, including unmapped fields and proposed rules.</p></div>
+        {% if mapping_lineage %}
+        <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[720px] text-left">
+        <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Rule</th><th class="p-3">Status</th><th class="p-3">Run</th></tr></thead>
+        <tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for item in mapping_lineage %}
+        <tr><td class="p-3 font-bold text-[#152C6B]">{{ item.entity_name }}</td><td class="p-3 font-mono">{{ item.source_column }}</td><td class="p-3 font-mono text-teal-700">{{ item.canonical_column|default('UNMAPPED') }}</td><td class="p-3">{{ item.applied_rule|default('No rule recorded') }}</td><td class="p-3">{{ item.validation_status }}</td><td class="p-3 font-mono text-[10px]">{{ item.run_id }}</td></tr>
+        {% endfor %}</tbody></table></div>
+        {% else %}<p class="mt-3 rounded-xl bg-[#F8FAFD] p-4 text-xs text-[#5A6A88]">No mapping lineage recorded for this migration yet. Generate proposals from approved source files first.</p>{% endif %}
+        {% if mapping_runs %}<div class="mt-4"><h3 class="mb-2 text-xs font-bold text-[#152C6B]">Recent mapping runs</h3><div class="space-y-2">{% for run in mapping_runs %}
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E9EFF9] p-3 text-[10px]"><span class="font-bold text-[#152C6B]">{{ run.entity_name }} · {{ run.run_id }}</span><span class="text-[#5A6A88]">{{ run.source_record_count }} records · {{ ((run.confidence_score|float)*100)|round(1) }}% confidence</span><span class="font-mono text-[#5A6A88]">{{ run.status }} · {{ run.executed_utc }}</span></div>
+        {% endfor %}</div></div>{% endif %}
+    </section>
+
+    <section class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
+            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Entity scope</div>
+            <div class="mt-2 text-base font-bold text-[#152C6B]">3 entities</div>
+            <div class="mt-1 text-[10px] text-[#5A6A88]">Account · Household · Client</div>
+        </article>
+        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
+            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Validation focus</div>
+            <div class="mt-2 text-base font-bold text-[#152C6B]">Keys & required fields</div>
+            <div class="mt-1 text-[10px] text-[#5A6A88]">Completeness, uniqueness and documented relationships</div>
+        </article>
+        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
+            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Release control</div>
+            <div class="mt-2 text-base font-bold text-amber-700">Human review</div>
+            <div class="mt-1 text-[10px] text-[#5A6A88]">Unresolved issues must be reviewed before approval</div>
+        </article>
+    </section>
+
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+            <div>
+                <h2 class="text-sm font-bold text-[#152C6B]">Validation checks</h2>
+                <p class="mt-1 text-[10px] text-[#5A6A88]">Checks to review during the current pilot; results must come from an executed profile or mapping run.</p>
+            </div>
+            <a href="/entity-sample-files" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700">Open source profiles →</a>
+        </div>
+        <div class="mt-3 overflow-x-auto">
+            <table class="w-full min-w-[520px] text-left">
+                <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">
+                    <tr><th class="p-3">Check</th><th class="p-3">Expected evidence</th><th class="p-3">Failure handling</th></tr>
                 </thead>
-                <tbody class="divide-y divide-[#e9eff9] text-xs">
-                    {% if pipeline_runs %}
-                        {% for run in pipeline_runs %}
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-3 font-mono font-bold text-blue-700">{{ run.rep_code }}</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">${{ "{:,.2f}".format(run.reconciliation_summary.source_aum) }}</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">${{ "{:,.2f}".format(run.reconciliation_summary.target_aum) }}</td>
-                            <td class="p-3 font-mono text-teal-700 font-bold">{{ run.reconciliation_summary.variance_pct }}%</td>
-                            <td class="p-3">
-                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold">
-                                    {{ run.reconciliation_summary.status }}
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-3 font-mono font-bold text-blue-700">REP-9981</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">$108,000.00</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">$108,000.00</td>
-                            <td class="p-3 font-mono text-teal-700 font-bold">0.0000%</td>
-                            <td class="p-3">
-                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold">
-                                    PASS
-                                </span>
-                            </td>
-                        </tr>
-                    {% endif %}
+                <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Required canonical fields</td><td class="p-3 text-[#5A6A88]">Required fields have approved source mappings or documented rule-based derivations.</td><td class="p-3 text-[#5A6A88]">Flag missing mapping; keep output unapproved.</td></tr>
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Key integrity</td><td class="p-3 text-[#5A6A88]">Candidate/business keys are present and duplicates are reported.</td><td class="p-3 text-[#5A6A88]">Record validation exception for review.</td></tr>
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Relationship integrity</td><td class="p-3 text-[#5A6A88]">Only relationships defined in the canonical contract are checked.</td><td class="p-3 text-[#5A6A88]">Flag unresolved or orphan references; do not infer joins.</td></tr>
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Lineage & approval</td><td class="p-3 text-[#5A6A88]">Each mapping has source-field evidence and review status.</td><td class="p-3 text-[#5A6A88]">Return to mapping review and retain audit history.</td></tr>
                 </tbody>
             </table>
         </div>
-    </div>
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">
+            <b>Not part of P0:</b> target load verification, target-side AUM drift gates and wave/cohort assignment. These should not be represented as passed until the corresponding future execution path exists.
+        </div>
+    </section>
 </div>
 {% endblock %}

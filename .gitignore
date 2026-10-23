@@ -1,0 +1,25 @@
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local runtime database and generated transformed packages
+App_Data/controlplane.db
+App_Data/Storage/
+dist/
+
+
+# Local source uploads and runtime-generated files
+App_Data/source_uploads/
+App_Data/Storage/
+App_Data/*.db
+data_plane/storage/
+logs/
+*.log
+
+# Build and coverage output
+build/
+.coverage
+htmlcov/
+.coverage.*
+*.egg-info/
