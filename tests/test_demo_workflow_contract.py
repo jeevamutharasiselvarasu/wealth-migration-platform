@@ -116,3 +116,60 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     assert sum(len(files) for files in restarted.entity_source_files.values()) == 9
     assert len(restarted.firm_knowledge_docs) == 2
     assert restarted.generated_dashboard["knowledge_asset_count"] == 2
+
+
+
+def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
+    import asyncio
+    import httpx
+
+    import control_plane.db as db
+    import ui.state as state_module
+    import ui.app as app_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "setup-restart.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    session_id = "phase1-setup-test-session"
+    monkeypatch.setitem(
+        app_module.session_mgr.active_sessions,
+        session_id,
+        {"email": "test@example.invalid", "name": "Phase 1 Test", "role": "Platform Admin"},
+    )
+    state = WorkspaceStateStore()
+    monkeypatch.setattr(app_module, "state_store", state)
+
+    async def save_setup():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver",
+            cookies={"session_id": session_id},
+        ) as client:
+            return await client.post(
+                "/api/migration/setup",
+                data=[
+                    ("migration_name", "CoreCap to Simplicity"),
+                    ("source_firm", "CoreCap"),
+                    ("target_system", "Simplicity"),
+                    ("canonical_version", "Simplicity-MCL-v1"),
+                    ("source_acquisition", "SAMPLE_FILES"),
+                    ("entities", "Account"),
+                    ("entities", "Client"),
+                    ("entities", "Household"),
+                ],
+                follow_redirects=False,
+            )
+
+    response = asyncio.run(save_setup())
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    migration_id = state.questionnaire_data["migration_id"]
+
+    restarted = WorkspaceStateStore()
+    assert restarted.questionnaire_data["migration_id"] == migration_id
+    assert restarted.questionnaire_data["migration_setup"]["target_system"] == "Simplicity"
+    assert restarted.questionnaire_data["migration_setup"]["canonical_version"] == "Simplicity-MCL-v1"
+    assert restarted.entity_scopes["Account"] == "PENDING_DISCOVERY"
+    assert restarted.entity_scopes["Client"] == "PENDING_DISCOVERY"
+    assert restarted.entity_scopes["Household"] == "PENDING_DISCOVERY"
