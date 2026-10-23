@@ -108,6 +108,46 @@ class WorkspaceStateStore:
                     entity_files[key] = record
                     if role in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
                         self.entity_sample_files[entity] = record
+                elif event["event_type"] == "ENTITY_INFERENCE_REVIEWED":
+                    # Reapply review decisions to the in-memory source inventory after restart.
+                    reviewed_files = payload.get("files", [])
+                    if event.get("aggregate_type") == "source_file":
+                        reviewed_files = [{**payload, "file_id": event.get("aggregate_id")}]
+                    for reviewed in reviewed_files:
+                        file_id = str(reviewed.get("file_id", ""))
+                        if not file_id:
+                            continue
+                        located = None
+                        old_entity = None
+                        for bucket_entity, files in self.entity_source_files.items():
+                            for file_key, candidate in files.items():
+                                if str(candidate.get("file_id", "")) == file_id:
+                                    located = (bucket_entity, file_key, candidate)
+                                    old_entity = bucket_entity
+                                    break
+                            if located:
+                                break
+                        if not located:
+                            continue
+                        _, file_key, record = located
+                        for field in ("inference", "inference_review", "inference_approval_status", "discovery_status", "inferred_entity"):
+                            if field in reviewed:
+                                record[field] = reviewed[field]
+                        selected_entity = str(reviewed.get("entity") or payload.get("entity") or old_entity or "")
+                        if selected_entity in self.P0_ENTITIES and old_entity != selected_entity:
+                            self.entity_source_files[old_entity].pop(file_key, None)
+                            new_files = self.entity_source_files.setdefault(selected_entity, {})
+                            new_key = str(record.get("source_role", "ENTITY_MASTER"))
+                            if new_key in new_files:
+                                new_key = new_key + ":" + str(record.get("filename", "source")) + ":" + file_id
+                            new_files[new_key] = record
+                            old_entity = selected_entity
+                        if record.get("source_role") in {"ENTITY_MASTER", "ACCOUNT_MASTER"} and old_entity in self.P0_ENTITIES:
+                            self.entity_sample_files[old_entity] = record
+                    reviewed_entity = str(payload.get("entity") or event.get("aggregate_id") or "")
+                    reviewed_scope = payload.get("scope")
+                    if reviewed_entity in self.P0_ENTITIES and reviewed_scope in {"IN_SCOPE", "OUT_OF_SCOPE", "PHASE_2", "ARCHIVE_ONLY"}:
+                        self.entity_scopes[reviewed_entity] = reviewed_scope
                 elif event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED":
                     doc = dict(payload)
                     if doc and not any(existing.get("id") == doc.get("id") for existing in self.firm_knowledge_docs):
