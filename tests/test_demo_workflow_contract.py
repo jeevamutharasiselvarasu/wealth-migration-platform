@@ -274,3 +274,4 @@ def test_live_inference_confirmation_moves_file_and_survives_restart(tmp_path, m
     assert restored["entity_name"] == "Account"
     assert restored["inference_approval_status"] == "APPROVED"
     assert restored["inference_review"]["reviewer"] == "Data Steward"
+    assert "Needs clarification" not in restarted.entity_sample_files
