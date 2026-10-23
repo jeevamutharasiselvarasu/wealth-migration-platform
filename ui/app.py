@@ -20,7 +20,6 @@ from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
 from control_plane.services.mcl_validation import validate_mcl_relationships
 from control_plane.services.source_file_adapter import read_source_records
-from control_plane.services.entity_inference import infer_entity_from_headers
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
