@@ -1392,8 +1392,11 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         item for item in requests if item.get("entity") == entity_name and item.get("source_file") == uploaded["filename"] and item.get("status") == "OPEN"
     ]
     state_store.persist_mapping_lineage(mapping, run_id=run_id, actor=actor)
+    uploaded["mapping_generated"] = True
+    uploaded["last_mapping_run_id"] = run_id
     publish_event("MAPPING_PROPOSALS_GENERATED", str(migration_id), "mapping_run", str(run_id),
                   {"entity": entity_name, "source_file": uploaded["filename"],
+                   "file_id": uploaded.get("file_id"), "run_id": run_id,
                    "proposal_count": len(mapping.get("field_lineages", [])),
                    "information_request_count": len(mapping.get("information_requests_created", []))}, actor)
     return {
