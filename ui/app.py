@@ -281,7 +281,12 @@ async def load_demo_migration(request: Request):
         elif entity_name not in selected_entities:
             loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": "EXCLUDED_OUT_OF_SCOPE"})
             continue
-        source_role = str(item.get("source_role") or ("ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"))
+        inferred_role = (
+            "RELATIONSHIP_EXTRACT" if inference.get("classification_type") == "RELATIONSHIP"
+            else "ACCOUNT_MASTER" if entity_name == "Account"
+            else "ENTITY_MASTER"
+        )
+        source_role = str(item.get("source_role") or inferred_role)
         record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
         record["inference"] = inference
         record["inferred_entity"] = entity_name
@@ -908,7 +913,11 @@ async def upload_entity_sample_file(
             if entity_name not in configured_scope:
                 excluded.append(f"{filename} ({entity_name})")
 
-        normalized_role = "ACCOUNT_MASTER" if entity_name == "Account" else "ENTITY_MASTER"
+        normalized_role = (
+            "RELATIONSHIP_EXTRACT" if inference.get("classification_type") == "RELATIONSHIP"
+            else "ACCOUNT_MASTER" if entity_name == "Account"
+            else "ENTITY_MASTER"
+        )
         try:
             record = state_store.attach_entity_sample_file(entity_name, filename, content, source_role=normalized_role)
             if record.pop("_duplicate_upload", False):
@@ -952,8 +961,6 @@ async def upload_entity_sample_file(
             "details": {"filename": filename, "entity": entity_name,
                         "confidence": inference.get("confidence"), "status": inference.get("status")},
         })
-        if entity_name == "Needs clarification":
-            continue
         if entity_name == "Needs clarification":
             continue
         registered.append(f"{filename} → {entity_name}")
