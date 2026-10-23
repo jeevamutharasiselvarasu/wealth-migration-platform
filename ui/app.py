@@ -1122,8 +1122,20 @@ async def confirm_entity_inference(
             if selected_entity not in configured_scope:
                 raise HTTPException(status_code=409, detail=f"{selected_entity} is not selected in Migration Setup. Re-enable it before classifying this file.")
             if old_entity != selected_entity:
-                state_store.entity_source_files.setdefault(old_entity, {}).pop(file_id, None)
-                state_store.entity_source_files.setdefault(selected_entity, {})[file_id] = record
+                # Buckets are keyed by source role/filename, not file_id. Remove the
+                # existing entry by its durable identity before moving it to the new bucket.
+                old_files = state_store.entity_source_files.setdefault(old_entity, {})
+                for old_key, old_record in list(old_files.items()):
+                    if str(old_record.get("file_id", "")) == file_id:
+                        old_files.pop(old_key, None)
+                        break
+                new_files = state_store.entity_source_files.setdefault(selected_entity, {})
+                new_key = str(record.get("source_role", "ENTITY_MASTER"))
+                if new_key in new_files:
+                    new_key = new_key + ":" + str(record.get("filename", "source")) + ":" + file_id
+                new_files[new_key] = record
+            record["entity"] = selected_entity
+            record["entity_name"] = selected_entity
             record["inferred_entity"] = selected_entity
             record["inference"]["entity"] = selected_entity
             record["inference"]["status"] = "INFERRED"
@@ -1134,6 +1146,8 @@ async def confirm_entity_inference(
                 "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
                 "previous_entity": old_entity, "confirmed_entity": selected_entity,
             }
+            if record.get("source_role") in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
+                state_store.entity_sample_files[selected_entity] = record
             reviewed_entity = selected_entity
             state_store.entity_scopes[selected_entity] = "IN_SCOPE"
 
