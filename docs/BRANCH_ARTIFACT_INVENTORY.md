@@ -323,12 +323,16 @@ Do not delete the active ADF/wave/cutover boundaries or Docker/Bicep files in is
 
 ### Phase 1 implementation follow-up — 2026-10-23
 
-- Latest verified branch head: `ff12b63f15bc9e8bbedfe57631aa028e48e2169a`.
-- Latest CI run: [#600](https://github.com/jeevamutharasiselvarasu/wealth-migration-platform/actions/runs/40003522716) passed dependency installation, Python compilation, and the complete `pytest -q` suite.
+- Latest verified branch head: `3cae5d7ddc3f0d462027f26145bfeed39b2748e7`.
+- Latest CI run: [#618](https://github.com/jeevamutharasiselvarasu/wealth-migration-platform/actions/runs/40005006898) passed dependency installation, Python compilation, and the complete `pytest -q` suite.
 - Demo and manual migration setup now persist `MIGRATION_CONTEXT_UPDATED` and `ENTITY_SCOPES_UPDATED` events. `PENDING_DISCOVERY` is retained during state rehydration rather than being silently discarded.
 - Demo ingestion and interactive upload now use the same evidence-based `classify_source_file` classifier. Ambiguous/relationship-grain files are retained for review rather than aborting demo loading; relationship classification retains its source role.
 - Demo load now registers the knowledge references in the manifest/setup and publishes durable knowledge events. Its notice reports the count actually registered, not merely the manifest's declared count.
 - Source-file events are published after inference and analysis metadata are attached. The event payload strips `sample_value(s)` recursively so sampled client values are not duplicated into the workflow event log.
 - State rehydration reapplies `ENTITY_INFERENCE_REVIEWED` decisions, including file reclassification from `Needs clarification` into an approved P0 entity, review status, and entity scope.
+
+- Mapping approvals now require an authenticated `Platform Admin` or `Domain SME`; reviewer identity is taken from the active session rather than trusting the editable form value.
 - Added `tests/test_demo_workflow_contract.py` for all nine manifest files, knowledge-reference resolution, ASGI demo load + restart (nine source files, two knowledge assets), safe event payloads, and manual migration-setup persistence. Extended `tests/test_workflow_state_restart.py` for inference-review/reclassification persistence.
-- **Still open for Phase 1:** run the complete interactive mapping review → information request/response → reconciliation journey against the current app, including single and bulk decisions and registered transformation rules. Passing CI proves automated tests only; do not label the live browser journey verified until this remaining path is exercised.
+- The ASGI route integration now exercises source upload → explicit entity confirmation/reclassification → mapping generation → required-field information request/response → single mapping approval → reconciliation → restart. The journey also verifies that a Migration Analyst is blocked from approving a mapping while a Domain SME can approve it.
+- Mapping generation status is now replayed from `MAPPING_PROPOSALS_GENERATED`; reclassification removes the source file from the prior bucket and clears stale entity-sample pointers. The information-request sync commits its upserts before closing the connection, and response handling rechecks durable status in a transaction.
+- **Remaining manual check:** this environment has not launched the user's local browser. Before calling the showcase fully browser-verified, smoke-test the visible buttons, scroll/anchor preservation, role navigation, and popup behavior in the running local UI. CI validates the HTTP route journey and tests, not visual/browser interaction.
