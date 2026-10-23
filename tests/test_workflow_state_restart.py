@@ -87,22 +87,23 @@ def test_inference_review_decision_survives_workspace_restart(tmp_path, monkeypa
         context, "analyst",
     )
     record = first.attach_entity_sample_file(
-        "Account", "accounts.csv", b"ACCOUNT_ID,CLIENT_ID\nA-1,C-1\n"
+        "Needs clarification", "accounts.csv", b"ACCOUNT_ID,CLIENT_ID\nA-1,C-1\n"
     )
     record["inference"] = {
-        "status": "INFERRED",
-        "entity": "Account",
+        "status": "NEEDS_CLARIFICATION",
+        "entity": None,
         "evidence": {"Account": {"matched_fields": ["ACCOUNT_ID"], "signature_fields": ["ACCOUNT_ID"]}},
     }
     record["inference_approval_status"] = "PENDING"
     record["discovery_status"] = "PENDING_REVIEW"
     engine.publish_event(
         "SOURCE_FILE_UPLOADED", migration_id, "source_file", record["file_id"],
-        {**record, "entity": "Account"}, "analyst",
+        {**record, "entity": "Needs clarification"}, "analyst",
     )
     review = {
         "decision": "APPROVE",
         "entity": "Account",
+        "previous_entity": "Needs clarification",
         "inference": {**record["inference"], "status": "INFERRED", "entity": "Account"},
         "inference_approval_status": "APPROVED",
         "discovery_status": "APPROVED",
@@ -122,6 +123,11 @@ def test_inference_review_decision_survives_workspace_restart(tmp_path, monkeypa
         item for item in restarted.entity_source_files["Account"].values()
         if item.get("file_id") == record["file_id"]
     )
+    assert not any(
+        item.get("file_id") == record["file_id"]
+        for item in restarted.entity_source_files.get("Needs clarification", {}).values()
+    )
+    assert restored["entity_name"] == "Account"
     assert restored["inference_approval_status"] == "APPROVED"
     assert restored["discovery_status"] == "APPROVED"
     assert restored["inference_review"]["reviewer"] == "Data Steward"
