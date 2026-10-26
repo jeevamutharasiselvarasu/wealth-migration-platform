@@ -2,21 +2,16 @@
 
 ## Scope
 
-P0 establishes a trustworthy source-to-canonical mapping workflow. It does not execute target-side loads, cutover, reconciliation, or migration-wave assignment.
+P0 establishes a trustworthy source-to-canonical mapping workflow. It does not execute target-side loads, cutover, post-load reconciliation, or migration-wave assignment.
 
 ## Required behavior
 
-- Only explicitly `IN_SCOPE` entities are sent to the mapping orchestrator.
-- An empty scope blocks execution.
-- A missing source extract produces `NO_SOURCE_DATA`; no placeholder account, household, or position records are fabricated.
-- Every run has a unique run ID.
-- Mapping run and field-lineage metadata must persist successfully. A persistence error rolls back and propagates instead of being logged and ignored.
-- Wave-condition definitions can be listed, but evaluation/assignment is disabled until approved source telemetry is available.
-- ADF mock submissions return `MOCKED`, not `SUCCESS`.
-- Missing ADF configuration returns `NOT_CONFIGURED`.
-- A real ADF submission returns `SUBMITTED` only if Azure returns a run ID; it does not imply execution completion.
-- ADF trigger/status lookup errors return `FAILED`, never synthetic success.
-- Target-side ADF execution is blocked by the P0 API boundary.
+- Only explicitly `IN_SCOPE` entities (Account, Client, Household) are processed; an empty scope blocks execution.
+- The legacy cohort pipeline is retired: `POST /api/pipeline/run`, `/api/hitl/approve` and `/api/hitl/reject` return a `409` boundary response. Mapping review happens in Source Discovery, Mapping Studio and Mapping Review.
+- Mapping run and field-lineage metadata must persist successfully; a persistence error propagates instead of being logged and ignored.
+- Wave-condition definitions can be listed (`GET /api/waves/conditions`), but `POST /api/waves/evaluate-record` returns `409 DEFERRED_SCOPE` with `wave_assignment: DISABLED` until approved source telemetry is available.
+- ADF mock submissions return `MOCKED`, not `SUCCESS`. Missing ADF configuration returns `NOT_CONFIGURED`. A real submission returns `SUBMITTED` only if Azure returns a run ID; it does not imply completion. Trigger/status lookup errors return `FAILED`, never synthetic success. Azure/ADF is integration scaffolding until the Azure phase.
+- State-changing routes are gated by the active persona (`ui/role_policy.py`); a test fails if a POST route is unclassified. Reviewer identity comes from the authenticated session.
 
 ## MCL (Simplicity) end-to-end slice
 
@@ -42,12 +37,11 @@ Run:
 pytest -q
 ```
 
-P0 acceptance tests cover explicit scope gating, no synthetic source records, mapping-only execution boundaries, disabled wave assignment, honest ADF mock status, MCL source mapping, canonical key uniqueness, and relationship orphan detection.
+Acceptance tests cover scope gating, mapping-only execution boundaries, disabled wave assignment, honest ADF mock status, MCL source mapping, canonical key uniqueness, relationship orphan detection, role policy, canonical change requests and workflow persistence across restart.
 
 ## Known follow-up work
 
-- Exercise the uploaded-file → profile → mapping path with a clean environment and verify lineage in the UI.
-- Expand UI progress states for `BLOCKED`, `NO_SOURCE_DATA`, `NEEDS_REMEDIATION`, `MAPPED`, `MOCKED`, and `FAILED`.
-- Confirm Simplicity field names, formats, code maps, and relationship semantics from actual sample CSVs and the data dictionary.
-- Extend the shared mapping registry and scope model to all configured entities.
-- Add CI execution and test against a clean database/storage directory before merge.
+- Confirm Simplicity field names, formats, code maps and relationship semantics from actual sample CSVs and the data dictionary.
+- Verify persistence across a full process stop/start and Excel/JSON uploads in a browser.
+- Decide the migration reset procedure and the `REP-` prefix rule (see `docs/project/XODUS_CURRENT_STATUS.md`).
+- Azure phase: verify ADLS/ADF connectivity before any cloud status is presented as live.

@@ -16,13 +16,14 @@ P0 is not a production migration runtime. Reverse/canonical-to-target mapping, t
 
 ## Workflow
 
-1. **Persona selection** — choose the role available to the signed-in user.
+1. **Persona selection** — choose one of the personas assigned to the signed-in user (Platform Admin, Migration Analyst, Validation Specialist, Domain SME). The server enforces the active persona on every state-changing route.
 2. **Migration Setup** — configure target system and canonical contract, source acquisition mode, and register knowledge references.
 3. **Migration Dashboard** — review setup, source-file classification status, and outstanding work.
 4. **Source Discovery & Entity Inference** — upload or load sample files; inspect evidence and confirm/reject inferred Account, Household, or Client classifications.
 5. **Mapping Studio & Transformation Rules** — profile source fields and review source-to-canonical mapping candidates and lineage.
 6. **Mapping Review & Information Requests** — resolve missing definitions, gaps, and mapping approvals.
 7. **Validation & Exception Management** — inspect relationship/data-quality findings and reconciliation evidence available in the pilot.
+8. **Canonical Change Requests** — an analyst raises a request for a canonical-model change; the Domain SME approves, rejects or defers it. Approved requests are a backlog and do not edit the model.
 
 The source files and mapping recommendations require human review. Uncertain entity classification should be surfaced for clarification, not silently guessed.
 
@@ -46,7 +47,7 @@ Open http://127.0.0.1:8000 in a browser.
 
 ## Demo data
 
-On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and sample knowledge documents under `demo_data/knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
+On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and platform knowledge documents under `platform_knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
 
 The local demo identity is configured through `demo_data/demo_users.json` and application demo-mode settings. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
 
@@ -55,7 +56,7 @@ The local demo identity is configured through `demo_data/demo_users.json` and ap
 - `ui/` — FastAPI routes, session/persona handling, role policy, Jinja templates.
 - `control_plane/` — canonical kernel, inference, profiling, validation, workflow event engine, SQLite persistence, ADF client/exporter scaffolding.
 - `agents/` — schema-mapping agent and the P0 agent suite (agents recommend; deterministic services check).
-- `data_plane/` — local source-file persistence and reconciliation helpers. Target loading and legacy connectors are out of P0.
+- `data_plane/` — local source-file storage. Target loading and legacy connectors are out of P0.
 - `knowledge/` — runtime configuration assets: entity inference rules, dictionary, discovery questionnaire, firm profiles.
 - `platform_knowledge/` — platform-provided domain knowledge (canonical contract, mapping notes, wealth-management research). Kept separate from demo data.
 - `demo_data/` — synthetic CoreCap sample files, demo manifest and demo users. Never place real client data here.
