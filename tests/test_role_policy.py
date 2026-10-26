@@ -144,3 +144,31 @@ def test_domain_sme_can_update_kernel_specs_and_the_change_is_attributed(tmp_pat
     assert asyncio.run(post("Migration Analyst")).status_code == 403
     assert asyncio.run(post("Domain SME")).status_code == 303
     assert state.kernel_specs["last_modified_by"] == "Canonical Owner"
+
+
+def test_setup_and_discovery_hide_forms_the_active_persona_cannot_use(tmp_path, monkeypatch):
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "forms.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
+                        {"email": "t@example.invalid", "name": "Tester", "role": "Platform Admin"})
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+
+    async def page(role, path):
+        app_module.session_mgr.active_sessions["sid"]["role"] = role
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": "sid"}) as client:
+            return (await client.get(path)).text
+
+    for role, can_setup, can_discover in (("Platform Admin", True, True), ("Migration Analyst", True, True),
+                                          ("Domain SME", False, False), ("Validation Specialist", False, False)):
+        setup = asyncio.run(page(role, "/migration-setup"))
+        assert ("Save setup" in setup) is can_setup, role
+        assert ("<fieldset disabled" in setup) is (not can_setup), role
+        discovery = asyncio.run(page(role, "/entity-sample-files"))
+        assert ('action="/api/entities/upload-sample-file"' in discovery) is can_discover, role
