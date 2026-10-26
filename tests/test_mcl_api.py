@@ -97,7 +97,7 @@ def test_mapping_suggestion_review_lifecycle(tmp_path, monkeypatch):
     conn.close()
     monkeypatch.setattr(app_module, "get_db_connection", db_module.get_db_connection)
 
-    pending = asyncio.run(app_module.list_source_mapping_suggestions())
+    pending = asyncio.run(app_module.list_source_mapping_suggestions(migration_id="MIG-1"))
     pending_payload = json.loads(pending.body)
     assert pending_payload["status"] == "SUCCESS"
     assert len(pending_payload["suggestions"]) == 1

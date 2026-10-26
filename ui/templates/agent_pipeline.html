@@ -38,12 +38,14 @@
         <div><div class="font-mono text-[9px] uppercase tracking-wider text-blue-700">Entity review queue</div><h3 class="mt-1 text-sm font-bold text-[#152C6B]">{{ suggestion.entity_name }}</h3><p class="mt-1 text-[10px] text-[#5A6A88]">Bulk approval succeeds only if every pending mapping for this entity passes validation.</p></div>
         <div class="flex flex-wrap items-center gap-2">
           <span class="rounded-full border border-blue-200 bg-white px-3 py-1 font-mono text-[9px] text-blue-700">SOURCE → CANONICAL</span>
+          {% if can_review_mappings %}
           <form action="/api/mapping-suggestions/approve-entity" method="post" class="flex flex-wrap items-center gap-2" onsubmit="return confirm('Approve every pending mapping proposal for {{ suggestion.entity_name }}? The operation will be blocked if any proposal fails validation.');">
             <input type="hidden" name="entity_name" value="{{ suggestion.entity_name }}">
             <input name="reviewer" value="{{ user_name }}" required aria-label="Entity mapping reviewer" class="w-32 rounded-lg border border-[#C3D2EC] bg-white p-2 text-[10px]">
             <input name="comments" placeholder="Optional approval note" aria-label="Entity approval note" class="w-40 rounded-lg border border-[#C3D2EC] bg-white p-2 text-[10px]">
             <button class="rounded-lg bg-teal-700 px-3 py-2 text-[10px] font-bold text-white hover:bg-teal-800">Approve all {{ suggestion.entity_name }} mappings</button>
           </form>
+          {% else %}<span class="text-[10px] text-[#5A6A88]">Review-only for {{ user_role }}: Platform Admin or Domain SME approves.</span>{% endif %}
         </div>
       </div>
       {% set ns.current_entity = suggestion.entity_name %}
@@ -54,12 +56,14 @@
           <div><div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Proposed canonical field</div><div class="mt-1 break-words text-sm font-bold text-teal-700">{{ suggestion.canonical_field|default('UNRESOLVED') }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">Rule: <span class="font-mono">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span> · Kind: <span class="font-mono">{{ suggestion.proposed_rule|mapping_kind(suggestion.canonical_field) }}</span></div></div>
           <div class="rounded-lg bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">CONFIDENCE</div><div class="mt-1 text-sm font-bold text-[#152C6B]">{{ ((suggestion.confidence_score|float) * 100)|round(1) }}%</div><div class="mt-1 text-[9px] text-amber-700">Suggestion only</div></div>
         </div>
+        {% if can_review_mappings %}
         <form action="/api/mapping-suggestions/{{ suggestion.suggestion_id }}/review" method="post" class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-[minmax(8rem,1fr)_minmax(12rem,2fr)_auto_auto]">
           <input name="reviewer" value="{{ user_name }}" required aria-label="Reviewer" class="rounded-lg border border-[#C3D2EC] p-2.5 text-xs">
           <input name="comments" placeholder="Approval note or required rejection reason" required aria-label="Review comments" class="rounded-lg border border-[#C3D2EC] p-2.5 text-xs">
           <button name="decision" value="APPROVED" class="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800">Approve mapping</button>
           <button name="decision" value="REJECTED" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800 hover:bg-rose-100">Reject</button>
         </form>
+        {% else %}<p class="mt-4 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Platform Admin or Domain SME approves or rejects this proposal.</p>{% endif %}
       </article>
       {% endfor %}
     </div>

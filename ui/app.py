@@ -537,6 +537,9 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
     )
 
 
+MAPPING_REVIEW_ROLES = {"Platform Admin", "Domain SME"}
+
+
 @app.get("/agent-pipeline", response_class=HTMLResponse)
 async def agent_pipeline_view(request: Request, notice: str = "", error: str = ""):
     user = get_current_user(request)
@@ -586,6 +589,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "page_title": "Mapping Studio & Transformation Rules",
             "user_name": user["name"],
             "user_role": user["role"],
+            "can_review_mappings": user["role"] in MAPPING_REVIEW_ROLES,
             "firm_context": state_store.questionnaire_data,
             "pipeline_run": latest_run,
             "source_files": source_files,
@@ -1709,8 +1713,9 @@ async def replay_workflow_events(migration_id: Optional[str] = Form(None), rebui
 
 
 @app.get("/api/mapping-suggestions")
-async def list_source_mapping_suggestions(status_filter: str = "PENDING"):
-    """List proposed source-to-canonical mappings for human review."""
+async def list_source_mapping_suggestions(status_filter: str = "PENDING", migration_id: str = ""):
+    """List proposed source-to-canonical mappings for the active migration (or an explicit migration_id; "ALL" spans migrations)."""
+    scope_migration = migration_id.strip() or str(state_store.questionnaire_data.get("migration_id", ""))
     allowed = {"PENDING", "APPROVED", "REJECTED", "ALL"}
     if status_filter not in allowed:
         raise HTTPException(status_code=400, detail=f"status_filter must be one of {sorted(allowed)}.")
@@ -1756,6 +1761,8 @@ async def list_source_mapping_suggestions(status_filter: str = "PENDING"):
         suggestions = []
         for row in rows:
             item = dict(row)
+            if scope_migration not in ("", "ALL") and item.get("migration_id") != scope_migration:
+                continue
             item["mapping_kind"] = SchemaMapperAgent.mapping_kind(item.get("proposed_rule"), item.get("canonical_field"))
             suggestions.append(item)
         return JSONResponse({"status": "SUCCESS", "suggestions": suggestions})

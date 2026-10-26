@@ -556,3 +556,65 @@ def test_demo_load_requires_a_valid_firm_config(tmp_path, monkeypatch):
     monkeypatch.setenv("XODUS_FIRM_CONFIG", str(tmp_path / "absent.yaml"))
     assert _post_demo_load(app_module, session_id).status_code == 409
     assert "migration_setup" not in state.questionnaire_data
+
+
+def test_mapping_suggestions_api_is_scoped_to_the_active_migration(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "scope")
+    assert _post_setup(app_module, session_id).status_code == 303
+    active = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "scope.db")
+    for mig, field in ((active, "A_FIELD"), ("MIG-OLD", "B_FIELD")):
+        conn.execute("INSERT INTO mapping_suggestions (suggestion_id, run_id, migration_id, entity_name, source_field, "
+                     "canonical_field, proposed_rule, confidence_score, status, created_utc) "
+                     "VALUES (?, 'R', ?, 'Account', ?, 'ACCT_NUM', 'DIRECT_COPY', 0.9, 'PENDING', '2026-01-01')",
+                     (f"S-{mig}", mig, field))
+    conn.commit()
+    conn.close()
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            default = (await client.get("/api/mapping-suggestions")).json()["suggestions"]
+            explicit = (await client.get("/api/mapping-suggestions", params={"migration_id": "MIG-OLD"})).json()["suggestions"]
+            everything = (await client.get("/api/mapping-suggestions", params={"migration_id": "ALL"})).json()["suggestions"]
+            return default, explicit, everything
+
+    default, explicit, everything = asyncio.run(run())
+    assert [s["source_field"] for s in default] == ["A_FIELD"]
+    assert [s["source_field"] for s in explicit] == ["B_FIELD"]
+    assert {s["source_field"] for s in everything} == {"A_FIELD", "B_FIELD"}
+
+
+def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "controls")
+    assert _post_setup(app_module, session_id).status_code == 303
+    active = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "controls.db")
+    conn.execute("INSERT INTO mapping_suggestions (suggestion_id, run_id, migration_id, entity_name, source_field, "
+                 "canonical_field, proposed_rule, confidence_score, status, created_utc) "
+                 "VALUES ('S-1', 'R', ?, 'Account', 'ACCT_REF', 'ACCT_NUM', 'DIRECT_COPY', 0.9, 'PENDING', '2026-01-01')", (active,))
+    conn.commit()
+    conn.close()
+
+    async def page(role):
+        app_module.session_mgr.active_sessions[session_id]["role"] = role
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            return (await client.get("/agent-pipeline")).text
+
+    for role, allowed in (("Platform Admin", True), ("Domain SME", True),
+                          ("Migration Analyst", False), ("Validation Specialist", False)):
+        html = asyncio.run(page(role))
+        assert ("Approve mapping" in html) is allowed, role
+        assert ("Approve all Account mappings" in html) is allowed, role
+        assert ("Read-only for" in html) is (not allowed), role
