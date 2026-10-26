@@ -292,3 +292,58 @@ def test_exact_name_columns_create_suggestions_and_no_false_information_requests
                  state.questionnaire_data.get("mapping_information_requests", []) if i.get("status") == "OPEN"}
     assert ("Account", "REP_CODE") not in open_gaps
     assert ("Account", "CUSTODIAN_CODE") not in open_gaps
+
+
+def test_entity_bulk_approval_waits_for_open_required_field_requests(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "bulk-gap")
+    assert _post_setup(app_module, session_id).status_code == 303
+    # Only two Account columns: required fields such as CUSTODIAN_CODE stay unmapped.
+    sample = b"LEGACY_ACCT_NO,ACCOUNT_OPEN_DT\r\nA-1,2022-04-12\r\nA-2,2021-09-03\r\n"
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    def suggestion_statuses():
+        conn = sqlite3.connect(tmp_path / "bulk-gap.db")
+        try:
+            return {row[0] for row in conn.execute("SELECT status FROM mapping_suggestions WHERE entity_name='Account'")}
+        finally:
+            conn.close()
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            await client.post("/api/entities/upload-sample-file",
+                              files=[("files", ("accounts.csv", sample, "text/csv"))], follow_redirects=False)
+            bucket, record = next((e, r) for e, fs in state.entity_source_files.items()
+                                  for r in fs.values() if r.get("filename") == "accounts.csv")
+            await client.post("/api/entities/confirm-inference",
+                              content=urlencode([("entity_name", bucket), ("decision", "APPROVE"), ("comments", "ok"),
+                                                 ("target_entity", "Account"), ("file_id", record["file_id"])]),
+                              headers=form, follow_redirects=False)
+            await client.post("/api/entities/map-approved-files", follow_redirects=False)
+            body = urlencode([("entity_name", "Account"), ("reviewer", "ignored"), ("comments", "bulk")])
+            blocked = await client.post("/api/mapping-suggestions/approve-entity", content=body,
+                                        headers=form, follow_redirects=False)
+            blocked_state = suggestion_statuses()
+            open_gaps = [g for g in state.questionnaire_data["mapping_information_requests"]
+                         if g["entity"] == "Account" and g["status"] == "OPEN"]
+            for gap in open_gaps:
+                answered = await client.post(f"/api/mapping-gaps/{gap['request_id']}/response",
+                                             content=urlencode([("response_text", "Follow-up extract will supply this field.")]),
+                                             headers=form, follow_redirects=False)
+                assert answered.status_code == 303
+            approved = await client.post("/api/mapping-suggestions/approve-entity", content=body,
+                                         headers=form, follow_redirects=False)
+            return blocked, blocked_state, open_gaps, approved
+
+    blocked, blocked_state, open_gaps, approved = asyncio.run(run())
+    assert open_gaps, "required Account fields should have produced information requests"
+    assert blocked.status_code == 303 and "error=" in blocked.headers["location"]
+    assert "open+information+request" in blocked.headers["location"]
+    assert blocked_state == {"PENDING"}  # nothing approved while gaps are open
+    assert approved.status_code == 303 and "notice=" in approved.headers["location"]
+    assert suggestion_statuses() == {"APPROVED"}

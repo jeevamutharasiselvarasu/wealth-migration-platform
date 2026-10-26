@@ -1881,6 +1881,12 @@ async def approve_entity_mapping_suggestions(
             ).fetchone()
             if existing and existing["canonical_field"] != canonical_field:
                 blockers.append(f"{source_field}: already approved to {existing['canonical_field']}")
+        # Required fields with an unanswered information request are unresolved gaps:
+        # entity-level approval must wait until a response is recorded.
+        for gap in state_store.questionnaire_data.get("mapping_information_requests", []):
+            if (gap.get("entity") == entity_name and gap.get("status") == "OPEN"
+                    and str(gap.get("migration_id", migration_id)) == migration_id):
+                blockers.append(f"{gap.get('canonical_field')}: required field has an open information request ({gap.get('request_id')})")
         if blockers:
             conn.rollback()
             message = f"Cannot approve all {entity_name} mappings yet. {len(blockers)} validation issue(s): " + "; ".join(blockers)
