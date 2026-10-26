@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
+from ui.role_policy import DISCOVERY_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
@@ -33,6 +34,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DataMigrationWorkbench")
 
 app = FastAPI(title="Data Migration Workbench", version="3.5.0")
+
+
+@app.middleware("http")
+async def enforce_role_policy(request: Request, call_next):
+    """Reject state-changing requests from roles that may not perform them (session role, server side)."""
+    allowed = allowed_roles_for(request.method, request.url.path)
+    if allowed is not None:
+        session = session_mgr.get_session(request)
+        # Unauthenticated callers fall through to the route's own login redirect.
+        if session is not None and session.get("role") not in allowed:
+            detail = f"{session.get('role')} may not perform this action. Allowed: {', '.join(sorted(allowed))}."
+            if "text/html" in request.headers.get("accept", ""):
+                path = urlparse(request.headers.get("referer", "/")).path or "/"
+                return RedirectResponse(url=f"{path}?error=" + quote_plus(detail), status_code=status.HTTP_303_SEE_OTHER)
+            return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
+    return await call_next(request)
 
 ui_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(ui_dir, ".."))
@@ -159,11 +176,12 @@ async def select_persona(request: Request, role: str = Form(...)):
 
 
 @app.get("/migration-setup", response_class=HTMLResponse)
-async def migration_setup_page(request: Request, demo_loaded: str = ""):
+async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
     return render_template_with_context(request, "migration_setup.html", {
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
+        "error": error, "can_configure": user["role"] in SETUP_ROLES,
         "demo_loaded": demo_loaded == "1",
         "demo_available": session_mgr.demo_mode,
         "knowledge_docs": state_store.firm_knowledge_docs,
@@ -515,6 +533,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
         template_name="entity_sample_files.html",
         extra_context={
             "page_title": "Source Discovery & Entity Inference",
+            "can_discover": user["role"] in DISCOVERY_ROLES,
             "user_name": user["name"],
             "user_role": user["role"],
             "selected_entities": state_store.get_source_upload_entities(),

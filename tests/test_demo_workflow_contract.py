@@ -297,7 +297,7 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
         session_id,
-        {"email": "test@example.invalid", "name": "Data Steward", "role": "Domain SME"},
+        {"email": "test@example.invalid", "name": "Data Steward", "role": "Migration Analyst"},
     )
 
     state = WorkspaceStateStore()
