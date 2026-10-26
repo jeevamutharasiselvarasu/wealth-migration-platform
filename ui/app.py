@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from ui.auth import session_mgr
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from agents.operational.cutover_agent import CutoverAgent
 from agents.operational.audit_agent import AuditAgent
 from data_plane.storage_manager import HybridStorageManager
@@ -1923,6 +1924,9 @@ async def approve_entity_mapping_suggestions(
                 blockers.append(f"{source_field}: already approved to {existing['canonical_field']}")
         # Required fields with an unanswered information request are unresolved gaps:
         # entity-level approval must wait until a response is recorded.
+        for row in rows:
+            if float(row["confidence_score"] or 0.0) < EVIDENCE_REVIEW_THRESHOLD:
+                blockers.append(f"{row['source_field']} -> {row['canonical_field']}: low-confidence proposal ({float(row['confidence_score'] or 0.0):.0%}) needs individual review")
         # A field supplied by any pending proposal in this set is covered: approving the set closes the request.
         covered_by_set = {str(r["canonical_field"]) for r in rows if r["canonical_field"]}
         covered_by_set |= {str(r["canonical_field"]) for r in conn.execute(

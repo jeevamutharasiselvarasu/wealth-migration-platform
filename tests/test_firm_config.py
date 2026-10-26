@@ -444,3 +444,81 @@ def test_relationship_file_needs_an_explicit_disposition_and_is_not_mapped(tmp_p
     assert record["inference_review"]["decision"] == "RELATIONSHIP_DEFERRED"
     assert "no relationship entity" in record["inference_review"]["comments"]
     assert suggestions == []  # a deferred link file creates no mapping proposals
+
+
+def test_value_evidence_needs_name_and_values_and_stays_capped():
+    from control_plane.services.value_evidence import MAX_EVIDENCE_CONFIDENCE, propose_from_evidence
+
+    cols = {
+        "ACCT_REF": ["000847", "000848", "000849"],      # unique id-like, ACCT token: key evidence
+        "OPENED_ON": ["2021-04-12", "2019-11-03", "2023-01-29"],
+        "STATUS_CODE": ["ACTIVE", "CLOSED", "ACTIVE"],   # nothing supports a required field
+        "ZZZ": ["2021-04-12", "2019-11-03", "2023-01-29"],  # date values but no name hint
+        "REVIEW_DATE": ["2024-02-01", "2024-03-14", "2024-05-22"],  # date values, no OPEN token
+    }
+    got = {p["canonical_field"]: p for p in propose_from_evidence(["ACCT_NUM", "OPEN_DATE", "REG_TYPE"], cols, 3)}
+    assert set(got) == {"ACCT_NUM", "OPEN_DATE"}
+    assert got["ACCT_NUM"]["source_field"] == "ACCT_REF" and got["OPEN_DATE"]["source_field"] == "OPENED_ON"
+    assert all(p["confidence"] <= MAX_EVIDENCE_CONFIDENCE for p in got.values())
+    # Name hint without supporting values is not enough (duplicate ids), and ties stay unresolved.
+    assert propose_from_evidence(["ACCT_NUM"], {"ACCT_REF": ["1", "1", "2"]}, 3) == []
+    tie = {"ACCT_REF": ["1", "2", "3"], "ACCOUNT_KEY": ["4", "5", "6"]}
+    assert propose_from_evidence(["ACCT_NUM"], tie, 3) == []
+
+
+def test_mapper_emits_evidence_proposals_with_basis_and_never_for_mapped_fields():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    rows = [{"ACCT_NUM": "A-1", "REG_CODE": "IRA", "OPENED_ON": "2021-04-12"},
+            {"ACCT_NUM": "A-2", "REG_CODE": "TOD", "OPENED_ON": "2020-01-02"}]
+    result = SchemaMapperAgent().map_source_to_canonical("Account", rows)
+    lineage = {l["source_field"]: l for l in result["field_lineages"]}
+    assert lineage["ACCT_NUM"]["confidence"] == SchemaMapperAgent.ALIAS_MATCH_CONFIDENCE  # catalog match still wins
+    for column, target in (("REG_CODE", "REG_TYPE"), ("OPENED_ON", "OPEN_DATE")):
+        assert lineage[column]["canonical_field"] == target
+        assert lineage[column]["mapping_basis"] == "VALUE_EVIDENCE"
+        assert lineage[column]["confidence"] <= 0.6
+        assert lineage[column]["rule_applied"].startswith("DIRECT_COPY (VALUE_EVIDENCE:")
+        assert SchemaMapperAgent.mapping_kind(lineage[column]["rule_applied"], target) == "DIRECT"
+        assert SchemaMapperAgent.supports_transformation(lineage[column]["rule_applied"])
+    assert result["missing_required"] == ["CUSTODIAN_CODE", "REP_CODE"]
+
+
+def test_low_confidence_evidence_proposals_need_individual_review(tmp_path, monkeypatch):
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "evidence-bulk")
+    assert _post_setup(app_module, session_id).status_code == 303
+    sample = b"ACCT_REF,REG_CODE\r\n000847,IRA\r\n000848,TOD\r\n"
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            await client.post("/api/entities/upload-sample-file",
+                              files=[("files", ("batch_001.csv", sample, "text/csv"))], follow_redirects=False)
+            bucket, record = next((e, r) for e, fs in state.entity_source_files.items()
+                                  for r in fs.values() if r.get("filename") == "batch_001.csv")
+            await client.post("/api/entities/confirm-inference",
+                              content=urlencode([("entity_name", bucket), ("decision", "APPROVE"), ("comments", "ok"),
+                                                 ("target_entity", "Account"), ("file_id", record["file_id"])]),
+                              headers=form, follow_redirects=False)
+            await client.post("/api/entities/map-approved-files", follow_redirects=False)
+            sugg = (await client.get("/api/mapping-suggestions")).json()["suggestions"]
+            bulk = await client.post("/api/mapping-suggestions/approve-entity",
+                                     content=urlencode([("entity_name", "Account"), ("reviewer", "x"), ("comments", "b")]),
+                                     headers=form, follow_redirects=False)
+            one = next(s for s in sugg if s["source_field"] == "ACCT_REF")
+            single = await client.post(f"/api/mapping-suggestions/{one['suggestion_id']}/review",
+                                       content=urlencode([("decision", "APPROVED"), ("reviewer", "x"),
+                                                          ("comments", "ACCT_REF is the account number per SME")]),
+                                       headers=form, follow_redirects=False)
+            return sugg, bulk, single
+
+    sugg, bulk, single = asyncio.run(run())
+    by_field = {s["source_field"]: s for s in sugg}
+    assert by_field["ACCT_REF"]["canonical_field"] == "ACCT_NUM" and by_field["ACCT_REF"]["confidence_score"] == 0.6
+    assert by_field["REG_CODE"]["canonical_field"] == "REG_TYPE" and by_field["REG_CODE"]["mapping_kind"] == "DIRECT"
+    assert "error=" in bulk.headers["location"] and "low-confidence" in bulk.headers["location"]
+    assert single.status_code == 200 and single.json().get("status") in {"SUCCESS", "APPROVED"}, single.text

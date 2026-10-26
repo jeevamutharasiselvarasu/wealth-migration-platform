@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, List, Optional, Set
 
 from control_plane.services.firm_config import FirmConfigError, get_firm_config
+from control_plane.services.value_evidence import propose_from_evidence
 
 logger = logging.getLogger("SchemaMapperAgent")
 
@@ -141,7 +142,7 @@ class SchemaMapperAgent:
             return "UNRESOLVED"
         if "_LOOKUP" in rule.split(" ")[0] or rule.startswith("APPROVED_LOOKUP"):
             return "LOOKUP"
-        if rule == "DIRECT_COPY":
+        if cls.transformation_family(rule) == "DIRECT_COPY":
             return "DIRECT"
         return "DERIVED"
 
@@ -397,6 +398,27 @@ class SchemaMapperAgent:
                     unmapped_source_fields.add(raw_key)
 
             mapped_records.append(canonical_row)
+
+        # Evidence-based proposals for still-unmet required fields. Proposals only: low capped
+        # confidence, named evidence, never auto-approved, ambiguity leaves the field unresolved.
+        if unmapped_source_fields:
+            unmet = [f for f in self.required_fields(entity_name) if f not in mapped_target_fields]
+            columns = {c: [row.get(c) for row in raw_records] for c in unmapped_source_fields}
+            for proposal in propose_from_evidence(unmet, columns, len(raw_records)):
+                column, target = proposal["source_field"], proposal["canonical_field"]
+                unmapped_source_fields.discard(column)
+                mapped_target_fields.add(target)
+                for row_out, row_in in zip(mapped_records, raw_records):
+                    row_out[target] = row_in.get(column)
+                field_lineages.append({
+                    "source_field": column,
+                    "canonical_field": target,
+                    "rule_applied": f"DIRECT_COPY (VALUE_EVIDENCE: {proposal['evidence']})",
+                    "confidence": proposal["confidence"],
+                    "mapping_basis": "VALUE_EVIDENCE",
+                    "sample_value": str(raw_records[0].get(column)),
+                })
+                lineage_fields_seen.add(column)
 
         for raw_key in sorted(unmapped_source_fields):
             if raw_key not in lineage_fields_seen:
