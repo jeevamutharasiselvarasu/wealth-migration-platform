@@ -225,3 +225,70 @@ def test_dashboard_lists_required_fields_from_firm_config(tmp_path, monkeypatch)
     assert " · ".join(config.required_fields("Account")) in page
     assert " · ".join(config.required_fields("Client")) in page
     assert "TAX_ID" in page and "REG_TYPE" in page
+
+
+def test_suggestion_confidence_is_per_field_not_the_penalized_file_score(tmp_path, monkeypatch):
+    import sqlite3
+
+    import control_plane.db as db
+    import ui.state as state_module
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "confidence.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    store.questionnaire_data["migration_id"] = "MIG-CONF"
+    # Required Account fields are mostly absent, so the file-level score is heavily penalised.
+    result = SchemaMapperAgent().map_source_to_canonical(
+        "Account", [{"LEGACY_ACCT_NO": "A-1", "REP_CODE": "R-1", "UNKNOWN_COL": "x"}])
+    assert result["confidence_score"] < 0.5
+    store.persist_mapping_lineage(result, run_id="RUN-CONF")
+    conn = sqlite3.connect(tmp_path / "confidence.db")
+    rows = dict(conn.execute("SELECT source_field, confidence_score FROM mapping_suggestions WHERE migration_id='MIG-CONF'"))
+    assert rows == {"LEGACY_ACCT_NO": SchemaMapperAgent.ALIAS_MATCH_CONFIDENCE,
+                    "REP_CODE": SchemaMapperAgent.IDENTITY_MATCH_CONFIDENCE}
+
+
+def test_exact_name_columns_create_suggestions_and_no_false_information_requests(tmp_path, monkeypatch):
+    """Route-level check using the demo account_registration.csv shape."""
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "identity-route")
+    assert _post_setup(app_module, session_id).status_code == 303
+    sample = (
+        b"LEGACY_ACCT_NO,CUSTODIAN_CODE,REGISTRATION_SRC_TYPE,ACCOUNT_OPEN_DT,REP_CODE\r\n"
+        b"A-1001,CUST-A,INDIVIDUAL,2022-04-12,R-01\r\n"
+        b"A-1002,CUST-B,JOINT,2021-09-03,R-02\r\n"
+        b"A-1003,CUST-A,TRUST,2020-01-19,R-01\r\n"
+    )
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            up = await client.post("/api/entities/upload-sample-file",
+                                   files=[("files", ("account_registration.csv", sample, "text/csv"))],
+                                   follow_redirects=False)
+            assert up.status_code == 303
+            bucket, record = next((entity, rec) for entity, files in state.entity_source_files.items()
+                                  for rec in files.values() if rec.get("filename") == "account_registration.csv")
+            ok = await client.post(
+                "/api/entities/confirm-inference",
+                content=urlencode([("entity_name", bucket), ("decision", "APPROVE"), ("comments", "ok"),
+                                   ("target_entity", "Account"), ("file_id", record["file_id"])]),
+                headers={"Content-Type": "application/x-www-form-urlencoded"}, follow_redirects=False)
+            assert ok.status_code == 303
+            gen = await client.post("/api/entities/map-approved-files", follow_redirects=False)
+            assert gen.status_code == 303
+            return (await client.get("/api/mapping-suggestions")).json()["suggestions"]
+
+    suggestions = {item["source_field"]: item for item in asyncio.run(run()) if item["entity_name"] == "Account"}
+    for field in ("REP_CODE", "CUSTODIAN_CODE"):
+        assert suggestions[field]["canonical_field"] == field
+        assert suggestions[field]["confidence_score"] == 0.95
+    assert suggestions["LEGACY_ACCT_NO"]["canonical_field"] == "ACCT_NUM"
+    open_gaps = {(i["entity"], i["canonical_field"]) for i in
+                 state.questionnaire_data.get("mapping_information_requests", []) if i.get("status") == "OPEN"}
+    assert ("Account", "REP_CODE") not in open_gaps
+    assert ("Account", "CUSTODIAN_CODE") not in open_gaps

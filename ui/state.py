@@ -354,7 +354,7 @@ class WorkspaceStateStore:
                         source_field,
                         canonical_field,
                         proposed_rule,
-                        float(mapping_result.get("confidence_score", 0.0)),
+                        float(field_lineage.get("confidence", mapping_result.get("confidence_score", 0.0))),
                         now,
                     ),
                 )

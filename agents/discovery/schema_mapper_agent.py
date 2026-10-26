@@ -156,6 +156,11 @@ class SchemaMapperAgent:
         candidate = str(source_field).strip().upper()
         return candidate if candidate in config.canonical_field_names(entity_name) else None
 
+    # Per-field name-evidence confidence for a proposed mapping. This reflects how the
+    # source column name matched, not value profiling, and never replaces human review.
+    IDENTITY_MATCH_CONFIDENCE = 0.95
+    ALIAS_MATCH_CONFIDENCE = 0.85
+
     # Declarative rule families emitted by discovery plus simple scalar transforms.
     # Never eval arbitrary rule text; only registered families are executable.
     SUPPORTED_APPROVED_TRANSFORMS = {
@@ -310,6 +315,7 @@ class SchemaMapperAgent:
                             "source_field": raw_key,
                             "canonical_field": target_key,
                             "rule_applied": "DIRECT_COPY",
+                            "confidence": self.IDENTITY_MATCH_CONFIDENCE,
                             "sample_value": str(raw_val)
                         })
                         lineage_fields_seen.add(raw_key)
@@ -367,6 +373,7 @@ class SchemaMapperAgent:
                             "source_field": raw_key,
                             "canonical_field": target_key,
                             "rule_applied": applied_rule,
+                            "confidence": self.ALIAS_MATCH_CONFIDENCE,
                             "sample_value": str(transformed_val)
                         })
                         lineage_fields_seen.add(raw_key)
