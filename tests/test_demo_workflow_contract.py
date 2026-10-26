@@ -87,7 +87,7 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     response = asyncio.run(post_demo_load())
 
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/entity-sample-files?notice=")
+    assert response.headers["location"].startswith("/?notice=")
     migration_id = state.questionnaire_data["migration_id"]
     assert state.questionnaire_data["migration_setup"]["target_system"] == "Simplicity"
     assert sum(len(files) for files in state.entity_source_files.values()) == 9

@@ -383,7 +383,7 @@ async def load_demo_migration(request: Request):
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered. Review each inferred file below."), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered. Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/agent-studio", response_class=HTMLResponse)
@@ -452,6 +452,7 @@ async def dashboard_overview(request: Request):
         template_name="dashboard.html",
         extra_context={
             "page_title": "Migration Dashboard",
+            "notice": request.query_params.get("notice", ""),
             "user_name": user["name"],
             "user_role": user["role"],
             "dashboard": state_store.generated_dashboard,

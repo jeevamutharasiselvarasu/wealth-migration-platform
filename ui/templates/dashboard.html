@@ -2,6 +2,7 @@
 
 {% block content %}
 <div class="space-y-6 max-w-6xl">
+    {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs text-teal-900">{{ notice }}</div>{% endif %}
     <!-- Header with Instantiation Timestamp -->
     <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
         <div class="flex items-center space-x-3">
