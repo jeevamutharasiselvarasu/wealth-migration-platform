@@ -6,10 +6,10 @@
     <!-- Header with Instantiation Timestamp -->
     <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
         <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">02</span>
+            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">⌂</span>
             <div>
                 <h1 class="text-lg font-bold text-[#152c6b]">Dashboard Overview: {{ dashboard.firm_name }}</h1>
-                <p class="text-xs text-[#5a6a88]">Firm context and source-to-canonical readiness (Updated: {{ dashboard.generated_at }})</p>
+                <p class="text-xs text-[#5a6a88]">Firm context and source-to-canonical readiness (updated {{ dashboard.generated_at }})</p>
             </div>
         </div>
         <span class="bg-teal-50 text-teal-700 border border-teal-200 px-3.5 py-1 rounded-full text-xs font-bold font-mono">
@@ -17,8 +17,38 @@
         </span>
     </div>
 
+
+    {% if progress %}
+    <!-- Where am I, and what do I do next? -->
+    <section class="rounded-2xl border border-blue-200 bg-gradient-to-b from-[#F4F8FF] to-white p-5 shadow-sm" aria-label="Next step">
+      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div class="min-w-0">
+          <div class="font-mono text-[11px] font-bold uppercase tracking-[.12em] text-blue-700">Next step</div>
+          <h2 class="mt-1 text-xl font-bold text-[#152C6B]">{{ progress.next.label }}</h2>
+          <p class="mt-1 text-sm text-[#41506B]">{{ progress.next.detail }}</p>
+        </div>
+        <a href="{{ progress.next.href }}" class="shrink-0 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white no-underline hover:bg-blue-700">Go there →</a>
+      </div>
+      {% set cur = progress.next.step %}
+      <ol class="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4" aria-label="Workflow stages">
+        {% for key, label, href in [('setup','Setup','/migration-setup'),('discover','Discover','/entity-sample-files'),('map','Map & review','/agent-pipeline'),('validate','Validate','/reconciliation')] %}
+          {% set order = ['setup','discover','map','validate'] %}
+          {% set state = 'current' if key == cur else ('done' if order.index(key) < order.index(cur) else 'todo') %}
+          <li><a href="{{ href }}" class="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold no-underline {{ 'border-blue-400 bg-blue-600 text-white' if state == 'current' else ('border-teal-200 bg-teal-50 text-teal-800' if state == 'done' else 'border-[#D9E3F5] bg-white text-[#5A6A88]') }}">
+            <span class="grid h-6 w-6 place-items-center rounded-full text-xs {{ 'bg-white text-blue-700' if state == 'current' else ('bg-teal-600 text-white' if state == 'done' else 'bg-[#E9EFF9] text-[#5A6A88]') }}">{{ '✓' if state == 'done' else loop.index }}</span>{{ label }}</a></li>
+        {% endfor %}
+      </ol>
+    </section>
+    <section class="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Progress counts">
+      <a href="/entity-sample-files" class="rounded-2xl border border-[#D9E3F5] bg-white p-4 no-underline shadow-sm hover:border-blue-300"><div class="text-xs font-medium text-[#5A6A88]">Files confirmed</div><div class="mt-1 text-2xl font-extrabold text-[#152C6B]">{{ progress.files_confirmed }}<span class="text-base font-bold text-[#8A97B2]"> / {{ progress.files_total }}</span></div><div class="mt-1 text-xs text-[#5A6A88]">{{ progress.files_pending }} awaiting review</div></a>
+      <a href="/agent-pipeline" class="rounded-2xl border border-[#D9E3F5] bg-white p-4 no-underline shadow-sm hover:border-blue-300"><div class="text-xs font-medium text-[#5A6A88]">Mappings approved</div><div class="mt-1 text-2xl font-extrabold text-teal-700">{{ progress.mappings_approved }}</div><div class="mt-1 text-xs text-[#5A6A88]">{{ progress.proposals_pending }} proposal{{ '' if progress.proposals_pending == 1 else 's' }} waiting</div></a>
+      <a href="/agent-pipeline#information-requests" class="rounded-2xl border border-[#D9E3F5] bg-white p-4 no-underline shadow-sm hover:border-blue-300"><div class="text-xs font-medium text-[#5A6A88]">Information requests</div><div class="mt-1 text-2xl font-extrabold {{ 'text-amber-700' if progress.rfi_open else 'text-[#152C6B]' }}">{{ progress.rfi_open }}</div><div class="mt-1 text-xs text-[#5A6A88]">open</div></a>
+      <a href="/canonical-changes" class="rounded-2xl border border-[#D9E3F5] bg-white p-4 no-underline shadow-sm hover:border-blue-300"><div class="text-xs font-medium text-[#5A6A88]">Canonical change requests</div><div class="mt-1 text-2xl font-extrabold text-[#152C6B]">{{ progress.changes_open }}</div><div class="mt-1 text-xs text-[#5A6A88]">open or deferred</div></a>
+    </section>
+    {% endif %}
     {% if migration_setup and migration_setup.get("target_system") %}
-    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <details class="rounded-2xl border border-[#D9E3F5] bg-white shadow-sm"><summary class="cursor-pointer p-5 text-base font-bold text-[#152C6B]">Migration setup summary <span class="ml-2 text-xs font-medium text-[#5A6A88]">{{ migration_setup.get("migration_name", dashboard.firm_name) }} · {{ migration_setup.get("target_system") }} · click to expand</span></summary>
+    <section class="px-5 pb-5">
       <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3">
         <div><h2 class="text-base font-bold text-[#152C6B]">Migration setup summary</h2><p class="mt-1 text-xs text-[#5A6A88]">Review the saved configuration before source discovery.</p></div>
         <a href="/migration-setup" class="rounded-lg border border-[#D9E3F5] bg-[#F8FAFD] px-3 py-2 text-xs font-bold text-[#152C6B]">Edit setup</a>
@@ -33,7 +63,7 @@
         <div class="rounded-xl border border-[#D9E3F5] p-3"><div class="text-[10px] font-bold text-[#5A6A88]">Azure environment</div><p class="mt-1 text-xs text-[#152C6B]">Subscription: {{ migration_setup.get("azure_subscription_id") or "Not configured" }} · Resource group: {{ migration_setup.get("azure_resource_group") or "Not configured" }}</p><p class="mt-1 text-[10px] text-[#5A6A88]">Storage: {{ migration_setup.get("azure_storage_account") or "Not configured" }} / {{ migration_setup.get("azure_container") or "Not configured" }}</p></div>
         <div class="rounded-xl border border-[#D9E3F5] p-3"><div class="text-[10px] font-bold text-[#5A6A88]">Knowledge references</div><p class="mt-1 text-xs text-[#152C6B]">Data dictionary: {{ migration_setup.get("knowledge_schema_ref") or "Not provided" }}</p><p class="mt-1 text-[10px] text-[#5A6A88]">Business rules: {{ migration_setup.get("knowledge_rules_ref") or "Not provided" }} · SME: {{ migration_setup.get("knowledge_sme") or "Not assigned" }}</p></div>
       </div>
-    </section>
+    </section></details>
     {% else %}
     <section class="rounded-2xl border border-blue-200 bg-blue-50 p-5"><h2 class="font-bold text-[#152C6B]">Migration setup is not complete</h2><p class="mt-1 text-xs text-[#41506B]">Complete the target contract, access method and knowledge references before source discovery.</p><a href="/migration-setup" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Start migration setup →</a></section>
     {% endif %}
@@ -79,7 +109,8 @@
       {% endfor %}
     </section>
 
-    <section class="rounded-2xl border border-[#d9e3f5] bg-white p-5 shadow-sm">
+    <details class="rounded-2xl border border-[#d9e3f5] bg-white shadow-sm"><summary class="cursor-pointer p-5 text-sm font-bold text-[#41506B]">Next phase · wave segregation conditions <span class="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[11px] text-amber-800">NOT ACTIVE IN P0</span></summary>
+    <section class="px-5 pb-5">
       <div class="flex flex-col gap-2 border-b border-[#e9eff9] pb-3 md:flex-row md:items-center md:justify-between">
         <div><h2 class="text-base font-bold text-[#152c6b]">Condition-based wave segregation</h2><p class="mt-1 text-xs leading-5 text-[#5a6a88]">Wave criteria are visible for planning, but assignment remains disabled in P0. In the full framework, approved ADLS telemetry will evaluate these conditions; waves must be derived from business conditions, not arbitrary sequence numbers.</p></div>
         <span class="w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[9px] font-bold text-amber-800">CONFIGURED · NOT EVALUATED</span>
@@ -95,7 +126,7 @@
         {% endfor %}
       </div>
       <p class="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">No records or entities are assigned to a wave by this dashboard. Thresholds are candidate configuration and must be validated with business owners before telemetry-based actuation is enabled.</p>
-    </section>
+    </section></details>
 
     <section class="rounded-2xl border border-[#d9e3f5] bg-white p-6 shadow-sm">
         <div class="flex flex-col gap-2 border-b border-[#e9eff9] pb-3 md:flex-row md:items-center md:justify-between">

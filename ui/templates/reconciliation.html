@@ -10,7 +10,7 @@
     <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
         <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div class="flex items-start gap-3">
-                <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-teal-600 font-mono text-sm font-bold text-white">05</span>
+                <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-teal-600 font-mono text-sm font-bold text-white">4</span>
                 <div>
                     <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-teal-700">Validation & exception handling</div>
                     <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Mapping Validation Review</h1>
@@ -33,7 +33,7 @@
             <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Transformation</th><th class="p-3">Confidence</th><th class="p-3">Reviewer</th><th class="p-3">Approved at</th></tr></thead>
             <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
             {% for mapping in approved_mappings %}
-            <tr><td class="p-3 font-bold text-[#152C6B]">{{ mapping.entity_name }}</td><td class="p-3 font-mono">{{ mapping.source_field }}</td><td class="p-3 font-mono font-bold text-teal-700">{{ mapping.canonical_field }}</td><td class="p-3 font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td class="p-3">{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="p-3">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="p-3 text-[#5A6A88]">{{ mapping.reviewed_utc|default(mapping.updated_utc|default('—')) }}</td></tr>
+            <tr><td class="p-3 font-bold text-[#152C6B]">{{ mapping.entity_name }}</td><td class="p-3 font-mono">{{ mapping.source_field }}</td><td class="p-3 font-mono font-bold text-teal-700">{{ mapping.canonical_field }}</td><td class="p-3 font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td class="p-3">{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="p-3">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="p-3 text-[#5A6A88]">{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
             {% endfor %}
             </tbody></table></div>
         {% else %}

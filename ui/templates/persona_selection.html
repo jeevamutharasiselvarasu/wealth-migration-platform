@@ -2,7 +2,7 @@
 {% block content %}
 <div class="mx-auto max-w-5xl space-y-6">
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-6 shadow-sm">
-    <div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workspace identity · Step 2</div>
+    <div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workspace identity</div>
     <h1 class="mt-2 text-2xl font-bold text-[#152C6B]">Choose your persona</h1>
     <p class="mt-2 max-w-3xl text-sm leading-6 text-[#5A6A88]">Choose the workspace for your responsibilities. Navigation and available actions are scoped to the selected role. You can switch persona later without signing in again.</p>
   </section>
@@ -21,7 +21,7 @@
       </div>
     </label>
     {% endfor %}
-    <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
+    <div class="md:col-span-2 sticky bottom-2 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl shadow-md border border-[#D9E3F5] bg-[#F8FAFD] p-4">
       <p class="text-xs text-[#5A6A88]">Signed in as <b class="text-[#152C6B]">{{ user_name }}</b>. Persona selection controls workspace scope; it does not grant additional system permissions.</p>
       <button class="rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700" type="submit">Enter selected workspace →</button>
     </div>

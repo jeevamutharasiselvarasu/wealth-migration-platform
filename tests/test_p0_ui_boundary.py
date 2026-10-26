@@ -25,11 +25,11 @@ def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
 
 def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow():
     navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
-    for route in ('/persona-selection', '/migration-setup', '/entity-sample-files', '/agent-pipeline#pending-mappings', '/reconciliation'):
+    for route in ('/persona-selection', '/migration-setup', '/entity-sample-files', '/agent-pipeline', '/reconciliation'):
         assert f'href="{route}"' in navigation
-    assert 'href="/firm-knowledge"' not in navigation
+    assert 'href="/firm-knowledge"' in navigation  # Governance reference, not a workflow step
     assert 'href="/hitl"' not in navigation
-    assert "Persona / Role" in navigation
+    assert "Switch persona" in navigation
     assert "Source Discovery & Entity Scope" in navigation
     assert "DATA PLANE (SPECIALIST)" not in navigation
 

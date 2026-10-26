@@ -30,58 +30,6 @@
   <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">{{ notice }}</div>
   {% endif %}
 
-  {% if acquisition_method == 'AZURE_CONNECTION' %}
-  <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-    <div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 font-mono text-sm font-bold text-amber-800">AZ</span><div><h2 class="font-bold text-amber-900">Azure source connection selected</h2><p class="mt-1 text-xs leading-5 text-amber-900">The setup records the Azure environment and approved access method, but a live connector is not yet verified. Configure managed identity / Key Vault access and connection testing before enabling automated discovery. Do not enter secrets here.</p><a href="/migration-setup" class="mt-3 inline-block rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">Review Azure setup →</a></div></div>
-  </section>
-  {% else %}
-  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <div class="flex items-start gap-3"><span class="grid h-9 w-9 flex-none place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">IN</span><div><h2 class="font-bold text-[#152C6B]">Add source files</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">No entity dropdown is used. Inference is attempted automatically for every file. Source details and dictionaries are optional enrichment—not prerequisites. Each file receives its own classification or review outcome.</p></div></div>
-    {% if can_discover %}
-    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-      <label class="text-xs font-bold text-[#41506B]">Source files <input type="file" name="files" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" multiple required class="mt-2 block w-full rounded-lg border border-[#D9E3F5] bg-[#F8FAFD] p-3 text-xs font-normal"></label>
-      <label class="text-xs font-bold text-[#41506B]">Source system / file purpose (optional) <input type="text" name="source_context" placeholder="e.g. account register export; CRM client master" class="mt-2 w-full rounded-lg border border-[#D9E3F5] p-3 text-xs font-normal"></label>
-      <label class="text-xs font-bold text-[#41506B] md:col-span-2">Data dictionary / column definitions (optional) <textarea name="data_dictionary_notes" rows="2" placeholder="Paste field definitions or provide the key and relationship meaning if headers are ambiguous." class="mt-2 w-full rounded-lg border border-[#D9E3F5] p-3 text-xs font-normal"></textarea></label>
-      <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-3"><span class="text-[10px] leading-5 text-[#8A97B2]">Select multiple files: CSV, TSV, XLSX, XLSM, XLS or JSON. Shared context is optional. Use masked or representative samples.</span><button type="submit" class="rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white hover:bg-blue-700">Analyse files & infer entities →</button></div>
-    </form>
-    {% endif %}
-  </section>
-  {% endif %}
-
-  {% if knowledge_docs %}
-  <section class="rounded-2xl border border-teal-100 bg-teal-50 p-4">
-    <div class="flex items-center justify-between gap-3"><div><h2 class="text-sm font-bold text-teal-900">Knowledge assets registered for this migration</h2><p class="mt-1 text-xs text-teal-800">These assets are available as mapping evidence; they do not approve a mapping automatically.</p></div><span class="rounded-full border border-teal-200 bg-white px-3 py-1 font-mono text-[9px] text-teal-800">{{ knowledge_docs|length }} ASSETS</span></div>
-    <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">{% for doc in knowledge_docs %}<div class="rounded-lg border border-teal-100 bg-white p-3"><div class="text-xs font-bold text-[#152C6B]">{{ doc.filename }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">{{ doc.category|default("knowledge") }}</div></div>{% endfor %}</div>
-  </section>
-  {% endif %}
-  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <div class="border-b border-[#E9EFF9] pb-3"><h2 class="font-bold text-[#152C6B]">Entity-level scope approval</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Approve all files for an entity in one action when every file has a confident, matching inference and signature-field evidence. If even one file is ambiguous, needs review, or was rejected, the bulk action is blocked and individual review remains available.</p></div>
-    <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-      {% for entity in ['Account','Household','Client'] %}
-      {% set summary = entity_approval_summary.get(entity, {}) %}
-      <article class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
-        <div class="flex items-center justify-between"><h3 class="font-bold text-[#152C6B]">{{ entity }}</h3><span class="font-mono text-[9px] text-[#8A97B2]">{{ summary.get('total',0) }} FILES</span></div>
-        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
-          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-teal-700">{{ summary.get('approved',0) }}</div><div class="text-[9px] text-[#5A6A88]">Approved</div></div>
-          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-amber-700">{{ summary.get('pending',0) }}</div><div class="text-[9px] text-[#5A6A88]">Pending</div></div>
-          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-red-700">{{ summary.get('rejected',0) }}</div><div class="text-[9px] text-[#5A6A88]">Rejected</div></div>
-        </div>
-        {% if summary.get('total',0) > 0 and can_discover %}
-        <form action="/api/entities/confirm-entity" method="post" class="mt-3 space-y-2" onsubmit="return confirm('Approve every registered {{ entity }} source file in one action? This is allowed only when all files pass the evidence gate.');">
-          <input type="hidden" name="entity_name" value="{{ entity }}">
-          <input name="comments" placeholder="Optional approval note" class="w-full rounded-lg border border-[#D9E3F5] bg-white p-2 text-[10px]">
-          <button type="submit" class="w-full rounded-lg bg-teal-700 px-3 py-2.5 text-[10px] font-bold text-white hover:bg-teal-800">Approve all {{ entity }} files →</button>
-        </form>
-        {% elif summary.get('total',0) > 0 %}
-        <div class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] p-3 text-center text-[10px] text-[#8A97B2]">Entity approval is performed by a Migration Analyst or Platform Admin.</div>
-        {% else %}
-        <div class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] p-3 text-center text-[10px] text-[#8A97B2]">Upload and infer files before entity approval.</div>
-        {% endif %}
-      </article>
-      {% endfor %}
-    </div>
-  </section>
-
   <section id="discovered-source-inventory" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Discovered source inventory · {{ source_uploads|length }} files</h2><p class="mt-1 text-xs text-[#5A6A88]">Multiple source files can belong to the same entity. XODUS automatically classifies and profiles each uploaded file, then recommends canonical mappings with evidence. Review and approve or reject the inferred entity here; agent recommendations never auto-approve business meaning.</p></div><div class="flex flex-wrap gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="rounded-lg bg-[#2563EB] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Profile approved files & generate mappings →</button></form>{% endif %}<a href="/agent-pipeline#pending-mappings" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">Open Mapping Studio →</a></div></div>
     {% if source_uploads %}
@@ -91,6 +39,7 @@
   <span class="text-[10px] text-amber-700">Out of scope — file retained. Re-enable this entity in Migration Setup to review it.</span>
 {% elif file.inference_approval_status == 'APPROVED' %}text-teal-700{% elif file.inference_approval_status == 'REJECTED' %}text-red-700{% else %}text-amber-700{% endif %}">Scope review: {{ file.display_status|default(file.inference_approval_status|default('NOT_REQUIRED')) }}</div>{% if file.inference and file.inference.evidence.get(file.inferred_entity) %}<div class="mt-1 max-w-xs text-[9px] leading-4 text-[#5A6A88]">Evidence: {{ file.inference.evidence.get(file.inferred_entity).matched_fields|join(', ') }}</div>{% endif %}
 {% if file.agent_analysis %}
+<details class="mt-2"><summary class="cursor-pointer text-[11px] font-bold text-blue-800">Evidence &amp; suggested fields</summary>
 <div class="mt-2 rounded-lg border border-blue-100 bg-blue-50 p-2">
   <div class="text-[9px] font-bold uppercase tracking-wide text-blue-800">Agent-assisted analysis · automatic</div>
   <div class="mt-1 text-[10px] text-[#41506B]">Profile: {{ file.agent_analysis.profile.row_count|default(file.row_count) }} rows · {{ file.agent_analysis.profile.column_count|default(file.column_count) }} columns</div>
@@ -100,6 +49,7 @@
   {% if file.agent_analysis.mapping.proposals %}<div class="mt-2 border-t border-blue-100 pt-2 text-[9px] font-bold text-blue-800">Suggested source → canonical fields</div>
   <div class="mt-1 space-y-1">{% for proposal in file.agent_analysis.mapping.proposals[:8] %}<div class="flex flex-wrap gap-1 text-[9px]"><span class="font-mono">{{ proposal.source_field }}</span><span>→</span><span class="font-semibold">{{ proposal.canonical_field }}</span>{% if proposal.confidence is defined %}<span class="text-[#5A6A88]">({{ proposal.confidence }})</span>{% endif %}</div>{% endfor %}</div>{% endif %}
 </div>
+</details>
 {% endif %}
 </td><td class="p-3">
 {% if file.inference_approval_status == 'APPROVED' %}
@@ -116,7 +66,7 @@
     {% if file.inferred_entity not in ['Account','Household','Client'] or not file.scope_eligible or (file.inference or {}).get('status') == 'NEEDS_REVIEW' %}
     <label class="block text-[9px] font-bold text-[#5A6A88]">Classify this file as
       <select name="target_entity" required class="mt-1 w-full rounded border border-[#D9E3F5] bg-white p-2 text-[10px]">
-        <option value="">Select an entity or scope outcome…</option>
+        <option value="">Choose Account, Household, Client, relationship or out of scope…</option>
         {% for candidate in ['Account','Household','Client'] %}
         {% if candidate in in_scope_entities %}<option value="{{ candidate }}">{{ candidate }}</option>{% endif %}
         {% endfor %}
@@ -136,6 +86,66 @@
     {% endif %}
   </section>
 
+  <details class="space-y-3" ><summary class="cursor-pointer rounded-xl border border-[#D9E3F5] bg-white px-5 py-3 text-sm font-bold text-[#152C6B] shadow-sm hover:border-blue-300">Approve all files for an entity <span class="ml-2 text-xs font-medium text-[#5A6A88]">bulk action, only when every file passes the evidence gate</span></summary>
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="border-b border-[#E9EFF9] pb-3"><h2 class="font-bold text-[#152C6B]">Entity-level scope approval</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Approve all files for an entity in one action when every file has a confident, matching inference and signature-field evidence. If even one file is ambiguous, needs review, or was rejected, the bulk action is blocked and individual review remains available.</p></div>
+    <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+      {% for entity in ['Account','Household','Client'] %}
+      {% set summary = entity_approval_summary.get(entity, {}) %}
+      <article class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
+        <div class="flex items-center justify-between"><h3 class="font-bold text-[#152C6B]">{{ entity }}</h3><span class="font-mono text-[9px] text-[#8A97B2]">{{ summary.get('total',0) }} FILES</span></div>
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-teal-700">{{ summary.get('approved',0) }}</div><div class="text-[9px] text-[#5A6A88]">Approved</div></div>
+          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-amber-700">{{ summary.get('pending',0) }}</div><div class="text-[9px] text-[#5A6A88]">Pending</div></div>
+          <div class="rounded-lg bg-white p-2"><div class="text-sm font-bold text-red-700">{{ summary.get('rejected',0) }}</div><div class="text-[9px] text-[#5A6A88]">Rejected</div></div>
+        </div>
+        {% if summary.get('total',0) > 0 and can_discover %}
+        <form action="/api/entities/confirm-entity" method="post" class="mt-3 space-y-2" onsubmit="return confirm('Approve every registered {{ entity }} source file in one action? This is allowed only when all files pass the evidence gate.');">
+          <input type="hidden" name="entity_name" value="{{ entity }}">
+          <input name="comments" aria-label="Approval note" placeholder="Optional approval note" class="w-full rounded-lg border border-[#D9E3F5] bg-white p-2 text-[10px]">
+          <button type="submit" class="w-full rounded-lg bg-teal-700 px-3 py-2.5 text-[10px] font-bold text-white hover:bg-teal-800">Approve all {{ entity }} files →</button>
+        </form>
+        {% elif summary.get('total',0) > 0 %}
+        <div class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] p-3 text-center text-[10px] text-[#8A97B2]">Entity approval is performed by a Migration Analyst or Platform Admin.</div>
+        {% else %}
+        <div class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] p-3 text-center text-[10px] text-[#8A97B2]">Upload and infer files before entity approval.</div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  </details>
+
+  <details class="space-y-3" {% if not source_uploads %}open{% endif %}><summary class="cursor-pointer rounded-xl border border-[#D9E3F5] bg-white px-5 py-3 text-sm font-bold text-[#152C6B] shadow-sm hover:border-blue-300">＋ Add source files <span class="ml-2 text-xs font-medium text-[#5A6A88]">upload CSV, TSV, Excel or JSON</span></summary>
+  {% if acquisition_method == 'AZURE_CONNECTION' %}
+  <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+    <div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 font-mono text-sm font-bold text-amber-800">AZ</span><div><h2 class="font-bold text-amber-900">Azure source connection selected</h2><p class="mt-1 text-xs leading-5 text-amber-900">The setup records the Azure environment and approved access method, but a live connector is not yet verified. Configure managed identity / Key Vault access and connection testing before enabling automated discovery. Do not enter secrets here.</p><a href="/migration-setup" class="mt-3 inline-block rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">Review Azure setup →</a></div></div>
+  </section>
+  {% else %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="flex items-start gap-3"><span class="grid h-9 w-9 flex-none place-items-center rounded-lg bg-blue-600 font-mono text-xs font-bold text-white">IN</span><div><h2 class="font-bold text-[#152C6B]">Add source files</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">No entity dropdown is used. Inference is attempted automatically for every file. Source details and dictionaries are optional enrichment—not prerequisites. Each file receives its own classification or review outcome.</p></div></div>
+    {% if can_discover %}
+    <form action="/api/entities/upload-sample-file" method="POST" enctype="multipart/form-data" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+      <label class="text-xs font-bold text-[#41506B]">Source files <input type="file" name="files" accept=".csv,.tsv,.xlsx,.xlsm,.xls,.json" multiple required class="mt-2 block w-full rounded-lg border border-[#D9E3F5] bg-[#F8FAFD] p-3 text-xs font-normal"></label>
+      <label class="text-xs font-bold text-[#41506B]">Source system / file purpose (optional) <input type="text" name="source_context" placeholder="e.g. account register export; CRM client master" class="mt-2 w-full rounded-lg border border-[#D9E3F5] p-3 text-xs font-normal"></label>
+      <label class="text-xs font-bold text-[#41506B] md:col-span-2">Data dictionary / column definitions (optional) <textarea name="data_dictionary_notes" rows="2" placeholder="Paste field definitions or provide the key and relationship meaning if headers are ambiguous." class="mt-2 w-full rounded-lg border border-[#D9E3F5] p-3 text-xs font-normal"></textarea></label>
+      <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-3"><span class="text-[10px] leading-5 text-[#8A97B2]">Select multiple files: CSV, TSV, XLSX, XLSM, XLS or JSON. Shared context is optional. Use masked or representative samples.</span><button type="submit" class="rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white hover:bg-blue-700">Analyse files & infer entities →</button></div>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+  </details>
+
+  <details class="space-y-3" ><summary class="cursor-pointer rounded-xl border border-[#D9E3F5] bg-white px-5 py-3 text-sm font-bold text-[#152C6B] shadow-sm hover:border-blue-300">Knowledge assets registered <span class="ml-2 text-xs font-medium text-[#5A6A88]">mapping evidence, not approvals</span></summary>
+  {% if knowledge_docs %}
+  <section class="rounded-2xl border border-teal-100 bg-teal-50 p-4">
+    <div class="flex items-center justify-between gap-3"><div><h2 class="text-sm font-bold text-teal-900">Knowledge assets registered for this migration</h2><p class="mt-1 text-xs text-teal-800">These assets are available as mapping evidence; they do not approve a mapping automatically.</p></div><span class="rounded-full border border-teal-200 bg-white px-3 py-1 font-mono text-[9px] text-teal-800">{{ knowledge_docs|length }} ASSETS</span></div>
+    <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">{% for doc in knowledge_docs %}<div class="rounded-lg border border-teal-100 bg-white p-3"><div class="text-xs font-bold text-[#152C6B]">{{ doc.filename }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">{{ doc.category|default("knowledge") }}</div></div>{% endfor %}</div>
+  </section>
+  {% endif %}
+  </details>
+
+  <details class="space-y-3" ><summary class="cursor-pointer rounded-xl border border-[#D9E3F5] bg-white px-5 py-3 text-sm font-bold text-[#152C6B] shadow-sm hover:border-blue-300">What happens when information is missing?</summary>
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <h2 class="font-bold text-[#152C6B]">What happens when information is missing?</h2>
     <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -144,5 +154,6 @@
       <div class="rounded-xl bg-[#F8FAFD] p-3"><b class="text-xs text-[#152C6B]">3. Review decision</b><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Approve a supported mapping or reject it with comments. Rejected proposals do not become reusable rules.</p></div>
     </div>
   </section>
+  </details>
 </div>
 {% endblock %}

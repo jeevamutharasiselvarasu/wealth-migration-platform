@@ -91,6 +91,51 @@ def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, sour
     return remove_samples(payload)
 
 
+def workflow_progress() -> dict:
+    """Counts and the single next action shown in the navigation and dashboard."""
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    scope = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    files = [rec for entity, group in getattr(state_store, "entity_source_files", {}).items() for rec in group.values()]
+    files_total = len(files)
+    files_confirmed = sum(1 for r in files if r.get("inference_approval_status") == "APPROVED")
+    files_pending = sum(1 for r in files if r.get("inference_approval_status") not in {"APPROVED", "REJECTED"})
+    proposals_pending = mappings_approved = changes_open = 0
+    conn = get_db_connection()
+    try:
+        proposals_pending = conn.execute(
+            "SELECT COUNT(*) FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (migration_id,)).fetchone()[0]
+        mappings_approved = conn.execute(
+            "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
+        changes_open = conn.execute(
+            "SELECT COUNT(*) FROM canonical_change_requests WHERE migration_id = ? AND status IN ('OPEN','DEFERRED')", (migration_id,)).fetchone()[0]
+    except Exception:
+        logger.exception("Could not read workflow progress counts")
+    finally:
+        conn.close()
+    rfi_open = sum(1 for item in state_store.questionnaire_data.get("mapping_information_requests", [])
+                   if item.get("entity") in scope and item.get("status") != "RESOLVED")
+    if not scope:
+        nxt = {"label": "Set up the migration", "detail": "Choose the entities in scope and register knowledge.", "href": "/migration-setup", "step": "setup"}
+    elif files_total == 0:
+        nxt = {"label": "Add source files", "detail": "Upload CoreCap files or load the demo data set.", "href": "/entity-sample-files", "step": "discover"}
+    elif files_pending:
+        nxt = {"label": f"Confirm {files_pending} source file{'s' if files_pending != 1 else ''}", "detail": "Review the inferred entity for each file.", "href": "/entity-sample-files", "step": "discover"}
+    elif proposals_pending:
+        nxt = {"label": f"Review {proposals_pending} mapping proposal{'s' if proposals_pending != 1 else ''}", "detail": "Approve or reject the suggested source-to-canonical mappings.", "href": "/agent-pipeline", "step": "map"}
+    elif mappings_approved == 0:
+        nxt = {"label": "Generate mapping proposals", "detail": "Profile the confirmed files and create review items.", "href": "/agent-pipeline", "step": "map"}
+    elif rfi_open:
+        nxt = {"label": f"Answer {rfi_open} information request{'s' if rfi_open != 1 else ''}", "detail": "Required canonical fields still have no source.", "href": "/agent-pipeline#information-requests", "step": "map"}
+    else:
+        nxt = {"label": "Review validation results", "detail": "All mappings are approved; check keys, relationships and exceptions.", "href": "/reconciliation", "step": "validate"}
+    return {
+        "scope": scope, "files_total": files_total, "files_confirmed": files_confirmed, "files_pending": files_pending,
+        "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
+        "changes_open": changes_open, "next": nxt,
+    }
+
+
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
         "request": request,
@@ -98,7 +143,8 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         "firm_name": state_store.questionnaire_data.get("firm_name", "New Migration"),
         "adls_connected": state_store.adls_connected,
         "adls_container": state_store.adls_container,
-        "kernel_specs": getattr(state_store, "kernel_specs", {})
+        "kernel_specs": getattr(state_store, "kernel_specs", {}),
+        "progress": workflow_progress(),
     }
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
