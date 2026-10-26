@@ -144,3 +144,84 @@ def test_setup_requires_a_valid_firm_config(tmp_path, monkeypatch):
     assert "migration_setup" not in state.questionnaire_data
 
 
+# --- Mapper and dashboard use the firm configuration as the single source ---
+
+def test_mapper_required_fields_come_from_firm_config():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    config = load_firm_config(SEED)
+    for entity in ("Account", "Client", "Household"):
+        assert SchemaMapperAgent.required_fields(entity) == config.required_fields(entity)
+    assert "REG_TYPE" in SchemaMapperAgent.required_fields("Account")
+    assert "TAX_ID" in SchemaMapperAgent.required_fields("Client")
+
+
+def test_mapper_required_fields_fall_back_when_firm_config_unavailable(tmp_path, monkeypatch):
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    monkeypatch.setenv("XODUS_FIRM_CONFIG", str(tmp_path / "absent.yaml"))
+    assert SchemaMapperAgent.required_fields("Household") == SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS["Household"]
+    assert SchemaMapperAgent.required_fields("Sleeve") == SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS["Sleeve"]
+
+
+def test_columns_named_like_canonical_fields_map_to_themselves_without_false_gaps():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    # Mirrors the demo account_registration.csv headers.
+    records = [{
+        "LEGACY_ACCT_NO": "A-1001", "CUSTODIAN_CODE": "CUST-A", "REGISTRATION_SRC_TYPE": "INDIVIDUAL",
+        "ACCOUNT_OPEN_DT": "2022-04-12", "REP_CODE": "R-01",
+    }]
+    result = SchemaMapperAgent().map_source_to_canonical("Account", records)
+    lineage = {item["source_field"]: item for item in result["field_lineages"]}
+    for field in ("CUSTODIAN_CODE", "REP_CODE"):
+        assert lineage[field]["canonical_field"] == field
+        assert lineage[field]["rule_applied"] == "DIRECT_COPY"
+    assert result["mapped_records"][0]["REP_CODE"] == "R-01"  # identity columns are not rewritten
+    assert result["missing_required"] == []
+    assert not result["unmapped_fields"]
+
+
+def test_identity_mapping_is_entity_scoped_and_ignores_unknown_columns():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    # CUSTODIAN_CODE is canonical for Account only and is not in the alias catalog.
+    account = SchemaMapperAgent().map_source_to_canonical("Account", [{"CUSTODIAN_CODE": "C1", "NOT_A_FIELD": "x"}])
+    assert account["mapped_fields"] == ["CUSTODIAN_CODE"]
+    assert account["unmapped_fields"] == ["NOT_A_FIELD"]
+    client = SchemaMapperAgent().map_source_to_canonical("Client", [{"CUSTODIAN_CODE": "C1"}])
+    assert client["mapped_fields"] == []
+    assert client["unmapped_fields"] == ["CUSTODIAN_CODE"]
+
+
+def test_alias_catalog_behavior_is_unchanged_for_known_aliases():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+
+    result = SchemaMapperAgent().map_source_to_canonical("Account", [{"ADVISOR_REP_NUM": "014"}])
+    assert result["mapped_records"][0]["REP_CODE"] == "REP-014"  # existing PREFIX_FORMAT rule still applies
+
+
+def test_dashboard_lists_required_fields_from_firm_config(tmp_path, monkeypatch):
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "dash")
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            await client.post(
+                "/api/migration/setup",
+                content=urlencode([
+                    ("migration_name", "CoreCap to Simplicity"), ("source_firm", "CoreCap"),
+                    ("target_system", "Simplicity"), ("canonical_version", "Simplicity-MCL-v1"),
+                    ("source_acquisition", "SAMPLE_FILES"), ("entities", "Account"), ("entities", "Client"),
+                ]),
+                headers={"Content-Type": "application/x-www-form-urlencoded"}, follow_redirects=False)
+            return await client.get("/")
+
+    page = asyncio.run(run()).text
+    config = load_firm_config(SEED)
+    assert " · ".join(config.required_fields("Account")) in page
+    assert " · ".join(config.required_fields("Client")) in page
+    assert "TAX_ID" in page and "REG_TYPE" in page

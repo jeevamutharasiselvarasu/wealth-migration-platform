@@ -1,5 +1,7 @@
 import logging
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Optional, Set
+
+from control_plane.services.firm_config import FirmConfigError, get_firm_config
 
 logger = logging.getLogger("SchemaMapperAgent")
 
@@ -127,6 +129,33 @@ class SchemaMapperAgent:
         "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
     }
 
+    @classmethod
+    def required_fields(cls, entity_name: str) -> List[str]:
+        """Required canonical fields: the firm configuration is the source of truth for P0 entities.
+
+        The legacy table above is only a fallback for non-P0 entities, or if the firm
+        configuration cannot be loaded (the migration setup gate reports that case).
+        """
+        try:
+            config = get_firm_config()
+            if entity_name in config.entities:
+                return config.required_fields(entity_name)
+        except FirmConfigError as exc:
+            logger.warning("Firm configuration unavailable; using legacy required fields: %s", exc)
+        return list(cls.MANDATORY_CANONICAL_FIELDS.get(entity_name, []))
+
+    @classmethod
+    def _identity_target(cls, entity_name: str, source_field: str) -> Optional[str]:
+        """A source column already named like a canonical field of the entity maps to itself."""
+        try:
+            config = get_firm_config()
+        except FirmConfigError:
+            return None
+        if entity_name not in config.entities:
+            return None
+        candidate = str(source_field).strip().upper()
+        return candidate if candidate in config.canonical_field_names(entity_name) else None
+
     # Declarative rule families emitted by discovery plus simple scalar transforms.
     # Never eval arbitrary rule text; only registered families are executable.
     SUPPORTED_APPROVED_TRANSFORMS = {
@@ -224,7 +253,7 @@ class SchemaMapperAgent:
                 "mapped_records": [],
                 "mapped_fields": [],
                 "unmapped_fields": [],
-                "missing_required": self.MANDATORY_CANONICAL_FIELDS.get(entity_name, []),
+                "missing_required": self.required_fields(entity_name),
                 "confidence_score": 0.0,
                 "relationship_candidates": [],
                 "field_lineages": [],
@@ -265,8 +294,26 @@ class SchemaMapperAgent:
                         lineage_fields_seen.add(raw_key)
                     continue
                 target_key = self.catalog.get(raw_key)
+                identity_match = False
+                if not target_key:
+                    target_key = self._identity_target(entity_name, raw_key)
+                    identity_match = bool(target_key)
 
-                if target_key:
+                if target_key and identity_match:
+                    # Exact canonical name: record a direct copy; reviewers may propose rules.
+                    mapped_target_fields.add(target_key)
+                    if target_key in canonical_row:
+                        field_collisions.add(f"{target_key} <- {raw_key}")
+                    canonical_row[target_key] = raw_val
+                    if raw_key not in lineage_fields_seen:
+                        field_lineages.append({
+                            "source_field": raw_key,
+                            "canonical_field": target_key,
+                            "rule_applied": "DIRECT_COPY",
+                            "sample_value": str(raw_val)
+                        })
+                        lineage_fields_seen.add(raw_key)
+                elif target_key:
                     mapped_target_fields.add(target_key)
                     transformed_val = raw_val
                     applied_rule = "DIRECT_COPY"
@@ -337,7 +384,7 @@ class SchemaMapperAgent:
                 })
                 lineage_fields_seen.add(raw_key)
 
-        required_fields = self.MANDATORY_CANONICAL_FIELDS.get(entity_name, [])
+        required_fields = self.required_fields(entity_name)
         missing_required = [req for req in required_fields if req not in mapped_target_fields]
 
         warnings = []

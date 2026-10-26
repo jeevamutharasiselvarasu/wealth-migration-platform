@@ -448,6 +448,7 @@ async def dashboard_overview(request: Request):
             "knowledge_docs_count": len(state_store.firm_knowledge_docs),
             "in_scope_entities": [entity for entity in ("Account", "Household", "Client") if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])],
             "wave_conditions": CohortConditionEngine.get_condition_catalog(),
+            "required_fields_by_entity": {entity: SchemaMapperAgent.required_fields(entity) for entity in ("Account", "Household", "Client")},
             "entity_approval_summary": {
                 entity: {
                     "total": len(state_store.entity_source_files.get(entity, {})),
@@ -1377,7 +1378,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         str(item.get("canonical_field") or item.get("target_field") or "")
         for item in mapping.get("field_lineages", [])
     }
-    required_fields = SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS.get(entity_name, [])
+    required_fields = SchemaMapperAgent.required_fields(entity_name)
     requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
     existing_requests = {
         (item.get("entity"), item.get("canonical_field"))

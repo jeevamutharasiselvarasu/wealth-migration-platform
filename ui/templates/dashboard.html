@@ -64,13 +64,13 @@
             <h2 class="mt-3 text-base font-bold text-[#152c6b]">{{ entity }}</h2>
             {% if entity == "Account" %}
               <p class="mt-1 text-xs text-[#5a6a88]">Account identity, custodian, representative, registration and opening date.</p>
-              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">ACCT_NUM · CUSTODIAN_CODE · REP_CODE · REG_TYPE · OPEN_DATE</p>
+              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">{{ required_fields_by_entity.get(entity, [])|join(' · ') }}</p>
             {% elif entity == "Household" %}
               <p class="mt-1 text-xs text-[#5a6a88]">Household identity, display name and representative.</p>
-              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">HH_ID · HH_NAME · REP_CODE</p>
+              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">{{ required_fields_by_entity.get(entity, [])|join(' · ') }}</p>
             {% elif entity == "Client" %}
-              <p class="mt-1 text-xs text-[#5a6a88]">Client identity, legal name and client type.</p>
-              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">CLIENT_ID · LEGAL_NAME · CLIENT_TYPE</p>
+              <p class="mt-1 text-xs text-[#5a6a88]">Client identity, legal name, tax identifier and client type.</p>
+              <p class="mt-3 font-mono text-[10px] leading-5 text-[#41506b]">{{ required_fields_by_entity.get(entity, [])|join(' · ') }}</p>
             {% endif %}
         </article>
       {% else %}
