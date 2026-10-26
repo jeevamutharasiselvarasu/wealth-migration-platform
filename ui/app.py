@@ -609,6 +609,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "user_name": user["name"],
             "user_role": user["role"],
             "can_review_mappings": user["role"] in MAPPING_REVIEW_ROLES,
+            "can_discover": user["role"] in DISCOVERY_ROLES,
             "firm_context": state_store.questionnaire_data,
             "pipeline_run": latest_run,
             "source_files": source_files,
@@ -1226,7 +1227,9 @@ async def confirm_entity_inference(
         "details": {"entity": reviewed_entity, "previous_entity": current_entity,
                     "filename": record.get("filename"), "decision": normalized_decision, "comments": comments.strip()},
     })
-    return RedirectResponse(url=f"/entity-sample-files#source-file-{quote_plus(file_id)}", status_code=status.HTTP_303_SEE_OTHER)
+    outcome = "rejected" if normalized_decision == "REJECT" else "confirmed as " + str(reviewed_entity)
+    notice = quote_plus(str(record.get("filename", "File")) + " " + outcome + ".")
+    return RedirectResponse(url=f"/entity-sample-files?notice={notice}#source-file-{quote_plus(file_id)}", status_code=status.HTTP_303_SEE_OTHER)
 
 def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     """Strip row-level canonical output and raw samples from all preview API responses."""

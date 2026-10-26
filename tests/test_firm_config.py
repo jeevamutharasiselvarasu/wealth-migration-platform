@@ -440,6 +440,7 @@ def test_relationship_file_needs_an_explicit_disposition_and_is_not_mapped(tmp_p
     assert status_before == "RELATIONSHIP_REVIEW"
     assert "error=" in missing.headers["location"] and unchanged == "RELATIONSHIP_REVIEW"
     assert done.status_code == 303 and "error=" not in done.headers["location"]
+    assert "notice=" in done.headers["location"]
     assert record["inference"]["status"] == "RELATIONSHIP_DEFERRED"
     assert record["inference_review"]["decision"] == "RELATIONSHIP_DEFERRED"
     assert "no relationship entity" in record["inference_review"]["comments"]
@@ -618,3 +619,5 @@ def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch
         assert ("Approve mapping" in html) is allowed, role
         assert ("Approve all Account mappings" in html) is allowed, role
         assert ("Read-only for" in html) is (not allowed), role
+        can_generate = role in ("Platform Admin", "Migration Analyst")
+        assert ("Generate proposals from approved files" in html) is can_generate, role
