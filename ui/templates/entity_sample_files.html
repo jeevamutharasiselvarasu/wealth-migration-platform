@@ -106,7 +106,7 @@
   <form action="/api/entities/confirm-inference" method="post" class="min-w-[190px] space-y-2">
     <input type="hidden" name="entity_name" value="{{ file.inferred_entity }}">
     <input type="hidden" name="file_id" value="{{ file.file_id }}">
-    {% if file.inferred_entity not in ['Account','Household','Client'] or not file.scope_eligible %}
+    {% if file.inferred_entity not in ['Account','Household','Client'] or not file.scope_eligible or (file.inference or {}).get('status') == 'NEEDS_REVIEW' %}
     <label class="block text-[9px] font-bold text-[#5A6A88]">Classify this file as
       <select name="target_entity" required class="mt-1 w-full rounded border border-[#D9E3F5] bg-white p-2 text-[10px]">
         <option value="">Select an entity or scope outcome…</option>
