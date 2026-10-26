@@ -24,6 +24,7 @@ from control_plane.services.wave_rules import CohortConditionEngine, WaveConditi
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import get_db_connection
+from control_plane.services.firm_config import FirmConfigError, load_firm_config
 from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
 
@@ -200,6 +201,15 @@ async def save_migration_setup(request: Request):
     }
     if not setup["target_system"] or not setup["canonical_version"]:
         raise HTTPException(status_code=400, detail="Target system and canonical schema / contract reference are required before source mapping setup.")
+    # Target-first: a migration must reference the configured firm contract.
+    try:
+        firm_config = load_firm_config()
+    except FirmConfigError as exc:
+        raise HTTPException(status_code=409, detail=f"Firm configuration is required before migration setup. {exc}")
+    if setup["canonical_version"] != firm_config.canonical_contract_ref:
+        raise HTTPException(status_code=400, detail=f"Canonical contract reference must match the configured firm contract ({firm_config.canonical_contract_ref}).")
+    setup["firm_id"] = firm_config.firm_id
+    setup["firm_config_version"] = firm_config.version_id
     if setup["source_acquisition"] == "AZURE_CONNECTION":
         required_azure = ["azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"]
         missing_azure = [field for field in required_azure if not setup.get(field)]

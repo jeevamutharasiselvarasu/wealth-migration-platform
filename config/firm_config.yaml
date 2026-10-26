@@ -1,0 +1,37 @@
+# Firm configuration: target-first, versioned, reusable across migrations.
+# Defines the firm's CANONICAL contract (types, nullability, keys) and registers the
+# target system. It does NOT define canonical-to-target mapping (out of P0 scope).
+# SEED VALUES: required fields mirror the platform kernel; keys/types need business
+# owner confirmation before being treated as final.
+schema_version: 1
+firm_id: SIMPLICITY
+firm_name: Simplicity
+config_version: "1.0.0"
+scope_direction: source_to_canonical
+canonical_contract_ref: Simplicity-MCL-v1
+target_system:
+  name: Simplicity
+  kind: WEALTH_PLATFORM
+  load_strategy: CURATED_FILE_OUTPUT
+entities:
+  Account:
+    grain: One legal/custodial account identity
+    fields:
+      - {name: ACCT_NUM, type: string, nullable: false, is_key: true}
+      - {name: CUSTODIAN_CODE, type: string, nullable: false}
+      - {name: REP_CODE, type: string, nullable: false}
+      - {name: REG_TYPE, type: string, nullable: false}
+      - {name: OPEN_DATE, type: date, nullable: false}
+  Client:
+    grain: One person, trust, or legal participant in the identity domain
+    fields:
+      - {name: CLIENT_ID, type: string, nullable: false, is_key: true}
+      - {name: LEGAL_NAME, type: string, nullable: false}
+      - {name: TAX_ID, type: string, nullable: false}
+      - {name: CLIENT_TYPE, type: string, nullable: false}
+  Household:
+    grain: One business/reporting grouping of related clients and/or accounts
+    fields:
+      - {name: HH_ID, type: string, nullable: false, is_key: true}
+      - {name: HH_NAME, type: string, nullable: false}
+      - {name: REP_CODE, type: string, nullable: false}
