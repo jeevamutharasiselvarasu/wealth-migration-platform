@@ -522,3 +522,37 @@ def test_low_confidence_evidence_proposals_need_individual_review(tmp_path, monk
     assert by_field["REG_CODE"]["canonical_field"] == "REG_TYPE" and by_field["REG_CODE"]["mapping_kind"] == "DIRECT"
     assert "error=" in bulk.headers["location"] and "low-confidence" in bulk.headers["location"]
     assert single.status_code == 200 and single.json().get("status") in {"SUCCESS", "APPROVED"}, single.text
+
+
+def _post_demo_load(app_module, session_id):
+    import httpx
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            return await client.post("/api/demo/load", follow_redirects=False)
+    return asyncio.run(run())
+
+
+def test_demo_load_is_stamped_with_firm_config_version_and_survives_restart(tmp_path, monkeypatch):
+    from control_plane.services.workflow_event_engine import read_events
+    from ui.state import WorkspaceStateStore
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "demo-stamp")
+    assert _post_demo_load(app_module, session_id).status_code == 303
+    expected = load_firm_config().version_id
+    setup = state.questionnaire_data["migration_setup"]
+    assert setup["firm_config_version"] == expected and setup["firm_id"] == "SIMPLICITY"
+    migration_id = state.questionnaire_data["migration_id"]
+    context = [e for e in read_events(migration_id, limit=5000) if e["event_type"] == "MIGRATION_CONTEXT_UPDATED"]
+    assert context and context[-1]["payload"]["migration_setup"]["firm_config_version"] == expected
+    restarted = WorkspaceStateStore()
+    assert restarted.questionnaire_data["migration_setup"]["firm_config_version"] == expected
+
+
+def test_demo_load_requires_a_valid_firm_config(tmp_path, monkeypatch):
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "demo-missing")
+    monkeypatch.setenv("XODUS_FIRM_CONFIG", str(tmp_path / "absent.yaml"))
+    assert _post_demo_load(app_module, session_id).status_code == 409
+    assert "migration_setup" not in state.questionnaire_data

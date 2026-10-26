@@ -265,6 +265,15 @@ async def load_demo_migration(request: Request):
     setup = dict(manifest.get("migration_setup", {}))
     if not setup.get("target_system") or not setup.get("canonical_version"):
         raise HTTPException(status_code=500, detail="Demo migration configuration is missing target contract details.")
+    # Same gate as /api/migration/setup: no migration without a firm configuration.
+    try:
+        firm_config = load_firm_config()
+    except FirmConfigError as exc:
+        raise HTTPException(status_code=409, detail=f"Firm configuration is required before migration setup. {exc}")
+    if setup["canonical_version"] != firm_config.canonical_contract_ref:
+        raise HTTPException(status_code=400, detail=f"Canonical contract reference must match the configured firm contract ({firm_config.canonical_contract_ref}).")
+    setup["firm_id"] = firm_config.firm_id
+    setup["firm_config_version"] = firm_config.version_id
 
     selected_entities = [entity for entity in setup.get("entities", ["Account", "Household", "Client"]) if entity in {"Account", "Household", "Client"}]
     if not selected_entities:
