@@ -1214,6 +1214,22 @@ def _get_approved_mapping_rules(migration_id: str, entity_name: str) -> Dict[str
         conn.close()
 
 
+def _proposal_covered_fields(migration_id: str, entity_name: str, statuses: tuple, exclude_run_id: str = "") -> set:
+    """Canonical fields already supplied by proposals of this entity in this migration, across all files."""
+    conn = get_db_connection()
+    try:
+        marks = ",".join("?" for _ in statuses)
+        rows = conn.execute(
+            f"""SELECT DISTINCT canonical_field FROM mapping_suggestions
+                WHERE migration_id = ? AND entity_name = ? AND status IN ({marks})
+                  AND canonical_field IS NOT NULL AND run_id != ?""",
+            (migration_id, entity_name, *statuses, exclude_run_id),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {str(r["canonical_field"]) for r in rows}
+
+
 def _sync_mapping_information_requests(migration_id: str) -> None:
     """Keep information-request status derived from the approved mapping catalog."""
     requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
@@ -1379,6 +1395,9 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         for item in mapping.get("field_lineages", [])
     }
     required_fields = SchemaMapperAgent.required_fields(entity_name)
+    # Required fields are evaluated per entity across all files: another file's live proposal covers the field.
+    mapped_canonical |= _proposal_covered_fields(
+        str(migration_id), entity_name, ("PENDING", "APPROVED"), exclude_run_id=str(uploaded.get("last_mapping_run_id") or ""))
     requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
     existing_requests = {
         (item.get("entity"), item.get("canonical_field"))
@@ -1883,8 +1902,14 @@ async def approve_entity_mapping_suggestions(
                 blockers.append(f"{source_field}: already approved to {existing['canonical_field']}")
         # Required fields with an unanswered information request are unresolved gaps:
         # entity-level approval must wait until a response is recorded.
+        # A field supplied by any pending proposal in this set is covered: approving the set closes the request.
+        covered_by_set = {str(r["canonical_field"]) for r in rows if r["canonical_field"]}
+        covered_by_set |= {str(r["canonical_field"]) for r in conn.execute(
+            "SELECT canonical_field FROM canonical_mappings WHERE migration_id = ? AND entity_name = ? AND is_confirmed = 1",
+            (migration_id, entity_name)).fetchall() if r["canonical_field"]}
         for gap in state_store.questionnaire_data.get("mapping_information_requests", []):
             if (gap.get("entity") == entity_name and gap.get("status") == "OPEN"
+                    and gap.get("canonical_field") not in covered_by_set
                     and str(gap.get("migration_id", migration_id)) == migration_id):
                 blockers.append(f"{gap.get('canonical_field')}: required field has an open information request ({gap.get('request_id')})")
         if blockers:

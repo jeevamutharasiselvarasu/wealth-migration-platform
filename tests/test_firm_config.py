@@ -347,3 +347,44 @@ def test_entity_bulk_approval_waits_for_open_required_field_requests(tmp_path, m
     assert blocked_state == {"PENDING"}  # nothing approved while gaps are open
     assert approved.status_code == 303 and "notice=" in approved.headers["location"]
     assert suggestion_statuses() == {"APPROVED"}
+
+
+def test_required_fields_are_covered_across_files_of_the_same_entity(tmp_path, monkeypatch):
+    """Two Account files together supply every required field: no RFIs, and bulk approval needs no answers."""
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "cross-file")
+    assert _post_setup(app_module, session_id).status_code == 303
+    first = b"LEGACY_ACCT_NO,ACCOUNT_OPEN_DT\r\nA-1,2022-04-12\r\nA-2,2021-09-03\r\n"
+    second = (b"CUSTODIAN_CODE,REGISTRATION_SRC_TYPE,REP_CODE\r\n"
+              b"CUST-A,INDIVIDUAL,R-01\r\nCUST-B,JOINT,R-02\r\n")
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            await client.post("/api/entities/upload-sample-file",
+                              files=[("files", ("accounts.csv", first, "text/csv")),
+                                     ("files", ("account_registration.csv", second, "text/csv"))],
+                              follow_redirects=False)
+            for name in ("accounts.csv", "account_registration.csv"):
+                bucket, record = next((e, r) for e, fs in state.entity_source_files.items()
+                                      for r in fs.values() if r.get("filename") == name)
+                await client.post("/api/entities/confirm-inference",
+                                  content=urlencode([("entity_name", bucket), ("decision", "APPROVE"), ("comments", "ok"),
+                                                     ("target_entity", "Account"), ("file_id", record["file_id"])]),
+                                  headers=form, follow_redirects=False)
+            await client.post("/api/entities/map-approved-files", follow_redirects=False)
+            open_gaps = [g["canonical_field"] for g in state.questionnaire_data.get("mapping_information_requests", [])
+                         if g["entity"] == "Account" and g["status"] == "OPEN"]
+            approved = await client.post(
+                "/api/mapping-suggestions/approve-entity",
+                content=urlencode([("entity_name", "Account"), ("reviewer", "x"), ("comments", "bulk")]),
+                headers=form, follow_redirects=False)
+            return open_gaps, approved
+
+    open_gaps, approved = asyncio.run(run())
+    # Only the file generated first can have raised requests; any it raised are for fields the other file supplies.
+    assert set(open_gaps) <= {"CUSTODIAN_CODE", "REG_TYPE", "REP_CODE", "ACCT_NUM", "OPEN_DATE"}
+    assert approved.status_code == 303 and "notice=" in approved.headers["location"], approved.headers["location"]
