@@ -13,6 +13,7 @@ dist/
 App_Data/source_uploads/
 App_Data/Storage/
 App_Data/*.db
+App_Data/*.db-journal
 data_plane/storage/
 logs/
 *.log
