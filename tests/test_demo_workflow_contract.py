@@ -198,7 +198,7 @@ def test_live_inference_confirmation_moves_file_and_survives_restart(tmp_path, m
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
         session_id,
-        {"email": "test@example.invalid", "name": "Data Steward", "role": "Domain SME"},
+        {"email": "test@example.invalid", "name": "Data Steward", "role": "Migration Analyst"},
     )
 
     state = WorkspaceStateStore()
@@ -416,14 +416,14 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
             ])
             review_headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-            # A signed-in analyst may propose mappings but may not approve them.
-            app_module.session_mgr.active_sessions[session_id]["role"] = "Migration Analyst"
+            # A validation specialist may not approve mappings; the analyst approves them.
+            app_module.session_mgr.active_sessions[session_id]["role"] = "Validation Specialist"
             forbidden = await client.post(
                 f"/api/mapping-suggestions/{suggestion['suggestion_id']}/review",
                 content=review_body, headers=review_headers, follow_redirects=False,
             )
             assert forbidden.status_code == 403
-            app_module.session_mgr.active_sessions[session_id]["role"] = "Domain SME"
+            app_module.session_mgr.active_sessions[session_id]["role"] = "Migration Analyst"
 
             reviewed = await client.post(
                 f"/api/mapping-suggestions/{suggestion['suggestion_id']}/review",
@@ -476,7 +476,7 @@ def test_client_bulk_mapping_approval_is_atomic_and_error_popup_keeps_review_anc
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
         session_id,
-        {"email": "sme@example.invalid", "name": "Client Reviewer", "role": "Domain SME"},
+        {"email": "sme@example.invalid", "name": "Client Reviewer", "role": "Migration Analyst"},
     )
     state = WorkspaceStateStore()
     migration_id = "MIG-CLIENT-BULK-ATOMIC"

@@ -13,11 +13,16 @@ ANALYST = "Migration Analyst"
 SME = "Domain SME"
 VALIDATOR = "Validation Specialist"
 
-SETUP_ROLES: Set[str] = {ADMIN}                      # workspace, scope, environments, loads
-DISCOVERY_ROLES: Set[str] = {ADMIN, ANALYST}         # upload, profiling, mapping generation
-SCOPE_REVIEW_ROLES: Set[str] = {ADMIN, ANALYST, SME}  # confirm/reject entity inference
-DEFINITION_ROLES: Set[str] = {ADMIN, ANALYST, SME}    # answer information requests
-APPROVAL_ROLES: Set[str] = {ADMIN, SME}               # mapping approval, overrides, kernel edits
+# Roles are personas: a user may hold several (a normal user holds Analyst + Validation Specialist,
+# the Domain SME holds both plus the canonical-model persona) and acts under the persona chosen in
+# the session. Platform Admin holds every capability.
+PLATFORM_ROLES: Set[str] = {ADMIN}                    # demo data load, workflow replay (platform maintenance)
+SETUP_ROLES: Set[str] = {ADMIN, ANALYST}              # migration setup, scope, source environments
+DISCOVERY_ROLES: Set[str] = {ADMIN, ANALYST}          # upload, profiling, mapping generation
+SCOPE_REVIEW_ROLES: Set[str] = {ADMIN, ANALYST}       # confirm/reject entity inference
+DEFINITION_ROLES: Set[str] = {ADMIN, ANALYST, SME}    # answer information requests (SME: canonical meaning)
+APPROVAL_ROLES: Set[str] = {ADMIN, ANALYST}           # mapping/transformation approval, overrides
+CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes
 VALIDATION_ROLES: Set[str] = {ADMIN, VALIDATOR}       # validation-side evaluation
 
 # Routes any authenticated user may POST (authentication/persona handled by their own checks).
@@ -25,12 +30,12 @@ OPEN_POST_PATHS = {"/login", "/persona-selection"}
 
 POST_POLICY = [
     (r"^/api/migration/setup$", SETUP_ROLES),
-    (r"^/api/demo/load$", SETUP_ROLES),
+    (r"^/api/demo/load$", PLATFORM_ROLES),
     (r"^/api/entities/save-scopes$", SETUP_ROLES),
     (r"^/api/adls/upload$", SETUP_ROLES),
     (r"^/api/adf/trigger$", SETUP_ROLES),
-    (r"^/api/workflow/replay$", SETUP_ROLES),
-    (r"^/api/kernel/update$", APPROVAL_ROLES),
+    (r"^/api/workflow/replay$", PLATFORM_ROLES),
+    (r"^/api/kernel/update$", CANONICAL_ROLES),
     (r"^/api/knowledge/(submit-questionnaire|file-upload)$", DISCOVERY_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
     (r"^/api/entities/upload-sample-file$", DISCOVERY_ROLES),

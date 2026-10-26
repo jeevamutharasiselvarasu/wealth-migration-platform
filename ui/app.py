@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
-from ui.role_policy import DISCOVERY_ROLES, SETUP_ROLES, allowed_roles_for
+from ui.role_policy import APPROVAL_ROLES, CANONICAL_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
@@ -138,20 +138,19 @@ async def persona_selection_page(request: Request):
     user = get_current_user(request)
     personas = [
         {"id":"Platform Admin","label":"Platform Admin","initials":"PA","plane":"Platform governance",
-         "description":"Configure the migration workspace, identity boundaries, environment references and access controls.",
+         "description":"Maintain the platform: firm configuration, canonical model, users and access, demo data. Holds every capability.",
          "stages":["Migration setup","Access & governance","Audit"]},
         {"id":"Migration Analyst","label":"Migration Analyst","initials":"MA","plane":"Control plane",
-         "description":"Own source discovery, profiling, entity inference, mapping recommendations, information requests and rule preparation.",
+         "description":"Set up the migration, upload and confirm sample files, generate mappings, approve or reject mappings and transformation rules, and answer information requests.",
          "stages":["Discovery","Mapping","Rule design"]},
         {"id":"Domain SME","label":"Domain SME / Data Steward","initials":"SME","plane":"Business review",
-         "description":"Resolve business meaning, provide missing definitions, and approve or reject mappings and proposed transformations.",
-         "stages":["Knowledge","Review","Approve / reject"]},
+         "description":"Own the canonical model: handle requested changes to canonical definitions and the wealth kernel, and resolve canonical meaning. Also holds the Analyst and Validation personas.",
+         "stages":["Canonical model","Definitions","Kernel"]},
         {"id":"Validation Specialist","label":"Validation Specialist","initials":"VS","plane":"Validation",
          "description":"Review field completeness, keys, relationships, data-quality exceptions and reconciliation evidence.",
          "stages":["Validation","Exceptions","Evidence"]},
     ]
-    assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])
-    allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"} if assigned_role == "Platform Admin" else {assigned_role}
+    allowed_roles = session_mgr.assigned_roles(user["email"]) or {user["role"]}
     personas = [persona for persona in personas if persona["id"] in allowed_roles]
     response = render_template_with_context(request, "persona_selection.html", {
         "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"],
@@ -166,8 +165,7 @@ async def persona_selection_page(request: Request):
 @app.post("/persona-selection")
 async def select_persona(request: Request, role: str = Form(...)):
     user = get_current_user(request)
-    assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])
-    if assigned_role != "Platform Admin" and role != assigned_role:
+    if role not in (session_mgr.assigned_roles(user["email"]) or {user["role"]}):
         raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")
     session_id = request.cookies.get("session_id")
     if not session_id or not session_mgr.select_role(session_id, role):
@@ -181,7 +179,7 @@ async def migration_setup_page(request: Request, demo_loaded: str = "", error: s
     setup = state_store.questionnaire_data.get("migration_setup", {})
     return render_template_with_context(request, "migration_setup.html", {
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
-        "error": error, "can_configure": user["role"] in SETUP_ROLES,
+        "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": user["role"] in PLATFORM_ROLES,
         "demo_loaded": demo_loaded == "1",
         "demo_available": session_mgr.demo_mode,
         "knowledge_docs": state_store.firm_knowledge_docs,
@@ -556,7 +554,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
     )
 
 
-MAPPING_REVIEW_ROLES = {"Platform Admin", "Domain SME"}
+MAPPING_REVIEW_ROLES = APPROVAL_ROLES
 
 
 @app.get("/agent-pipeline", response_class=HTMLResponse)
@@ -905,10 +903,10 @@ async def update_kernel_config(
     aum_drift_gate: str = Form(...)
 ):
     user = get_current_user(request)
-    if user["role"] not in ["Platform Admin", "Domain SME"]:
+    if user["role"] not in CANONICAL_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Kernel Configuration edits are strictly restricted to Platform Admin or Domain SME."
+            detail="Kernel Configuration edits are strictly restricted to Platform Admin or the Domain SME (canonical model owner)."
         )
 
     state_store.update_kernel_specs(user["name"], sleeve_invariant, sleeve_tolerance, aum_drift_gate)
@@ -1803,8 +1801,8 @@ async def review_source_mapping_suggestion(
     """Record an explicit approve/reject decision and prevent repeat review."""
     if request is not None:
         user = get_current_user(request)
-        if user.get("role") not in {"Platform Admin", "Domain SME"}:
-            raise HTTPException(status_code=403, detail="Only Platform Admin or Domain SME may approve or reject mappings.")
+        if user.get("role") not in APPROVAL_ROLES:
+            raise HTTPException(status_code=403, detail="Only Migration Analyst or Platform Admin may approve or reject mappings.")
         reviewer_name = str(user.get("name", "")).strip()
     else:
         # Direct service-level invocation is retained for focused unit tests.
@@ -1904,8 +1902,8 @@ async def approve_entity_mapping_suggestions(
 ):
     """Approve all pending mappings for one entity atomically, only when every proposal is valid."""
     user = get_current_user(request)
-    if user.get("role") not in {"Platform Admin", "Domain SME"}:
-        raise HTTPException(status_code=403, detail="Only Platform Admin or Domain SME may approve entity mappings.")
+    if user.get("role") not in APPROVAL_ROLES:
+        raise HTTPException(status_code=403, detail="Only Migration Analyst or Platform Admin may approve entity mappings.")
     reviewer_name = str(user.get("name", "")).strip()
     if entity_name not in {"Account", "Household", "Client"}:
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")

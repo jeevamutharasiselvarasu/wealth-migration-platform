@@ -153,8 +153,8 @@ def test_entity_level_approval_ui_and_backend_are_evidence_gated():
 
 def test_persona_switch_is_limited_to_roles_assigned_to_authenticated_user():
     app = (ROOT / "ui" / "app.py").read_text()
-    assert 'assigned_role = session_mgr.authorized_users.get(user["email"].lower(), {}).get("default_role", user["role"])' in app
-    assert 'if assigned_role != "Platform Admin" and role != assigned_role:' in app
+    assert 'session_mgr.assigned_roles(user["email"])' in app
+    assert 'if role not in (session_mgr.assigned_roles(user["email"]) or {user["role"]}):' in app
     assert 'raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")' in app
 
 

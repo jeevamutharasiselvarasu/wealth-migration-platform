@@ -35,6 +35,7 @@ class SessionManager:
                                 "password_sha256": password_hash,
                                 "name": str(item.get("name", email)),
                                 "default_role": str(item.get("default_role", "Migration Analyst")),
+                                "roles": [str(r) for r in item.get("roles", [])] or [str(item.get("default_role", "Migration Analyst"))],
                             }
             except (OSError, ValueError, TypeError):
                 # A missing or invalid demo-user configuration fails closed.
@@ -52,6 +53,16 @@ class SessionManager:
             }
             return session_id
         return None
+
+    ALL_ROLES = ("Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist")
+
+    def assigned_roles(self, email: str) -> set:
+        """Personas a user may act under: Platform Admin holds all; others hold their configured roles."""
+        user = self.authorized_users.get(email.strip().lower(), {})
+        roles = set(user.get("roles", []))
+        if user.get("default_role") == "Platform Admin" or "Platform Admin" in roles:
+            return set(self.ALL_ROLES)
+        return roles & set(self.ALL_ROLES)
 
     def select_role(self, session_id: str, role: str) -> bool:
         allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"}

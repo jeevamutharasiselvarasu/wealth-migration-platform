@@ -25,19 +25,21 @@ def test_every_post_route_is_classified_by_the_role_policy():
 
 def test_policy_matrix_matches_the_documented_responsibilities():
     a = policy.allowed_roles_for
-    assert a("POST", "/api/migration/setup") == {"Platform Admin"}
+    assert a("POST", "/api/migration/setup") == {"Platform Admin", "Migration Analyst"}
+    assert a("POST", "/api/demo/load") == {"Platform Admin"}
+    assert a("POST", "/api/kernel/update") == {"Platform Admin", "Domain SME"}
     assert a("POST", "/api/entities/upload-sample-file") == {"Platform Admin", "Migration Analyst"}
-    assert a("POST", "/api/entities/confirm-inference") == {"Platform Admin", "Migration Analyst", "Domain SME"}
-    assert a("POST", "/api/mapping-suggestions/S-1/review") == {"Platform Admin", "Domain SME"}
-    assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Platform Admin", "Domain SME"}
+    assert a("POST", "/api/entities/confirm-inference") == {"Platform Admin", "Migration Analyst"}
+    assert a("POST", "/api/mapping-suggestions/S-1/review") == {"Platform Admin", "Migration Analyst"}
+    assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Platform Admin", "Migration Analyst"}
     assert a("POST", "/api/mapping-gaps/RFI-1/response") == {"Platform Admin", "Migration Analyst", "Domain SME"}
     assert a("GET", "/api/migration/setup") is None and a("POST", "/login") is None
 
 
 @pytest.mark.parametrize("role,setup,upload,confirm,review,answer", [
     ("Platform Admin", True, True, True, True, True),
-    ("Migration Analyst", False, True, True, False, True),
-    ("Domain SME", False, False, True, True, True),
+    ("Migration Analyst", True, True, True, True, True),
+    ("Domain SME", False, False, False, False, True),
     ("Validation Specialist", False, False, False, False, False),
 ])
 def test_roles_are_enforced_server_side(tmp_path, monkeypatch, role, setup, upload, confirm, review, answer):
@@ -104,3 +106,15 @@ def test_unauthenticated_requests_still_reach_the_login_redirect():
             return await client.post("/api/entities/confirm-entity", content="entity_name=Account",
                                      headers=FORM, follow_redirects=False)
     assert asyncio.run(run()).status_code in {303, 307}
+
+
+def test_personas_are_assigned_per_user_and_a_normal_user_holds_analyst_and_validator():
+    from ui.auth import session_mgr
+
+    assigned = session_mgr.assigned_roles
+    assert assigned("user.demo@simplicitywealth.com") == {"Migration Analyst", "Validation Specialist"}
+    assert assigned("analyst.demo@simplicitywealth.com") == {"Migration Analyst"}
+    assert assigned("validator.demo@simplicitywealth.com") == {"Validation Specialist"}
+    assert assigned("sme.demo@simplicitywealth.com") == {"Domain SME", "Migration Analyst", "Validation Specialist"}
+    assert assigned("jeeva@simplicitywealth.com") == set(session_mgr.ALL_ROLES)
+    assert assigned("nobody@example.invalid") == set()

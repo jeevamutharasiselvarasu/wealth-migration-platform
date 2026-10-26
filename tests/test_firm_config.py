@@ -613,8 +613,8 @@ def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch
                                      cookies={"session_id": session_id}) as client:
             return (await client.get("/agent-pipeline")).text
 
-    for role, allowed in (("Platform Admin", True), ("Domain SME", True),
-                          ("Migration Analyst", False), ("Validation Specialist", False)):
+    for role, allowed in (("Platform Admin", True), ("Migration Analyst", True),
+                          ("Domain SME", False), ("Validation Specialist", False)):
         html = asyncio.run(page(role))
         assert ("Approve mapping" in html) is allowed, role
         assert ("Approve all Account mappings" in html) is allowed, role

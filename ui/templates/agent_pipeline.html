@@ -45,7 +45,7 @@
             <input name="comments" placeholder="Optional approval note" aria-label="Entity approval note" class="w-40 rounded-lg border border-[#C3D2EC] bg-white p-2 text-[10px]">
             <button class="rounded-lg bg-teal-700 px-3 py-2 text-[10px] font-bold text-white hover:bg-teal-800">Approve all {{ suggestion.entity_name }} mappings</button>
           </form>
-          {% else %}<span class="text-[10px] text-[#5A6A88]">Review-only for {{ user_role }}: Platform Admin or Domain SME approves.</span>{% endif %}
+          {% else %}<span class="text-[10px] text-[#5A6A88]">Review-only for {{ user_role }}: Migration Analyst or Platform Admin approves.</span>{% endif %}
         </div>
       </div>
       {% set ns.current_entity = suggestion.entity_name %}
@@ -63,7 +63,7 @@
           <button name="decision" value="APPROVED" class="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800">Approve mapping</button>
           <button name="decision" value="REJECTED" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800 hover:bg-rose-100">Reject</button>
         </form>
-        {% else %}<p class="mt-4 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Platform Admin or Domain SME approves or rejects this proposal.</p>{% endif %}
+        {% else %}<p class="mt-4 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects this proposal.</p>{% endif %}
       </article>
       {% endfor %}
     </div>

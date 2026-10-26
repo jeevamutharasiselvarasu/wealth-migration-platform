@@ -2,7 +2,7 @@
 {% block content %}
 <div class="mx-auto max-w-6xl space-y-5">
   {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">{{ error }}</div>{% endif %}
-  {% if not can_configure %}<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">Read-only for {{ user_role }}. Only Platform Admin configures the migration; your role can review the saved setup.</div>{% endif %}
+  {% if not can_configure %}<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">Read-only for {{ user_role }}. Migration setup is configured by the Migration Analyst (or Platform Admin); your persona can review the saved setup.</div>{% endif %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-6 shadow-sm">
     <div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Migration onboarding · Step 1</div>
     <h1 class="mt-2 text-2xl font-bold text-[#152C6B]">Set up the migration</h1>
@@ -16,7 +16,7 @@
   {% if demo_loaded %}
   <div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs leading-5 text-teal-900"><b>Demo inputs loaded.</b> Migration details, knowledge assets and synthetic source files have been populated from the editable demo data set. Save the setup to open the Migration Dashboard, then continue to source discovery.</div>
   {% endif %}
-  {% if demo_available %}
+  {% if demo_available and can_load_demo %}
   <section class="flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 md:flex-row md:items-center md:justify-between">
     <div><h2 class="font-bold text-[#152C6B]">Load demo migration inputs</h2><p class="mt-1 text-xs leading-5 text-[#41506B]">Populate this form from the demo data files, register sample knowledge and infer the three source files. The values are editable inputs; no live Azure connection or target load is started.</p></div>
     <form action="/api/demo/load" method="post"><button type="submit" class="shrink-0 rounded-xl bg-[#2563EB] px-5 py-3 text-xs font-bold text-white hover:bg-blue-700">Load demo data set →</button></form>
