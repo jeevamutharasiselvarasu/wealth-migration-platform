@@ -52,14 +52,16 @@ The local demo identity is configured through `demo_data/demo_users.json` and ap
 
 ## Repository map
 
-- `ui/` — FastAPI routes, session/persona handling, templates, and browser components.
-- `control_plane/` — canonical kernel, rule/metadata compilation, profiling, inference, validation, and integration scaffolding.
-- `agents/` — mapping and validation components; the legacy cohort orchestrator was removed from P0.
-- `data_plane/` — local source-file persistence, validation, and telemetry helpers. Legacy custodian connectors and target-system adapters are intentionally absent from P0; target loading remains deferred.
-- `knowledge/` and `demo_data/` — editable knowledge assets, inference rules, demo manifest, and synthetic source files.
-- `tests/` — contract, UI-boundary, inference, mapping, and service tests.
-- `infrastructure/` — future Azure/Bicep and ADF deployment assets; these do not establish that cloud resources are deployed.
-- `docs/BRANCH_ARTIFACT_INVENTORY.md` — artifact-by-artifact inventory and cleanup recommendations.
+- `ui/` — FastAPI routes, session/persona handling, role policy, Jinja templates.
+- `control_plane/` — canonical kernel, inference, profiling, validation, workflow event engine, SQLite persistence, ADF client/exporter scaffolding.
+- `agents/` — schema-mapping agent and the P0 agent suite (agents recommend; deterministic services check).
+- `data_plane/` — local source-file persistence and reconciliation helpers. Target loading and legacy connectors are out of P0.
+- `knowledge/` — runtime configuration assets: entity inference rules, dictionary, discovery questionnaire, firm profiles.
+- `platform_knowledge/` — platform-provided domain knowledge (canonical contract, mapping notes, wealth-management research). Kept separate from demo data.
+- `demo_data/` — synthetic CoreCap sample files, demo manifest and demo users. Never place real client data here.
+- `tests/` — contract, UI-boundary, role-policy, inference, mapping and workflow tests.
+- `docs/` — P0 correctness notes (`P0_FOUNDATION_CORRECTNESS.md`), `architecture.html`, and `docs/project/` (project brief, current status, working copies of the canonical contract and mapping notes).
+- `infrastructure/` — future Azure/Bicep and ADF assets; these do not establish that cloud resources are deployed.
 
 ## Safety and scope rules
 

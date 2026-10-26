@@ -52,7 +52,6 @@ Primary working branch (verify before use):
 
 Useful repository references:
 - `README.md`
-- `docs/BRANCH_ARTIFACT_INVENTORY.md`
 - `docs/P0_FOUNDATION_CORRECTNESS.md`
 - `demo_data/knowledge/canonical_contract.md`
 - `demo_data/knowledge/source_mapping_notes.md`

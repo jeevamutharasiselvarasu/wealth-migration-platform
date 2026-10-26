@@ -24,3 +24,6 @@ build/
 htmlcov/
 .coverage.*
 *.egg-info/
+
+# Local scratch outputs (may contain demo credentials)
+Claude outputs/

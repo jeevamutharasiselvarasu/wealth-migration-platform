@@ -16,8 +16,6 @@ from ui.role_policy import APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
-from agents.operational.cutover_agent import CutoverAgent
-from agents.operational.audit_agent import AuditAgent
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
 from control_plane.services.mcl_validation import validate_mcl_relationships
@@ -65,8 +63,6 @@ templates = Jinja2Templates(directory=templates_dir)
 templates.env.filters["mapping_kind"] = lambda rule, field=None: SchemaMapperAgent.mapping_kind(rule, field)
 
 schema_mapper = SchemaMapperAgent()
-cutover_agent = CutoverAgent()
-audit_agent = AuditAgent()
 adf_client = AzureDataFactoryClient()
 
 
