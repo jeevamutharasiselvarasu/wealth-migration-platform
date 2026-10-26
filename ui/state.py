@@ -19,6 +19,7 @@ class WorkspaceStateStore:
 
     def __init__(self):
         init_db()
+        self.kernel_specs: Dict[str, Any] = {}
         self.active_role: str = "Platform Admin"
         self.adls_connected: bool = False
         self.adls_container: str = ""
