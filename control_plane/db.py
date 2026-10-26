@@ -175,6 +175,23 @@ def init_db() -> None:
         );
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS canonical_change_requests (
+            request_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            canonical_field TEXT NOT NULL,
+            change_type TEXT NOT NULL,
+            proposed_change TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'OPEN',
+            requested_by TEXT NOT NULL,
+            created_utc TEXT NOT NULL,
+            decided_by TEXT,
+            decided_utc TEXT,
+            decision_note TEXT NOT NULL DEFAULT ''
+        );
+    """)
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_mapping_information_requests_status
         ON mapping_information_requests (migration_id, status, entity_name)
     """)

@@ -22,7 +22,8 @@ DISCOVERY_ROLES: Set[str] = {ADMIN, ANALYST}          # upload, profiling, mappi
 SCOPE_REVIEW_ROLES: Set[str] = {ADMIN, ANALYST}       # confirm/reject entity inference
 DEFINITION_ROLES: Set[str] = {ADMIN, ANALYST, SME}    # answer information requests (SME: canonical meaning)
 APPROVAL_ROLES: Set[str] = {ADMIN, ANALYST}           # mapping/transformation approval, overrides
-CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes
+CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes, decide change requests
+CHANGE_REQUEST_ROLES: Set[str] = {ADMIN, ANALYST}     # raise a canonical change request
 VALIDATION_ROLES: Set[str] = {ADMIN, VALIDATOR}       # validation-side evaluation
 
 # Routes any authenticated user may POST (authentication/persona handled by their own checks).
@@ -36,6 +37,8 @@ POST_POLICY = [
     (r"^/api/adf/trigger$", SETUP_ROLES),
     (r"^/api/workflow/replay$", PLATFORM_ROLES),
     (r"^/api/kernel/update$", CANONICAL_ROLES),
+    (r"^/api/canonical-changes$", CHANGE_REQUEST_ROLES),
+    (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
     (r"^/api/knowledge/(submit-questionnaire|file-upload)$", DISCOVERY_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
     (r"^/api/entities/upload-sample-file$", DISCOVERY_ROLES),

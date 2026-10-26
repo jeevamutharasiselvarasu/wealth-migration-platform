@@ -172,3 +172,58 @@ def test_setup_and_discovery_hide_forms_the_active_persona_cannot_use(tmp_path, 
         assert ("<fieldset disabled" in setup) is (not can_setup), role
         discovery = asyncio.run(page(role, "/entity-sample-files"))
         assert ('action="/api/entities/upload-sample-file"' in discovery) is can_discover, role
+
+
+def test_canonical_change_request_lifecycle_and_roles(tmp_path, monkeypatch):
+    import sqlite3
+
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "ccr.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
+                        {"email": "t@example.invalid", "name": "Alex Analyst", "role": "Migration Analyst"})
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    new = urlencode([("entity_name", "Account"), ("canonical_field", "ACCOUNT_TITLE"), ("change_type", "ADD_FIELD"),
+                     ("proposed_change", "Add free-text account title"), ("reason", "CoreCap carries titles")])
+
+    async def call(role, name, method, path, body=None):
+        app_module.session_mgr.active_sessions["sid"].update(role=role, name=name)
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": "sid"}) as client:
+            return await client.request(method, path, content=body, headers=FORM if body else None, follow_redirects=False)
+
+    # Only Analyst/Admin raise; SME and Validator may not.
+    assert asyncio.run(call("Domain SME", "Sam SME", "POST", "/api/canonical-changes", new)).status_code == 403
+    assert asyncio.run(call("Validation Specialist", "Val", "POST", "/api/canonical-changes", new)).status_code == 403
+    assert asyncio.run(call("Migration Analyst", "Alex Analyst", "POST", "/api/canonical-changes", new)).status_code == 303
+    bad = asyncio.run(call("Migration Analyst", "Alex Analyst", "POST", "/api/canonical-changes",
+                           urlencode([("entity_name", "Party"), ("canonical_field", "X"), ("change_type", "ADD_FIELD"),
+                                      ("proposed_change", "p"), ("reason", "r")])))
+    assert "error=" in bad.headers["location"]
+
+    conn = sqlite3.connect(tmp_path / "ccr.db")
+    rid, status_, by = conn.execute("SELECT request_id, status, requested_by FROM canonical_change_requests").fetchone()
+    assert (status_, by) == ("OPEN", "Alex Analyst")
+
+    path = f"/api/canonical-changes/{rid}/decision"
+    # The raising analyst cannot decide; the SME can, and reject/defer need a note.
+    assert asyncio.run(call("Migration Analyst", "Alex Analyst", "POST", path, "decision=APPROVED&note=x")).status_code == 403
+    no_note = asyncio.run(call("Domain SME", "Sam SME", "POST", path, "decision=REJECTED&note="))
+    assert "error=" in no_note.headers["location"]
+    assert conn.execute("SELECT status FROM canonical_change_requests").fetchone()[0] == "OPEN"
+    done = asyncio.run(call("Domain SME", "Sam SME", "POST", path, "decision=APPROVED&note=Agreed"))
+    assert done.status_code == 303 and "notice=" in done.headers["location"]
+    row = conn.execute("SELECT status, decided_by, decision_note FROM canonical_change_requests").fetchone()
+    assert row == ("APPROVED", "Sam SME", "Agreed")
+    again = asyncio.run(call("Domain SME", "Sam SME", "POST", path, "decision=REJECTED&note=late"))
+    assert "already" in again.headers["location"]
+
+    for role, raise_form, decide_ok in (("Migration Analyst", True, False), ("Domain SME", False, True), ("Validation Specialist", False, False)):
+        html = asyncio.run(call(role, "Viewer", "GET", "/canonical-changes")).text
+        assert ('action="/api/canonical-changes"' in html) is raise_form, role
+        assert ("Read-only for" in html) is (role == "Validation Specialist"), role

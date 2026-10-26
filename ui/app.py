@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
-from ui.role_policy import APPROVAL_ROLES, CANONICAL_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
+from ui.role_policy import APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
@@ -912,6 +912,104 @@ async def update_kernel_config(
     state_store.update_kernel_specs(user["name"], sleeve_invariant, sleeve_tolerance, aum_drift_gate)
     logger.info(f"Wealth Kernel specifications updated by {user['name']} ({user['role']})")
     return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
+
+
+CHANGE_TYPES = {
+    "ADD_FIELD": "Add a canonical field",
+    "CHANGE_DEFINITION": "Change a field definition or rule",
+    "ADD_REFERENCE_VALUE": "Add or change a reference/lookup value",
+    "OTHER": "Other canonical model change",
+}
+CHANGE_ENTITIES = ("Account", "Household", "Client")
+CHANGE_DECISIONS = {"APPROVED", "REJECTED", "DEFERRED"}
+
+
+@app.get("/canonical-changes", response_class=HTMLResponse)
+async def canonical_changes_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM canonical_change_requests WHERE migration_id = ? ORDER BY created_utc DESC", (migration_id,)).fetchall()]
+    finally:
+        conn.close()
+    return render_template_with_context(request, "canonical_changes.html", {
+        "page_title": "Canonical Change Requests", "user_name": user["name"], "user_role": user["role"],
+        "requests": rows, "change_types": CHANGE_TYPES, "entities": CHANGE_ENTITIES,
+        "can_raise": user["role"] in CHANGE_REQUEST_ROLES, "can_decide": user["role"] in CANONICAL_ROLES,
+        "notice": notice, "error": error,
+    })
+
+
+def _changes_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/canonical-changes?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/canonical-changes")
+async def raise_canonical_change(
+    request: Request,
+    entity_name: str = Form(...),
+    canonical_field: str = Form(...),
+    change_type: str = Form(...),
+    proposed_change: str = Form(...),
+    reason: str = Form(...),
+):
+    user = get_current_user(request)
+    entity_name, canonical_field = entity_name.strip(), canonical_field.strip()
+    if entity_name not in CHANGE_ENTITIES:
+        return _changes_redirect("error", "Choose Account, Household or Client.")
+    if change_type not in CHANGE_TYPES:
+        return _changes_redirect("error", "Choose a change type.")
+    if not canonical_field or not proposed_change.strip() or not reason.strip():
+        return _changes_redirect("error", "Field, proposed change and reason are all required.")
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    request_id = "CCR-" + uuid.uuid4().hex[:10].upper()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "INSERT INTO canonical_change_requests (request_id, migration_id, entity_name, canonical_field, change_type, "
+            "proposed_change, reason, status, requested_by, created_utc) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)",
+            (request_id, migration_id, entity_name, canonical_field, change_type, proposed_change.strip(),
+             reason.strip(), user["name"], datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({
+        "event": "CANONICAL_CHANGE_REQUESTED", "actor": user["name"],
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "details": {"request_id": request_id, "entity": entity_name, "field": canonical_field, "change_type": change_type},
+    })
+    return _changes_redirect("notice", f"{request_id} raised for {entity_name}.{canonical_field}; the Domain SME will review it.")
+
+
+@app.post("/api/canonical-changes/{request_id}/decision")
+async def decide_canonical_change(request: Request, request_id: str, decision: str = Form(...), note: str = Form("")):
+    user = get_current_user(request)
+    decision = decision.strip().upper()
+    if decision not in CHANGE_DECISIONS:
+        return _changes_redirect("error", "Choose approve, reject or defer.")
+    if decision in {"REJECTED", "DEFERRED"} and not note.strip():
+        return _changes_redirect("error", "Enter a note when rejecting or deferring a change request.")
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT status FROM canonical_change_requests WHERE request_id = ?", (request_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canonical change request not found.")
+        if row["status"] not in {"OPEN", "DEFERRED"}:
+            return _changes_redirect("error", f"{request_id} is already {row['status'].lower()}.")
+        conn.execute(
+            "UPDATE canonical_change_requests SET status = ?, decided_by = ?, decided_utc = ?, decision_note = ? WHERE request_id = ?",
+            (decision, user["name"], datetime.now(timezone.utc).isoformat(), note.strip(), request_id))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({
+        "event": "CANONICAL_CHANGE_DECIDED", "actor": user["name"],
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "details": {"request_id": request_id, "decision": decision, "note": note.strip()},
+    })
+    return _changes_redirect("notice", f"{request_id} {decision.lower()}.")
 
 
 @app.post("/api/knowledge/submit-questionnaire")
