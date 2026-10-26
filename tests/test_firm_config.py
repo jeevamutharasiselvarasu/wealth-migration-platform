@@ -388,3 +388,59 @@ def test_required_fields_are_covered_across_files_of_the_same_entity(tmp_path, m
     # Only the file generated first can have raised requests; any it raised are for fields the other file supplies.
     assert set(open_gaps) <= {"CUSTODIAN_CODE", "REG_TYPE", "REP_CODE", "ACCT_NUM", "OPEN_DATE"}
     assert approved.status_code == 303 and "notice=" in approved.headers["location"], approved.headers["location"]
+
+
+def test_mapping_kinds_follow_the_registered_rule_family():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent as M
+
+    assert M.mapping_kind("DIRECT_COPY", "ACCT_NUM") == "DIRECT"
+    assert M.mapping_kind("CUSTODIAN_LOOKUP (SCHWAB -> SCHW)", "CUSTODIAN_CODE") == "LOOKUP"
+    assert M.mapping_kind("REG_TYPE_LOOKUP (IRA -> IRA)", "REG_TYPE") == "LOOKUP"
+    assert M.mapping_kind("PREFIX_FORMAT (REP-1)", "REP_CODE") == "DERIVED"
+    assert M.mapping_kind("DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)", "OPEN_DATE") == "DERIVED"
+    assert M.mapping_kind("RELATIONSHIP_CANDIDATE_PROPOSED", None) == "RELATIONSHIP"
+    assert M.mapping_kind("UNRESOLVED_NO_CANONICAL_FIELD", None) == "UNRESOLVED"
+    assert M.mapping_kind("DIRECT_COPY", None) == "UNRESOLVED"  # never a direct copy without a destination
+    result = M().map_source_to_canonical("Account", [{"ACCT_NUM": "A-1", "MYSTERY": "x", "ADVISOR_REP_NUM": "7"}])
+    kinds = {l["source_field"]: l["mapping_kind"] for l in result["field_lineages"]}
+    assert kinds["ACCT_NUM"] == "DIRECT" and kinds["MYSTERY"] == "UNRESOLVED" and kinds["ADVISOR_REP_NUM"] == "DERIVED"
+
+
+def test_relationship_file_needs_an_explicit_disposition_and_is_not_mapped(tmp_path, monkeypatch):
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "rel-disp")
+    assert _post_setup(app_module, session_id).status_code == 303
+    link = b"OWNER_REF,OBJECT_REF,LINK_KIND,VALID_FROM,VALID_TO\r\nC-900,G-100,PRIMARY,2020-01-01,\r\n"
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            await client.post("/api/entities/upload-sample-file",
+                              files=[("files", ("batch_004.csv", link, "text/csv"))], follow_redirects=False)
+            bucket, record = next((e, r) for e, fs in state.entity_source_files.items()
+                                  for r in fs.values() if r.get("filename") == "batch_004.csv")
+            status_before = record["inference"]["status"]
+
+            def body(note):
+                return urlencode([("entity_name", bucket), ("decision", "APPROVE"), ("comments", note),
+                                  ("target_entity", "RELATIONSHIP_DEFERRED"), ("file_id", record["file_id"])])
+            missing = await client.post("/api/entities/confirm-inference", content=body(""), headers=form, follow_redirects=False)
+            unchanged = record["inference"]["status"]
+            done = await client.post("/api/entities/confirm-inference",
+                                     content=body("Client-to-household link; no relationship entity in P0"),
+                                     headers=form, follow_redirects=False)
+            gen = await client.post("/api/entities/map-approved-files", follow_redirects=False)
+            suggestions = (await client.get("/api/mapping-suggestions")).json()["suggestions"]
+            return status_before, missing, unchanged, done, gen, suggestions, record
+
+    status_before, missing, unchanged, done, gen, suggestions, record = asyncio.run(run())
+    assert status_before == "RELATIONSHIP_REVIEW"
+    assert "error=" in missing.headers["location"] and unchanged == "RELATIONSHIP_REVIEW"
+    assert done.status_code == 303 and "error=" not in done.headers["location"]
+    assert record["inference"]["status"] == "RELATIONSHIP_DEFERRED"
+    assert record["inference_review"]["decision"] == "RELATIONSHIP_DEFERRED"
+    assert "no relationship entity" in record["inference_review"]["comments"]
+    assert suggestions == []  # a deferred link file creates no mapping proposals

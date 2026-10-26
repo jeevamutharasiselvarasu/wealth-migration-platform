@@ -44,6 +44,7 @@ os.makedirs(templates_dir, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
+templates.env.filters["mapping_kind"] = lambda rule, field=None: SchemaMapperAgent.mapping_kind(rule, field)
 
 schema_mapper = SchemaMapperAgent()
 cutover_agent = CutoverAgent()
@@ -1113,7 +1114,22 @@ async def confirm_entity_inference(
     else:
         selected_entity = (target_entity or entity_name).strip()
         old_entity = current_entity
-        if selected_entity == "OUT_OF_SCOPE":
+        if selected_entity == "RELATIONSHIP_DEFERRED":
+            # Link/bridge files are relationship artifacts; P0 has no relationship entity, so record an explicit disposition.
+            if not comments.strip():
+                return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a note explaining the relationship disposition (what the link joins and why it is deferred).") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+            record["inferred_entity"] = "Relationship (deferred)"
+            record["inference"]["entity"] = "Relationship (deferred)"
+            record["inference"]["status"] = "RELATIONSHIP_DEFERRED"
+            record["inference_approval_status"] = "NOT_REQUIRED"
+            record["discovery_status"] = "RELATIONSHIP_DEFERRED"
+            record["inference_review"] = {
+                "decision": "RELATIONSHIP_DEFERRED", "reviewer": user.get("name", "Unknown reviewer"),
+                "comments": comments.strip(), "reviewed_utc": datetime.now(timezone.utc).isoformat(),
+                "previous_entity": old_entity, "confirmed_entity": "Relationship (deferred)",
+            }
+            reviewed_entity = "Relationship (deferred)"
+        elif selected_entity == "OUT_OF_SCOPE":
             # Preserve the file in its current inventory bucket; only its eligibility changes.
             record["inferred_entity"] = "Out of scope"
             record["inference"]["entity"] = "Out of scope"
@@ -1726,7 +1742,12 @@ async def list_source_mapping_suggestions(status_filter: str = "PENDING"):
                 "SELECT * FROM mapping_suggestions WHERE status = ? ORDER BY created_utc DESC, source_field",
                 (status_filter,),
             ).fetchall()
-        return JSONResponse({"status": "SUCCESS", "suggestions": [dict(row) for row in rows]})
+        suggestions = []
+        for row in rows:
+            item = dict(row)
+            item["mapping_kind"] = SchemaMapperAgent.mapping_kind(item.get("proposed_rule"), item.get("canonical_field"))
+            suggestions.append(item)
+        return JSONResponse({"status": "SUCCESS", "suggestions": suggestions})
     finally:
         conn.close()
 

@@ -129,6 +129,22 @@ class SchemaMapperAgent:
         "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
     }
 
+    MAPPING_KINDS = ("DIRECT", "DERIVED", "LOOKUP", "RELATIONSHIP", "EXCLUDED", "UNRESOLVED")
+
+    @classmethod
+    def mapping_kind(cls, rule_applied: str, canonical_field: Any = None) -> str:
+        """Classify a proposal into the governed mapping kinds from its registered rule family."""
+        rule = str(rule_applied or "DIRECT_COPY").strip().upper()
+        if rule.startswith("RELATIONSHIP_CANDIDATE"):
+            return "RELATIONSHIP"
+        if rule.startswith("UNRESOLVED") or not canonical_field:
+            return "UNRESOLVED"
+        if "_LOOKUP" in rule.split(" ")[0] or rule.startswith("APPROVED_LOOKUP"):
+            return "LOOKUP"
+        if rule == "DIRECT_COPY":
+            return "DIRECT"
+        return "DERIVED"
+
     @classmethod
     def required_fields(cls, entity_name: str) -> List[str]:
         """Required canonical fields: the firm configuration is the source of truth for P0 entities.
@@ -390,6 +406,9 @@ class SchemaMapperAgent:
                     "rule_applied": "UNRESOLVED_NO_CANONICAL_FIELD",
                 })
                 lineage_fields_seen.add(raw_key)
+
+        for lineage in field_lineages:
+            lineage["mapping_kind"] = self.mapping_kind(lineage.get("rule_applied"), lineage.get("canonical_field"))
 
         required_fields = self.required_fields(entity_name)
         missing_required = [req for req in required_fields if req not in mapped_target_fields]

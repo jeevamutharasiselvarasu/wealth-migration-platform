@@ -112,6 +112,7 @@
         {% for candidate in ['Account','Household','Client'] %}
         {% if candidate in in_scope_entities %}<option value="{{ candidate }}">{{ candidate }}</option>{% endif %}
         {% endfor %}
+        <option value="RELATIONSHIP_DEFERRED">Relationship file (deferred, note required)</option>
         <option value="OUT_OF_SCOPE">Out of scope</option>
       </select>
     </label>
