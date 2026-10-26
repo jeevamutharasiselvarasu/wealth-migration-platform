@@ -6,6 +6,24 @@
       "password_sha256": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
       "name": "Jeeva S.",
       "default_role": "Platform Admin"
+    },
+    {
+      "email": "analyst.demo@simplicitywealth.com",
+      "password_sha256": "0360308a3cadc78a109331adaedc7da315ce0d7432b5488f1ccbd2029d6090d0",
+      "name": "Demo Analyst",
+      "default_role": "Migration Analyst"
+    },
+    {
+      "email": "sme.demo@simplicitywealth.com",
+      "password_sha256": "7bec21da5ec8e36e1ea418a08ed952e57343227d333465af607fddccdb7f094a",
+      "name": "Demo SME",
+      "default_role": "Domain SME"
+    },
+    {
+      "email": "validator.demo@simplicitywealth.com",
+      "password_sha256": "a8dadaa714414a248eda4170fc8d3d6407f034bb60663a9fba598c080a21acbd",
+      "name": "Demo Validator",
+      "default_role": "Validation Specialist"
     }
   ]
 }
