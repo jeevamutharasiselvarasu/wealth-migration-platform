@@ -100,21 +100,24 @@ def workflow_progress() -> dict:
     files_total = len(files)
     files_confirmed = sum(1 for r in files if r.get("inference_approval_status") == "APPROVED")
     files_pending = sum(1 for r in files if r.get("inference_approval_status") not in {"APPROVED", "REJECTED"})
-    proposals_pending = mappings_approved = changes_open = 0
+    proposals_pending = mappings_approved = changes_open = rfi_open = 0
     conn = get_db_connection()
     try:
         proposals_pending = conn.execute(
             "SELECT COUNT(*) FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (migration_id,)).fetchone()[0]
         mappings_approved = conn.execute(
             "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
+        if scope:
+            marks = ",".join("?" for _ in scope)
+            rfi_open = conn.execute(
+                f"SELECT COUNT(*) FROM mapping_information_requests WHERE migration_id = ? AND status != 'RESOLVED' AND entity_name IN ({marks})",
+                (migration_id, *scope)).fetchone()[0]
         changes_open = conn.execute(
             "SELECT COUNT(*) FROM canonical_change_requests WHERE migration_id = ? AND status IN ('OPEN','DEFERRED')", (migration_id,)).fetchone()[0]
     except Exception:
         logger.exception("Could not read workflow progress counts")
     finally:
         conn.close()
-    rfi_open = sum(1 for item in state_store.questionnaire_data.get("mapping_information_requests", [])
-                   if item.get("entity") in scope and item.get("status") != "RESOLVED")
     if not scope:
         nxt = {"label": "Set up the migration", "detail": "Choose the entities in scope and register knowledge.", "href": "/migration-setup", "step": "setup"}
     elif files_total == 0:

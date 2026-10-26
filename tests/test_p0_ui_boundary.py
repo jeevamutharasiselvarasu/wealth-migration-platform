@@ -316,3 +316,28 @@ def test_workflow_validation_errors_use_actionable_ui_modals_not_raw_json():
     assert 'id="workflow-error-modal"' in discovery
     assert 'id="workflow-error-modal"' in mapping
     assert 'Cannot approve all {entity_name} mappings yet.' in app
+
+
+def test_workflow_progress_counts_open_information_requests_from_the_database(tmp_path, monkeypatch):
+    """Nav badge and dashboard must not depend on the Mapping page having been visited first."""
+    import control_plane.db as db
+    import ui.app as app_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "progress.db")
+    db.init_db()
+    store = WorkspaceStateStore()
+    store.questionnaire_data["migration_id"] = "MIG-T"
+    store.questionnaire_data["migration_setup"] = {"entities": ["Account", "Client"]}
+    monkeypatch.setattr(app_module, "state_store", store)
+    conn = db.get_db_connection()
+    rows = [("R1", "Account", "OPEN"), ("R2", "Client", "OPEN"), ("R3", "Client", "RESOLVED")]
+    for rid, entity, status in rows:
+        conn.execute(
+            "INSERT INTO mapping_information_requests (request_id, migration_id, entity_name, canonical_field,"
+            " status, question, created_utc) VALUES (?, 'MIG-T', ?, ?, ?, 'q', '2026-10-27')",
+            (rid, entity, rid, status))
+    conn.commit()
+    conn.close()
+
+    assert app_module.workflow_progress()["rfi_open"] == 2
