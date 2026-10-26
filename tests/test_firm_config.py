@@ -621,3 +621,30 @@ def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch
         assert ("Read-only for" in html) is (not allowed), role
         can_generate = role in ("Platform Admin", "Migration Analyst")
         assert ("Generate proposals from approved files" in html) is can_generate, role
+
+
+def test_mapping_page_lists_only_open_information_requests_of_the_active_migration(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "rfiscope")
+    assert _post_setup(app_module, session_id).status_code == 303
+    active = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "rfiscope.db")
+    for rid, mig, text in (("RFI-OTHER", "MIG-OTHER", "OTHERMIGRATIONQUESTION"), ("RFI-MINE", active, "ACTIVEMIGRATIONQUESTION")):
+        conn.execute("INSERT INTO mapping_information_requests (request_id, migration_id, entity_name, canonical_field, "
+                     "status, question, created_utc) VALUES (?, ?, 'Account', ?, 'OPEN', ?, '2026-01-01')",
+                     (rid, mig, "F_" + rid, text))
+    conn.commit()
+    conn.close()
+
+    async def page():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            return (await client.get("/agent-pipeline")).text
+
+    html = asyncio.run(page())
+    assert "ACTIVEMIGRATIONQUESTION" in html
+    assert "OTHERMIGRATIONQUESTION" not in html

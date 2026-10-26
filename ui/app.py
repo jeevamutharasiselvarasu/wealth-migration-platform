@@ -657,7 +657,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "pipeline_run": latest_run,
             "source_files": source_files,
             "mapping_suggestions": mapping_suggestions,
-            "information_requests": [item for item in state_store.questionnaire_data.get("mapping_information_requests", []) if item.get("entity") in selected_scope],
+            "information_requests": [item for item in state_store.questionnaire_data.get("mapping_information_requests", []) if item.get("entity") in selected_scope and str(item.get("migration_id", active_migration_id)) == active_migration_id],
             "notice": notice,
             "error": error,
         }
