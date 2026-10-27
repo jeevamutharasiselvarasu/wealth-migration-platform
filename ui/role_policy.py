@@ -53,6 +53,7 @@ POST_POLICY = [
     (r"^/api/pipeline/override-agent$", APPROVAL_ROLES),
     (r"^/api/hitl/(approve|reject)$", APPROVAL_ROLES),
     (r"^/api/waves/evaluate-record$", VALIDATION_ROLES),
+    (r"^/api/validation/run$", VALIDATION_ROLES),
 ]
 _COMPILED = [(re.compile(pattern), roles) for pattern, roles in POST_POLICY]
 

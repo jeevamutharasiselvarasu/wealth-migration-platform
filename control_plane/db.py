@@ -156,6 +156,17 @@ def init_db() -> None:
         );
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS validation_runs (
+            run_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            results_json TEXT NOT NULL,
+            executed_by TEXT NOT NULL,
+            executed_utc TEXT NOT NULL
+        );
+    """)
+
     # Durable information requests; UI state is a projection of this table.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS mapping_information_requests (

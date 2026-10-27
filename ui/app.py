@@ -12,10 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
-from ui.role_policy import APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
+from ui.role_policy import VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import canonical_overlay
+from control_plane.services import canonical_overlay, migration_validation
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -697,7 +697,7 @@ async def hitl_approval_queue(request: Request):
 
 
 @app.get("/reconciliation", response_class=HTMLResponse)
-async def reconciliation_dashboard(request: Request):
+async def reconciliation_dashboard(request: Request, error: str = ""):
     user = get_current_user(request)
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
     conn = get_db_connection()
@@ -761,8 +761,15 @@ async def reconciliation_dashboard(request: Request):
                 (migration_id,),
             ).fetchall()
         ]
+        latest = conn.execute(
+            "SELECT run_id, status, results_json, executed_by, executed_utc FROM validation_runs "
+            "WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
     finally:
         conn.close()
+    validation_run = None
+    if latest:
+        validation_run = {"run_id": latest["run_id"], "executed_by": latest["executed_by"],
+                          "executed_utc": latest["executed_utc"], **json.loads(latest["results_json"])}
     return render_template_with_context(
         request=request,
         template_name="reconciliation.html",
@@ -777,8 +784,65 @@ async def reconciliation_dashboard(request: Request):
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
+            "validation_run": validation_run, "error": error,
+            "can_run_validation": user["role"] in VALIDATION_ROLES,
         }
     )
+
+
+@app.post("/api/validation/run")
+async def run_validation(request: Request):
+    """Execute deterministic source-to-canonical checks on approved mappings and confirmed files."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    try:
+        cfg = load_firm_config()
+    except FirmConfigError as exc:
+        raise HTTPException(status_code=409, detail=f"Firm configuration is required before validation. {exc}")
+    contract = {
+        e: {"required": cfg.required_fields(e), "keys": [f.name for f in cfg.entities[e].fields if f.is_key]}
+        for e in migration_validation.ENTITIES if e in cfg.entities}
+    conn = get_db_connection()
+    try:
+        mappings: Dict[str, Dict[str, str]] = {}
+        for row in conn.execute(
+                "SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1",
+                (migration_id,)).fetchall():
+            mappings.setdefault(row["entity_name"], {})[row["source_field"]] = row["canonical_field"]
+    finally:
+        conn.close()
+    if not mappings:
+        return RedirectResponse(url="/reconciliation?error=" + quote_plus("Approve at least one mapping before running validation."),
+                                status_code=status.HTTP_303_SEE_OTHER)
+    files: Dict[str, List[Dict[str, Any]]] = {}
+    for entity, group in state_store.entity_source_files.items():
+        for rec in group.values():
+            if rec.get("inference_approval_status") != "APPROVED" or entity not in migration_validation.ENTITIES:
+                continue
+            stored = rec.get("stored_path")
+            if not stored or not Path(stored).is_file():
+                continue
+            try:
+                records = read_source_records(rec.get("filename", "source.csv"), Path(stored).read_bytes())
+            except (OSError, ValueError):
+                continue
+            files.setdefault(entity, []).append({"filename": rec.get("filename", "source"), "records": records})
+    results = migration_validation.run_checks(contract, mappings, files)
+    run_id = "VAL-" + uuid.uuid4().hex[:10].upper()
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "INSERT INTO validation_runs (run_id, migration_id, status, results_json, executed_by, executed_utc) VALUES (?, ?, ?, ?, ?, ?)",
+            (run_id, migration_id, results["status"], json.dumps(results), user["name"], now))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({
+        "event": "VALIDATION_RUN_EXECUTED", "actor": user["name"], "timestamp_utc": now,
+        "details": {"run_id": run_id, "status": results["status"], "summary": results["summary"]},
+    })
+    return RedirectResponse(url="/reconciliation#validation-results", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- PHASE 1 PILOT ENDPOINTS: SOURCE-TO-CANONICAL ACCOUNT ---
