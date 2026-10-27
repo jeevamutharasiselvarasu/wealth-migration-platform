@@ -158,7 +158,7 @@
             <div class="xa-wf-head">
                 <div style="min-width:0;flex:1">
                     <div class="xa-wf-kicker">Migration · {{ progress.facts.migration_id }}</div>
-                    <p class="xa-wf-title">{{ progress.facts.name }}</p>
+                    {% set wf_tag = 'h1' if wf_path == '/' else 'p' %}<{{ wf_tag }} class="xa-wf-title">{{ progress.facts.name }}</{{ wf_tag }}>
                 </div>
                 <span class="xa-chip xa-chip-{{ progress.status_chip.tone }}">{{ progress.status_chip.label }}</span>
             </div>
@@ -176,7 +176,7 @@
                 {% endfor %}
             </ol>
             {% if viewed %}
-            <details class="xa-wf-panel" open>
+            <details class="xa-wf-panel" {% if wf_path == '/' %}open{% endif %}>
                 <summary>{{ (progress.steps|selectattr('key','equalto',viewed)|first).title }} progress</summary>
                 <ul class="xa-task-list">
                     {% for t in progress.step_tasks[viewed] %}
