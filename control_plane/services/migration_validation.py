@@ -62,7 +62,10 @@ def run_checks(
                     })
         merged[entity] = entity_rows
     for src_entity, src_field, dst_entity, dst_field in RELATIONSHIPS:
-        res = _relationship_check(src_entity, merged.get(src_entity, []), src_field, dst_entity, merged.get(dst_entity, []), dst_field)
+        # Only rows from files that carry the column take part; other files cannot be judged on it.
+        src_rows = [r for r in merged.get(src_entity, []) if src_field in r]
+        dst_rows = [r for r in merged.get(dst_entity, []) if dst_field in r]
+        res = _relationship_check(src_entity, src_rows, src_field, dst_entity, dst_rows, dst_field)
         checks.append({
             "check": "RELATIONSHIP", "entity": src_entity, "field": f"{src_field} → {dst_entity}.{dst_field}",
             "status": res["status"], "detail": res["message"],

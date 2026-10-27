@@ -89,3 +89,17 @@ def test_validation_run_is_role_gated_persisted_and_shown(tmp_path, monkeypatch)
     assert "Validation results" in page and "KEY_UNIQUE" in page and "Run validation again" in page
     analyst_page = asyncio.run(call("Migration Analyst", "GET", "/reconciliation")).text
     assert "Run validation again" not in analyst_page
+
+
+def test_files_without_the_link_column_do_not_count_as_missing_relationship_values():
+    mappings = {"Account": {"ACCT": "ACCT_NUM", "HH": "HH_ID"}, "Household": {"H": "HH_ID"}}
+    files = {
+        "Account": [
+            {"filename": "accounts.csv", "records": [{"ACCT": "A1", "HH": "H1"}]},
+            {"filename": "registration.csv", "records": [{"ACCT": "A1"}, {"ACCT": "A2"}]},
+        ],
+        "Household": [{"filename": "hh.csv", "records": [{"H": "H1"}]}],
+    }
+    link = [c for c in run_checks(CONTRACT, mappings, files)["checks"]
+            if c["check"] == "RELATIONSHIP" and "Household.HH_ID" in c["field"]][0]
+    assert link["status"] == "PASS"
