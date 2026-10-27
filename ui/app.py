@@ -15,7 +15,7 @@ from ui.auth import session_mgr
 from ui.role_policy import VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import canonical_overlay, migration_validation
+from control_plane.services import activity_feed, canonical_overlay, migration_validation
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -145,6 +145,7 @@ def workflow_progress() -> dict:
         "validation_status": validation_status, "validation_when": validation_when,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
+    progress["activity"] = activity_feed.recent_activity(migration_id)
     return progress
 
 

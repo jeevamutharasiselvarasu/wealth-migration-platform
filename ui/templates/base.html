@@ -62,6 +62,8 @@
         .xa-next { border-color:#BAD0F5 !important;background:linear-gradient(180deg,#F4F8FF,#fff) !important; }
         .xa-next a { display:block;margin-top:10px;padding:9px 12px;border-radius:8px;background:var(--xa-blue);color:#fff;font-weight:700;font-size:12px;text-decoration:none;text-align:center; }
         .xa-next a:hover { background:#1D4ED8; }
+        .xa-act { display:flex;align-items:flex-start;gap:8px;margin-top:11px; }
+        .xa-act-icon { display:grid;place-items:center;flex:none;width:24px;height:24px;border-radius:7px;background:var(--xa-bluebg);color:var(--xa-blue);font-size:12px; }
         .xa-skip { position:absolute;left:-999px;top:8px;z-index:100;background:#fff;color:var(--xa-navy);padding:8px 12px;border-radius:6px;font-weight:700; }
         .xa-skip:focus { left:8px; }
         a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid var(--xa-blue);outline-offset:2px; }
@@ -199,11 +201,12 @@
             <a href="{{ progress.next.href }}">Go there →</a>
         </div>
         <div class="xa-rail-card">
-            <div class="xa-rail-kicker">Progress</div>
-            <div class="xa-step"><span class="xa-step-num">{{ progress.files_confirmed }}/{{ progress.files_total }}</span><div class="xa-step-copy"><b>Files confirmed</b>Source files with a reviewed entity.</div></div>
-            <div class="xa-step"><span class="xa-step-num">{{ progress.mappings_approved }}</span><div class="xa-step-copy"><b>Mappings approved</b>{{ progress.proposals_pending }} proposal{{ '' if progress.proposals_pending == 1 else 's' }} waiting.</div></div>
-            <div class="xa-step"><span class="xa-step-num">{{ progress.rfi_open }}</span><div class="xa-step-copy"><b>Information requests open</b>Required fields with no source yet.</div></div>
-            <div class="xa-step"><span class="xa-step-num">{{ progress.changes_open }}</span><div class="xa-step-copy"><b>Canonical change requests</b>Open or deferred.</div></div>
+            <div class="xa-rail-kicker">Recent activity</div>
+            {% for a in progress.activity[:6] %}
+            <div class="xa-act"><span class="xa-act-icon" aria-hidden="true">{{ a.icon }}</span><div class="xa-step-copy"><b>{{ a.title }}</b>{% if a.detail %}{{ a.detail }}<br>{% endif %}<span class="xa-mono">{{ a.actor }} · {{ a.when }}</span></div></div>
+            {% else %}
+            <p class="xa-rail-text">Nothing has happened in this migration yet.</p>
+            {% endfor %}
         </div>
         {% endif %}
         <div class="xa-rail-card">
