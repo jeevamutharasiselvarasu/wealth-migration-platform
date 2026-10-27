@@ -1,0 +1,30 @@
+# DEMO target specification for the Simplicity wealth platform (canonical -> target mapping).
+# This is NOT Simplicity's real physical/API schema. It is a labelled stand-in so the
+# canonical-to-target flow can be demonstrated; replace it with the owner-confirmed spec.
+# Platform knowledge: keep separate from migration demo data. No target loading is performed.
+spec_id: SIMPLICITY-TARGET-DEMO
+spec_version: "0.1.0"
+status: DEMO_NOT_OWNER_CONFIRMED
+target_system: Simplicity
+entities:
+  Account:
+    target_table: SIMP_ACCOUNT
+    fields:
+      - {name: ACCOUNT_NUMBER, type: string, required: true, canonical_hint: ACCT_NUM}
+      - {name: CUSTODIAN, type: string, required: true, canonical_hint: CUSTODIAN_CODE}
+      - {name: ADVISOR_CODE, type: string, required: true, canonical_hint: REP_CODE}
+      - {name: REGISTRATION, type: string, required: true, canonical_hint: REG_TYPE}
+      - {name: OPEN_DT, type: date, required: true, canonical_hint: OPEN_DATE}
+  Client:
+    target_table: SIMP_CLIENT
+    fields:
+      - {name: CLIENT_KEY, type: string, required: true, canonical_hint: CLIENT_ID}
+      - {name: FULL_NAME, type: string, required: true, canonical_hint: LEGAL_NAME}
+      - {name: TAX_NUMBER, type: string, required: true, canonical_hint: TAX_ID}
+      - {name: CLIENT_CATEGORY, type: string, required: true, canonical_hint: CLIENT_TYPE}
+  Household:
+    target_table: SIMP_HOUSEHOLD
+    fields:
+      - {name: HOUSEHOLD_KEY, type: string, required: true, canonical_hint: HH_ID}
+      - {name: HOUSEHOLD_LABEL, type: string, required: true, canonical_hint: HH_NAME}
+      - {name: ADVISOR_CODE, type: string, required: true, canonical_hint: REP_CODE}

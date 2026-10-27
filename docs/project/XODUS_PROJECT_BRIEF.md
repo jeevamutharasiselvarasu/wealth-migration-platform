@@ -47,7 +47,7 @@ XODUS is a platform: the migration team uses it to set up and run a migration; t
 
 ## Out of scope unless explicitly approved
 - Production target loading or cutover.
-- Reverse/canonical-to-target mapping.
+- Reverse mapping (target to canonical). Forward canonical-to-target mapping was approved by the user on 2026-10-27 for P0 against a labelled demo target spec (`platform_knowledge/simplicity_target_demo.yaml`): proposals, human approval, governed rules and a read-only preview only; no target loading.
 - Actual wave/cohort assignment.
 - Live Azure/ADF integration or claiming cloud connectivity without verification (the Azure phase is next; scaffolding exists).
 - Autonomous approval of consequential mappings.

@@ -25,6 +25,7 @@ APPROVAL_ROLES: Set[str] = {ADMIN, ANALYST}           # mapping/transformation a
 CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes, decide change requests
 CHANGE_REQUEST_ROLES: Set[str] = {ADMIN, ANALYST}     # raise a canonical change request
 VALIDATION_ROLES: Set[str] = {ADMIN, VALIDATOR}       # validation-side evaluation
+TARGET_PREVIEW_ROLES: Set[str] = {ADMIN, ANALYST, VALIDATOR}  # read-only canonical-to-target dry run
 
 # Routes any authenticated user may POST (authentication/persona handled by their own checks).
 OPEN_POST_PATHS = {"/login", "/persona-selection"}
@@ -54,6 +55,9 @@ POST_POLICY = [
     (r"^/api/hitl/(approve|reject)$", APPROVAL_ROLES),
     (r"^/api/waves/evaluate-record$", VALIDATION_ROLES),
     (r"^/api/validation/run$", VALIDATION_ROLES),
+    (r"^/api/target-mapping/propose$", DISCOVERY_ROLES),
+    (r"^/api/target-mapping/preview$", TARGET_PREVIEW_ROLES),
+    (r"^/api/target-mapping/[^/]+/review$", APPROVAL_ROLES),
     (r"^/api/transformation-rules/preview$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules/[^/]+/[^/]+/(decision|retire)$", APPROVAL_ROLES),

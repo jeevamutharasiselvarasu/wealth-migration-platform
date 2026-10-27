@@ -12,10 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
-from ui.role_policy import VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
+from ui.role_policy import TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import activity_feed, canonical_overlay, migration_validation, transformation_rules
+from control_plane.services import activity_feed, canonical_overlay, migration_validation, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1131,6 +1131,123 @@ CHANGE_TYPES = {
 }
 CHANGE_ENTITIES = ("Account", "Household", "Client")
 CHANGE_DECISIONS = {"APPROVED", "REJECTED", "DEFERRED"}
+
+
+# ---------------------------------------------------------------------------
+# Canonical-to-target mapping (forward only, demo target spec, no target loading)
+# ---------------------------------------------------------------------------
+def _canonical_field_lists() -> Dict[str, List[str]]:
+    try:
+        cfg = load_firm_config()
+    except FirmConfigError:
+        return {}
+    return {e: cfg.canonical_field_names(e) + canonical_overlay.active_added_fields(e)
+            for e in target_mapping.ENTITIES if e in cfg.entities}
+
+
+def _target_mapping_context(request: Request, user: Dict[str, str], preview_result=None, notice: str = "", error: str = "") -> Dict[str, Any]:
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        mappings = target_mapping.list_mappings(conn, migration_id)
+        approved_src = conn.execute(
+            "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
+        conn.commit()
+    finally:
+        conn.close()
+    spec = target_mapping.load_spec()
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for m in mappings:
+        grouped.setdefault(m["entity_name"], []).append(m)
+    return {
+        "page_title": "Target Mapping", "user_name": user["name"], "user_role": user["role"],
+        "spec": spec, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
+        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result,
+        "can_propose": user["role"] in DISCOVERY_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
+        "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
+    }
+
+
+def _target_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/target-mapping?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/target-mapping", response_class=HTMLResponse)
+async def target_mapping_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    return render_template_with_context(request, "target_mapping.html", _target_mapping_context(request, user, notice=notice, error=error))
+
+
+@app.post("/api/target-mapping/propose")
+async def propose_target_mappings(request: Request):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        created = target_mapping.propose(conn, migration_id, _canonical_field_lists())
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "TARGET_MAPPINGS_PROPOSED", "actor": user["name"],
+                                  "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"created": created}})
+    return _target_redirect("notice", f"{created} target mapping proposal(s) created. Each needs human approval." if created else "All target fields already have proposals.")
+
+
+@app.post("/api/target-mapping/preview", response_class=HTMLResponse)
+async def preview_target_mapping(request: Request):
+    """Read-only dry run: canonical rows are derived in memory; only counts and findings are returned."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id) if m["status"] == "APPROVED"]
+        conn.commit()
+    finally:
+        conn.close()
+    if not approved:
+        return _target_redirect("error", "Approve at least one target mapping before running a preview.")
+    canonical_rows: Dict[str, List[Dict[str, Any]]] = {}
+    for entity, group in state_store.entity_source_files.items():
+        if entity not in target_mapping.ENTITIES:
+            continue
+        rules = _get_approved_mapping_rules(migration_id, entity)
+        mapper = SchemaMapperAgent(
+            custom_catalog={**schema_mapper.catalog, **{s: r["canonical_field"] for s, r in rules.items()}},
+            approved_transformations={s: r["transformation_expression"] for s, r in rules.items()})
+        for rec in group.values():
+            stored = rec.get("stored_path")
+            if rec.get("inference_approval_status") != "APPROVED" or not stored or not Path(stored).is_file():
+                continue
+            try:
+                records = read_source_records(rec.get("filename", "source.csv"), Path(stored).read_bytes())
+            except (OSError, ValueError):
+                continue
+            canonical_rows.setdefault(entity, []).extend(mapper.map_source_to_canonical(entity, records)["mapped_records"])
+    result = target_mapping.preview(target_mapping.load_spec(), approved, canonical_rows)
+    state_store.audit_log.append({"event": "TARGET_MAPPING_PREVIEWED", "actor": user["name"],
+                                  "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"migration_id": migration_id}})
+    return render_template_with_context(request, "target_mapping.html", _target_mapping_context(request, user, preview_result=result))
+
+
+@app.post("/api/target-mapping/{target_mapping_id}/review")
+async def review_target_mapping(request: Request, target_mapping_id: str, decision: str = Form(...),
+                                comments: str = Form(""), rule_override: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            row = target_mapping.review(conn, target_mapping_id, decision, user["name"], comments, rule_override)
+        except LookupError:
+            raise HTTPException(status_code=404, detail="Target mapping not found.")
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "TARGET_MAPPING_" + row["status"], "actor": user["name"],
+                                  "timestamp_utc": row["reviewed_utc"],
+                                  "details": {"entity": row["entity_name"], "target_field": row["target_field"], "canonical_field": row["canonical_field"], "rule": row["transformation_expression"]}})
+    return _target_redirect("notice", f"{row['entity_name']}.{row['target_field']} {row['status'].lower()}.")
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
 Do not introduce Party or other entities into the P0 UI/workflow without an explicit scope change.
 
 ## Mapping direction
-Map source fields to the canonical model. Canonical-to-target mapping and target loading are out of scope for this P0.
+Map source fields to the canonical model. Canonical-to-target mapping (forward only) is available as a demo-spec preview with human approval; the target spec is not owner-confirmed. Target loading is out of scope for this P0.
 
 ## Mapping review
 A mapping proposal is not approved merely because an agent suggested it. Preserve source-field lineage, the target canonical field, the rationale/evidence, confidence or uncertainty where available, and review status. Require an authorized human approval before treating it as confirmed. The Migration Analyst (or Platform Admin) approves or rejects mappings; the reviewer is taken from the authenticated session.
