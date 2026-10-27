@@ -219,16 +219,40 @@ async def select_persona(request: Request, role: str = Form(...)):
 
 
 @app.get("/migration-setup", response_class=HTMLResponse)
-async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = ""):
+async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = "", new_migration: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
     return render_template_with_context(request, "migration_setup.html", {
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
         "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": user["role"] in PLATFORM_ROLES,
-        "demo_loaded": demo_loaded == "1",
+        "demo_loaded": demo_loaded == "1", "new_migration": new_migration == "1",
         "demo_available": session_mgr.demo_mode,
         "knowledge_docs": state_store.firm_knowledge_docs,
     })
+
+
+@app.post("/api/migration/new")
+async def start_new_migration(request: Request):
+    """Begin a clean migration. Earlier migrations stay stored but isolated by migration_id;
+    firm knowledge assets are kept because they are platform knowledge, not migration data."""
+    user = get_current_user(request)
+    previous_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    migration_id = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    state_store.entity_sample_files.clear()
+    state_store.entity_source_files.clear()
+    state_store.pipeline_runs.clear()
+    state_store.questionnaire_data["mapping_information_requests"] = []
+    state_store.questionnaire_data["migration_setup"] = {}
+    state_store.questionnaire_data["migration_id"] = migration_id
+    for entity in ("Account", "Household", "Client"):
+        state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
+    context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id}
+    publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
+    publish_event(
+        "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
+        {"scopes": {entity: "OUT_OF_SCOPE" for entity in ("Account", "Household", "Client")}}, user["name"],
+    )
+    return RedirectResponse(url="/migration-setup?new_migration=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/migration/setup")

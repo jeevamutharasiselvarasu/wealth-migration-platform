@@ -648,3 +648,33 @@ def test_mapping_page_lists_only_open_information_requests_of_the_active_migrati
     html = asyncio.run(page())
     assert "ACTIVEMIGRATIONQUESTION" in html
     assert "OTHERMIGRATIONQUESTION" not in html
+
+
+def test_start_new_migration_isolates_state_and_survives_restart(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "newmig")
+    assert _post_setup(app_module, session_id).status_code == 303
+    old_id = state.questionnaire_data["migration_id"]
+    state.entity_source_files["Account"] = {"ENTITY_MASTER": {"filename": "a.csv"}}
+
+    async def post(path):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": session_id}) as client:
+            return await client.post(path, follow_redirects=False)
+
+    response = asyncio.run(post("/api/migration/new"))
+    assert response.status_code == 303
+    new_id = state.questionnaire_data["migration_id"]
+    assert new_id != old_id and new_id.startswith("MIG-")
+    assert state.entity_source_files == {} and state.questionnaire_data["migration_setup"] == {}
+    assert set(state.entity_scopes.values()) == {"OUT_OF_SCOPE"}
+
+    from ui.state import WorkspaceStateStore
+    fresh = WorkspaceStateStore()
+    fresh.hydrate_from_durable_state()
+    assert fresh.questionnaire_data["migration_id"] == new_id
+    assert fresh.entity_source_files == {}
