@@ -54,6 +54,9 @@ POST_POLICY = [
     (r"^/api/hitl/(approve|reject)$", APPROVAL_ROLES),
     (r"^/api/waves/evaluate-record$", VALIDATION_ROLES),
     (r"^/api/validation/run$", VALIDATION_ROLES),
+    (r"^/api/transformation-rules/preview$", DISCOVERY_ROLES),
+    (r"^/api/transformation-rules$", DISCOVERY_ROLES),
+    (r"^/api/transformation-rules/[^/]+/[^/]+/(decision|retire)$", APPROVAL_ROLES),
 ]
 _COMPILED = [(re.compile(pattern), roles) for pattern, roles in POST_POLICY]
 

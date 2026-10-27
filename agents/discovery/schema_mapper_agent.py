@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, List, Optional, Set
 
+from control_plane.services import transformation_rules
 from control_plane.services.firm_config import FirmConfigError, get_firm_config
 from control_plane.services.value_evidence import propose_from_evidence
 
@@ -191,6 +192,8 @@ class SchemaMapperAgent:
     def transformation_family(cls, expression: str) -> str:
         """Extract the registered rule family from a descriptive proposal."""
         normalized = str(expression or "DIRECT_COPY").strip().upper()
+        if transformation_rules.parse_expression(normalized):
+            return normalized  # pinned governed rule: RULE:<ID>@<VERSION>
         if normalized in cls.SUPPORTED_APPROVED_TRANSFORMS:
             return normalized
         # Discovery recommendations may include examples in parentheses, e.g.
@@ -200,6 +203,8 @@ class SchemaMapperAgent:
 
     @classmethod
     def supports_transformation(cls, expression: str) -> bool:
+        if transformation_rules.parse_expression(expression):
+            return transformation_rules.approved_rule_for_expression(expression) is not None
         return cls.transformation_family(expression) in cls.SUPPORTED_APPROVED_TRANSFORMS
 
     def __init__(
@@ -216,6 +221,11 @@ class SchemaMapperAgent:
             source: expression for source, expression in self.approved_transformations.items()
             if not self.supports_transformation(expression)
         }
+        self._rule_cache = {}
+        self._rule_warnings: Dict[str, int] = {}
+        for expression in self.approved_transformations.values():
+            if transformation_rules.parse_expression(expression) and expression not in unsupported.values():
+                self._rule_cache[expression] = transformation_rules.approved_rule_for_expression(expression)
         if unsupported:
             raise ValueError(
                 "Unsupported approved transformation expression(s): "
@@ -258,6 +268,17 @@ class SchemaMapperAgent:
             return date_str
         raise ValueError(f"Unsupported approved transformation: {expression}")
 
+    def _apply_for_record(self, value: Any, expression: str, record: Dict[str, Any]) -> Any:
+        """Apply an approved expression; governed rules may read other fields of the same record."""
+        rule = self._rule_cache.get(expression)
+        if rule is None:
+            return self._apply_approved_transformation(value, expression)
+        result, warning = transformation_rules.apply_rule(rule["rule_type"], rule["params"], value, record)
+        if warning:
+            note = f"{rule['rule_id']}@{rule['version']}: {warning}"
+            self._rule_warnings[note] = self._rule_warnings.get(note, 0) + 1
+        return result
+
     def map_source_schema(self, raw_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Backward-compatible mapping function for 9-agent pipeline."""
         res = self.map_source_to_canonical("Account", raw_records)
@@ -284,6 +305,7 @@ class SchemaMapperAgent:
                 "warnings": [f"No source records provided for entity {entity_name}."]
             }
 
+        self._rule_warnings = {}
         mapped_records = []
         source_fields_seen: Set[str] = set()
         mapped_target_fields: Set[str] = set()
@@ -328,14 +350,20 @@ class SchemaMapperAgent:
                     mapped_target_fields.add(target_key)
                     if target_key in canonical_row:
                         field_collisions.add(f"{target_key} <- {raw_key}")
-                    canonical_row[target_key] = raw_val
+                    identity_rule = self.approved_transformations.get(raw_key)
+                    identity_value = raw_val
+                    identity_applied = "DIRECT_COPY"
+                    if identity_rule:
+                        identity_value = self._apply_for_record(raw_val, identity_rule, raw_row)
+                        identity_applied = f"APPROVED_{self.transformation_family(identity_rule)}"
+                    canonical_row[target_key] = identity_value
                     if raw_key not in lineage_fields_seen:
                         field_lineages.append({
                             "source_field": raw_key,
                             "canonical_field": target_key,
-                            "rule_applied": "DIRECT_COPY",
+                            "rule_applied": identity_applied,
                             "confidence": self.IDENTITY_MATCH_CONFIDENCE,
-                            "sample_value": str(raw_val)
+                            "sample_value": str(identity_value)
                         })
                         lineage_fields_seen.add(raw_key)
                 elif target_key:
@@ -381,7 +409,7 @@ class SchemaMapperAgent:
 
                     approved_expression = self.approved_transformations.get(raw_key)
                     if approved_expression:
-                        transformed_val = self._apply_approved_transformation(raw_val, approved_expression)
+                        transformed_val = self._apply_for_record(raw_val, approved_expression, raw_row)
                         applied_rule = f"APPROVED_{self.transformation_family(approved_expression)}"
 
                     if target_key in canonical_row:
@@ -444,6 +472,9 @@ class SchemaMapperAgent:
             warnings.append(f"CRITICAL: Missing required canonical fields: {', '.join(missing_required)}")
         if field_collisions:
             warnings.append("Multiple source columns map to the same canonical field: " + ", ".join(sorted(field_collisions)))
+
+        for note, count in sorted(self._rule_warnings.items())[:10]:
+            warnings.append(f"Transformation warning: {note} ({count} value{'s' if count != 1 else ''})")
 
         total_fields = len(source_fields_seen)
         mapped_count = len(source_fields_seen - unmapped_source_fields)

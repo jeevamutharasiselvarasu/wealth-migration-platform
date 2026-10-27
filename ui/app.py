@@ -15,7 +15,7 @@ from ui.auth import session_mgr
 from ui.role_policy import VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import activity_feed, canonical_overlay, migration_validation
+from control_plane.services import activity_feed, canonical_overlay, migration_validation, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -752,6 +752,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "user_role": user["role"],
             "can_review_mappings": user["role"] in MAPPING_REVIEW_ROLES,
             "can_discover": user["role"] in DISCOVERY_ROLES,
+            "approved_rules": transformation_rules.approved_rules(),
             "firm_context": state_store.questionnaire_data,
             "pipeline_run": latest_run,
             "source_files": source_files,
@@ -1130,6 +1131,107 @@ CHANGE_TYPES = {
 }
 CHANGE_ENTITIES = ("Account", "Household", "Client")
 CHANGE_DECISIONS = {"APPROVED", "REJECTED", "DEFERRED"}
+
+
+# ---------------------------------------------------------------------------
+# Transformation rules: governed, versioned, human-approved, registered types only
+# ---------------------------------------------------------------------------
+def _rules_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/transformation-rules?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/transformation-rules", response_class=HTMLResponse)
+async def transformation_rules_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        rules = transformation_rules.list_rules(conn)
+        usage = {}
+        for row in conn.execute(
+                "SELECT UPPER(transformation_expression) AS expr, COUNT(*) AS n FROM canonical_mappings "
+                "WHERE is_confirmed = 1 AND UPPER(transformation_expression) LIKE 'RULE:%' GROUP BY 1").fetchall():
+            usage[row["expr"]] = row["n"]
+        conn.commit()
+    finally:
+        conn.close()
+    for rule in rules:
+        rule["params_text"] = json.dumps(rule["params"], indent=1, sort_keys=True)
+        rule["used_by"] = usage.get(rule["expression"], 0)
+    return render_template_with_context(request, "transformation_rules.html", {
+        "page_title": "Transformation Rules", "user_name": user["name"], "user_role": user["role"],
+        "rules": rules, "rule_types": transformation_rules.RULE_TYPES,
+        "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
+        "date_formats": list(transformation_rules.DATE_FORMATS),
+        "can_author": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
+        "notice": notice, "error": error,
+    })
+
+
+@app.post("/api/transformation-rules/preview")
+async def preview_transformation_rule(request: Request, rule_type: str = Form(...), params_json: str = Form(...), samples: str = Form("")):
+    get_current_user(request)
+    try:
+        params = json.loads(params_json)
+        rows = transformation_rules.preview(rule_type, params, [line for line in samples.splitlines() if line.strip() != ""] or [""])
+    except (ValueError, TypeError) as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True, "rows": rows})
+
+
+@app.post("/api/transformation-rules")
+async def create_transformation_rule(request: Request, rule_id: str = Form(...), rule_type: str = Form(...),
+                                     description: str = Form(...), params_json: str = Form(...)):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rule = transformation_rules.create_rule_version(conn, rule_id, rule_type, description, json.loads(params_json), user["name"])
+        except (ValueError, TypeError) as exc:
+            return _rules_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "TRANSFORMATION_RULE_DRAFTED", "actor": user["name"],
+                                  "timestamp_utc": rule["created_utc"], "details": {"rule": rule["expression"], "type": rule_type}})
+    return _rules_redirect("notice", f"{rule['expression']} saved as a draft. It cannot be used by a mapping until it is approved.")
+
+
+@app.post("/api/transformation-rules/{rule_id}/{version}/decision")
+async def decide_transformation_rule(request: Request, rule_id: str, version: int, decision: str = Form(...), comments: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rule = transformation_rules.decide_rule(conn, rule_id, version, decision.strip().upper(), user["name"], comments)
+        except LookupError:
+            raise HTTPException(status_code=404, detail="Rule version not found.")
+        except ValueError as exc:
+            return _rules_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "TRANSFORMATION_RULE_" + rule["status"], "actor": user["name"],
+                                  "timestamp_utc": rule["reviewed_utc"], "details": {"rule": rule["expression"], "comments": comments.strip()}})
+    return _rules_redirect("notice", f"{rule['expression']} {rule['status'].lower()}.")
+
+
+@app.post("/api/transformation-rules/{rule_id}/{version}/retire")
+async def retire_transformation_rule(request: Request, rule_id: str, version: int):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rule = transformation_rules.retire_rule(conn, rule_id, version, user["name"])
+        except LookupError:
+            raise HTTPException(status_code=404, detail="Rule version not found.")
+        except ValueError as exc:
+            return _rules_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "TRANSFORMATION_RULE_RETIRED", "actor": user["name"],
+                                  "timestamp_utc": rule["reviewed_utc"], "details": {"rule": rule["expression"]}})
+    return _rules_redirect("notice", f"{rule['expression']} retired.")
 
 
 @app.get("/canonical-changes", response_class=HTMLResponse)
@@ -2138,6 +2240,7 @@ async def review_source_mapping_suggestion(
     decision: str = Form(...),
     reviewer: str = Form(...),
     comments: str = Form(""),
+    rule_override: str = Form(""),
     request: Request = None,
 ):
     """Record an explicit approve/reject decision and prevent repeat review."""
@@ -2168,6 +2271,13 @@ async def review_source_mapping_suggestion(
         if row["status"] != "PENDING":
             raise HTTPException(status_code=409, detail=f"Mapping suggestion is already {row['status']}.")
         proposed_expression = str(row["proposed_rule"] or "DIRECT_COPY").strip().upper()
+        override = rule_override.strip().upper() if isinstance(rule_override, str) else ""
+        if normalized == "APPROVED" and override:
+            if not transformation_rules.approved_rule_for_expression(override):
+                conn.rollback()
+                raise HTTPException(status_code=400, detail=f"'{override}' is not an approved transformation rule version.")
+            proposed_expression = override
+            conn.execute("UPDATE mapping_suggestions SET proposed_rule = ? WHERE suggestion_id = ? AND status = 'PENDING'", (override, suggestion_id))
         if normalized == "APPROVED" and not SchemaMapperAgent.supports_transformation(proposed_expression):
             detail = (
                 f"The rule '{proposed_expression}' is not executable yet. "
@@ -2206,7 +2316,7 @@ async def review_source_mapping_suggestion(
                 (
                     f"MAP-{row['migration_id']}-{row['entity_name']}-{row['source_field']}",
                     row["migration_id"], row["entity_name"], row["source_field"],
-                    row["canonical_field"], row["proposed_rule"] or "DIRECT_COPY",
+                    row["canonical_field"], proposed_expression,
                     float(row["confidence_score"] or 0.0), reviewer_name, now,
                 ),
             )

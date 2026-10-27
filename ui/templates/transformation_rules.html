@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-5 max-w-6xl">
+  {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs text-teal-900">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">{{ error }}</div>{% endif %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-blue-700">Source → canonical · governed rules</div>
+    <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Transformation Rules</h1>
+    <p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Rules are declarative, parameterized and versioned. Nothing here runs as code. A new version is a draft until a Migration Analyst or Platform Admin approves it; a mapping then pins an exact version (<span class="font-mono">RULE:ID@version</span>) so lineage stays reproducible. Apply an approved rule from the Mapping page when you approve a mapping.</p>
+    <p class="mt-2 text-[10px] text-[#8A97B2]">Built-in families: <span class="font-mono">{{ builtin_rules|join(', ') }}</span></p>
+  </section>
+
+  {% if can_author %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="new-rule">
+    <h2 class="text-sm font-bold text-[#152C6B]">Create a rule version</h2>
+    <form action="/api/transformation-rules" method="post" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3" id="rule-form">
+      <label class="text-xs font-bold text-[#41506B]">Rule id (reuse an id to add a version)
+        <input name="rule_id" required placeholder="e.g. CUSTODIAN_MAP" pattern="[A-Za-z][A-Za-z0-9_]{2,40}" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2 text-xs font-mono uppercase"></label>
+      <label class="text-xs font-bold text-[#41506B]">Rule type
+        <select name="rule_type" id="rule-type" required class="mt-1 w-full rounded-lg border border-[#C3D2EC] bg-white p-2 text-xs">{% for key, info in rule_types.items() %}<option value="{{ key }}" data-example='{{ info.example }}' data-help="{{ info.help }}">{{ info.label }}</option>{% endfor %}</select></label>
+      <label class="text-xs font-bold text-[#41506B]">Business reason
+        <input name="description" required placeholder="Why this rule is needed" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2 text-xs"></label>
+      <p id="rule-help" class="text-[10px] leading-4 text-[#5A6A88] md:col-span-3"></p>
+      <label class="text-xs font-bold text-[#41506B] md:col-span-2">Parameters (JSON)
+        <textarea name="params_json" id="rule-params" rows="5" required class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2 font-mono text-xs"></textarea></label>
+      <label class="text-xs font-bold text-[#41506B]">Sample values (one per line; CONCAT: separate fields with |)
+        <textarea id="rule-samples" rows="5" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2 font-mono text-xs"></textarea></label>
+      <div class="flex flex-wrap items-center gap-2 md:col-span-3">
+        <button type="button" id="rule-preview-btn" class="rounded-lg border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-blue-700">Preview on samples</button>
+        <button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Save as draft →</button>
+        <span class="text-[10px] text-[#8A97B2]">Date formats allowed: {{ date_formats|join(', ') }}</span>
+      </div>
+      <div id="rule-preview" class="md:col-span-3" aria-live="polite"></div>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <h2 class="text-sm font-bold text-[#152C6B]">Rule versions <span class="font-mono text-[10px] text-[#8A97B2]">{{ rules|length }}</span></h2>
+    {% if not rules %}<p class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center text-xs text-[#5A6A88]">No governed rules yet. Create the first one above.</p>{% endif %}
+    <div class="mt-3 space-y-3">
+      {% for r in rules %}
+      <article class="rounded-xl border border-[#D9E3F5] p-4" id="rule-{{ r.rule_id }}-{{ r.version }}">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div><span class="font-mono text-sm font-bold text-[#152C6B]">{{ r.expression }}</span> <span class="ml-2 text-[10px] text-[#5A6A88]">{{ rule_types[r.rule_type].label }}</span></div>
+          <span class="rounded-full border px-3 py-1 font-mono text-[9px] {% if r.status == 'APPROVED' %}border-teal-200 bg-teal-50 text-teal-800{% elif r.status == 'DRAFT' %}border-amber-200 bg-amber-50 text-amber-800{% else %}border-slate-200 bg-slate-50 text-slate-600{% endif %}">{{ r.status }}</span>
+        </div>
+        <p class="mt-1 text-xs text-[#41506B]">{{ r.description }}</p>
+        <p class="mt-1 text-[10px] text-[#8A97B2]">Drafted by {{ r.created_by }}{% if r.reviewed_by %} · {{ r.status|lower }} by {{ r.reviewed_by }}{% endif %}{% if r.review_comments %} · “{{ r.review_comments }}”{% endif %}{% if r.used_by %} · used by {{ r.used_by }} approved mapping{{ '' if r.used_by == 1 else 's' }}{% endif %}</p>
+        <details class="mt-2"><summary class="cursor-pointer text-[10px] font-bold text-blue-700">Parameters</summary><pre class="mt-1 overflow-x-auto rounded-lg bg-[#F8FAFD] p-3 font-mono text-[10px]">{{ r.params_text }}</pre></details>
+        {% if can_approve and r.status == 'DRAFT' %}
+        <form action="/api/transformation-rules/{{ r.rule_id }}/{{ r.version }}/decision" method="post" class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(12rem,1fr)_auto_auto]">
+          <input name="comments" placeholder="Approval note or required rejection reason" required aria-label="Review comments" class="rounded-lg border border-[#C3D2EC] p-2.5 text-xs">
+          <button name="decision" value="APPROVED" class="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white">Approve version</button>
+          <button name="decision" value="REJECTED" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800">Reject</button>
+        </form>
+        {% elif can_approve and r.status == 'APPROVED' %}
+        <form action="/api/transformation-rules/{{ r.rule_id }}/{{ r.version }}/retire" method="post" class="mt-3"><button class="rounded-lg border border-[#C3D2EC] bg-white px-3 py-2 text-[10px] font-bold text-[#41506B]">Retire version</button></form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+<script>
+(function () {
+  var type = document.getElementById('rule-type');
+  var params = document.getElementById('rule-params');
+  var help = document.getElementById('rule-help');
+  if (!type) return;
+  function seed() {
+    var opt = type.options[type.selectedIndex];
+    help.textContent = opt.getAttribute('data-help');
+    params.value = JSON.stringify(JSON.parse(opt.getAttribute('data-example')), null, 1);
+  }
+  type.addEventListener('change', seed); seed();
+  document.getElementById('rule-preview-btn').addEventListener('click', function () {
+    var body = new URLSearchParams({rule_type: type.value, params_json: params.value, samples: document.getElementById('rule-samples').value});
+    var out = document.getElementById('rule-preview');
+    fetch('/api/transformation-rules/preview', {method: 'POST', body: body}).then(function (r) { return r.json(); }).then(function (d) {
+      out.textContent = '';
+      if (!d.ok) { var e = document.createElement('div'); e.className = 'rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900'; e.textContent = d.error; out.appendChild(e); return; }
+      var t = document.createElement('table'); t.className = 'w-full text-left text-xs';
+      var h = t.insertRow(); ['Input', 'Output', 'Warning'].forEach(function (x) { var c = document.createElement('th'); c.className = 'border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]'; c.textContent = x; h.appendChild(c); });
+      d.rows.forEach(function (row) { var tr = t.insertRow(); [row.input, row.output, row.warning || ''].forEach(function (x, i) { var c = tr.insertCell(); c.className = 'border-b border-[#EEF2FA] p-2 font-mono ' + (i === 2 ? 'text-amber-700' : ''); c.textContent = x === null ? '' : x; }); });
+      out.appendChild(t);
+    }).catch(function () { out.textContent = 'Preview failed.'; });
+  });
+})();
+</script>
+{% endblock %}
