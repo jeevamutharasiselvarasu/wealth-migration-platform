@@ -198,7 +198,7 @@ def build_workflow_view(p: dict, setup: dict, migration_id: str) -> dict:
         steps.append({"key": key, "number": number, "title": titles[key], "href": hrefs[key], "state": state, "caption": captions[key]})
     if not configured:
         chip = ("Setup needed", "attention")
-    elif validate_done:
+    elif validate_done and discover_done and map_done:
         chip = ("Validated", "done")
     elif current == "validate":
         chip = ("Ready to validate", "info")

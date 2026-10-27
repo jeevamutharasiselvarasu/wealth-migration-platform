@@ -395,3 +395,11 @@ def test_workflow_view_derives_step_states_chip_and_tasks():
 
     passed = app_module.build_workflow_view(_progress(validation_status="PASS", validation_when="2026-10-27"), {}, "MIG-X")
     assert passed["status_chip"]["label"] == "Validated"
+
+
+def test_validated_chip_requires_every_earlier_step_to_be_complete():
+    import ui.app as app_module
+
+    view = app_module.build_workflow_view(
+        _progress(validation_status="PASS", validation_when="2026-10-27", files_pending=1, files_confirmed=1, next={"step": "discover"}), {}, "MIG-X")
+    assert view["status_chip"]["label"] == "In progress · Discover"

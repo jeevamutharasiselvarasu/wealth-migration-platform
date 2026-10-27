@@ -10,16 +10,10 @@
   {% if not can_discover %}<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">Read-only for {{ user_role }}: uploading, profiling and mapping generation belong to Migration Analyst or Platform Admin. Entity review and information requests stay available to Domain SME.</div>{% endif %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-      <div><div class="font-mono text-[9px] font-bold uppercase tracking-[.14em] text-blue-700">Workflow · Step 2</div>
-        <h1 class="mt-2 text-xl font-bold text-[#152C6B]">Source discovery & entity inference</h1>
+      <div>
+        <h1 class="text-xl font-bold text-[#152C6B]">Source discovery & entity inference</h1>
         <p class="mt-2 max-w-3xl text-xs leading-5 text-[#5A6A88]">Upload one or many source files without assigning entities. XODUS attempts inference from headers and file structure first. Optional context can refine results; ambiguous files are flagged for review rather than blocking the whole batch.</p>
       </div>
-      <span class="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 font-mono text-[9px] font-bold text-blue-700">P0 · 3 ENTITIES</span>
-    </div>
-    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SUPPORTED ENTITY 01</div><b class="mt-1 block text-sm text-[#152C6B]">Account</b><span class="text-[10px] text-[#5A6A88]">Account identity and registration fields</span></div>
-      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SUPPORTED ENTITY 02</div><b class="mt-1 block text-sm text-[#152C6B]">Household</b><span class="text-[10px] text-[#5A6A88]">Household key, name and relationships</span></div>
-      <div class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">SUPPORTED ENTITY 03</div><b class="mt-1 block text-sm text-[#152C6B]">Client</b><span class="text-[10px] text-[#5A6A88]">Client key, legal name and type</span></div>
     </div>
   </section>
 

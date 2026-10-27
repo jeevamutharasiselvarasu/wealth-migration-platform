@@ -166,7 +166,7 @@
                 <div><dt>Source → target</dt><dd>{{ progress.facts.route }}</dd></div>
                 <div><dt>Entities in scope</dt><dd>{{ progress.facts.entities }}</dd></div>
                 <div><dt>Canonical contract</dt><dd>{{ progress.facts.contract }}</dd></div>
-                <div><dt>Next step</dt><dd><a href="{{ progress.next.href }}" style="color:var(--xa-blue);text-decoration:none">{{ progress.next.label }} →</a></dd></div>
+                {% if wf_path != '/' %}<div><dt>Next step</dt><dd><a href="{{ progress.next.href }}" style="color:var(--xa-blue);text-decoration:none">{{ progress.next.label }} →</a></dd></div>{% endif %}
             </dl>
             <ol class="xa-wf-steps" aria-label="Workflow steps">
                 {% for st in progress.steps %}
