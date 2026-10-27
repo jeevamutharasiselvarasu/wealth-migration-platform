@@ -21,7 +21,7 @@
             background:linear-gradient(var(--xa-grid) 1px,transparent 1px) 0 0/100% 64px,var(--xa-bg);
             -webkit-font-smoothing:antialiased; }
         .xa-mono { font-family:'IBM Plex Mono',monospace; }
-        .xa-app { min-height:100vh; display:grid; grid-template-columns:250px minmax(0,1fr) 278px; grid-template-rows:64px minmax(0,1fr); }
+        .xa-app { min-height:100vh; display:grid; grid-template-columns:210px minmax(0,1fr) 278px; grid-template-rows:64px minmax(0,1fr); }
         .xa-topbar { grid-column:1/4; display:flex; align-items:center; gap:14px; padding:0 20px; background:var(--xa-navy); color:#fff; border-bottom:1px solid #33477E; }
         .xa-logo { width:40px;height:32px;border-radius:7px;flex:none;display:grid;place-items:center;background:linear-gradient(135deg,#2563EB,#0E8C86);font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px; }
         .xa-title { font-size:14.5px;font-weight:700;letter-spacing:.01em; }
@@ -69,6 +69,39 @@
         [class*="text-[7px]"],[class*="text-[8px]"],[class*="text-[9px]"],[class*="text-[10px]"] { font-size:11.5px !important; }
         .xa-nav-status,.xa-phase,.xa-tag,.xa-sub,.xa-rail-kicker,.xa-step-copy,.xa-rail-text,.xa-nav-heading { font-size:11px; }
         .xa-top-btn { font-size:11px; }
+        /* Workflow shell: migration header, stepper, step progress panel */
+        .xa-wf { background:#fff;border:1px solid var(--xa-line);border-radius:14px;padding:16px 18px;margin-bottom:18px;box-shadow:0 2px 8px rgba(21,44,107,.04); }
+        .xa-wf-head { display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px; }
+        .xa-wf-kicker { color:var(--xa-faint);font:700 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase; }
+        .xa-wf-title { margin:2px 0 0;color:var(--xa-navy);font-size:21px;font-weight:700;line-height:1.2; }
+        .xa-chip { display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;border:1px solid;font:700 11px 'IBM Plex Mono',monospace; }
+        .xa-chip-info { background:var(--xa-bluebg);border-color:#BAD0F5;color:var(--xa-blue); }
+        .xa-chip-done { background:var(--xa-tealbg);border-color:#A9DAD7;color:var(--xa-teal); }
+        .xa-chip-attention { background:var(--xa-amberbg);border-color:#E8CFA0;color:var(--xa-amber); }
+        .xa-wf-facts { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px 18px;margin:14px 0 4px; }
+        .xa-wf-facts dt { color:var(--xa-faint);font:700 10.5px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.06em; }
+        .xa-wf-facts dd { margin:3px 0 0;color:var(--xa-ink);font-size:13px;font-weight:600;overflow-wrap:anywhere; }
+        .xa-wf-steps { list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0 0;padding:0; }
+        .xa-wf-step { display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--xa-line);border-radius:11px;background:#F8FAFD;color:var(--xa-ink);text-decoration:none;position:relative; }
+        .xa-wf-step:hover { border-color:#BAD0F5;background:#fff; }
+        .xa-wf-num { display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;border:2px solid #C3D2EC;background:#fff;color:var(--xa-muted);font:700 12px 'IBM Plex Mono',monospace; }
+        .xa-wf-step b { display:block;font-size:13px;line-height:1.2; }
+        .xa-wf-step small { display:block;color:var(--xa-muted);font-size:11.5px;margin-top:2px; }
+        .xa-wf-step.done .xa-wf-num { background:var(--xa-teal);border-color:var(--xa-teal);color:#fff; }
+        .xa-wf-step.current { border-color:var(--xa-blue);background:var(--xa-bluebg); }
+        .xa-wf-step.current .xa-wf-num { background:var(--xa-blue);border-color:var(--xa-blue);color:#fff; }
+        .xa-wf-step.viewing { box-shadow:0 0 0 2px rgba(37,99,235,.28); }
+        .xa-wf-panel { margin-top:14px;border-top:1px solid var(--xa-line);padding-top:12px; }
+        .xa-wf-panel summary { cursor:pointer;color:var(--xa-navy);font-weight:700;font-size:13px; }
+        .xa-task-list { list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px; }
+        .xa-task { display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:9px 12px;border:1px solid var(--xa-line);border-radius:9px;background:#fff; }
+        .xa-task-label { font-weight:600;font-size:13px;flex:1 1 180px; }
+        .xa-task-detail { color:var(--xa-muted);font-size:12px;flex:2 1 160px; }
+        .xa-task-chip { font:700 11px 'IBM Plex Mono',monospace;padding:3px 9px;border-radius:999px;border:1px solid; }
+        .xa-task-chip.complete { background:var(--xa-tealbg);border-color:#A9DAD7;color:var(--xa-teal); }
+        .xa-task-chip.needs_you { background:var(--xa-amberbg);border-color:#E8CFA0;color:var(--xa-amber); }
+        .xa-task-chip.not_started { background:#F1F4FA;border-color:var(--xa-line);color:var(--xa-muted); }
+        @media(max-width:900px) { .xa-wf-steps { grid-template-columns:repeat(2,minmax(0,1fr)); } }
         @media(max-width:1180px) { .xa-app{grid-template-columns:220px minmax(0,1fr);}.xa-topbar{grid-column:1/3}.xa-right{display:none}.xa-main{padding:20px;} }
         @media(max-width:720px) { .xa-app{display:flex;flex-direction:column;min-height:100vh}.xa-topbar{min-height:64px;padding:10px 12px;flex-wrap:wrap}.xa-top-meta{display:none}.xa-sidebar{border-right:0;border-bottom:1px solid var(--xa-line);padding:8px;overflow-x:auto}.xa-sidebar nav{display:flex;gap:4px}.xa-nav-heading,.xa-nav-divider,.xa-nav-note,.xa-pilot-scope,.xa-nav-copy small{display:none}.xa-nav-link{white-space:nowrap;flex:none;padding:7px}.xa-main{padding:14px;} }
     </style>
@@ -98,13 +131,6 @@
         <nav aria-label="Primary navigation">
             <a href="/" class="xa-nav-link {% if path == '/' %}active{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}><span class="xa-nav-num">⌂</span><span class="xa-nav-copy">Home</span></a>
             <div class="xa-nav-divider"></div>
-            <div class="xa-nav-heading">Migration workflow <span class="xa-phase">P0</span></div>
-            <a href="/migration-setup" class="xa-nav-link {% if path == '/migration-setup' %}active{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}><span class="xa-nav-num">1</span><span class="xa-nav-copy">Setup</span>{% if pg.scope %}<span class="xa-done" title="Configured">✓</span>{% endif %}</a>
-            <a href="/entity-sample-files" aria-label="Source Discovery & Entity Scope" class="xa-nav-link {% if path in ('/entity-sample-files','/entity-selection') %}active{% endif %}" {% if path == '/entity-sample-files' %}aria-current="page"{% endif %}><span class="xa-nav-num">2</span><span class="xa-nav-copy">Discover<small>Source files &amp; entity inference</small></span>{% if pg.files_pending %}<span class="xa-badge" title="Files awaiting confirmation">{{ pg.files_pending }}</span>{% elif pg.files_total %}<span class="xa-done" title="All files reviewed">✓</span>{% endif %}</a>
-            <div class="xa-nav-note px-3 py-1 text-[11px] leading-4 text-[#5A6A88]">Agent assistance runs inside Source Discovery automatically.</div>
-            <a href="/agent-pipeline" class="xa-nav-link {% if path == '/agent-pipeline' %}active{% endif %}" {% if path == '/agent-pipeline' %}aria-current="page"{% endif %}><span class="xa-nav-num">3</span><span class="xa-nav-copy">Map &amp; review<small>Mappings &amp; information requests</small></span>{% set todo = (pg.proposals_pending|default(0)) + (pg.rfi_open|default(0)) %}{% if todo %}<span class="xa-badge" title="Proposals and information requests waiting">{{ todo }}</span>{% elif pg.mappings_approved %}<span class="xa-done" title="Nothing waiting">✓</span>{% endif %}</a>
-            <a href="/reconciliation" class="xa-nav-link {% if path == '/reconciliation' %}active{% endif %}" {% if path == '/reconciliation' %}aria-current="page"{% endif %}><span class="xa-nav-num">4</span><span class="xa-nav-copy">Validate<small>Checks &amp; exceptions</small></span></a>
-            <div class="xa-nav-divider"></div>
             <div class="xa-nav-heading">Governance</div>
             <a href="/canonical-changes" class="xa-nav-link {% if path == '/canonical-changes' %}active{% endif %}" {% if path == '/canonical-changes' %}aria-current="page"{% endif %}><span class="xa-nav-num">C</span><span class="xa-nav-copy">Canonical changes</span>{% if pg.changes_open %}<span class="xa-badge" title="Open or deferred requests">{{ pg.changes_open }}</span>{% endif %}</a>
             <a href="/firm-knowledge" class="xa-nav-link {% if path == '/firm-knowledge' %}active{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}><span class="xa-nav-num">K</span><span class="xa-nav-copy">Knowledge assets</span></a>
@@ -122,6 +148,45 @@
     </aside>
 
     <main class="xa-main" id="main-content">
+        {% set wf_path = request.url.path %}
+        {% if progress and progress.steps and wf_path != '/persona-selection' %}
+        {% set step_by_path = {'/migration-setup':'setup','/entity-sample-files':'discover','/entity-selection':'discover','/agent-pipeline':'map','/reconciliation':'validate','/':progress.current_step} %}
+        {% set viewed = step_by_path.get(wf_path) %}
+        <section class="xa-wf" aria-label="Migration workflow">
+            <div class="xa-wf-head">
+                <div style="min-width:0;flex:1">
+                    <div class="xa-wf-kicker">Migration · {{ progress.facts.migration_id }}</div>
+                    <p class="xa-wf-title">{{ progress.facts.name }}</p>
+                </div>
+                <span class="xa-chip xa-chip-{{ progress.status_chip.tone }}">{{ progress.status_chip.label }}</span>
+            </div>
+            <dl class="xa-wf-facts">
+                <div><dt>Source → target</dt><dd>{{ progress.facts.route }}</dd></div>
+                <div><dt>Entities in scope</dt><dd>{{ progress.facts.entities }}</dd></div>
+                <div><dt>Canonical contract</dt><dd>{{ progress.facts.contract }}</dd></div>
+                <div><dt>Next step</dt><dd><a href="{{ progress.next.href }}" style="color:var(--xa-blue);text-decoration:none">{{ progress.next.label }} →</a></dd></div>
+            </dl>
+            <ol class="xa-wf-steps" aria-label="Workflow steps">
+                {% for st in progress.steps %}
+                <li><a class="xa-wf-step {{ st.state }}{% if viewed == st.key %} viewing{% endif %}" href="{{ st.href }}" {% if viewed == st.key %}aria-current="step"{% endif %}>
+                    <span class="xa-wf-num">{% if st.state == 'done' %}✓{% else %}{{ st.number }}{% endif %}</span>
+                    <span><b>{{ st.title }}</b><small>{{ st.caption }}</small></span></a></li>
+                {% endfor %}
+            </ol>
+            {% if viewed %}
+            <details class="xa-wf-panel" open>
+                <summary>{{ (progress.steps|selectattr('key','equalto',viewed)|first).title }} progress</summary>
+                <ul class="xa-task-list">
+                    {% for t in progress.step_tasks[viewed] %}
+                    <li class="xa-task"><span class="xa-task-label">{{ t.label }}</span><span class="xa-task-detail">{{ t.detail }}</span>
+                        <span class="xa-task-chip {{ t.state }}">{{ {'complete':'Complete','needs_you':'Needs you','not_started':'Not started'}[t.state] }}</span></li>
+                    {% endfor %}
+                </ul>
+                {% if viewed == 'discover' %}<p class="xa-task-detail" style="margin-top:8px">Agent assistance runs inside Source Discovery automatically.</p>{% endif %}
+            </details>
+            {% endif %}
+        </section>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 

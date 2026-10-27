@@ -102,6 +102,7 @@ def workflow_progress() -> dict:
     files_confirmed = sum(1 for r in files if r.get("inference_approval_status") == "APPROVED")
     files_pending = sum(1 for r in files if r.get("inference_approval_status") not in {"APPROVED", "REJECTED"})
     proposals_pending = mappings_approved = changes_open = rfi_open = 0
+    validation_status = validation_when = ""
     conn = get_db_connection()
     try:
         proposals_pending = conn.execute(
@@ -115,6 +116,10 @@ def workflow_progress() -> dict:
                 (migration_id, *scope)).fetchone()[0]
         changes_open = conn.execute(
             "SELECT COUNT(*) FROM canonical_change_requests WHERE migration_id = ? AND status IN ('OPEN','DEFERRED')", (migration_id,)).fetchone()[0]
+        last_val = conn.execute(
+            "SELECT status, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
+        if last_val:
+            validation_status, validation_when = last_val["status"], str(last_val["executed_utc"])[:10]
     except Exception:
         logger.exception("Could not read workflow progress counts")
     finally:
@@ -133,11 +138,79 @@ def workflow_progress() -> dict:
         nxt = {"label": f"Answer {rfi_open} information request{'s' if rfi_open != 1 else ''}", "detail": "Required canonical fields still have no source.", "href": "/agent-pipeline#information-requests", "step": "map"}
     else:
         nxt = {"label": "Review validation results", "detail": "All mappings are approved; check keys, relationships and exceptions.", "href": "/reconciliation", "step": "validate"}
-    return {
+    progress = {
         "scope": scope, "files_total": files_total, "files_confirmed": files_confirmed, "files_pending": files_pending,
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
         "changes_open": changes_open, "next": nxt,
+        "validation_status": validation_status, "validation_when": validation_when,
     }
+    progress.update(build_workflow_view(progress, setup, migration_id))
+    return progress
+
+
+def build_workflow_view(p: dict, setup: dict, migration_id: str) -> dict:
+    """Stepper, per-step sub-tasks, header facts and status chip derived from the progress counts."""
+    def task(label, state, detail=""):
+        return {"label": label, "state": state, "detail": detail}
+
+    configured = bool(p["scope"])
+    discover_done = p["files_total"] > 0 and p["files_pending"] == 0
+    map_done = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0
+    validate_done = p["validation_status"] == "PASS"
+    tasks = {
+        "setup": [
+            task("Migration configured", "complete" if configured else "needs_you",
+                 ", ".join(p["scope"]) if configured else "Choose the entities in scope."),
+            task("Firm contract registered", "complete" if setup.get("firm_config_version") else "not_started",
+                 str(setup.get("firm_config_version", ""))),
+        ],
+        "discover": [
+            task("Source files added", "complete" if p["files_total"] else "needs_you", f"{p['files_total']} file(s)"),
+            task("Entities confirmed", "complete" if discover_done else ("needs_you" if p["files_pending"] else "not_started"),
+                 f"{p['files_confirmed']} of {p['files_total']} confirmed"),
+        ],
+        "map": [
+            task("Mapping proposals reviewed", "complete" if (p["mappings_approved"] and not p["proposals_pending"]) else
+                 ("needs_you" if p["proposals_pending"] else "not_started"), f"{p['proposals_pending']} waiting"),
+            task("Mappings approved", "complete" if p["mappings_approved"] else "not_started", f"{p['mappings_approved']} approved"),
+            task("Information requests answered", "complete" if not p["rfi_open"] else "needs_you", f"{p['rfi_open']} open"),
+        ],
+        "validate": [
+            task("Validation checks run", "complete" if p["validation_status"] else "not_started",
+                 f"{p['validation_status']} · {p['validation_when']}" if p["validation_status"] else "Not run yet"),
+            task("Canonical change requests", "needs_you" if p["changes_open"] else "complete", f"{p['changes_open']} open or deferred"),
+        ],
+    }
+    current = p["next"]["step"]
+    done = {"setup": configured, "discover": discover_done, "map": map_done, "validate": validate_done}
+    captions = {
+        "setup": "Configured" if configured else "Not configured",
+        "discover": f"{p['files_confirmed']}/{p['files_total']} files",
+        "map": f"{p['mappings_approved']} approved",
+        "validate": p["validation_status"].title() if p["validation_status"] else "Not run",
+    }
+    hrefs = {"setup": "/migration-setup", "discover": "/entity-sample-files", "map": "/agent-pipeline", "validate": "/reconciliation"}
+    titles = {"setup": "Setup", "discover": "Discover", "map": "Map & review", "validate": "Validate"}
+    steps = []
+    for number, key in enumerate(("setup", "discover", "map", "validate"), start=1):
+        state = "current" if key == current else ("done" if done[key] else "todo")
+        steps.append({"key": key, "number": number, "title": titles[key], "href": hrefs[key], "state": state, "caption": captions[key]})
+    if not configured:
+        chip = ("Setup needed", "attention")
+    elif validate_done:
+        chip = ("Validated", "done")
+    elif current == "validate":
+        chip = ("Ready to validate", "info")
+    else:
+        chip = (f"In progress · {titles[current]}", "info")
+    facts = {
+        "name": setup.get("migration_name") or state_store.questionnaire_data.get("migration_name") or "New migration",
+        "route": f"{setup.get('source_firm', 'Source')} → {setup.get('target_system', 'Target')}" if configured else "Not configured",
+        "entities": ", ".join(p["scope"]) if configured else "None selected",
+        "contract": str(setup.get("canonical_version", "—")),
+        "migration_id": migration_id,
+    }
+    return {"steps": steps, "step_tasks": tasks, "current_step": current, "status_chip": {"label": chip[0], "tone": chip[1]}, "facts": facts}
 
 
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):

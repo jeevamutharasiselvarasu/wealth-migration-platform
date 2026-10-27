@@ -25,12 +25,15 @@ def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
 
 def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow():
     navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
-    for route in ('/persona-selection', '/migration-setup', '/entity-sample-files', '/agent-pipeline', '/reconciliation'):
-        assert f'href="{route}"' in navigation
+    app_source = (ROOT / "ui" / "app.py").read_text()
+    assert 'href="/persona-selection"' in navigation
+    assert "progress.steps" in navigation and 'aria-label="Workflow steps"' in navigation
+    for route in ('/migration-setup', '/entity-sample-files', '/agent-pipeline', '/reconciliation'):
+        assert f'"{route}"' in app_source  # stepper destinations
     assert 'href="/firm-knowledge"' in navigation  # Governance reference, not a workflow step
     assert 'href="/hitl"' not in navigation
     assert "Switch persona" in navigation
-    assert "Source Discovery & Entity Scope" in navigation
+    assert '"discover": "Discover"' in app_source
     assert "DATA PLANE (SPECIALIST)" not in navigation
 
 
@@ -361,3 +364,34 @@ def test_demo_sign_in_requires_locally_supplied_hash(monkeypatch):
     assert manager.authenticate("jeeva@simplicitywealth.com", "wrong", "Platform Admin") is None
     assert manager.authenticate("jeeva@simplicitywealth.com", "unit-test-secret", "Platform Admin")
     assert manager.authenticate("analyst.demo@simplicitywealth.com", "unit-test-secret", "Migration Analyst") is None
+
+
+def _progress(**over):
+    base = {"scope": ["Account"], "files_total": 2, "files_confirmed": 2, "files_pending": 0, "proposals_pending": 0,
+            "mappings_approved": 5, "rfi_open": 0, "changes_open": 0, "validation_status": "", "validation_when": "",
+            "next": {"step": "validate"}}
+    base.update(over)
+    return base
+
+
+def test_workflow_view_derives_step_states_chip_and_tasks():
+    import ui.app as app_module
+
+    view = app_module.build_workflow_view(_progress(), {"migration_name": "M1", "source_firm": "CoreCap", "target_system": "Simplicity",
+                                                         "canonical_version": "v1", "firm_config_version": "1+abc"}, "MIG-X")
+    states = {s["key"]: s["state"] for s in view["steps"]}
+    assert states == {"setup": "done", "discover": "done", "map": "done", "validate": "current"}
+    assert view["status_chip"] == {"label": "Ready to validate", "tone": "info"}
+    assert view["facts"]["route"] == "CoreCap → Simplicity" and view["facts"]["name"] == "M1"
+
+    blocked = app_module.build_workflow_view(
+        _progress(rfi_open=2, files_pending=1, files_confirmed=1, next={"step": "discover"}), {}, "MIG-X")
+    assert {s["key"]: s["state"] for s in blocked["steps"]}["discover"] == "current"
+    assert {s["key"]: s["state"] for s in blocked["steps"]}["map"] == "todo"
+    assert [t["state"] for t in blocked["step_tasks"]["map"]][-1] == "needs_you"
+
+    empty = app_module.build_workflow_view(_progress(scope=[], files_total=0, mappings_approved=0, next={"step": "setup"}), {}, "MIG-UNCONFIGURED")
+    assert empty["status_chip"]["label"] == "Setup needed" and empty["facts"]["route"] == "Not configured"
+
+    passed = app_module.build_workflow_view(_progress(validation_status="PASS", validation_when="2026-10-27"), {}, "MIG-X")
+    assert passed["status_chip"]["label"] == "Validated"
