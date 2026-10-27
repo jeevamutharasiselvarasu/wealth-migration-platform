@@ -37,11 +37,11 @@
             <div class="border-t border-[#e9eff9] pt-4 space-y-3">
                 <h3 class="text-xs font-bold uppercase text-[#41506b]">Supplementary Data Assets</h3>
                 <form action="/api/knowledge/file-upload" method="POST" enctype="multipart/form-data" class="space-y-2">
-                    <select name="category" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 text-[11px] text-[#1c2a4a] font-medium">
+                    <select name="category" aria-label="Knowledge asset category" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 text-[11px] text-[#1c2a4a] font-medium">
                         <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
                         <option value="transformation_rule">Transferable Source-to-Canonical Rule (.md/.txt)</option><option value="source_analysis">Current System / Source Analysis</option><option value="mapping_reference">Reusable Mapping Reference</option>
                     </select>
-                    <input type="file" name="file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" required class="block w-full text-[10px text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">
+                    <input type="file" name="file" aria-label="Knowledge asset file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" required class="block w-full text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">
                     <button type="submit" class="w-full bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] font-bold py-1.5 rounded-lg text-xs transition border border-[#cbd5e1]">
                         Attach Data Asset
                     </button>
@@ -78,19 +78,19 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Firm Name</label>
-                            <input type="text" name="firm_name" value="{{ form.firm_name }}" required class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="firm_name" aria-label="Firm name" value="{{ form.firm_name }}" required class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Source System(s)</label>
-                            <input type="text" name="source_systems" value="{{ form.source_systems or '' }}" placeholder="e.g. custodian, CRM, portfolio system" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="source_systems" aria-label="Source systems" value="{{ form.source_systems or '' }}" placeholder="e.g. custodian, CRM, portfolio system" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Business / Data Owner</label>
-                            <input type="text" name="business_data_owner" value="{{ form.business_data_owner or '' }}" placeholder="Person or team responsible for source definitions" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="business_data_owner" aria-label="Business data owner" value="{{ form.business_data_owner or '' }}" placeholder="Person or team responsible for source definitions" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Mapping Approver</label>
-                            <input type="text" name="mapping_approver" value="{{ form.mapping_approver or '' }}" placeholder="Reviewer who approves canonical mappings" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="mapping_approver" aria-label="Mapping approver" value="{{ form.mapping_approver or '' }}" placeholder="Reviewer who approves canonical mappings" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                     </div>
                 </div>
