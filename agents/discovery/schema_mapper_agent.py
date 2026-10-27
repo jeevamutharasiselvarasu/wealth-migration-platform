@@ -58,6 +58,7 @@ class SchemaMapperAgent:
         "ACCT_NUM": "ACCT_NUM",
         "ACCOUNT_ID": "ACCT_NUM",
         "CUST_CODE_SRC": "CUSTODIAN_CODE",
+        "CUSTODIAN": "CUSTODIAN_CODE",
         "ADVISOR_REP_NUM": "REP_CODE",
         "PRIMARY_REP_NUM": "REP_CODE",
         "REGISTRATION_SRC_TYPE": "REG_TYPE",

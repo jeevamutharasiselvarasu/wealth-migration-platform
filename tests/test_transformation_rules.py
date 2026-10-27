@@ -186,3 +186,10 @@ def test_routes_are_role_gated_and_rule_can_be_applied_during_mapping_review(db,
     assert done.status_code == 303
     row = conn.execute("SELECT transformation_expression, created_by FROM canonical_mappings WHERE source_field = 'CUST'").fetchone()
     assert row == ("RULE:CUST_MAP@1", "Analyst One")
+
+
+def test_bare_custodian_column_is_proposed_as_custodian_code(db):
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    result = SchemaMapperAgent().map_source_to_canonical("Account", [{"LEGACY_ACCT_NO": "AC-1", "CUSTODIAN": "CUST-A"}])
+    lineage = {l["source_field"]: l["canonical_field"] for l in result["field_lineages"]}
+    assert lineage["CUSTODIAN"] == "CUSTODIAN_CODE"
