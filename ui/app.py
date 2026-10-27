@@ -643,6 +643,7 @@ async def firm_knowledge_studio(request: Request):
             "page_title": "Knowledge Assets",
             "user_name": user["name"],
             "user_role": user["role"],
+            "can_edit_knowledge": user["role"] in DISCOVERY_ROLES,
             "form": state_store.questionnaire_data,
             "docs": state_store.firm_knowledge_docs
         }

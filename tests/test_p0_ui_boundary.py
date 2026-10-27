@@ -403,3 +403,31 @@ def test_validated_chip_requires_every_earlier_step_to_be_complete():
     view = app_module.build_workflow_view(
         _progress(validation_status="PASS", validation_when="2026-10-27", files_pending=1, files_confirmed=1, next={"step": "discover"}), {}, "MIG-X")
     assert view["status_chip"]["label"] == "In progress · Discover"
+
+
+def test_knowledge_forms_are_disabled_for_roles_without_edit_rights(tmp_path, monkeypatch):
+    import asyncio
+    import httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "k.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
+                        {"email": "t@example.invalid", "name": "Tester", "role": "Validation Specialist"})
+
+    async def page(role):
+        app_module.session_mgr.active_sessions["sid"]["role"] = role
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
+            return (await client.get("/firm-knowledge")).text
+
+    for role in ("Validation Specialist", "Domain SME"):
+        html = asyncio.run(page(role))
+        assert html.count("<fieldset disabled") == 2 and "Read-only for " + role in html
+    for role in ("Migration Analyst", "Platform Admin"):
+        html = asyncio.run(page(role))
+        assert "<fieldset disabled" not in html and "Read-only for" not in html
