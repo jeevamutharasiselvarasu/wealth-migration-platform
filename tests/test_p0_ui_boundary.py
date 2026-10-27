@@ -206,7 +206,8 @@ def test_demo_login_is_loaded_from_configuration_and_password_is_not_plaintext()
     assert "hashlib.sha256" in auth
     assert "password123" not in auth
     assert users["users"][0]["email"] == "jeeva@simplicitywealth.com"
-    assert len(users["users"][0]["password_sha256"]) == 64
+    assert all("password" not in key for user in users["users"] for key in user), "no credential material in tracked fixtures"
+    assert "demo_passwords.local.json" in (ROOT / ".gitignore").read_text()
 
 
 def test_demo_migration_is_input_data_not_values_embedded_in_routes():
@@ -341,3 +342,22 @@ def test_workflow_progress_counts_open_information_requests_from_the_database(tm
     conn.close()
 
     assert app_module.workflow_progress()["rfi_open"] == 2
+
+
+def test_demo_sign_in_requires_locally_supplied_hash(monkeypatch):
+    import hashlib
+    import json
+
+    from ui.auth import SessionManager
+
+    monkeypatch.delenv("XODUS_DEMO_PASSWORD_HASHES", raising=False)
+    monkeypatch.setattr(SessionManager, "_load_local_password_hashes", staticmethod(lambda _path: {}))
+    assert SessionManager().authenticate("jeeva@simplicitywealth.com", "anything", "Platform Admin") is None
+
+    monkeypatch.undo()
+    digest = hashlib.sha256(b"unit-test-secret").hexdigest()
+    monkeypatch.setenv("XODUS_DEMO_PASSWORD_HASHES", json.dumps({"jeeva@simplicitywealth.com": digest}))
+    manager = SessionManager()
+    assert manager.authenticate("jeeva@simplicitywealth.com", "wrong", "Platform Admin") is None
+    assert manager.authenticate("jeeva@simplicitywealth.com", "unit-test-secret", "Platform Admin")
+    assert manager.authenticate("analyst.demo@simplicitywealth.com", "unit-test-secret", "Migration Analyst") is None

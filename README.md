@@ -49,7 +49,7 @@ Open http://127.0.0.1:8000 in a browser.
 
 On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and platform knowledge documents under `platform_knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
 
-The local demo identity is configured through `demo_data/demo_users.json` and application demo-mode settings. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
+The local demo identities (email, name, personas) live in `demo_data/demo_users.json`; password hashes are not committed. Create the git-ignored `demo_data/demo_passwords.local.json` as a JSON map of email to SHA-256 hex of the password (or set `XODUS_DEMO_PASSWORD_HASHES` to the same JSON); accounts without a hash cannot sign in. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
 
 ## Repository map
 

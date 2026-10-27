@@ -12,7 +12,10 @@ from fastapi import Request
 class SessionManager:
     """Manages local demo sessions and role permissions.
 
-    Demo accounts are data-driven from demo_data/demo_users.json. Disable demo
+    Demo accounts (email, name, roles) are data-driven from demo_data/demo_users.json.
+    Password hashes are never committed: they come from the git-ignored file
+    demo_data/demo_passwords.local.json or the XODUS_DEMO_PASSWORD_HASHES environment
+    variable (JSON map of email to SHA-256 hex). Accounts without a hash cannot sign in. Disable demo
     authentication outside local/demo environments with XODUS_DEMO_MODE=false.
     Production deployments should replace this provider with the organisation's
     approved identity provider.
@@ -24,13 +27,14 @@ class SessionManager:
         self.authorized_users = {}
         if self.demo_mode:
             config_path = Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json"
+            local_hashes = self._load_local_password_hashes(config_path.parent / "demo_passwords.local.json")
             try:
                 config = json.loads(config_path.read_text(encoding="utf-8"))
                 if config.get("demo_mode", False):
                     for item in config.get("users", []):
                         email = str(item.get("email", "")).strip().lower()
-                        password_hash = str(item.get("password_sha256", "")).strip().lower()
-                        if email and len(password_hash) == 64:
+                        password_hash = local_hashes.get(email, "")
+                        if email:
                             self.authorized_users[email] = {
                                 "password_sha256": password_hash,
                                 "name": str(item.get("name", email)),
@@ -41,10 +45,22 @@ class SessionManager:
                 # A missing or invalid demo-user configuration fails closed.
                 self.authorized_users = {}
 
+    @staticmethod
+    def _load_local_password_hashes(local_file: Path) -> Dict[str, str]:
+        """Read email -> SHA-256 hex from the environment or the git-ignored local file."""
+        raw = os.getenv("XODUS_DEMO_PASSWORD_HASHES", "").strip()
+        try:
+            data = json.loads(raw) if raw else (json.loads(local_file.read_text(encoding="utf-8")) if local_file.exists() else {})
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(k).strip().lower(): str(v).strip().lower() for k, v in data.items()}
+
     def authenticate(self, email: str, password: str, role: str) -> Optional[str]:
         user = self.authorized_users.get(email.strip().lower())
         supplied_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-        if user and hmac.compare_digest(user["password_sha256"], supplied_hash):
+        if user and len(user["password_sha256"]) == 64 and hmac.compare_digest(user["password_sha256"], supplied_hash):
             session_id = str(uuid.uuid4())
             self.active_sessions[session_id] = {
                 "email": email.strip().lower(),

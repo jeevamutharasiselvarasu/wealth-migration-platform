@@ -27,3 +27,6 @@ htmlcov/
 
 # Local scratch outputs (may contain demo credentials)
 Claude outputs/
+
+# Local demo password hashes (never commit)
+demo_data/demo_passwords.local.json
