@@ -15,6 +15,7 @@ from ui.auth import session_mgr
 from ui.role_policy import APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+from control_plane.services import canonical_overlay
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1001,8 +1002,14 @@ async def canonical_changes_page(request: Request, notice: str = "", error: str 
     try:
         rows = [dict(r) for r in conn.execute(
             "SELECT * FROM canonical_change_requests WHERE migration_id = ? ORDER BY created_utc DESC", (migration_id,)).fetchall()]
+        applied = canonical_overlay.applied_request_ids(conn)
+        conn.commit()
     finally:
         conn.close()
+    for row in rows:
+        row["applied_utc"] = applied.get(row["request_id"])
+        if row["applied_utc"] and row["change_type"] == "ADD_FIELD":
+            row["yaml_snippet"] = canonical_overlay.yaml_snippet(row["entity_name"], row["canonical_field"].strip().upper(), row["proposed_change"])
     return render_template_with_context(request, "canonical_changes.html", {
         "page_title": "Canonical Change Requests", "user_name": user["name"], "user_role": user["role"],
         "requests": rows, "change_types": CHANGE_TYPES, "entities": CHANGE_ENTITIES,
@@ -1050,6 +1057,36 @@ async def raise_canonical_change(
         "details": {"request_id": request_id, "entity": entity_name, "field": canonical_field, "change_type": change_type},
     })
     return _changes_redirect("notice", f"{request_id} raised for {entity_name}.{canonical_field}; the Domain SME will review it.")
+
+
+@app.post("/api/canonical-changes/{request_id}/apply")
+async def apply_canonical_change(request: Request, request_id: str):
+    """Apply an approved change request to the canonical model as an audited overlay."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT * FROM canonical_change_requests WHERE request_id = ?", (request_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canonical change request not found.")
+        existing = []
+        try:
+            cfg = load_firm_config()
+            existing = cfg.canonical_field_names(row["entity_name"]) if row["entity_name"] in cfg.entities else []
+        except FirmConfigError:
+            pass
+        try:
+            record = canonical_overlay.apply_request(conn, dict(row), user["name"], existing)
+        except ValueError as exc:
+            return _changes_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({
+        "event": "CANONICAL_CHANGE_APPLIED", "actor": user["name"],
+        "timestamp_utc": record["applied_utc"],
+        "details": {"request_id": request_id, "entity": record["entity_name"], "field": record["canonical_field"], "change_type": record["change_type"]},
+    })
+    return _changes_redirect("notice", f"{request_id} applied to the canonical model.")
 
 
 @app.post("/api/canonical-changes/{request_id}/decision")

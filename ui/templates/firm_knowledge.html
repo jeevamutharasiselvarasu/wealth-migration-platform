@@ -24,15 +24,7 @@
                     <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Built-In Wealth Kernel</h2>
                     <p class="text-[10px] text-[#8a97b2]">Core Knowledge & Invariants</p>
                 </div>
-                {% if user_role in ['Platform Admin', 'Domain SME'] %}
-                <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
-                    EDITABLE (ADMIN/SME)
-                </span>
-                {% else %}
-                <span class="bg-slate-100 text-[#5a6a88] border border-slate-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
-                    READ-ONLY (ADMIN/SME ONLY)
-                </span>
-                {% endif %}
+                <a href="/canonical-changes" class="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold no-underline">CHANGES VIA CANONICAL CHANGE REQUESTS →</a>
             </div>
 
             <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">

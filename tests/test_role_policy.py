@@ -227,3 +227,51 @@ def test_canonical_change_request_lifecycle_and_roles(tmp_path, monkeypatch):
         html = asyncio.run(call(role, "Viewer", "GET", "/canonical-changes")).text
         assert ('action="/api/canonical-changes"' in html) is raise_form, role
         assert ("Read-only for" in html) is (role == "Validation Specialist"), role
+
+
+def test_approved_add_field_is_applied_as_overlay_and_becomes_a_mapping_target(tmp_path, monkeypatch):
+    import sqlite3
+
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "ovl.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
+                        {"email": "t@example.invalid", "name": "Alex Analyst", "role": "Migration Analyst"})
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+
+    async def call(role, name, method, path, body=None):
+        app_module.session_mgr.active_sessions["sid"].update(role=role, name=name)
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": "sid"}) as client:
+            return await client.request(method, path, content=body, headers=FORM if body else None, follow_redirects=False)
+
+    new = urlencode([("entity_name", "Account"), ("canonical_field", "account_title"), ("change_type", "ADD_FIELD"),
+                     ("proposed_change", "Free-text account title"), ("reason", "CoreCap carries titles")])
+    assert asyncio.run(call("Migration Analyst", "Alex Analyst", "POST", "/api/canonical-changes", new)).status_code == 303
+    conn = sqlite3.connect(tmp_path / "ovl.db")
+    rid = conn.execute("SELECT request_id FROM canonical_change_requests").fetchone()[0]
+    apply_path = f"/api/canonical-changes/{rid}/apply"
+
+    # Not applicable until approved; only the SME/Admin may apply.
+    assert asyncio.run(call("Migration Analyst", "Alex Analyst", "POST", apply_path)).status_code == 403
+    early = asyncio.run(call("Domain SME", "Sam SME", "POST", apply_path))
+    assert "error=" in early.headers["location"]
+    assert SchemaMapperAgent._identity_target("Account", "ACCOUNT_TITLE") is None
+
+    asyncio.run(call("Domain SME", "Sam SME", "POST", f"/api/canonical-changes/{rid}/decision", "decision=APPROVED&note=ok"))
+    done = asyncio.run(call("Domain SME", "Sam SME", "POST", apply_path))
+    assert done.status_code == 303 and "notice=" in done.headers["location"]
+    assert SchemaMapperAgent._identity_target("Account", "ACCOUNT_TITLE") == "ACCOUNT_TITLE"
+    assert SchemaMapperAgent._identity_target("Client", "ACCOUNT_TITLE") is None
+    assert "already" in asyncio.run(call("Domain SME", "Sam SME", "POST", apply_path)).headers["location"]
+    assert "ACCT_NUM" in SchemaMapperAgent.required_fields("Account")
+    assert "ACCOUNT_TITLE" not in SchemaMapperAgent.required_fields("Account")
+    page = asyncio.run(call("Domain SME", "Sam SME", "GET", "/canonical-changes")).text
+    assert "Applied to the canonical model" in page and "nullable: true" in page
+    assert conn.execute("SELECT applied_by FROM canonical_model_overlay").fetchone()[0] == "Sam SME"

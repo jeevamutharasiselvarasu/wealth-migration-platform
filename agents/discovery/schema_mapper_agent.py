@@ -171,7 +171,9 @@ class SchemaMapperAgent:
         if entity_name not in config.entities:
             return None
         candidate = str(source_field).strip().upper()
-        return candidate if candidate in config.canonical_field_names(entity_name) else None
+        from control_plane.services.canonical_overlay import active_added_fields
+        known = config.canonical_field_names(entity_name) + active_added_fields(entity_name)
+        return candidate if candidate in known else None
 
     # Per-field name-evidence confidence for a proposed mapping. This reflects how the
     # source column name matched, not value profiling, and never replaces human review.

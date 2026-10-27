@@ -39,6 +39,7 @@ POST_POLICY = [
     (r"^/api/workflow/replay$", PLATFORM_ROLES),
     (r"^/api/kernel/update$", CANONICAL_ROLES),
     (r"^/api/canonical-changes$", CHANGE_REQUEST_ROLES),
+    (r"^/api/canonical-changes/[^/]+/apply$", CANONICAL_ROLES),
     (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
     (r"^/api/knowledge/(submit-questionnaire|file-upload)$", DISCOVERY_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
