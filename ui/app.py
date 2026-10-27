@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
-from ui.role_policy import TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
+from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.services import activity_feed, canonical_overlay, migration_validation, target_mapping, transformation_rules
@@ -753,6 +753,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "user_role": user["role"],
             "can_review_mappings": user["role"] in MAPPING_REVIEW_ROLES,
             "can_discover": user["role"] in DISCOVERY_ROLES,
+            "can_answer_rfi": user["role"] in DEFINITION_ROLES,
             "approved_rules": transformation_rules.approved_rules(),
             "firm_context": state_store.questionnaire_data,
             "pipeline_run": latest_run,

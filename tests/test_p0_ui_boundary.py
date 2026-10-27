@@ -431,3 +431,35 @@ def test_knowledge_forms_are_disabled_for_roles_without_edit_rights(tmp_path, mo
     for role in ("Migration Analyst", "Platform Admin"):
         html = asyncio.run(page(role))
         assert "<fieldset disabled" not in html and "Read-only for" not in html
+
+
+def test_information_request_form_only_for_roles_allowed_to_answer(tmp_path, monkeypatch):
+    import asyncio
+    import httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "rfi.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    store.questionnaire_data["migration_id"] = "MIG-X"
+    store.questionnaire_data["migration_setup"] = {"entities": ["Account", "Client", "Household"]}
+    store.questionnaire_data["mapping_information_requests"] = [{
+        "request_id": "RFI-T1", "migration_id": "MIG-X", "entity": "Account", "canonical_field": "CUSTODIAN_CODE",
+        "status": "OPEN", "question": "Which source field supplies CUSTODIAN_CODE?", "source_file": "a.csv"}]
+    monkeypatch.setattr(app_module, "state_store", store)
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid", {"email": "t@example.invalid", "name": "T", "role": "Platform Admin"})
+    db.init_db()
+
+    async def page(role):
+        app_module.session_mgr.active_sessions["sid"]["role"] = role
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
+            return (await client.get("/agent-pipeline")).text
+
+    for role, shown in (("Platform Admin", True), ("Migration Analyst", True), ("Domain SME", True), ("Validation Specialist", False)):
+        html = asyncio.run(page(role))
+        assert ("/api/mapping-gaps/RFI-T1/response" in html) is shown, role
+        assert ("Read-only for " + role in html) is (not shown), role
