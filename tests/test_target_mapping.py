@@ -114,5 +114,17 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     sme = asyncio.run(call("Domain SME", "POST", f"/api/target-mapping/{ids[('Account', 'OPEN_DT')]}/review", {"decision": "APPROVED", "comments": "x"}))
     assert "may+not+perform" in sme.headers["location"]
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
-    assert "Preview (dry run)" in page and "2 source row(s)" in page and "Required target fields without an approved mapping" in page
+    assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
+
+
+def test_merge_by_key_joins_files_without_inventing_blanks_and_counts_conflicts():
+    a = [{"CLIENT_ID": "C1", "LEGAL_NAME": "Ann"}, {"CLIENT_ID": "C2", "LEGAL_NAME": "Bo"}]
+    b = [{"CLIENT_ID": "C1", "TAX_ID": "111"}, {"CLIENT_ID": "C2", "TAX_ID": ""}, {"TAX_ID": "999"}]
+    c = [{"CLIENT_ID": "C1", "LEGAL_NAME": "Ann B"}]
+    out = tm.merge_by_key([a, b, c], "CLIENT_ID")
+    by = {r.get("CLIENT_ID"): r for r in out["rows"] if r.get("CLIENT_ID")}
+    assert out["keyed_rows"] == 2 and out["unkeyed_rows"] == 1 and out["conflicts"] == 1
+    assert by["C1"] == {"CLIENT_ID": "C1", "LEGAL_NAME": "Ann", "TAX_ID": "111"}  # first kept, tax joined
+    assert by["C2"]["TAX_ID"] == ""  # genuinely blank for this key
+    assert tm.merge_by_key([a], None)["unkeyed_rows"] == 2

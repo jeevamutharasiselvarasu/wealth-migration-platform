@@ -105,7 +105,39 @@ def review(conn: sqlite3.Connection, target_mapping_id: str, decision: str, revi
     return dict(conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = ?", (target_mapping_id,)).fetchone())
 
 
-def preview(spec: Dict[str, Any], approved: List[Dict[str, Any]], canonical_rows: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+def _blank(value: Any) -> bool:
+    return value is None or str(value).strip() == ""
+
+
+def merge_by_key(rows_by_file: List[List[Dict[str, Any]]], key_field: Optional[str]) -> Dict[str, Any]:
+    """Join an entity's files on its canonical key: one row per key, first non-blank value wins.
+
+    Rows without the key (or from files that do not carry it) stay separate and are counted, so
+    a field living in a different file is not reported as blank for the wrong rows. Conflicting
+    non-blank values for the same key are counted, never silently overwritten.
+    """
+    merged: Dict[str, Dict[str, Any]] = {}
+    unkeyed: List[Dict[str, Any]] = []
+    conflicts = 0
+    for rows in rows_by_file:
+        for row in rows:
+            key = None if not key_field or _blank(row.get(key_field)) else str(row[key_field]).strip()
+            if key is None:
+                unkeyed.append(dict(row))
+                continue
+            target = merged.setdefault(key, {})
+            for field, value in row.items():
+                if _blank(value):
+                    target.setdefault(field, value)
+                elif _blank(target.get(field)):
+                    target[field] = value
+                elif str(target[field]) != str(value):
+                    conflicts += 1
+    return {"rows": list(merged.values()) + unkeyed, "keyed_rows": len(merged), "unkeyed_rows": len(unkeyed), "conflicts": conflicts}
+
+
+def preview(spec: Dict[str, Any], approved: List[Dict[str, Any]], canonical_rows: Dict[str, List[Dict[str, Any]]],
+            join_info: Optional[Dict[str, Dict[str, int]]] = None) -> Dict[str, Any]:
     """Read-only dry run over canonical rows. Returns coverage, blank counts and rule warnings; no values."""
     from agents.discovery.schema_mapper_agent import SchemaMapperAgent
     out: Dict[str, Any] = {}
@@ -138,6 +170,7 @@ def preview(spec: Dict[str, Any], approved: List[Dict[str, Any]], canonical_rows
                            "rule": m["transformation_expression"] if m else None, "blank_values": blanks if m else None})
         out[entity] = {
             "target_table": body.get("target_table"), "row_count": len(rows), "fields": fields,
+            "join": (join_info or {}).get(entity),
             "uncovered_required": [f["target_field"] for f in fields if f["required"] and not f["approved"]],
             "blank_required": [f["target_field"] for f in fields if f["required"] and f["approved"] and f["blank_values"]],
             "warnings": [f"{note} ({n} value{'s' if n != 1 else ''})" for note, n in sorted(warnings.items())][:10],

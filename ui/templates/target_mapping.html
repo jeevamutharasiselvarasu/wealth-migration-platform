@@ -55,6 +55,7 @@
       {% for entity, p in preview.items() %}
       <div class="rounded-xl border border-[#D9E3F5] p-3">
         <div class="text-xs font-bold text-[#152C6B]">{{ entity }} → {{ p.target_table }} <span class="ml-2 font-mono text-[10px] font-normal text-[#8A97B2]">{{ p.row_count }} source row(s)</span></div>
+        {% if p.join %}<p class="mt-1 text-[10px] text-[#5A6A88]">Files joined on {{ p.join.key or 'no key' }}: {{ p.join.files }} file(s) → {{ p.join.keyed_rows }} keyed row(s){% if p.join.unkeyed_rows %}, {{ p.join.unkeyed_rows }} without a key{% endif %}{% if p.join.conflicts %} · <span class="text-amber-700">{{ p.join.conflicts }} conflicting value(s) (first kept)</span>{% endif %}</p>{% endif %}
         <table class="mt-2 w-full text-left text-xs"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Canonical source</th><th class="p-1">Rule</th><th class="p-1">Status</th></tr></thead><tbody>
           {% for f in p.fields %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ f.target_field }}{% if f.required %} *{% endif %}</td><td class="p-1 font-mono">{{ f.canonical_field or '—' }}</td><td class="p-1 font-mono">{{ f.rule or '—' }}</td><td class="p-1 {% if not f.approved %}text-amber-700{% elif f.blank_values %}text-rose-700{% else %}text-teal-700{% endif %}">{% if not f.approved %}not approved{% elif f.blank_values %}{{ f.blank_values }} blank{% else %}ok{% endif %}</td></tr>{% endfor %}
         </tbody></table>

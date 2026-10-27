@@ -1207,9 +1207,15 @@ async def preview_target_mapping(request: Request):
     if not approved:
         return _target_redirect("error", "Approve at least one target mapping before running a preview.")
     canonical_rows: Dict[str, List[Dict[str, Any]]] = {}
+    join_info: Dict[str, Dict[str, int]] = {}
+    try:
+        key_cfg = load_firm_config()
+    except FirmConfigError:
+        key_cfg = None
     for entity, group in state_store.entity_source_files.items():
         if entity not in target_mapping.ENTITIES:
             continue
+        file_rows: List[List[Dict[str, Any]]] = []
         rules = _get_approved_mapping_rules(migration_id, entity)
         mapper = SchemaMapperAgent(
             custom_catalog={**schema_mapper.catalog, **{s: r["canonical_field"] for s, r in rules.items()}},
@@ -1222,8 +1228,13 @@ async def preview_target_mapping(request: Request):
                 records = read_source_records(rec.get("filename", "source.csv"), Path(stored).read_bytes())
             except (OSError, ValueError):
                 continue
-            canonical_rows.setdefault(entity, []).extend(mapper.map_source_to_canonical(entity, records)["mapped_records"])
-    result = target_mapping.preview(target_mapping.load_spec(), approved, canonical_rows)
+            file_rows.append(mapper.map_source_to_canonical(entity, records)["mapped_records"])
+        key_field = next((f.name for f in key_cfg.entities[entity].fields if f.is_key), None) if key_cfg and entity in key_cfg.entities else None
+        joined = target_mapping.merge_by_key(file_rows, key_field)
+        canonical_rows[entity] = joined["rows"]
+        join_info[entity] = {"key": key_field, "files": len(file_rows), "keyed_rows": joined["keyed_rows"],
+                             "unkeyed_rows": joined["unkeyed_rows"], "conflicts": joined["conflicts"]}
+    result = target_mapping.preview(target_mapping.load_spec(), approved, canonical_rows, join_info)
     state_store.audit_log.append({"event": "TARGET_MAPPING_PREVIEWED", "actor": user["name"],
                                   "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"migration_id": migration_id}})
     return render_template_with_context(request, "target_mapping.html", _target_mapping_context(request, user, preview_result=result))
