@@ -51,6 +51,7 @@ def build_queue(role: str, c: Dict[str, Any]) -> List[Dict[str, Any]]:
     if c.get("mappings_approved") and role in VALIDATION_ROLES:
         status = c.get("validation_status") or ""
         if status != "PASS":
-            add("Review failed validation" if status == "FAIL" else "Run validation", "/reconciliation",
+            label = {"FAIL": "Review failed validation", "WARN": "Review validation warnings"}.get(status, "Run validation")
+            add(label, "/reconciliation",
                 "Check keys, required fields and relationships." if status else "Mappings are approved; no validation run yet.")
     return items

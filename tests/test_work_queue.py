@@ -37,6 +37,7 @@ def test_roles_never_get_items_they_may_not_act_on():
 def test_validation_item_changes_with_last_result():
     assert labels("Validation Specialist", mappings_approved=3, validation_status="PASS") == []
     assert labels("Validation Specialist", mappings_approved=3, validation_status="FAIL") == ["Review failed validation"]
+    assert labels("Validation Specialist", mappings_approved=3, validation_status="WARN") == ["Review validation warnings"]
 
 
 def test_setup_and_target_provisioning_prompts():
