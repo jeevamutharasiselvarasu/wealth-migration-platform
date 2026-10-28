@@ -1205,7 +1205,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
     for m in mappings:
         grouped.setdefault(m["entity_name"], []).append(m)
     return {
-        "page_title": "Target Mapping", "user_name": user["name"], "user_role": user["role"],
+        "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_snapshot": target_snapshot, "gaps": gaps,
         "target_system": simulated_target.describe(spec) if target_snapshot else None,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,

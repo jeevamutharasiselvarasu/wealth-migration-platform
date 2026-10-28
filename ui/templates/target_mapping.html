@@ -6,7 +6,7 @@
   {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">{{ error }}</div>{% endif %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-blue-700">Canonical → target · Simplicity</div>
-    <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Target Mapping</h1>
+    <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Target system &amp; mapping</h1>
     <p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Map each canonical field to a Simplicity target field. Proposals come from the target specification; a Migration Analyst or Platform Admin approves each one and may apply an approved <a href="/transformation-rules" class="text-blue-700">transformation rule</a>. The preview is a read-only dry run that reports counts and findings, never record values.</p>
     <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900"><b>Simulated target system</b> ({{ spec.spec_id }} v{{ spec.spec_version }}, {{ spec.status }}). Invented for the demo, not Simplicity's owner-confirmed schema. Its tables deliberately differ from the canonical model. Nothing is ever loaded into it.</p>
     <p class="mt-2 text-[10px] text-[#8A97B2]">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
