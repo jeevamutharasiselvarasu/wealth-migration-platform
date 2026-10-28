@@ -80,6 +80,7 @@ def _setup_client(tmp_path, monkeypatch, name):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / f"{name}.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = f"firm-config-{name}"
     monkeypatch.setitem(app_module.session_mgr.active_sessions, session_id,
                         {"email": "test@example.invalid", "name": "Firm Config Test", "role": "Platform Admin"})

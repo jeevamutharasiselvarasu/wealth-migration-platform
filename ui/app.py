@@ -75,6 +75,10 @@ def get_current_user(request: Request) -> Dict[str, str]:
     return session
 
 
+def _can_load_demo(user: Dict[str, str]) -> bool:
+    return user.get("role") in PLATFORM_ROLES and session_mgr.can_load_demo(user.get("email", ""))
+
+
 def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, source_role: str) -> Dict[str, Any]:
     """Persist source metadata and evidence without duplicating sampled client values in the event log."""
     payload = {**record, "entity": entity_name, "source_role": source_role}
@@ -297,13 +301,25 @@ async def select_persona(request: Request, role: str = Form(...)):
     return RedirectResponse(url="/migration-setup", status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _target_connection_status() -> Dict[str, Any]:
+    """Setup-page view of the target: this POC has no live connection, only the one-time simulated system."""
+    conn = get_db_connection()
+    try:
+        snap = simulated_target.snapshot(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"snapshot": snap, "spec": {k: v for k, v in target_mapping.load_spec().items() if k != "entities"}}
+
+
 @app.get("/migration-setup", response_class=HTMLResponse)
 async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = "", new_migration: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
     return render_template_with_context(request, "migration_setup.html", {
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
-        "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": user["role"] in PLATFORM_ROLES,
+        "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": _can_load_demo(user),
+        "target_connection": _target_connection_status(),
         "demo_loaded": demo_loaded == "1", "new_migration": new_migration == "1",
         "demo_available": session_mgr.demo_mode,
         "knowledge_docs": state_store.firm_knowledge_docs,
@@ -420,6 +436,8 @@ async def load_demo_migration(request: Request):
     user = get_current_user(request)
     if not session_mgr.demo_mode:
         raise HTTPException(status_code=404, detail="Demo mode is disabled.")
+    if not _can_load_demo(user):
+        raise HTTPException(status_code=403, detail="The one-click demo load is not enabled for this account.")
     manifest_path = Path(root_dir) / "demo_data" / "demo_migration.json"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -541,13 +559,24 @@ async def load_demo_migration(request: Request):
         publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", doc["id"], doc, user["name"])
         registered_knowledge.append(doc)
 
+    target_note = ""
+    conn = get_db_connection()
+    try:
+        if simulated_target.snapshot(conn) is None:
+            snap = simulated_target.provision(conn, user["name"])
+            target_note = f" Simulated target system {snap['snapshot_id']} provisioned."
+            state_store.audit_log.append({"event": "TARGET_SYSTEM_PROVISIONED", "actor": user["name"],
+                                          "timestamp_utc": snap["provisioned_utc"], "details": {"snapshot_id": snap["snapshot_id"], "via": "DEMO_LOAD"}})
+        conn.commit()
+    finally:
+        conn.close()
     state_store.audit_log.append({
         "event": "DEMO_MIGRATION_LOADED",
         "actor": user["name"],
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
-    return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered. Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered.{target_note} Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/agent-studio", response_class=HTMLResponse)
@@ -617,6 +646,7 @@ async def dashboard_overview(request: Request):
         extra_context={
             "page_title": "Migration Dashboard",
             "my_queue": build_queue(user["role"], workflow_progress()),
+            "can_load_demo": _can_load_demo(user),
             "notice": request.query_params.get("notice", ""),
             "user_name": user["name"],
             "user_role": user["role"],

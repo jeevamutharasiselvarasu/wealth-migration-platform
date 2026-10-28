@@ -65,6 +65,7 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "demo-flow.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = "phase1-demo-test-session"
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
@@ -133,6 +134,7 @@ def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "setup-restart.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = "phase1-setup-test-session"
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
@@ -194,6 +196,7 @@ def test_live_inference_confirmation_moves_file_and_survives_restart(tmp_path, m
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "reclassification.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = "phase1-reclassification-session"
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
@@ -293,6 +296,7 @@ def test_http_source_to_mapping_review_and_reconciliation_journey(tmp_path, monk
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "mapping-journey.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = "phase1-mapping-journey-session"
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
@@ -472,6 +476,7 @@ def test_client_bulk_mapping_approval_is_atomic_and_error_popup_keeps_review_anc
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "client-bulk-review.db")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
+    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = "phase1-client-bulk-review-session"
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,

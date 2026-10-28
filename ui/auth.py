@@ -40,6 +40,7 @@ class SessionManager:
                                 "name": str(item.get("name", email)),
                                 "default_role": str(item.get("default_role", "Migration Analyst")),
                                 "roles": [str(r) for r in item.get("roles", [])] or [str(item.get("default_role", "Migration Analyst"))],
+                                "can_load_demo": bool(item.get("can_load_demo", False)),
                             }
             except (OSError, ValueError, TypeError):
                 # A missing or invalid demo-user configuration fails closed.
@@ -71,6 +72,10 @@ class SessionManager:
         return None
 
     ALL_ROLES = ("Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist")
+
+    def can_load_demo(self, email: str) -> bool:
+        """One-click demo load is granted per account in demo_data/demo_users.json (never by role alone)."""
+        return bool(self.demo_mode and self.authorized_users.get(str(email or "").strip().lower(), {}).get("can_load_demo"))
 
     def assigned_roles(self, email: str) -> set:
         """Personas a user may act under: Platform Admin holds all; others hold their configured roles."""

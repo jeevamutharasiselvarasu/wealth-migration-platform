@@ -204,3 +204,71 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     asyncio.run(call("Migration Analyst", "/api/target-mapping/propose"))
     after = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G")}["SIMP_ACCT_MASTER.ACCT_STATUS"]
     assert after["canonical_field"] == "ACCOUNT_STATUS" and after["status"] == "PROPOSED"
+
+
+def test_demo_load_is_restricted_to_flagged_account_and_provisions_target(tmp_path, monkeypatch):
+    import asyncio
+    import httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "gate.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    mgr = app_module.session_mgr
+    monkeypatch.setattr(mgr, "demo_mode", True)
+    monkeypatch.setitem(mgr.authorized_users, "flagged@example.invalid", {"can_load_demo": True})
+    monkeypatch.setitem(mgr.authorized_users, "plain@example.invalid", {"can_load_demo": False})
+    for sid, email in (("s-flag", "flagged@example.invalid"), ("s-plain", "plain@example.invalid")):
+        monkeypatch.setitem(mgr.active_sessions, sid, {"email": email, "name": "T", "role": "Platform Admin"})
+
+    async def post(sid):
+        t = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=t, base_url="http://testserver", cookies={"session_id": sid}) as c:
+            return await c.post("/api/demo/load", follow_redirects=False)
+
+    assert asyncio.run(post("s-plain")).status_code == 403
+    ok = asyncio.run(post("s-flag"))
+    assert ok.status_code == 303
+    assert mgr.can_load_demo("flagged@example.invalid") and not mgr.can_load_demo("plain@example.invalid")
+
+
+def test_jeeva_is_the_only_demo_load_account_in_users_file():
+    import json
+    from pathlib import Path
+    users = json.loads((Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json").read_text())
+    items = users if isinstance(users, list) else users.get("users", users)
+    flagged = [u.get("email") for u in items if isinstance(u, dict) and u.get("can_load_demo")]
+    assert flagged == ["jeeva@simplicitywealth.com"]
+
+
+def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch):
+    import asyncio
+    import httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "render.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    mgr = app_module.session_mgr
+    monkeypatch.setattr(mgr, "demo_mode", True)
+    monkeypatch.setitem(mgr.authorized_users, "jeeva@simplicitywealth.com", {"can_load_demo": True, "roles": ["Platform Admin"]})
+    monkeypatch.setitem(mgr.active_sessions, "s-j", {"email": "jeeva@simplicitywealth.com", "name": "J", "role": "Platform Admin"})
+    monkeypatch.setitem(mgr.active_sessions, "s-a", {"email": "analyst.demo@simplicitywealth.com", "name": "A", "role": "Migration Analyst"})
+
+    async def get(sid, path):
+        t = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=t, base_url="http://testserver", cookies={"session_id": sid}) as c:
+            return await c.get(path)
+
+    home_j = asyncio.run(get("s-j", "/")).text
+    home_a = asyncio.run(get("s-a", "/")).text
+    setup_a = asyncio.run(get("s-a", "/migration-setup"))
+    assert 'aria-label="Demo load"' in home_j and "/api/demo/load" in home_j
+    assert 'aria-label="Demo load"' not in home_a
+    assert 'aria-label="Target system connection"' in setup_a.text

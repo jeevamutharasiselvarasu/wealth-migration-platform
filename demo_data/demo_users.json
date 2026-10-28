@@ -5,6 +5,7 @@
       "email": "jeeva@simplicitywealth.com",
       "name": "Jeeva S.",
       "default_role": "Platform Admin",
+      "can_load_demo": true,
       "roles": [
         "Platform Admin"
       ]
