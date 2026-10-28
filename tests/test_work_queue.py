@@ -41,5 +41,6 @@ def test_validation_item_changes_with_last_result():
 
 def test_setup_and_target_provisioning_prompts():
     assert labels("Migration Analyst", scope=[]) == ["Set up the migration"]
-    assert labels("Migration Analyst", target_provisioned=False) == ["Provision the simulated target system"]
+    assert labels("Platform Admin", target_provisioned=False)[0] == "Complete the one-time target setup"
+    assert labels("Migration Analyst", target_provisioned=False) == ["Target setup awaits a Platform Admin"]
     assert labels("Domain SME", scope=[], target_provisioned=False) == []

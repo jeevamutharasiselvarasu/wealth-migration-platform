@@ -104,11 +104,14 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
 
     denied = asyncio.run(call("Domain SME", "POST", "/api/target-mapping/propose"))
     assert denied.status_code == 303 and "may+not+perform" in denied.headers["location"]
-    assert "Provision simulated target system" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
+    assert "/target-setup" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
     assert "Provision the simulated target system first" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"].replace("+", " ")
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-system/provision")).headers["location"]
-    assert "notice=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-system/provision")).headers["location"]
-    assert "already+provisioned" in asyncio.run(call("Migration Analyst", "POST", "/api/target-system/provision")).headers["location"]
+    assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/target-system/provision")).headers["location"]
+    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/provision")).headers["location"]
+    again = asyncio.run(call("Platform Admin", "POST", "/api/target-system/provision")).headers["location"]
+    assert again.startswith("/target-setup?error=") and "already" in again
+    assert "Setup complete" in asyncio.run(call("Migration Analyst", "GET", "/target-setup")).text
     assert "No target mapping proposals" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
     early = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/preview"))
     assert "error=" in early.headers["location"]
@@ -185,7 +188,7 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
             return await client.post(path, data=data, follow_redirects=False, headers={"accept": "text/html"})
 
-    asyncio.run(call("Migration Analyst", "/api/target-system/provision"))
+    asyncio.run(call("Platform Admin", "/api/target-system/provision"))
     form = {"entity_name": "Account", "target_field": "SIMP_ACCT_MASTER.ACCT_STATUS"}
     assert "may+not+perform" in asyncio.run(call("Validation Specialist", "/api/target-mapping/gaps/raise", form)).headers["location"]
     assert "notice=" in asyncio.run(call("Migration Analyst", "/api/target-mapping/gaps/raise", form)).headers["location"]

@@ -23,7 +23,7 @@
     <h2 class="text-sm font-bold text-[#152C6B]">Target system</h2>
     {% if not target_snapshot %}
     <p class="mt-1 text-xs text-[#5A6A88]">The simulated Simplicity database is created once from the target specification. After that it is fixed and read-only; the canonical model is shaped to fit it.</p>
-    {% if can_propose %}<form action="/api/target-system/provision" method="post" class="mt-3"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Provision simulated target system (one time)</button></form>{% else %}<p class="mt-2 text-[10px] text-[#5A6A88]">Migration Analyst or Platform Admin provisions the target system.</p>{% endif %}
+    <a href="/target-setup" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white no-underline">Go to one-time target setup →</a>
     {% else %}
     <p class="mt-1 text-[11px] text-[#5A6A88]">{{ target_snapshot.snapshot_id }} · v{{ target_snapshot.spec_version }} · provisioned by {{ target_snapshot.provisioned_by }} on {{ target_snapshot.provisioned_utc[:10] }}. Fixed and read-only.</p>
     {% for d in target_system.drift %}<p class="mt-1 text-[11px] text-rose-800">⚠ {{ d }}</p>{% endfor %}
