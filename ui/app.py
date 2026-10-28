@@ -1387,7 +1387,10 @@ async def propose_target_mappings(request: Request):
         if spec is None:
             return _target_redirect("error", "Complete and confirm the one-time target system setup first.")
         unresolved_before = sum(1 for m in target_mapping.list_mappings(conn, migration_id, spec) if not m["canonical_field"])
-        created = target_mapping.propose(conn, migration_id, _canonical_field_lists(), spec)
+        try:
+            created = target_mapping.propose(conn, migration_id, _canonical_field_lists(), spec)
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
         unresolved_after = sum(1 for m in target_mapping.list_mappings(conn, migration_id, spec) if not m["canonical_field"])
         resolved = max(0, unresolved_before - unresolved_after)
         conn.commit()

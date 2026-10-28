@@ -403,3 +403,12 @@ def test_fields_added_by_change_requests_match_regardless_of_declared_type(conn,
     model = tc.infer_model(conn, typed)["model"]
     hints = {f["name"]: f["canonical_hint"] for b in model["entities"].values() for f in b["fields"]}
     assert hints["SIMP_CUSTOMER.ONBOARD_DT"] == "CLIENT_ONBOARD_DATE" and hints["SIMP_ACCT_MASTER.ACCT_STATUS"] == "ACCOUNT_STATUS"
+
+
+def test_mappings_from_an_earlier_target_model_do_not_silently_block_new_proposals(conn, spec):
+    tm.ensure_table(conn)
+    conn.execute("INSERT INTO target_mappings (target_mapping_id, migration_id, entity_name, target_field, canonical_field, status, spec_version, created_utc) "
+                 "VALUES ('TGT-OLD', 'MIG-OLD', 'Account', 'SIMP_ACCT_MASTER.ACCT_NO', 'ACCT_NUM', 'APPROVED', 'old-model', 'now')")
+    with pytest.raises(ValueError, match="earlier target model"):
+        tm.propose(conn, "MIG-OLD", CANON, spec)
+    assert tm.propose(conn, "MIG-NEW", CANON, spec) == 14  # a new migration maps to the confirmed target normally

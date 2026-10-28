@@ -68,7 +68,7 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
     """Create PROPOSED rows for target fields not yet proposed. Idempotent. Returns rows created."""
     ensure_table(conn)
     now = datetime.now(timezone.utc).isoformat()
-    created = 0
+    created = blocked = 0
     for entity, body in spec["entities"].items():
         known = set(canonical_fields.get(entity, []))
         for field in body["fields"]:
@@ -79,10 +79,17 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
                 "transformation_expression, status, spec_version, created_utc) VALUES (?, ?, ?, ?, ?, 'DIRECT_COPY', 'PROPOSED', ?, ?)",
                 ("TGT-" + uuid.uuid4().hex[:12].upper(), migration_id, entity, field["name"], canonical, str(spec["spec_version"]), now))
             created += cur.rowcount
+            if not cur.rowcount and not conn.execute(
+                    "SELECT 1 FROM target_mappings WHERE migration_id = ? AND entity_name = ? AND target_field = ? AND spec_version = ?",
+                    (migration_id, entity, field["name"], str(spec["spec_version"]))).fetchone():
+                blocked += 1
             if canonical and not cur.rowcount:
                 conn.execute("UPDATE target_mappings SET canonical_field = ? WHERE migration_id = ? AND entity_name = ? "
-                             "AND target_field = ? AND canonical_field IS NULL AND status = 'PROPOSED'",
-                             (canonical, migration_id, entity, field["name"]))
+                             "AND target_field = ? AND canonical_field IS NULL AND status = 'PROPOSED' AND spec_version = ?",
+                             (canonical, migration_id, entity, field["name"], str(spec["spec_version"])))
+    if blocked:
+        raise ValueError(f"{blocked} target mapping(s) in this migration were made against an earlier target model. "
+                         "Start a new migration (or reset the demo) to map to the confirmed target system.")
     return created
 
 
