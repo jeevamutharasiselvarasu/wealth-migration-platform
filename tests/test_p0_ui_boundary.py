@@ -369,7 +369,7 @@ def test_demo_sign_in_requires_locally_supplied_hash(monkeypatch):
 def _progress(**over):
     base = {"scope": ["Account"], "files_total": 2, "files_confirmed": 2, "files_pending": 0, "proposals_pending": 0,
             "mappings_approved": 5, "rfi_open": 0, "changes_open": 0, "validation_status": "", "validation_when": "",
-            "next": {"step": "validate"}}
+            "target_provisioned": True, "next": {"step": "validate"}}
     base.update(over)
     return base
 
@@ -388,7 +388,10 @@ def test_workflow_view_derives_step_states_chip_and_tasks():
         _progress(rfi_open=2, files_pending=1, files_confirmed=1, next={"step": "discover"}), {}, "MIG-X")
     assert {s["key"]: s["state"] for s in blocked["steps"]}["discover"] == "current"
     assert {s["key"]: s["state"] for s in blocked["steps"]}["map"] == "todo"
-    assert [t["state"] for t in blocked["step_tasks"]["map"]][-1] == "needs_you"
+    assert [t["state"] for t in blocked["step_tasks"]["map"]][-2] == "needs_you"
+    no_target = app_module.build_workflow_view(_progress(target_provisioned=False, next={"step": "map"}), {}, "MIG-X")
+    assert {s["key"]: s["state"] for s in no_target["steps"]}["map"] == "current"
+    assert [t["state"] for t in no_target["step_tasks"]["map"]][-1] == "needs_you" and no_target["status_chip"]["label"] == "In progress · Map & review"
 
     empty = app_module.build_workflow_view(_progress(scope=[], files_total=0, mappings_approved=0, next={"step": "setup"}), {}, "MIG-UNCONFIGURED")
     assert empty["status_chip"]["label"] == "Setup needed" and empty["facts"]["route"] == "Not configured"

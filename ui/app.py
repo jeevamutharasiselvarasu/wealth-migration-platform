@@ -146,6 +146,8 @@ def workflow_progress() -> dict:
         nxt = {"label": "Generate mapping proposals", "detail": "Profile the confirmed files and create review items.", "href": "/agent-pipeline", "step": "map"}
     elif rfi_open:
         nxt = {"label": f"Answer {rfi_open} information request{'s' if rfi_open != 1 else ''}", "detail": "Required canonical fields still have no source.", "href": "/agent-pipeline#information-requests", "step": "map"}
+    elif not target_provisioned:
+        nxt = {"label": "Confirm the target system", "detail": "One-time platform setup: configure, infer and confirm the target before target mapping.", "href": "/target-mapping#target-system", "step": "map"}
     else:
         nxt = {"label": "Review validation results", "detail": "All mappings are approved; check keys, relationships and exceptions.", "href": "/reconciliation", "step": "validate"}
     progress = {
@@ -166,7 +168,7 @@ def build_workflow_view(p: dict, setup: dict, migration_id: str) -> dict:
 
     configured = bool(p["scope"])
     discover_done = p["files_total"] > 0 and p["files_pending"] == 0
-    map_done = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0
+    map_done = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0 and p["target_provisioned"]
     validate_done = p["validation_status"] == "PASS"
     tasks = {
         "setup": [
@@ -185,6 +187,7 @@ def build_workflow_view(p: dict, setup: dict, migration_id: str) -> dict:
                  ("needs_you" if p["proposals_pending"] else "not_started"), f"{p['proposals_pending']} waiting"),
             task("Mappings approved", "complete" if p["mappings_approved"] else "not_started", f"{p['mappings_approved']} approved"),
             task("Information requests answered", "complete" if not p["rfi_open"] else "needs_you", f"{p['rfi_open']} open"),
+            task("Target system confirmed", "complete" if p["target_provisioned"] else "needs_you", "Platform-level, one time"),
         ],
         "validate": [
             task("Validation checks run", "complete" if p["validation_status"] else "not_started",
