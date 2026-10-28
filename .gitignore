@@ -33,3 +33,4 @@ demo_data/demo_passwords.local.json
 demo_data/demo_passwords.local.json.bak
 demo_data/demo_passwords.plaintext.local.json
 App_Data_backup_*/
+simulated_target_service/data/

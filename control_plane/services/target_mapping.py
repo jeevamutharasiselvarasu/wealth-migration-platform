@@ -1,6 +1,6 @@
-"""Canonical-to-target mapping (forward direction only; P0 entities; demo target spec).
+"""Canonical-to-target mapping (forward direction only; P0 entities).
 
-Proposals are generated deterministically from the target spec's canonical hints, then a human
+Proposals are generated deterministically from the confirmed, inferred target model's canonical hints, then a human
 approves or rejects each one. Approved mappings may use an approved governed transformation rule.
 Preview is read-only and returns counts and findings, never record values. Nothing is loaded
 into any target system.
@@ -8,15 +8,11 @@ into any target system.
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import yaml
 
 from control_plane.services import transformation_rules
 
 ENTITIES = ("Account", "Client", "Household")
-SPEC_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "simplicity_target_system.yaml"
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS target_mappings (
@@ -41,29 +37,9 @@ def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
 
 
-def load_spec(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Mapping view of the simulated target: one flat field list per canonical entity, as TABLE.COLUMN.
-
-    Target-generated columns (surrogate keys) are not mappable and are omitted.
-    """
-    raw = yaml.safe_load(Path(path or SPEC_PATH).read_text(encoding="utf-8"))
-    entities = raw.get("entities") or {}
-    if set(entities) - set(ENTITIES):
-        raise ValueError("Target spec may only define Account, Client and Household in P0.")
-    code_lists = raw.get("code_lists") or {}
-    out: Dict[str, Any] = {}
-    for entity, body in entities.items():
-        fields, table_columns = [], {}
-        for table, cols in body["tables"].items():
-            table_columns[table] = [c["name"] for c in cols]
-            for c in cols:
-                if c.get("generated"):
-                    continue
-                fields.append({"name": f"{table}.{c['name']}", "table": table, "column": c["name"], "type": c.get("type", "string"),
-                               "required": bool(c.get("required")), "canonical_hint": c.get("canonical_hint"),
-                               "code_list": c.get("code_list"), "codes": code_lists.get(c.get("code_list"), [])})
-        out[entity] = {"target_table": ", ".join(body["tables"]), "fields": fields, "table_columns": table_columns}
-    return {**{k: raw[k] for k in ("spec_id", "spec_version", "status", "target_system")}, "entities": out}
+def _source(field: Dict[str, Any]) -> Optional[str]:
+    """Canonical field a target field draws from: the inferred match, else the name a change request would add."""
+    return field.get("canonical_hint") or field.get("suggested_canonical_field")
 
 
 def gap_report(spec: Dict[str, Any], canonical_fields: Dict[str, List[str]]) -> Dict[str, Any]:
@@ -76,28 +52,27 @@ def gap_report(spec: Dict[str, Any], canonical_fields: Dict[str, List[str]]) -> 
     missing, unused, code_lists = [], [], []
     for entity, body in spec["entities"].items():
         known = list(canonical_fields.get(entity, []))
-        hints = {f["canonical_hint"] for f in body["fields"] if f.get("canonical_hint")}
+        hints = {_source(f) for f in body["fields"] if _source(f)}
         for f in body["fields"]:
-            if f.get("canonical_hint") not in known:
+            if _source(f) not in known:
                 missing.append({"entity": entity, "target_field": f["name"], "required": f["required"], "type": f["type"],
-                                "suggested_canonical_field": f.get("canonical_hint")})
+                                "suggested_canonical_field": _source(f)})
             if f.get("code_list"):
-                code_lists.append({"entity": entity, "target_field": f["name"], "canonical_field": f.get("canonical_hint"), "codes": f["codes"]})
+                code_lists.append({"entity": entity, "target_field": f["name"], "canonical_field": _source(f), "codes": f["codes"]})
         unused.extend({"entity": entity, "canonical_field": c} for c in known if c not in hints)
     return {"missing": missing, "unused": unused, "code_lists": code_lists}
 
 
 def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[str, List[str]],
-            spec: Optional[Dict[str, Any]] = None) -> int:
+            spec: Dict[str, Any]) -> int:
     """Create PROPOSED rows for target fields not yet proposed. Idempotent. Returns rows created."""
     ensure_table(conn)
-    spec = spec or load_spec()
     now = datetime.now(timezone.utc).isoformat()
     created = 0
     for entity, body in spec["entities"].items():
         known = set(canonical_fields.get(entity, []))
         for field in body["fields"]:
-            hint = field.get("canonical_hint")
+            hint = _source(field)
             canonical = hint if hint in known else None  # never guess when the canonical field does not exist
             cur = conn.execute(
                 "INSERT OR IGNORE INTO target_mappings (target_mapping_id, migration_id, entity_name, target_field, canonical_field, "
@@ -111,11 +86,13 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
     return created
 
 
-def list_mappings(conn: sqlite3.Connection, migration_id: str) -> List[Dict[str, Any]]:
+def list_mappings(conn: sqlite3.Connection, migration_id: str, spec: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ensure_table(conn)
+    if not spec:
+        return []
     # Rows from an earlier target specification version stay in the table for audit but are not current mappings.
     rows = conn.execute("SELECT * FROM target_mappings WHERE migration_id = ? AND spec_version = ? ORDER BY entity_name, target_field",
-                        (migration_id, str(load_spec()["spec_version"]))).fetchall()
+                        (migration_id, str(spec["spec_version"]))).fetchall()
     return [dict(r) for r in rows]
 
 

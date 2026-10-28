@@ -488,7 +488,7 @@ def test_compact_workflow_bar_and_my_queue_are_in_templates():
     assert "xa-wf-compact" in base and "position:sticky" in base and "wf_path == '/'" in base
     assert 'aria-label="My queue"' in (root / "dashboard.html").read_text(encoding="utf-8")
     tm = (root / "target_mapping.html").read_text(encoding="utf-8")
-    assert 'aria-label="On this page"' in tm and 'id="target-mappings"' in tm and "target tables" in tm
+    assert 'aria-label="On this page"' in tm and 'id="target-mappings"' in tm and "Inferred target model" in tm
 
 
 def test_target_mapping_wide_tables_scroll_inside_their_own_container():

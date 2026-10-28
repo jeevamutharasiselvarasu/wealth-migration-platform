@@ -8,34 +8,62 @@
     <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-blue-700">Canonical → target · Simplicity</div>
     <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Target system &amp; mapping</h1>
     <p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Map each canonical field to a Simplicity target field. Proposals come from the target specification; a Migration Analyst or Platform Admin approves each one and may apply an approved <a href="/transformation-rules" class="text-blue-700">transformation rule</a>. The preview is a read-only dry run that reports counts and findings, never record values.</p>
-    <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900"><b>Simulated target system</b> ({{ spec.spec_id }} v{{ spec.spec_version }}, {{ spec.status }}). Invented for the demo, not Simplicity's owner-confirmed schema. Its tables deliberately differ from the canonical model. Nothing is ever loaded into it.</p>
+    <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900"><b>Simulated target system.</b> It runs as its own service and database, separate from this platform. The platform learns its structure by inspecting it after a one-time setup; nothing is ever loaded into it.</p>
     <p class="mt-2 text-[10px] text-[#8A97B2]">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
   </section>
 
   <nav aria-label="On this page" class="flex flex-wrap gap-2 text-[11px] font-bold">
     <a href="#target-system" class="rounded-full border border-[#C3D2EC] bg-white px-3 py-1 text-blue-700 no-underline hover:border-blue-300">Target system</a>
-    {% if target_snapshot %}<a href="#target-gaps" class="rounded-full border border-[#C3D2EC] bg-white px-3 py-1 text-blue-700 no-underline hover:border-blue-300">Gap report{% if gaps.missing %} ({{ gaps.missing|length }}){% endif %}</a>
+    {% if spec %}<a href="#target-gaps" class="rounded-full border border-[#C3D2EC] bg-white px-3 py-1 text-blue-700 no-underline hover:border-blue-300">Gap report{% if gaps.missing %} ({{ gaps.missing|length }}){% endif %}</a>
     <a href="#target-mappings" class="rounded-full border border-[#C3D2EC] bg-white px-3 py-1 text-blue-700 no-underline hover:border-blue-300">Mappings</a>
     {% if can_preview %}<a href="#target-preview" class="rounded-full border border-[#C3D2EC] bg-white px-3 py-1 text-blue-700 no-underline hover:border-blue-300">Preview</a>{% endif %}{% endif %}
   </nav>
 
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="target-system">
-    <h2 class="text-sm font-bold text-[#152C6B]">Target system</h2>
-    {% if not target_snapshot %}
-    <p class="mt-1 text-xs text-[#5A6A88]">The simulated Simplicity database is created once from the target specification. After that it is fixed and read-only; the canonical model is shaped to fit it.</p>
-    {% if can_provision %}<p class="mt-2 text-xs text-[#41506B]">Setup is a one-time, platform-level action and cannot be repeated.</p><form action="/api/target-system/provision" method="post" class="mt-3"><button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Set up target system (one time)</button></form>{% else %}<p class="mt-2 text-xs font-bold text-amber-800">A Platform Admin must complete the one-time target setup before mapping can start.</p>{% endif %}
+    {% set c = target_config %}
+    <div class="flex flex-wrap items-start justify-between gap-2"><h2 class="text-sm font-bold text-[#152C6B]">Target system setup <span class="font-mono text-[10px] font-normal text-[#8A97B2]">one time</span></h2>
+      <span class="rounded-full border px-3 py-1 font-mono text-[11px] font-bold {% if c and c.status == 'CONFIRMED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{% if c %}{{ c.status }}{% else %}NOT CONFIGURED{% endif %}</span></div>
+    <ol class="mt-3 flex flex-wrap gap-2 text-[11px] font-bold">
+      <li class="rounded-full border px-3 py-1 {% if c %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">1 Configure &amp; test connection</li>
+      <li class="rounded-full border px-3 py-1 {% if c and c.status in ('INFERRED','CONFIRMED') %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">2 Infer target system</li>
+      <li class="rounded-full border px-3 py-1 {% if c and c.status == 'CONFIRMED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">3 Confirm</li>
+    </ol>
+    {% if c and c.status == 'CONFIRMED' %}
+      <p class="mt-3 text-[11px] text-[#5A6A88]">{{ c.target_name }} · {{ c.endpoint }} · model {{ c.schema_hash }} · confirmed by {{ c.confirmed_by }} on {{ c.confirmed_utc[:10] }}. Setup is locked; every migration uses this target.</p>
+    {% elif can_setup_target %}
+      <form action="/api/target-system/configure" method="post" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <label class="text-xs font-bold text-[#41506B]">Target system name<input name="target_name" required value="{{ c.target_name if c else 'Simplicity' }}" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2.5 font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Connection endpoint<input name="endpoint" required value="{{ c.endpoint if c else default_endpoint }}" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2.5 font-mono font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Tables to inspect <span class="font-normal text-[#8A97B2]">(optional, comma separated; blank = all)</span><input name="scope_tables" value="{{ c.scope_tables|join(', ') if c else '' }}" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2.5 font-mono font-normal"></label>
+        <label class="text-xs font-bold text-[#41506B]">Target owner / SME<input name="owner" value="{{ c.owner if c else '' }}" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2.5 font-normal"></label>
+        <label class="flex items-center gap-2 text-xs font-bold text-[#41506B]"><input type="checkbox" name="include_code_lists" {% if not c or c.include_code_lists %}checked{% endif %}> Also read the target's code lists</label>
+        <div class="flex items-center gap-3"><button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Save &amp; test connection</button></div>
+      </form>
+      <p class="mt-2 text-[10px] text-[#8A97B2]">No credentials are stored. This POC connects to a local simulated target only (127.0.0.1 or localhost). Start it with <span class="font-mono">python -m simulated_target_service</span>.</p>
     {% else %}
-    <p class="mt-1 text-[11px] text-[#5A6A88]">{{ target_snapshot.snapshot_id }} · v{{ target_snapshot.spec_version }} · set up once by {{ target_snapshot.provisioned_by }} on {{ target_snapshot.provisioned_utc[:10] }}. Platform-level, fixed and read-only.</p>
-    {% for d in target_system.drift %}<p class="mt-1 text-[11px] text-rose-800">⚠ {{ d }}</p>{% endfor %}
-    <details class="mt-3"><summary class="cursor-pointer text-xs font-bold text-blue-700">Show {{ target_system.tables|length }} target tables</summary>
-    <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-      {% for t in target_system.tables %}<div class="rounded-xl border border-[#D9E3F5] p-3"><div class="font-mono text-[11px] font-bold text-teal-700">{{ t.table }}</div><p class="mt-1 font-mono text-[10px] leading-4 text-[#5A6A88]">{% for c in t.columns %}{{ c.name }} <span class="text-[#8A97B2]">{{ c.type }}{% if c.required %} *{% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p></div>{% endfor %}
-    </div></details>
-    <p class="mt-2 text-[10px] text-[#8A97B2]">* required. Surrogate keys (SK) are assigned by the target and are not mapped.</p>
+      <p class="mt-3 text-xs font-bold text-amber-800">A Platform Admin must complete the one-time target setup before mapping can start.</p>
+    {% endif %}
+    {% if c and c.status != 'CONFIRMED' %}
+      <p class="mt-3 text-[11px] text-[#41506B]">Connection: {{ c.connection_detail }}</p>
+      {% if can_setup_target and c.status in ('CONNECTED','INFERRED') %}<form action="/api/target-system/infer" method="post" class="mt-2"><button type="submit" class="rounded-lg border border-blue-300 bg-white px-4 py-2 text-xs font-bold text-blue-700">{% if c.status == 'INFERRED' %}Re-read &amp; infer again{% else %}Infer target system{% endif %}</button></form>{% endif %}
+    {% endif %}
+    {% if inferred %}
+    <details class="mt-3" {% if c.status == 'INFERRED' %}open{% endif %}><summary class="cursor-pointer text-xs font-bold text-blue-700">Inferred target model · {{ inferred.entities|length }} entities</summary>
+      {% for ename, body in inferred.entities.items() %}
+      <div class="mt-3 rounded-xl border border-[#D9E3F5] p-3"><p class="text-xs font-bold text-[#152C6B]">{{ ename }} <span class="font-mono text-[10px] font-normal text-[#8A97B2]">{{ body.target_table }}</span></p>
+        <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-[11px]"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Type</th><th class="p-1">Req.</th><th class="p-1">Inferred canonical field</th><th class="p-1">Confidence</th><th class="p-1">Evidence</th></tr></thead><tbody>
+        {% for f in body.fields %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ f.name }}</td><td class="p-1">{{ f.type }}</td><td class="p-1">{{ 'yes' if f.required else '' }}</td>
+          <td class="p-1 font-mono {% if f.canonical_hint %}text-teal-700{% else %}text-amber-800{% endif %}">{{ f.canonical_hint or 'no match' }}</td><td class="p-1">{% if f.canonical_hint %}{{ '%d%%'|format(f.confidence*100) }}{% endif %}</td><td class="p-1 text-[#5A6A88]">{{ f.evidence|join(', ') }}{% if f.code_list %} · codes: {{ f.codes|join('/') }}{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div></div>
+      {% endfor %}
+      {% if inferred.unassigned_tables %}<p class="mt-2 text-[11px] text-amber-800">Not matched to Account, Client or Household: {{ inferred.unassigned_tables|join(', ') }}</p>{% endif %}
+      <p class="mt-2 text-[10px] text-[#8A97B2]">Surrogate keys assigned by the target are not mapped. Fields with no match become gaps below once confirmed.</p>
+    </details>
+    {% if c.status == 'INFERRED' and can_setup_target %}<form action="/api/target-system/confirm" method="post" class="mt-3"><button type="submit" class="rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white">Confirm target model &amp; lock setup</button><span class="ml-2 text-[10px] text-[#5A6A88]">Recorded under your signed-in name. Cannot be repeated.</span></form>{% endif %}
     {% endif %}
   </section>
 
-  {% if target_snapshot %}
+  {% if spec %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="target-gaps">
     <h2 class="text-sm font-bold text-[#152C6B]">Gap report: target vs canonical model</h2>
     <p class="mt-1 text-xs text-[#5A6A88]">Target fields with no canonical source can be raised as canonical change requests. The Domain SME approves and applies them on <a href="/canonical-changes" class="text-blue-700">Canonical changes</a>; nothing changes in the canonical model until then.</p>
@@ -50,7 +78,7 @@
   </section>
   {% endif %}
 
-  {% if target_snapshot and not has_mappings %}
+  {% if spec and not has_mappings %}
   <section class="rounded-2xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center">
     <div class="font-bold text-[#152C6B]">No target mapping proposals yet</div>
     <p class="mt-1 text-xs text-[#5A6A88]">Generate one proposal per target field from the demo specification. Fields whose canonical source does not exist stay unresolved.</p>

@@ -45,6 +45,16 @@ python -m uvicorn ui.app:app --reload --port 8000
 
 Open http://127.0.0.1:8000 in a browser.
 
+### Simulated target system (separate service)
+
+The Simplicity target is a separate, standalone service with its own database (`simulated_target_service/`). Start it in a second terminal before the one-time target setup:
+
+```bash
+python -m simulated_target_service      # http://127.0.0.1:8100 (override with SIMULATED_TARGET_PORT)
+```
+
+A Platform Admin then completes the one-time setup on **Target system & mapping**: configure the connection (loopback endpoints only in this POC), infer the target system from its schema, and confirm the inferred model. Setup locks after confirmation. The platform never reads the service's seed file; it learns the target by inspecting the running service. The service's database is created on first start under `simulated_target_service/data/` (git-ignored); delete that folder to recreate it.
+
 ## Demo data
 
 On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and platform knowledge documents under `platform_knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
@@ -54,6 +64,7 @@ The local demo identities (email, name, personas) live in `demo_data/demo_users.
 ## Repository map
 
 - `ui/` — FastAPI routes, session/persona handling, role policy, Jinja templates.
+- `simulated_target_service/` — standalone simulated target system (own API and database; imports nothing from the platform).
 - `control_plane/` — canonical kernel, inference, profiling, validation, workflow event engine, SQLite persistence, ADF client/exporter scaffolding.
 - `agents/` — schema-mapping agent and the P0 agent suite (agents recommend; deterministic services check).
 - `data_plane/` — local source-file storage. Target loading and legacy connectors are out of P0.

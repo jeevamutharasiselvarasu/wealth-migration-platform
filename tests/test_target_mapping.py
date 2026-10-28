@@ -4,12 +4,62 @@ import sqlite3
 import httpx
 import pytest
 
+from control_plane.services import target_connector as tc
 from control_plane.services import target_mapping as tm
 from control_plane.services import transformation_rules as tr
 
 CANON = {"Account": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "REG_TYPE", "OPEN_DATE"],
          "Client": ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"],
          "Household": ["HH_ID", "HH_NAME", "REP_CODE"]}
+
+
+CANON_TYPES = {"Account": {"ACCT_NUM": "string", "CUSTODIAN_CODE": "string", "REP_CODE": "string", "REG_TYPE": "string", "OPEN_DATE": "date"},
+               "Client": {"CLIENT_ID": "string", "LEGAL_NAME": "string", "TAX_ID": "string", "CLIENT_TYPE": "string"},
+               "Household": {"HH_ID": "string", "HH_NAME": "string", "REP_CODE": "string"}}
+
+
+@pytest.fixture()
+def target_service(tmp_path, monkeypatch):
+    """The standalone simulated target service's own code, reached through the connector's HTTP seam."""
+    import simulated_target_service.app as target_app
+    import simulated_target_service.database as tdb
+
+    monkeypatch.setenv("SIMULATED_TARGET_DB", str(tmp_path / "target.db"))
+    tdb.bootstrap()
+    routes = {"/health": target_app.health, "/schema": target_app.schema}
+
+    def fake_get(url):
+        path = "/" + url.split("://", 1)[1].split("/", 1)[1] if "/" in url.split("://", 1)[1] else "/"
+        return routes[path]()
+    monkeypatch.setattr(tc, "_http_get", fake_get)
+    return target_app
+
+
+def test_target_service_api_is_read_only_and_exposes_schema_without_row_data(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from simulated_target_service.app import app as target_app
+
+    monkeypatch.setenv("SIMULATED_TARGET_DB", str(tmp_path / "svc.db"))
+    with TestClient(target_app) as client:
+        assert client.get("/health").json()["status"] == "ok"
+        schema = client.get("/schema").json()
+        assert {t["name"] for t in schema["tables"]} >= {"SIMP_ACCT_MASTER", "SIMP_GROUP"} and "SIMP_REF_SEGMENT" in schema["code_lists"]
+        assert any(c["generated"] for t in schema["tables"] for c in t["columns"])
+        assert "canonical" not in repr(schema).lower()  # the target knows nothing of the platform's model
+        assert client.post("/schema").status_code == 405 and client.put("/schema").status_code == 405
+
+
+def _confirm_target(conn):
+    tc.configure(conn, "Admin One", "Simplicity", "http://127.0.0.1:8100", [], True, "Sam")
+    tc.infer_model(conn, CANON_TYPES)
+    tc.confirm(conn, "Admin One")
+    conn.commit()
+    return tc.spec(conn)
+
+
+@pytest.fixture()
+def spec(conn, target_service):
+    return _confirm_target(conn)
 
 
 @pytest.fixture()
@@ -22,27 +72,33 @@ def conn(tmp_path, monkeypatch):
     return c
 
 
-def test_spec_is_labelled_simulated_and_limited_to_p0_entities():
-    spec = tm.load_spec()
-    assert spec["status"] == "SIMULATED_NOT_OWNER_CONFIRMED" and set(spec["entities"]) == {"Account", "Client", "Household"}
+def test_spec_is_inferred_from_the_running_target_and_limited_to_p0_entities(spec):
+    assert spec["status"] == "INFERRED_CONFIRMED" and spec["spec_id"].startswith("INFERRED-")
+    assert set(spec["entities"]) == {"Account", "Client", "Household"}
+    hints = {f["name"]: f["canonical_hint"] for b in spec["entities"].values() for f in b["fields"]}
+    assert hints["SIMP_ACCT_MASTER.ACCT_NO"] == "ACCT_NUM" and hints["SIMP_ACCT_MASTER.OPENED_ON"] == "OPEN_DATE"
+    assert hints["SIMP_ADVISOR_ASSIGNMENT.ADVISOR_ID"] == "REP_CODE" and hints["SIMP_CUSTOMER.SEGMENT_CD"] == "CLIENT_TYPE"
+    assert hints["SIMP_GROUP.GROUP_REF"] == "HH_ID" and hints["SIMP_CUSTOMER_TAX.TAX_NO"] == "TAX_ID"
+    assert hints["SIMP_ACCT_MASTER.ACCT_STATUS"] is None and hints["SIMP_CUSTOMER_TAX.TAX_COUNTRY"] is None  # real gaps stay unmatched
+    assert not any(f["column"].endswith("_SK") for b in spec["entities"].values() for f in b["fields"])  # surrogate keys are not mapped
 
 
-def test_proposals_are_idempotent_and_never_guess_missing_canonical_fields(conn):
-    created = tm.propose(conn, "MIG-T", {**CANON, "Client": ["CLIENT_ID", "LEGAL_NAME"]})
+def test_proposals_are_idempotent_and_never_guess_missing_canonical_fields(conn, spec):
+    created = tm.propose(conn, "MIG-T", {**CANON, "Client": ["CLIENT_ID", "LEGAL_NAME"]}, spec)
     assert created == 14
-    rows = {(m["entity_name"], m["target_field"]): m for m in tm.list_mappings(conn, "MIG-T")}
+    rows = {(m["entity_name"], m["target_field"]): m for m in tm.list_mappings(conn, "MIG-T", spec)}
     assert rows[("Account", "SIMP_ACCT_MASTER.OPENED_ON")]["canonical_field"] == "OPEN_DATE"
     assert rows[("Client", "SIMP_CUSTOMER_TAX.TAX_NO")]["canonical_field"] is None  # TAX_ID not in canonical list: stays unresolved
     with pytest.raises(ValueError, match="No canonical source"):
         tm.review(conn, rows[("Client", "SIMP_CUSTOMER_TAX.TAX_NO")]["target_mapping_id"], "APPROVED", "Ann", "ok")
-    assert tm.propose(conn, "MIG-T", CANON) == 0  # idempotent; refreshes the now-resolvable TAX_NO source
-    assert {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-T")}["SIMP_CUSTOMER_TAX.TAX_NO"]["canonical_field"] == "TAX_ID"
+    assert tm.propose(conn, "MIG-T", CANON, spec) == 0  # idempotent; refreshes the now-resolvable TAX_NO source
+    assert {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-T", spec)}["SIMP_CUSTOMER_TAX.TAX_NO"]["canonical_field"] == "TAX_ID"
 
 
-def test_review_requires_reason_and_rejects_unapproved_rules_and_repeat_decisions(conn):
-    tm.propose(conn, "MIG-T", CANON)
+def test_review_requires_reason_and_rejects_unapproved_rules_and_repeat_decisions(conn, spec):
+    tm.propose(conn, "MIG-T", CANON, spec)
     conn.commit()
-    m = {(x["entity_name"], x["target_field"]): x for x in tm.list_mappings(conn, "MIG-T")}[("Account", "SIMP_ACCT_MASTER.CUSTODIAN_CD")]
+    m = {(x["entity_name"], x["target_field"]): x for x in tm.list_mappings(conn, "MIG-T", spec)}[("Account", "SIMP_ACCT_MASTER.CUSTODIAN_CD")]
     with pytest.raises(ValueError, match="rejection reason"):
         tm.review(conn, m["target_mapping_id"], "REJECTED", "Ann", "")
     with pytest.raises(ValueError, match="not an approved"):
@@ -53,19 +109,19 @@ def test_review_requires_reason_and_rejects_unapproved_rules_and_repeat_decision
         tm.review(conn, m["target_mapping_id"], "REJECTED", "Ann", "again")
 
 
-def test_preview_applies_rules_reports_findings_and_contains_no_values(conn):
+def test_preview_applies_rules_reports_findings_and_contains_no_values(conn, spec):
     tr.create_rule_version(conn, "CUST_MAP", "VALUE_MAP", "codes", {"map": {"SCH": "SCHWAB"}}, "Ann")
     tr.decide_rule(conn, "CUST_MAP", 1, "APPROVED", "Bob", "ok")
     conn.commit()
-    tm.propose(conn, "MIG-T", CANON)
+    tm.propose(conn, "MIG-T", CANON, spec)
     conn.commit()
-    for m in tm.list_mappings(conn, "MIG-T"):
+    for m in tm.list_mappings(conn, "MIG-T", spec):
         if m["entity_name"] == "Account" and m["target_field"] in ("SIMP_ACCT_MASTER.CUSTODIAN_CD", "SIMP_ACCT_MASTER.ACCT_NO"):
             tm.review(conn, m["target_mapping_id"], "APPROVED", "Ann", "ok", "RULE:CUST_MAP@1" if m["target_field"] == "SIMP_ACCT_MASTER.CUSTODIAN_CD" else "")
     conn.commit()
-    approved = [m for m in tm.list_mappings(conn, "MIG-T") if m["status"] == "APPROVED"]
+    approved = [m for m in tm.list_mappings(conn, "MIG-T", spec) if m["status"] == "APPROVED"]
     rows = {"Account": [{"ACCT_NUM": "A1", "CUSTODIAN_CODE": "SCH"}, {"ACCT_NUM": "", "CUSTODIAN_CODE": "ZZZ"}]}
-    result = tm.preview(tm.load_spec(), approved, rows)["Account"]
+    result = tm.preview(spec, approved, rows)["Account"]
     assert result["row_count"] == 2
     by = {f["target_field"]: f for f in result["fields"]}
     assert by["SIMP_ACCT_MASTER.ACCT_NO"]["blank_values"] == 1 and by["SIMP_ACCT_MASTER.CUSTODIAN_CD"]["blank_values"] == 0
@@ -75,7 +131,7 @@ def test_preview_applies_rules_reports_findings_and_contains_no_values(conn):
     assert "SCHWAB" not in repr(result) and "A1" not in repr(result)  # counts and findings only
 
 
-def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path, monkeypatch):
+def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path, monkeypatch, target_service):
     import ui.app as app_module
     import ui.state as state_module
     from ui.state import WorkspaceStateStore
@@ -105,20 +161,29 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     denied = asyncio.run(call("Domain SME", "POST", "/api/target-mapping/propose"))
     assert denied.status_code == 303 and "may+not+perform" in denied.headers["location"]
     assert "must complete the one-time target setup" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
-    assert "Set up target system (one time)" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
-    assert "Provision the simulated target system first" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"].replace("+", " ")
-    assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-system/provision")).headers["location"]
-    assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/target-system/provision")).headers["location"]
-    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/provision")).headers["location"]
-    again = asyncio.run(call("Platform Admin", "POST", "/api/target-system/provision")).headers["location"]
-    assert "error=" in again and "already" in again
-    assert "Set up target system (one time)" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Save &amp; test connection" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Complete and confirm the one-time target system setup first" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"].replace("+", " ")
+    cfg_form = {"target_name": "Simplicity", "endpoint": "http://127.0.0.1:8100", "include_code_lists": "on", "owner": "Sam"}
+    for role in ("Domain SME", "Migration Analyst", "Validation Specialist"):
+        for path in ("configure", "infer", "confirm"):
+            assert "may+not+perform" in asyncio.run(call(role, "POST", f"/api/target-system/{path}", cfg_form if path == "configure" else None)).headers["location"]
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]  # nothing inferred yet
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", {**cfg_form, "endpoint": "http://example.com"})).headers["location"]
+    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", cfg_form)).headers["location"]
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-mapping/propose")).headers["location"]  # inferred but not confirmed
+    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/infer")).headers["location"]
+    page = asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Inferred target model" in page and "Confirm target model" in page and "SIMP_ACCT_MASTER.ACCT_NO" in page
+    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]
+    locked = asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", cfg_form)).headers["location"]
+    assert "error=" in locked and "one-time" in locked.replace("+", " ")
+    assert "Confirm target model" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert asyncio.run(call("Migration Analyst", "GET", "/target-setup")).headers["location"] == "/target-mapping#target-system"
     assert "No target mapping proposals" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
     early = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/preview"))
     assert "error=" in early.headers["location"]
     assert "notice=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"]
-    ids = {(m["entity_name"], m["target_field"]): m["target_mapping_id"] for m in tm.list_mappings(conn, "MIG-R")}
+    ids = {(m["entity_name"], m["target_field"]): m["target_mapping_id"] for m in tm.list_mappings(conn, "MIG-R", tc.spec(conn))}
     for field in ("SIMP_ACCT_MASTER.ACCT_NO", "SIMP_ACCT_MASTER.CUSTODIAN_CD"):
         ok = asyncio.run(call("Migration Analyst", "POST", f"/api/target-mapping/{ids[('Account', field)]}/review",
                               {"decision": "APPROVED", "comments": "ok"}))
@@ -142,30 +207,58 @@ def test_merge_by_key_joins_files_without_inventing_blanks_and_counts_conflicts(
     assert tm.merge_by_key([a], None)["unkeyed_rows"] == 2
 
 
-def test_target_system_is_provisioned_once_and_differs_from_canonical(conn, tmp_path):
+def test_target_setup_is_one_time_and_target_is_separate_and_different_from_canonical(conn, target_service):
+    import ast
+    import pathlib
     import sqlite3 as sq
-    from control_plane.services import simulated_target as st
-    assert st.snapshot(conn) is None
-    snap = st.provision(conn, "Ann")
+    import simulated_target_service.database as tdb
+    with pytest.raises(ValueError, match="live targets are out of scope"):
+        tc.configure(conn, "Ann", "Simplicity", "http://prod.example.com", [], True, "")
+    cfg = tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", [], True, "")
+    assert cfg["status"] == "CONNECTED"
+    with pytest.raises(ValueError, match="Infer the target model"):
+        tc.confirm(conn, "Ann")
+    tc.infer_model(conn, CANON_TYPES)
+    tc.confirm(conn, "Ann")
     conn.commit()
-    with pytest.raises(ValueError, match="already provisioned"):
-        st.provision(conn, "Ann")
-    spec = tm.load_spec()
-    info = st.describe(spec)
-    names = {t["table"] for t in info["tables"]}
-    assert info["drift"] == [] and snap["snapshot_id"].startswith("TGTSYS-")
-    assert {"SIMP_ACCT_MASTER", "SIMP_ACCT_REGISTRATION", "SIMP_ADVISOR_ASSIGNMENT", "SIMP_CUSTOMER_TAX", "SIMP_GROUP"} <= names
-    assert len({n for n in names if n.startswith("SIMP_ACCT")}) == 2  # one canonical entity split across tables
-    db = sq.connect(st.target_db_path())
+    with pytest.raises(ValueError, match="one-time"):
+        tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", [], True, "")
+    with pytest.raises(ValueError, match="already confirmed"):
+        tc.infer_model(conn, CANON_TYPES)
+    spec = tc.spec(conn)
+    assert tc.get_config(conn)["confirmed_by"] == "Ann"
+    db = sq.connect(tdb.db_path())
     assert db.execute("SELECT COUNT(*) FROM SIMP_ACCT_MASTER").fetchone()[0] == 0  # no migration data, ever
-    assert db.execute("SELECT COUNT(*) FROM SIMP_REF_REGISTRATION").fetchone()[0] == 5
     db.close()
     canonical_names = {f for fields in CANON.values() for f in fields}
     assert not canonical_names & {f["column"] for b in spec["entities"].values() for f in b["fields"]}  # no column name is shared
+    # the target service is independent of the platform: it imports nothing from it
+    for path in pathlib.Path(tdb.__file__).parent.glob("*.py"):
+        imported = {n.module.split(".")[0] for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.ImportFrom) and n.module}
+        imported |= {a.name.split(".")[0] for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.Import) for a in n.names}
+        assert not imported & {"control_plane", "ui", "agents", "data_plane"}, path.name
 
 
-def test_gap_report_lists_missing_unused_and_code_lists():
-    report = tm.gap_report(tm.load_spec(), CANON)
+def test_unreachable_target_is_reported_not_raised(conn, monkeypatch):
+    def boom(url):
+        raise OSError("connection refused")
+    monkeypatch.setattr(tc, "_http_get", boom)
+    cfg = tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:9", [], True, "")
+    assert cfg["status"] == "CONFIGURED" and "Could not reach the target" in cfg["connection_detail"]
+    with pytest.raises(ValueError, match="Test the connection"):
+        tc.infer_model(conn, CANON_TYPES)
+
+
+def test_scope_limits_inference_to_selected_tables(conn, target_service):
+    tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", ["SIMP_GROUP", "SIMP_CUSTOMER"], False, "")
+    model = tc.infer_model(conn, CANON_TYPES)["model"]
+    tables = {t for b in model["entities"].values() for t in b["table_columns"]}
+    assert tables == {"SIMP_GROUP", "SIMP_CUSTOMER"}
+    assert all(f["code_list"] is None and f["codes"] == [] for b in model["entities"].values() for f in b["fields"])  # code lists not read
+
+
+def test_gap_report_lists_missing_unused_and_code_lists(spec):
+    report = tm.gap_report(spec, CANON)
     missing = {(g["entity"], g["target_field"]): g for g in report["missing"]}
     assert set(missing) == {("Account", "SIMP_ACCT_MASTER.ACCT_STATUS"), ("Client", "SIMP_CUSTOMER.ONBOARD_DT"), ("Client", "SIMP_CUSTOMER_TAX.TAX_COUNTRY")}
     assert missing[("Account", "SIMP_ACCT_MASTER.ACCT_STATUS")]["required"] and not missing[("Client", "SIMP_CUSTOMER.ONBOARD_DT")]["required"]
@@ -173,7 +266,7 @@ def test_gap_report_lists_missing_unused_and_code_lists():
     assert {c["target_field"] for c in report["code_lists"]} == {"SIMP_ACCT_REGISTRATION.REG_CD", "SIMP_CUSTOMER.SEGMENT_CD"}
 
 
-def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn, tmp_path, monkeypatch):
+def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn, tmp_path, monkeypatch, target_service):
     import ui.app as app_module
     import ui.state as state_module
     from ui.state import WorkspaceStateStore
@@ -190,7 +283,11 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
             return await client.post(path, data=data, follow_redirects=False, headers={"accept": "text/html"})
 
-    asyncio.run(call("Platform Admin", "/api/target-system/provision"))
+    asyncio.run(call("Platform Admin", "/api/target-system/configure", {"target_name": "Simplicity", "endpoint": "http://127.0.0.1:8100", "include_code_lists": "on"}))
+    asyncio.run(call("Platform Admin", "/api/target-system/infer"))
+    asyncio.run(call("Platform Admin", "/api/target-system/confirm"))
+    spec = tc.spec(conn)
+    assert spec is not None
     form = {"entity_name": "Account", "target_field": "SIMP_ACCT_MASTER.ACCT_STATUS"}
     assert "may+not+perform" in asyncio.run(call("Validation Specialist", "/api/target-mapping/gaps/raise", form)).headers["location"]
     assert "notice=" in asyncio.run(call("Migration Analyst", "/api/target-mapping/gaps/raise", form)).headers["location"]
@@ -201,7 +298,7 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     assert len(row) == 1 and row[0]["status"] == "OPEN" and row[0]["canonical_field"] == "ACCOUNT_STATUS" and row[0]["change_type"] == "ADD_FIELD"
     rid = row[0]["request_id"]
     asyncio.run(call("Migration Analyst", "/api/target-mapping/propose"))
-    pending = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G")}["SIMP_ACCT_MASTER.ACCT_STATUS"]
+    pending = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G", spec)}["SIMP_ACCT_MASTER.ACCT_STATUS"]
     assert pending["canonical_field"] is None  # unresolved until the SME decides and applies
     assert "may+not+perform" in asyncio.run(call("Migration Analyst", f"/api/canonical-changes/{rid}/decision", {"decision": "APPROVED"})).headers["location"]
     asyncio.run(call("Domain SME", f"/api/canonical-changes/{rid}/decision", {"decision": "APPROVED", "note": "ok"}))
@@ -209,11 +306,11 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     refreshed = asyncio.run(call("Migration Analyst", "/api/target-mapping/propose")).headers["location"]
     assert "now+have+a+canonical+source" in refreshed
     assert "Nothing+to+refresh" in asyncio.run(call("Migration Analyst", "/api/target-mapping/propose")).headers["location"]
-    after = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G")}["SIMP_ACCT_MASTER.ACCT_STATUS"]
+    after = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G", spec)}["SIMP_ACCT_MASTER.ACCT_STATUS"]
     assert after["canonical_field"] == "ACCOUNT_STATUS" and after["status"] == "PROPOSED"
 
 
-def test_demo_load_is_restricted_to_flagged_account_and_provisions_target(tmp_path, monkeypatch):
+def test_demo_load_is_restricted_to_flagged_account_and_infers_but_does_not_confirm_target(tmp_path, monkeypatch, target_service):
     import asyncio
     import httpx
     import control_plane.db as db
@@ -238,7 +335,12 @@ def test_demo_load_is_restricted_to_flagged_account_and_provisions_target(tmp_pa
 
     assert asyncio.run(post("s-plain")).status_code == 403
     ok = asyncio.run(post("s-flag"))
-    assert ok.status_code == 303
+    assert ok.status_code == 303 and "inferred" in ok.headers["location"]
+    conn = db.get_db_connection() if hasattr(db, "get_db_connection") else sqlite3.connect(tmp_path / "gate.db")
+    conn.row_factory = sqlite3.Row
+    cfg = tc.get_config(conn)
+    assert cfg["status"] == "INFERRED" and cfg["confirmed_by"] is None  # a human confirms the target model, not the demo button
+    conn.close()
     assert mgr.can_load_demo("flagged@example.invalid") and not mgr.can_load_demo("plain@example.invalid")
 
 
@@ -285,3 +387,11 @@ def test_refresh_button_shows_once_mappings_exist():
     from pathlib import Path
     html = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "target_mapping.html").read_text()
     assert "Refresh proposals from canonical model" in html and html.count('action="/api/target-mapping/propose"') == 2
+
+
+def test_unmatched_columns_get_a_suggested_canonical_name_for_change_requests():
+    from control_plane.services.target_inference import suggest_canonical_name as name
+    client = ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
+    assert name("Client", "ONBOARD_DT", client) == "CLIENT_ONBOARD_DATE"
+    assert name("Client", "TAX_COUNTRY", client) == "TAX_COUNTRY"
+    assert name("Account", "ACCT_STATUS", ["ACCT_NUM"]) == "ACCOUNT_STATUS"

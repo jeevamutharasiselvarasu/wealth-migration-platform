@@ -42,7 +42,7 @@ def build_queue(role: str, c: Dict[str, Any]) -> List[Dict[str, Any]]:
             add(f"{_plural(n, 'change request')} awaiting the Domain SME", "/canonical-changes", "Follow progress; regenerate target proposals once applied.", n, actionable=False)
     if not c.get("target_provisioned"):
         if role in PLATFORM_ROLES:
-            add("Complete the one-time target setup", "/target-mapping#target-system", "Platform-level; needed before canonical-to-target mapping.")
+            add("Complete the one-time target setup", "/target-mapping#target-system", "Configure, infer and confirm the target system before canonical-to-target mapping.")
         elif role in DISCOVERY_ROLES:
             add("Target setup awaits a Platform Admin", "/target-mapping#target-system", "One-time platform step; mapping starts once it is done.", actionable=False)
     if c.get("target_pending") and role in APPROVAL_ROLES:
