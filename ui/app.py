@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
+from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
@@ -101,7 +102,8 @@ def workflow_progress() -> dict:
     files_total = len(files)
     files_confirmed = sum(1 for r in files if r.get("inference_approval_status") == "APPROVED")
     files_pending = sum(1 for r in files if r.get("inference_approval_status") not in {"APPROVED", "REJECTED"})
-    proposals_pending = mappings_approved = changes_open = rfi_open = 0
+    proposals_pending = mappings_approved = changes_open = rfi_open = target_pending = 0
+    target_provisioned = False
     validation_status = validation_when = ""
     conn = get_db_connection()
     try:
@@ -116,6 +118,8 @@ def workflow_progress() -> dict:
                 (migration_id, *scope)).fetchone()[0]
         changes_open = conn.execute(
             "SELECT COUNT(*) FROM canonical_change_requests WHERE migration_id = ? AND status IN ('OPEN','DEFERRED')", (migration_id,)).fetchone()[0]
+        target_provisioned = simulated_target.snapshot(conn) is not None
+        target_pending = len([m for m in target_mapping.list_mappings(conn, migration_id) if m["status"] == "PROPOSED" and m["canonical_field"]])
         last_val = conn.execute(
             "SELECT status, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
         if last_val:
@@ -141,7 +145,7 @@ def workflow_progress() -> dict:
     progress = {
         "scope": scope, "files_total": files_total, "files_confirmed": files_confirmed, "files_pending": files_pending,
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
-        "changes_open": changes_open, "next": nxt,
+        "changes_open": changes_open, "next": nxt, "target_provisioned": target_provisioned, "target_pending": target_pending,
         "validation_status": validation_status, "validation_when": validation_when,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
@@ -612,6 +616,7 @@ async def dashboard_overview(request: Request):
         template_name="dashboard.html",
         extra_context={
             "page_title": "Migration Dashboard",
+            "my_queue": build_queue(user["role"], workflow_progress()),
             "notice": request.query_params.get("notice", ""),
             "user_name": user["name"],
             "user_role": user["role"],

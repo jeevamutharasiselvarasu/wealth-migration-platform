@@ -479,3 +479,13 @@ def test_setup_upload_row_grid_cannot_overflow_the_viewport():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
     assert "minmax(0,1fr)_minmax(0,2fr)_auto" in src and "[1fr_2fr_auto]" not in src  # a file input must not widen the page
+
+
+def test_compact_workflow_bar_and_my_queue_are_in_templates():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "ui" / "templates"
+    base = (root / "base.html").read_text(encoding="utf-8")
+    assert "xa-wf-compact" in base and "position:sticky" in base and "wf_path == '/'" in base
+    assert 'aria-label="My queue"' in (root / "dashboard.html").read_text(encoding="utf-8")
+    tm = (root / "target_mapping.html").read_text(encoding="utf-8")
+    assert 'aria-label="On this page"' in tm and 'id="target-mappings"' in tm and "target tables" in tm
