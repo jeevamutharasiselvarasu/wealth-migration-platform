@@ -58,6 +58,7 @@
   </section>
   {% elif has_mappings %}
   <div id="target-mappings" aria-hidden="true"></div>
+  {% if can_propose %}<div class="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3"><form action="/api/target-mapping/propose" method="post"><button class="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-blue-700">Refresh proposals from canonical model</button></form><p class="text-[11px] text-[#5A6A88]">Use after an approved change request is applied: unresolved fields pick up their new canonical source. Approved or rejected mappings are left as they are.</p></div>{% endif %}
   {% for entity, items in grouped.items() %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <h2 class="text-sm font-bold text-[#152C6B]">{{ entity }} <span class="font-mono text-[10px] text-[#8A97B2]">→ {{ spec.entities[entity].target_table }}</span></h2>

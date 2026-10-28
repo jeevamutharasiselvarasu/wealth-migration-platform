@@ -277,3 +277,9 @@ def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch
     assert 'aria-label="Demo load"' in home_j and "/api/demo/load" in home_j
     assert 'aria-label="Demo load"' not in home_a
     assert 'aria-label="Target system connection"' in setup_a.text
+
+
+def test_refresh_button_shows_once_mappings_exist():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "target_mapping.html").read_text()
+    assert "Refresh proposals from canonical model" in html and html.count('action="/api/target-mapping/propose"') == 2
