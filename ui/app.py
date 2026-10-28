@@ -1210,7 +1210,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "target_system": simulated_target.describe(spec) if target_snapshot else None,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
         "approved_rules": transformation_rules.approved_rules(), "preview": preview_result,
-        "can_propose": user["role"] in DISCOVERY_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
+        "can_propose": user["role"] in DISCOVERY_ROLES, "can_provision": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
     }
 
@@ -1225,19 +1225,11 @@ async def target_mapping_page(request: Request, notice: str = "", error: str = "
     return render_template_with_context(request, "target_mapping.html", _target_mapping_context(request, user, notice=notice, error=error))
 
 
-@app.get("/target-setup", response_class=HTMLResponse)
-async def target_setup_page(request: Request, notice: str = "", error: str = ""):
-    """Platform-level, one-time target system setup (separate from any single migration's setup)."""
-    user = get_current_user(request)
-    spec = target_mapping.load_spec()
-    status = _target_connection_status()
-    return render_template_with_context(request, "target_setup.html", {
-        "page_title": "Target system setup", "user_name": user["name"], "user_role": user["role"],
-        "notice": notice, "error": error, "can_provision": user["role"] in PLATFORM_ROLES,
-        "target_connection": status,
-        "target_system": simulated_target.describe(spec) if status["snapshot"] else None,
-        "entities": spec["entities"],
-    })
+@app.get("/target-setup")
+async def target_setup_redirect(request: Request):
+    """Target system and mapping are one page; keep the old address working."""
+    get_current_user(request)
+    return RedirectResponse(url="/target-mapping#target-system", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/target-system/provision")
@@ -1249,13 +1241,13 @@ async def provision_target_system(request: Request):
         try:
             snap = simulated_target.provision(conn, user["name"])
         except ValueError as exc:
-            return RedirectResponse(url="/target-setup?error=" + quote(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
+            return _target_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     state_store.audit_log.append({"event": "TARGET_SYSTEM_PROVISIONED", "actor": user["name"],
                                   "timestamp_utc": snap["provisioned_utc"], "details": {"snapshot_id": snap["snapshot_id"], "spec_version": snap["spec_version"]}})
-    return RedirectResponse(url="/target-setup?notice=" + quote(f"Simulated target system {snap['snapshot_id']} set up. It is fixed; shape the canonical model to fit it."), status_code=status.HTTP_303_SEE_OTHER)
+    return _target_redirect("notice", f"Target system {snap['snapshot_id']} set up. It is fixed; shape the canonical model to fit it.")
 
 
 @app.post("/api/target-mapping/gaps/raise")

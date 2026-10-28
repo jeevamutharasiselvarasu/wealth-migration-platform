@@ -23,9 +23,9 @@
     <h2 class="text-sm font-bold text-[#152C6B]">Target system</h2>
     {% if not target_snapshot %}
     <p class="mt-1 text-xs text-[#5A6A88]">The simulated Simplicity database is created once from the target specification. After that it is fixed and read-only; the canonical model is shaped to fit it.</p>
-    <a href="/target-setup" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white no-underline">Go to one-time target setup →</a>
+    {% if can_provision %}<p class="mt-2 text-xs text-[#41506B]">Setup is a one-time, platform-level action and cannot be repeated.</p><form action="/api/target-system/provision" method="post" class="mt-3"><button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Set up target system (one time)</button></form>{% else %}<p class="mt-2 text-xs font-bold text-amber-800">A Platform Admin must complete the one-time target setup before mapping can start.</p>{% endif %}
     {% else %}
-    <p class="mt-1 text-[11px] text-[#5A6A88]">{{ target_snapshot.snapshot_id }} · v{{ target_snapshot.spec_version }} · provisioned by {{ target_snapshot.provisioned_by }} on {{ target_snapshot.provisioned_utc[:10] }}. Fixed and read-only.</p>
+    <p class="mt-1 text-[11px] text-[#5A6A88]">{{ target_snapshot.snapshot_id }} · v{{ target_snapshot.spec_version }} · set up once by {{ target_snapshot.provisioned_by }} on {{ target_snapshot.provisioned_utc[:10] }}. Platform-level, fixed and read-only.</p>
     {% for d in target_system.drift %}<p class="mt-1 text-[11px] text-rose-800">⚠ {{ d }}</p>{% endfor %}
     <details class="mt-3"><summary class="cursor-pointer text-xs font-bold text-blue-700">Show {{ target_system.tables|length }} target tables</summary>
     <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">

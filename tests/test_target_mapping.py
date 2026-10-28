@@ -104,14 +104,16 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
 
     denied = asyncio.run(call("Domain SME", "POST", "/api/target-mapping/propose"))
     assert denied.status_code == 303 and "may+not+perform" in denied.headers["location"]
-    assert "/target-setup" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
+    assert "must complete the one-time target setup" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
+    assert "Set up target system (one time)" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert "Provision the simulated target system first" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"].replace("+", " ")
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-system/provision")).headers["location"]
     assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/target-system/provision")).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/provision")).headers["location"]
     again = asyncio.run(call("Platform Admin", "POST", "/api/target-system/provision")).headers["location"]
-    assert again.startswith("/target-setup?error=") and "already" in again
-    assert "Setup complete" in asyncio.run(call("Migration Analyst", "GET", "/target-setup")).text
+    assert "error=" in again and "already" in again
+    assert "Set up target system (one time)" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert asyncio.run(call("Migration Analyst", "GET", "/target-setup")).headers["location"] == "/target-mapping#target-system"
     assert "No target mapping proposals" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
     early = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/preview"))
     assert "error=" in early.headers["location"]
