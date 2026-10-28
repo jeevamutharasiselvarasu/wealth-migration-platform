@@ -1200,7 +1200,7 @@ def _canonical_field_lists() -> Dict[str, List[str]]:
 
 
 def _canonical_types() -> Dict[str, Dict[str, str]]:
-    """{entity: {field: type}} for inference; fields added by approved change requests are strings."""
+    """{entity: {field: type}} for inference; fields added by approved change requests have no declared type."""
     try:
         cfg = load_firm_config()
     except FirmConfigError:
@@ -1209,7 +1209,7 @@ def _canonical_types() -> Dict[str, Dict[str, str]]:
     for e in target_mapping.ENTITIES:
         if e in cfg.entities:
             out[e] = {f.name: f.type for f in cfg.entities[e].fields}
-            out[e].update({n: "string" for n in canonical_overlay.active_added_fields(e)})
+            out[e].update({n: "" for n in canonical_overlay.active_added_fields(e)})  # type unknown until defined
     return out
 
 

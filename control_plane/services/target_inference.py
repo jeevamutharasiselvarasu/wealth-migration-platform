@@ -51,6 +51,8 @@ def _similarity(a: Dict[str, float], b: Dict[str, float]) -> float:
 
 
 def _type_ok(target_type: str, canonical_type: str) -> bool:
+    if not canonical_type:  # fields added by change requests carry no declared type: do not exclude them on type
+        return True
     return _TYPE_GROUPS.get(target_type, "text") == _TYPE_GROUPS.get(canonical_type, "text")
 
 

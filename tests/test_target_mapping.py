@@ -395,3 +395,11 @@ def test_unmatched_columns_get_a_suggested_canonical_name_for_change_requests():
     assert name("Client", "ONBOARD_DT", client) == "CLIENT_ONBOARD_DATE"
     assert name("Client", "TAX_COUNTRY", client) == "TAX_COUNTRY"
     assert name("Account", "ACCT_STATUS", ["ACCT_NUM"]) == "ACCOUNT_STATUS"
+
+
+def test_fields_added_by_change_requests_match_regardless_of_declared_type(conn, target_service):
+    typed = {**CANON_TYPES, "Client": {**CANON_TYPES["Client"], "CLIENT_ONBOARD_DATE": ""}, "Account": {**CANON_TYPES["Account"], "ACCOUNT_STATUS": ""}}
+    tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", [], True, "")
+    model = tc.infer_model(conn, typed)["model"]
+    hints = {f["name"]: f["canonical_hint"] for b in model["entities"].values() for f in b["fields"]}
+    assert hints["SIMP_CUSTOMER.ONBOARD_DT"] == "CLIENT_ONBOARD_DATE" and hints["SIMP_ACCT_MASTER.ACCT_STATUS"] == "ACCOUNT_STATUS"
