@@ -206,7 +206,9 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     assert "may+not+perform" in asyncio.run(call("Migration Analyst", f"/api/canonical-changes/{rid}/decision", {"decision": "APPROVED"})).headers["location"]
     asyncio.run(call("Domain SME", f"/api/canonical-changes/{rid}/decision", {"decision": "APPROVED", "note": "ok"}))
     asyncio.run(call("Domain SME", f"/api/canonical-changes/{rid}/apply"))
-    asyncio.run(call("Migration Analyst", "/api/target-mapping/propose"))
+    refreshed = asyncio.run(call("Migration Analyst", "/api/target-mapping/propose")).headers["location"]
+    assert "now+have+a+canonical+source" in refreshed
+    assert "Nothing+to+refresh" in asyncio.run(call("Migration Analyst", "/api/target-mapping/propose")).headers["location"]
     after = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G")}["SIMP_ACCT_MASTER.ACCT_STATUS"]
     assert after["canonical_field"] == "ACCOUNT_STATUS" and after["status"] == "PROPOSED"
 

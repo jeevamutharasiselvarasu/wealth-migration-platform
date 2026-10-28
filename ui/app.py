@@ -1301,13 +1301,23 @@ async def propose_target_mappings(request: Request):
     try:
         if simulated_target.snapshot(conn) is None:
             return _target_redirect("error", "Provision the simulated target system first.")
+        unresolved_before = sum(1 for m in target_mapping.list_mappings(conn, migration_id) if not m["canonical_field"])
         created = target_mapping.propose(conn, migration_id, _canonical_field_lists())
+        unresolved_after = sum(1 for m in target_mapping.list_mappings(conn, migration_id) if not m["canonical_field"])
+        resolved = max(0, unresolved_before - unresolved_after)
         conn.commit()
     finally:
         conn.close()
     state_store.audit_log.append({"event": "TARGET_MAPPINGS_PROPOSED", "actor": user["name"],
-                                  "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"created": created}})
-    return _target_redirect("notice", f"{created} target mapping proposal(s) created. Each needs human approval." if created else "All target fields already have proposals.")
+                                  "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"created": created, "resolved": resolved}})
+    parts = []
+    if created:
+        parts.append(f"{created} target mapping proposal(s) created")
+    if resolved:
+        parts.append(f"{resolved} unresolved field(s) now have a canonical source")
+    if parts:
+        return _target_redirect("notice", "; ".join(parts) + ". Each needs human approval.")
+    return _target_redirect("notice", "Nothing to refresh: every target field already has a proposal and a canonical source.")
 
 
 @app.post("/api/target-mapping/preview", response_class=HTMLResponse)
