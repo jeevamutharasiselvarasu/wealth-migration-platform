@@ -64,7 +64,7 @@
       <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-4">
         <div class="text-xs font-bold text-[#152C6B]">Upload knowledge assets here</div>
         <p class="mt-1 text-[10px] leading-5 text-[#5A6A88]">Attach data dictionaries, target schema documents, business rules or operating notes. This uploads to the knowledge registry and returns to migration setup.</p>
-        <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_2fr_auto]">
+        <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]">
           <select form="knowledge-upload-form" name="category" aria-label="Knowledge asset category" class="rounded-lg border border-[#C3D2EC] bg-white p-3 text-xs"><option value="data_dictionary">Data dictionary</option><option value="target_schema">Target schema / canonical contract</option><option value="business_rules">Business rules</option><option value="firm_profile">Firm / operating knowledge</option><option value="questionnaire">Questionnaire</option></select>
           <input form="knowledge-upload-form" type="file" name="file" aria-label="Knowledge asset file" required accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" class="rounded-lg border border-[#C3D2EC] bg-white p-2 text-xs">
           <button form="knowledge-upload-form" type="submit" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700">Upload asset</button>

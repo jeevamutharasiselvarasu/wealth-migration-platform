@@ -473,3 +473,9 @@ def test_ui_walk_fixes_labels_and_no_raw_none_in_templates():
     assert 'aria-label="Identifier and relationship notes"' in (root / "firm_knowledge.html").read_text(encoding="utf-8")
     recon = (root / "reconciliation.html").read_text(encoding="utf-8")
     assert "item.canonical_column|default('UNMAPPED', true)" in recon  # None must not render as the word None
+
+
+def test_setup_upload_row_grid_cannot_overflow_the_viewport():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
+    assert "minmax(0,1fr)_minmax(0,2fr)_auto" in src and "[1fr_2fr_auto]" not in src  # a file input must not widen the page
