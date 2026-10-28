@@ -463,3 +463,13 @@ def test_information_request_form_only_for_roles_allowed_to_answer(tmp_path, mon
         html = asyncio.run(page(role))
         assert ("/api/mapping-gaps/RFI-T1/response" in html) is shown, role
         assert ("Read-only for " + role in html) is (not shown), role
+
+
+def test_ui_walk_fixes_labels_and_no_raw_none_in_templates():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "ui" / "templates"
+    login = (root / "login.html").read_text(encoding="utf-8")
+    assert 'for="login-email"' in login and 'id="login-email"' in login and 'for="login-password"' in login and 'id="login-password"' in login
+    assert 'aria-label="Identifier and relationship notes"' in (root / "firm_knowledge.html").read_text(encoding="utf-8")
+    recon = (root / "reconciliation.html").read_text(encoding="utf-8")
+    assert "item.canonical_column|default('UNMAPPED', true)" in recon  # None must not render as the word None

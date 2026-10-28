@@ -99,7 +99,7 @@
                 <div class="space-y-3 border-t border-[#e9eff9] pt-4">
                     <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">2. Identifier & Relationship Notes</h3>
                     <p class="text-[11px] text-[#5a6a88]">Document source primary keys, foreign keys, and known relationships for Account, Client, and Household. Do not infer or create joins when the source does not document them.</p>
-                    <textarea name="identifier_relationship_notes" rows="3" placeholder="e.g. source key names, documented account-to-client ownership, household grouping evidence" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-xs text-[#1c2a4a]">{{ form.identifier_relationship_notes or '' }}</textarea>
+                    <textarea name="identifier_relationship_notes" aria-label="Identifier and relationship notes" rows="3" placeholder="e.g. source key names, documented account-to-client ownership, household grouping evidence" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-xs text-[#1c2a4a]">{{ form.identifier_relationship_notes or '' }}</textarea>
                 </div>
                 <div class="flex justify-between items-center border-t border-[#e9eff9] pt-4">
                     <div class="text-[11px] text-[#5a6a88]">Only source-to-canonical discovery context is captured in P0. Custody, trading, performance, sleeve, AUM wave-sizing, and restricted-model questions are deferred.</div>
