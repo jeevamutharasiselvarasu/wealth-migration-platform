@@ -15,7 +15,7 @@ from ui.auth import session_mgr
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import activity_feed, canonical_overlay, migration_validation, target_mapping, transformation_rules
+from control_plane.services import activity_feed, canonical_overlay, migration_validation, simulated_target, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1154,16 +1154,26 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         mappings = target_mapping.list_mappings(conn, migration_id)
         approved_src = conn.execute(
             "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
+        target_snapshot = simulated_target.snapshot(conn)
+        ccr = {(r["entity_name"], r["canonical_field"]): r for r in conn.execute(
+            "SELECT entity_name, canonical_field, request_id, status FROM canonical_change_requests WHERE migration_id = ? "
+            "AND change_type = 'ADD_FIELD' AND status != 'REJECTED' ORDER BY created_utc", (migration_id,)).fetchall()}
         conn.commit()
     finally:
         conn.close()
     spec = target_mapping.load_spec()
+    gaps = target_mapping.gap_report(spec, _canonical_field_lists())
+    for g in gaps["missing"]:
+        existing = ccr.get((g["entity"], g["suggested_canonical_field"]))
+        g["change_request"] = dict(existing) if existing else None
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     for m in mappings:
         grouped.setdefault(m["entity_name"], []).append(m)
     return {
         "page_title": "Target Mapping", "user_name": user["name"], "user_role": user["role"],
-        "spec": spec, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
+        "spec": spec, "target_snapshot": target_snapshot, "gaps": gaps,
+        "target_system": simulated_target.describe(spec) if target_snapshot else None,
+        "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
         "approved_rules": transformation_rules.approved_rules(), "preview": preview_result,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
@@ -1180,12 +1190,75 @@ async def target_mapping_page(request: Request, notice: str = "", error: str = "
     return render_template_with_context(request, "target_mapping.html", _target_mapping_context(request, user, notice=notice, error=error))
 
 
+@app.post("/api/target-system/provision")
+async def provision_target_system(request: Request):
+    """One-time creation of the simulated Simplicity target database (read-only afterwards)."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            snap = simulated_target.provision(conn, user["name"])
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "TARGET_SYSTEM_PROVISIONED", "actor": user["name"],
+                                  "timestamp_utc": snap["provisioned_utc"], "details": {"snapshot_id": snap["snapshot_id"], "spec_version": snap["spec_version"]}})
+    return _target_redirect("notice", f"Simulated target system {snap['snapshot_id']} provisioned. It is now fixed; shape the canonical model to fit it.")
+
+
+@app.post("/api/target-mapping/gaps/raise")
+async def raise_gap_change_requests(request: Request, entity_name: str = Form(...), target_field: str = Form(...)):
+    """Turn a target-vs-canonical gap into an ordinary canonical change request for the Domain SME to decide.
+
+    The field name and definition come from the server-side gap report, never from the form.
+    target_field '*' raises every required gap that has no open request.
+    """
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    gaps = [g for g in target_mapping.gap_report(target_mapping.load_spec(), _canonical_field_lists())["missing"]
+            if g["entity"] == entity_name.strip() and (target_field == "*" and g["required"] or g["target_field"] == target_field)]
+    if not gaps:
+        return _target_redirect("error", "No matching gap: the canonical model already covers it.")
+    raised: List[str] = []
+    conn = get_db_connection()
+    try:
+        for g in gaps:
+            field = g["suggested_canonical_field"]
+            exists = conn.execute(
+                "SELECT 1 FROM canonical_change_requests WHERE migration_id = ? AND entity_name = ? AND canonical_field = ? "
+                "AND change_type = 'ADD_FIELD' AND status != 'REJECTED'", (migration_id, g["entity"], field)).fetchone()
+            if exists:
+                continue
+            request_id = "CCR-" + uuid.uuid4().hex[:10].upper()
+            conn.execute(
+                "INSERT INTO canonical_change_requests (request_id, migration_id, entity_name, canonical_field, change_type, "
+                "proposed_change, reason, status, requested_by, created_utc) VALUES (?, ?, ?, ?, 'ADD_FIELD', ?, ?, 'OPEN', ?, ?)",
+                (request_id, migration_id, g["entity"], field,
+                 f"Add optional canonical field {field} ({g['type']}) to {g['entity']}.",
+                 f"Target gap: Simplicity requires {g['target_field']}{' (required)' if g['required'] else ''} and the canonical model has no source field.",
+                 user["name"], datetime.now(timezone.utc).isoformat()))
+            raised.append(request_id)
+            state_store.audit_log.append({"event": "CANONICAL_CHANGE_REQUESTED", "actor": user["name"],
+                                          "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                          "details": {"request_id": request_id, "entity": g["entity"], "field": field, "source": "TARGET_GAP"}})
+        conn.commit()
+    finally:
+        conn.close()
+    if not raised:
+        return _target_redirect("error", "A change request already exists for that gap.")
+    return _target_redirect("notice", f"{len(raised)} canonical change request(s) raised ({', '.join(raised)}). The Domain SME approves and applies them; then regenerate target proposals.")
+
+
 @app.post("/api/target-mapping/propose")
 async def propose_target_mappings(request: Request):
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
+        if simulated_target.snapshot(conn) is None:
+            return _target_redirect("error", "Provision the simulated target system first.")
         created = target_mapping.propose(conn, migration_id, _canonical_field_lists())
         conn.commit()
     finally:

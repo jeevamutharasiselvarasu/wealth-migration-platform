@@ -16,7 +16,7 @@ import yaml
 from control_plane.services import transformation_rules
 
 ENTITIES = ("Account", "Client", "Household")
-SPEC_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "simplicity_target_demo.yaml"
+SPEC_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "simplicity_target_system.yaml"
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS target_mappings (
@@ -42,11 +42,49 @@ def ensure_table(conn: sqlite3.Connection) -> None:
 
 
 def load_spec(path: Optional[Path] = None) -> Dict[str, Any]:
-    spec = yaml.safe_load(Path(path or SPEC_PATH).read_text(encoding="utf-8"))
-    entities = spec.get("entities") or {}
+    """Mapping view of the simulated target: one flat field list per canonical entity, as TABLE.COLUMN.
+
+    Target-generated columns (surrogate keys) are not mappable and are omitted.
+    """
+    raw = yaml.safe_load(Path(path or SPEC_PATH).read_text(encoding="utf-8"))
+    entities = raw.get("entities") or {}
     if set(entities) - set(ENTITIES):
         raise ValueError("Target spec may only define Account, Client and Household in P0.")
-    return spec
+    code_lists = raw.get("code_lists") or {}
+    out: Dict[str, Any] = {}
+    for entity, body in entities.items():
+        fields, table_columns = [], {}
+        for table, cols in body["tables"].items():
+            table_columns[table] = [c["name"] for c in cols]
+            for c in cols:
+                if c.get("generated"):
+                    continue
+                fields.append({"name": f"{table}.{c['name']}", "table": table, "column": c["name"], "type": c.get("type", "string"),
+                               "required": bool(c.get("required")), "canonical_hint": c.get("canonical_hint"),
+                               "code_list": c.get("code_list"), "codes": code_lists.get(c.get("code_list"), [])})
+        out[entity] = {"target_table": ", ".join(body["tables"]), "fields": fields, "table_columns": table_columns}
+    return {**{k: raw[k] for k in ("spec_id", "spec_version", "status", "target_system")}, "entities": out}
+
+
+def gap_report(spec: Dict[str, Any], canonical_fields: Dict[str, List[str]]) -> Dict[str, Any]:
+    """Compare the target with the canonical model (deterministic; no record data).
+
+    missing: target fields whose canonical source does not exist yet (candidates for a canonical change
+    request). unused: canonical fields no target field draws from. code_lists: fields where the target
+    enforces its own code list, which a governed value-map rule must translate.
+    """
+    missing, unused, code_lists = [], [], []
+    for entity, body in spec["entities"].items():
+        known = list(canonical_fields.get(entity, []))
+        hints = {f["canonical_hint"] for f in body["fields"] if f.get("canonical_hint")}
+        for f in body["fields"]:
+            if f.get("canonical_hint") not in known:
+                missing.append({"entity": entity, "target_field": f["name"], "required": f["required"], "type": f["type"],
+                                "suggested_canonical_field": f.get("canonical_hint")})
+            if f.get("code_list"):
+                code_lists.append({"entity": entity, "target_field": f["name"], "canonical_field": f.get("canonical_hint"), "codes": f["codes"]})
+        unused.extend({"entity": entity, "canonical_field": c} for c in known if c not in hints)
+    return {"missing": missing, "unused": unused, "code_lists": code_lists}
 
 
 def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[str, List[str]],
@@ -66,12 +104,18 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
                 "transformation_expression, status, spec_version, created_utc) VALUES (?, ?, ?, ?, ?, 'DIRECT_COPY', 'PROPOSED', ?, ?)",
                 ("TGT-" + uuid.uuid4().hex[:12].upper(), migration_id, entity, field["name"], canonical, str(spec["spec_version"]), now))
             created += cur.rowcount
+            if canonical and not cur.rowcount:
+                conn.execute("UPDATE target_mappings SET canonical_field = ? WHERE migration_id = ? AND entity_name = ? "
+                             "AND target_field = ? AND canonical_field IS NULL AND status = 'PROPOSED'",
+                             (canonical, migration_id, entity, field["name"]))
     return created
 
 
 def list_mappings(conn: sqlite3.Connection, migration_id: str) -> List[Dict[str, Any]]:
     ensure_table(conn)
-    rows = conn.execute("SELECT * FROM target_mappings WHERE migration_id = ? ORDER BY entity_name, target_field", (migration_id,)).fetchall()
+    # Rows from an earlier target specification version stay in the table for audit but are not current mappings.
+    rows = conn.execute("SELECT * FROM target_mappings WHERE migration_id = ? AND spec_version = ? ORDER BY entity_name, target_field",
+                        (migration_id, str(load_spec()["spec_version"]))).fetchall()
     return [dict(r) for r in rows]
 
 

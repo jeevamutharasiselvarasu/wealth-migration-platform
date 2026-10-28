@@ -55,6 +55,8 @@ POST_POLICY = [
     (r"^/api/hitl/(approve|reject)$", APPROVAL_ROLES),
     (r"^/api/waves/evaluate-record$", VALIDATION_ROLES),
     (r"^/api/validation/run$", VALIDATION_ROLES),
+    (r"^/api/target-system/provision$", DISCOVERY_ROLES),
+    (r"^/api/target-mapping/gaps/raise$", CHANGE_REQUEST_ROLES),
     (r"^/api/target-mapping/propose$", DISCOVERY_ROLES),
     (r"^/api/target-mapping/preview$", TARGET_PREVIEW_ROLES),
     (r"^/api/target-mapping/[^/]+/review$", APPROVAL_ROLES),

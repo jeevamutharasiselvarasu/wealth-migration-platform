@@ -1,0 +1,45 @@
+# SIMULATED Simplicity target system (one-time provisioning; canonical -> target mapping).
+# NOT Simplicity's real physical/API schema: invented for the demo so the target differs from the
+# canonical model (split tables, surrogate keys, different names/types/code lists, extra required
+# columns). Provisioned once into a local SQLite file; no migration data is ever loaded into it.
+# Platform knowledge: keep separate from migration demo data. Replace with the owner-confirmed spec.
+spec_id: SIMPLICITY-TARGET-SIM
+spec_version: "0.2.0"
+status: SIMULATED_NOT_OWNER_CONFIRMED
+target_system: Simplicity
+code_lists:
+  SIMP_REF_REGISTRATION: [IND, JNT, IRA, TRU, ORG]     # differs from canonical REG_TYPE values
+  SIMP_REF_SEGMENT: [RETAIL, HNW, UHNW, INST]          # differs from canonical CLIENT_TYPE values
+entities:
+  Account:
+    tables:
+      SIMP_ACCT_MASTER:
+        - {name: ACCT_SK, type: integer, generated: true}          # target-assigned surrogate key
+        - {name: ACCT_NO, type: string, required: true, canonical_hint: ACCT_NUM}
+        - {name: CUSTODIAN_CD, type: string, required: true, canonical_hint: CUSTODIAN_CODE}
+        - {name: OPENED_ON, type: date, required: true, canonical_hint: OPEN_DATE}
+        - {name: ACCT_STATUS, type: string, required: true, canonical_hint: ACCOUNT_STATUS}
+      SIMP_ACCT_REGISTRATION:
+        - {name: ACCT_SK, type: integer, generated: true}
+        - {name: REG_CD, type: string, required: true, canonical_hint: REG_TYPE, code_list: SIMP_REF_REGISTRATION}
+      SIMP_ADVISOR_ASSIGNMENT:
+        - {name: ACCT_SK, type: integer, generated: true}
+        - {name: ADVISOR_ID, type: string, required: true, canonical_hint: REP_CODE}
+  Client:
+    tables:
+      SIMP_CUSTOMER:
+        - {name: CUST_SK, type: integer, generated: true}
+        - {name: CUST_REF, type: string, required: true, canonical_hint: CLIENT_ID}
+        - {name: DISPLAY_NAME, type: string, required: true, canonical_hint: LEGAL_NAME}
+        - {name: SEGMENT_CD, type: string, required: true, canonical_hint: CLIENT_TYPE, code_list: SIMP_REF_SEGMENT}
+        - {name: ONBOARD_DT, type: date, required: false, canonical_hint: CLIENT_ONBOARD_DATE}
+      SIMP_CUSTOMER_TAX:
+        - {name: CUST_SK, type: integer, generated: true}
+        - {name: TAX_NO, type: string, required: true, canonical_hint: TAX_ID}
+        - {name: TAX_COUNTRY, type: string, required: true, canonical_hint: TAX_COUNTRY}
+  Household:
+    tables:
+      SIMP_GROUP:
+        - {name: GROUP_SK, type: integer, generated: true}
+        - {name: GROUP_REF, type: string, required: true, canonical_hint: HH_ID}
+        - {name: GROUP_NAME, type: string, required: true, canonical_hint: HH_NAME}

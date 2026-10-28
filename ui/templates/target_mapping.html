@@ -8,17 +8,47 @@
     <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-blue-700">Canonical → target · Simplicity</div>
     <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Target Mapping</h1>
     <p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Map each canonical field to a Simplicity target field. Proposals come from the target specification; a Migration Analyst or Platform Admin approves each one and may apply an approved <a href="/transformation-rules" class="text-blue-700">transformation rule</a>. The preview is a read-only dry run that reports counts and findings, never record values.</p>
-    <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900"><b>Demo target specification</b> ({{ spec.spec_id }} v{{ spec.spec_version }}, {{ spec.status }}). It is a labelled stand-in, not Simplicity's owner-confirmed schema. Nothing is loaded into any target system.</p>
+    <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900"><b>Simulated target system</b> ({{ spec.spec_id }} v{{ spec.spec_version }}, {{ spec.status }}). Invented for the demo, not Simplicity's owner-confirmed schema. Its tables deliberately differ from the canonical model. Nothing is ever loaded into it.</p>
     <p class="mt-2 text-[10px] text-[#8A97B2]">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
   </section>
 
-  {% if not has_mappings %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="target-system">
+    <h2 class="text-sm font-bold text-[#152C6B]">Target system</h2>
+    {% if not target_snapshot %}
+    <p class="mt-1 text-xs text-[#5A6A88]">The simulated Simplicity database is created once from the target specification. After that it is fixed and read-only; the canonical model is shaped to fit it.</p>
+    {% if can_propose %}<form action="/api/target-system/provision" method="post" class="mt-3"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Provision simulated target system (one time)</button></form>{% else %}<p class="mt-2 text-[10px] text-[#5A6A88]">Migration Analyst or Platform Admin provisions the target system.</p>{% endif %}
+    {% else %}
+    <p class="mt-1 text-[11px] text-[#5A6A88]">{{ target_snapshot.snapshot_id }} · v{{ target_snapshot.spec_version }} · provisioned by {{ target_snapshot.provisioned_by }} on {{ target_snapshot.provisioned_utc[:10] }}. Fixed and read-only.</p>
+    {% for d in target_system.drift %}<p class="mt-1 text-[11px] text-rose-800">⚠ {{ d }}</p>{% endfor %}
+    <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+      {% for t in target_system.tables %}<div class="rounded-xl border border-[#D9E3F5] p-3"><div class="font-mono text-[11px] font-bold text-teal-700">{{ t.table }}</div><p class="mt-1 font-mono text-[10px] leading-4 text-[#5A6A88]">{% for c in t.columns %}{{ c.name }} <span class="text-[#8A97B2]">{{ c.type }}{% if c.required %} *{% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p></div>{% endfor %}
+    </div>
+    <p class="mt-2 text-[10px] text-[#8A97B2]">* required. Surrogate keys (SK) are assigned by the target and are not mapped.</p>
+    {% endif %}
+  </section>
+
+  {% if target_snapshot %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="target-gaps">
+    <h2 class="text-sm font-bold text-[#152C6B]">Gap report: target vs canonical model</h2>
+    <p class="mt-1 text-xs text-[#5A6A88]">Target fields with no canonical source can be raised as canonical change requests. The Domain SME approves and applies them on <a href="/canonical-changes" class="text-blue-700">Canonical changes</a>; nothing changes in the canonical model until then.</p>
+    {% if gaps.missing %}
+    <table class="mt-3 w-full text-left text-xs"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Missing canonical field</th><th class="p-1">Required</th><th class="p-1">Change request</th></tr></thead><tbody>
+      {% for g in gaps.missing %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ g.target_field }}</td><td class="p-1 font-mono">{{ g.entity }}.{{ g.suggested_canonical_field }}</td><td class="p-1">{{ 'yes' if g.required else 'no' }}</td>
+        <td class="p-1">{% if g.change_request %}<a href="/canonical-changes" class="font-mono text-blue-700">{{ g.change_request.request_id }}</a> <span class="text-[10px] text-[#5A6A88]">{{ g.change_request.status }}</span>{% elif can_raise_change %}<form action="/api/target-mapping/gaps/raise" method="post"><input type="hidden" name="entity_name" value="{{ g.entity }}"><input type="hidden" name="target_field" value="{{ g.target_field }}"><button aria-label="Raise change request for {{ g.target_field }}" class="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-bold text-blue-700">Raise change request</button></form>{% else %}<span class="text-[10px] text-[#8A97B2]">Analyst or Admin raises</span>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="mt-3 text-xs text-teal-800">Every target field has a canonical source.</p>{% endif %}
+    {% if gaps.unused %}<p class="mt-3 text-[11px] text-[#5A6A88]">Canonical fields no target field uses (informational): {% for u in gaps.unused %}<span class="font-mono">{{ u.entity }}.{{ u.canonical_field }}</span>{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+    {% for c in gaps.code_lists %}<p class="mt-1 text-[11px] text-[#5A6A88]"><span class="font-mono">{{ c.target_field }}</span> accepts only {{ c.codes|join(', ') }}: translate {{ c.canonical_field }} with an approved <a href="/transformation-rules" class="text-blue-700">value-map rule</a>.</p>{% endfor %}
+  </section>
+  {% endif %}
+
+  {% if target_snapshot and not has_mappings %}
   <section class="rounded-2xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center">
     <div class="font-bold text-[#152C6B]">No target mapping proposals yet</div>
     <p class="mt-1 text-xs text-[#5A6A88]">Generate one proposal per target field from the demo specification. Fields whose canonical source does not exist stay unresolved.</p>
     {% if can_propose %}<form action="/api/target-mapping/propose" method="post" class="mt-3"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Generate target proposals →</button></form>{% else %}<p class="mt-2 text-[10px] text-[#5A6A88]">Migration Analyst or Platform Admin generates proposals.</p>{% endif %}
   </section>
-  {% else %}
+  {% elif has_mappings %}
   {% for entity, items in grouped.items() %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <h2 class="text-sm font-bold text-[#152C6B]">{{ entity }} <span class="font-mono text-[10px] text-[#8A97B2]">→ {{ spec.entities[entity].target_table }}</span></h2>
