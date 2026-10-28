@@ -40,10 +40,10 @@
     <h2 class="text-sm font-bold text-[#152C6B]">Gap report: target vs canonical model</h2>
     <p class="mt-1 text-xs text-[#5A6A88]">Target fields with no canonical source can be raised as canonical change requests. The Domain SME approves and applies them on <a href="/canonical-changes" class="text-blue-700">Canonical changes</a>; nothing changes in the canonical model until then.</p>
     {% if gaps.missing %}
-    <table class="mt-3 w-full text-left text-xs"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Missing canonical field</th><th class="p-1">Required</th><th class="p-1">Change request</th></tr></thead><tbody>
+    <div class="overflow-x-auto"><table class="mt-3 w-full text-left text-xs"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Missing canonical field</th><th class="p-1">Required</th><th class="p-1">Change request</th></tr></thead><tbody>
       {% for g in gaps.missing %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ g.target_field }}</td><td class="p-1 font-mono">{{ g.entity }}.{{ g.suggested_canonical_field }}</td><td class="p-1">{{ 'yes' if g.required else 'no' }}</td>
         <td class="p-1">{% if g.change_request %}<a href="/canonical-changes" class="font-mono text-blue-700">{{ g.change_request.request_id }}</a> <span class="text-[10px] text-[#5A6A88]">{{ g.change_request.status }}</span>{% elif can_raise_change %}<form action="/api/target-mapping/gaps/raise" method="post"><input type="hidden" name="entity_name" value="{{ g.entity }}"><input type="hidden" name="target_field" value="{{ g.target_field }}"><button aria-label="Raise change request for {{ g.target_field }}" class="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-bold text-blue-700">Raise change request</button></form>{% else %}<span class="text-[10px] text-[#8A97B2]">Analyst or Admin raises</span>{% endif %}</td></tr>{% endfor %}
-    </tbody></table>
+    </tbody></table></div>
     {% else %}<p class="mt-3 text-xs text-teal-800">Every target field has a canonical source.</p>{% endif %}
     {% if gaps.unused %}<p class="mt-3 text-[11px] text-[#5A6A88]">Canonical fields no target field uses (informational): {% for u in gaps.unused %}<span class="font-mono">{{ u.entity }}.{{ u.canonical_field }}</span>{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
     {% for c in gaps.code_lists %}<p class="mt-1 text-[11px] text-[#5A6A88]"><span class="font-mono">{{ c.target_field }}</span> accepts only {{ c.codes|join(', ') }}: translate {{ c.canonical_field }} with an approved <a href="/transformation-rules" class="text-blue-700">value-map rule</a>.</p>{% endfor %}
@@ -95,9 +95,9 @@
       <div class="rounded-xl border border-[#D9E3F5] p-3">
         <div class="text-xs font-bold text-[#152C6B]">{{ entity }} → {{ p.target_table }} <span class="ml-2 font-mono text-[10px] font-normal text-[#8A97B2]">{{ p.row_count }} source row(s)</span></div>
         {% if p.join %}<p class="mt-1 text-[10px] text-[#5A6A88]">Files joined on {{ p.join.key or 'no key' }}: {{ p.join.files }} file(s) → {{ p.join.keyed_rows }} keyed row(s){% if p.join.unkeyed_rows %}, {{ p.join.unkeyed_rows }} without a key{% endif %}{% if p.join.conflicts %} · <span class="text-amber-700">{{ p.join.conflicts }} conflicting value(s) (first kept)</span>{% endif %}</p>{% endif %}
-        <table class="mt-2 w-full text-left text-xs"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Canonical source</th><th class="p-1">Rule</th><th class="p-1">Status</th></tr></thead><tbody>
+        <div class="overflow-x-auto"><table class="mt-2 w-full text-left text-xs"><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]"><th class="p-1">Target field</th><th class="p-1">Canonical source</th><th class="p-1">Rule</th><th class="p-1">Status</th></tr></thead><tbody>
           {% for f in p.fields %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ f.target_field }}{% if f.required %} *{% endif %}</td><td class="p-1 font-mono">{{ f.canonical_field or '—' }}</td><td class="p-1 font-mono">{{ f.rule or '—' }}</td><td class="p-1 {% if not f.approved %}text-amber-700{% elif f.blank_values %}text-rose-700{% else %}text-teal-700{% endif %}">{% if not f.approved %}not approved{% elif f.blank_values %}{{ f.blank_values }} blank{% else %}ok{% endif %}</td></tr>{% endfor %}
-        </tbody></table>
+        </tbody></table></div>
         {% if p.uncovered_required %}<p class="mt-2 text-[11px] text-amber-800">Required target fields without an approved mapping: {{ p.uncovered_required|join(', ') }}</p>{% endif %}
         {% for w in p.warnings %}<p class="mt-1 text-[11px] text-amber-800">⚠ {{ w }}</p>{% endfor %}
       </div>
