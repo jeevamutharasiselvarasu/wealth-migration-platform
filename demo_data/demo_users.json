@@ -44,6 +44,14 @@
       "roles": [
         "Validation Specialist"
       ]
+    },
+    {
+      "email": "owner.demo@simplicitywealth.com",
+      "name": "Demo Owner",
+      "default_role": "Platform Admin",
+      "roles": [
+        "Platform Admin"
+      ]
     }
   ]
 }
