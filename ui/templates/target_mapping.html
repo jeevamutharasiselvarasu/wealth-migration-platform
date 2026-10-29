@@ -30,6 +30,7 @@
     </ol>
     {% if c and c.status == 'CONFIRMED' %}
       <p class="mt-3 text-[11px] text-[#5A6A88]">{{ c.target_name }} · {{ c.endpoint }} · model {{ c.schema_hash }} · confirmed by {{ c.confirmed_by }} on {{ c.confirmed_utc[:10] }}. Setup is locked; every migration uses this target.</p>
+      {% if can_setup_target %}<form action="/api/target-system/reopen" method="post" class="mt-2 flex flex-wrap items-center gap-2"><input name="reason" required maxlength="200" placeholder="Reason for reopening" aria-label="Reason for reopening the target setup" class="rounded-lg border border-[#C3D2EC] p-2 text-xs"><button type="submit" class="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800">Reopen setup to reconfigure</button><span class="text-[10px] text-[#5A6A88]">Pauses target mapping until you confirm again. Recorded in the audit log.</span></form>{% endif %}
     {% elif can_setup_target %}
       <form action="/api/target-system/configure" method="post" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         <label class="text-xs font-bold text-[#41506B]">Target system name<input name="target_name" required value="{{ c.target_name if c else 'Simplicity' }}" class="mt-1 w-full rounded-lg border border-[#C3D2EC] p-2.5 font-normal"></label>
@@ -59,7 +60,7 @@
       {% if inferred.unassigned_tables %}<p class="mt-2 text-[11px] text-amber-800">Not matched to Account, Client or Household: {{ inferred.unassigned_tables|join(', ') }}</p>{% endif %}
       <p class="mt-2 text-[10px] text-[#8A97B2]">Surrogate keys assigned by the target are not mapped. Fields with no match become gaps below once confirmed.</p>
     </details>
-    {% if c.status == 'INFERRED' and can_setup_target %}<form action="/api/target-system/confirm" method="post" class="mt-3"><button type="submit" class="rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white">Confirm target model &amp; lock setup</button><span class="ml-2 text-[10px] text-[#5A6A88]">Recorded under your signed-in name. Cannot be repeated.</span></form>{% endif %}
+    {% if c.status == 'INFERRED' and can_setup_target %}<form action="/api/target-system/confirm" method="post" class="mt-3"><button type="submit" class="rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white">Confirm target model &amp; lock setup</button><span class="ml-2 text-[10px] text-[#5A6A88]">Recorded under your signed-in name. A Platform Admin can reopen it later.</span></form>{% endif %}
     {% endif %}
   </section>
 

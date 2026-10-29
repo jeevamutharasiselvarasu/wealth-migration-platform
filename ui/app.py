@@ -1327,6 +1327,23 @@ async def confirm_target_system(request: Request):
     return _target_redirect("notice", "Target system confirmed. Setup is complete and locked; mapping can start.")
 
 
+@app.post("/api/target-system/reopen")
+async def reopen_target_system(request: Request, reason: str = Form("")):
+    """Platform Admin unlocks a confirmed target setup to reconfigure it. Audited; target mapping pauses until re-confirmed."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            target_connector.reopen(conn, user["name"], reason)
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_SYSTEM_REOPENED", user, {"reason": reason.strip()[:200]})
+    return _target_redirect("notice", "Target setup reopened. Change the configuration, infer and confirm again; target mapping is paused until then.")
+
+
 @app.post("/api/target-mapping/gaps/raise")
 async def raise_gap_change_requests(request: Request, entity_name: str = Form(...), target_field: str = Form(...)):
     """Turn a target-vs-canonical gap into an ordinary canonical change request for the Domain SME to decide.

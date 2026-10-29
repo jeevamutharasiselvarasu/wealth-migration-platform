@@ -176,7 +176,16 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "Inferred target model" in page and "Confirm target model" in page and "SIMP_ACCT_MASTER.ACCT_NO" in page
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]
     locked = asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", cfg_form)).headers["location"]
-    assert "error=" in locked and "one-time" in locked.replace("+", " ")
+    assert "error=" in locked and "locked" in locked.replace("+", " ")
+    for role in ("Domain SME", "Migration Analyst", "Validation Specialist"):
+        assert "may+not+perform" in asyncio.run(call(role, "POST", "/api/target-system/reopen", {"reason": "x"})).headers["location"]
+    assert "Reopen setup to reconfigure" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": " "})).headers["location"]
+    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": "Owner changed the code lists"})).headers["location"]
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-mapping/propose")).headers["location"]  # mapping paused
+    assert "Save &amp; test connection" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    for step, form in (("configure", cfg_form), ("infer", None), ("confirm", None)):
+        assert "notice=" in asyncio.run(call("Platform Admin", "POST", f"/api/target-system/{step}", form)).headers["location"]
     assert "Confirm target model" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert asyncio.run(call("Migration Analyst", "GET", "/target-setup")).headers["location"] == "/target-mapping#target-system"
     assert "No target mapping proposals" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
@@ -221,7 +230,7 @@ def test_target_setup_is_one_time_and_target_is_separate_and_different_from_cano
     tc.infer_model(conn, CANON_TYPES)
     tc.confirm(conn, "Ann")
     conn.commit()
-    with pytest.raises(ValueError, match="one-time"):
+    with pytest.raises(ValueError, match="locked"):
         tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", [], True, "")
     with pytest.raises(ValueError, match="already confirmed"):
         tc.infer_model(conn, CANON_TYPES)

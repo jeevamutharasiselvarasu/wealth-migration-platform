@@ -2,7 +2,8 @@
 
 The target is an external system reached only through a configured endpoint. This POC allows loopback
 endpoints only (the simulated target service); no live Azure or production connection is made, and no
-credentials are stored. Setup is one-time: once the inferred model is confirmed the record is locked.
+credentials are stored. Once the inferred model is confirmed the record is locked; a Platform Admin can reopen it
+(with a recorded reason) to reconfigure, which withdraws the confirmed model until it is confirmed again.
 """
 import json
 import sqlite3
@@ -94,7 +95,7 @@ def configure(conn: sqlite3.Connection, actor: str, target_name: str, endpoint: 
     ensure_table(conn)
     existing = get_config(conn)
     if is_confirmed(existing):
-        raise ValueError("Target system setup is a one-time activity and is already confirmed.")
+        raise ValueError("Target system setup is confirmed and locked. A Platform Admin must reopen it before it can be changed.")
     name = str(target_name or "").strip()
     if not name:
         raise ValueError("Target system name is required.")
@@ -107,6 +108,19 @@ def configure(conn: sqlite3.Connection, actor: str, target_name: str, endpoint: 
         "status, configured_by, configured_utc) VALUES (1, ?, ?, ?, ?, ?, ?, 'CONFIGURED', ?, ?)",
         (name, CONNECTOR_TYPE, endpoint, json.dumps(scope), 1 if include_code_lists else 0, str(owner or "").strip(), actor, now))
     return test_connection(conn)
+
+
+def reopen(conn: sqlite3.Connection, actor: str, reason: str) -> Dict[str, Any]:
+    """Platform Admin unlocks a confirmed setup so it can be reconfigured. Withdraws the confirmed model; existing mappings stay for audit."""
+    cfg = get_config(conn)
+    if not is_confirmed(cfg):
+        raise ValueError("Only a confirmed target setup can be reopened.")
+    if not str(reason or "").strip():
+        raise ValueError("A reason is required to reopen the target setup.")
+    conn.execute("UPDATE target_system_config SET status = 'CONFIGURED', inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL, "
+                 "confirmed_by = NULL, confirmed_utc = NULL, connection_detail = ? WHERE config_id = 1",
+                 (f"Reopened by {actor}: {str(reason).strip()[:200]}. Save and test the connection, infer, then confirm again.",))
+    return get_config(conn)
 
 
 def test_connection(conn: sqlite3.Connection) -> Dict[str, Any]:
