@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1666,6 +1666,29 @@ async def preview_transformation_rule(request: Request, rule_type: str = Form(..
     except (ValueError, TypeError) as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     return JSONResponse({"ok": True, "rows": rows})
+
+
+@app.post("/api/transformation-rules/infer")
+async def infer_transformation_rules(request: Request, rule_text: str = Form("")):
+    """Turn business-rule text into DRAFT governed rules. Each still needs Analyst/Admin approval; unmatched sentences are reported, not guessed."""
+    user = get_current_user(request)
+    if not rule_text.strip():
+        return _rules_redirect("error", "Paste at least one business rule.")
+    conn = get_db_connection()
+    try:
+        result = rule_inference.save_drafts(conn, rule_text, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    for item in result["created"]:
+        state_store.audit_log.append({"event": "TRANSFORMATION_RULE_INFERRED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                      "details": {"rule": item["rule"], "source_text": item["statement"][:300]}})
+    parts = [f"{len(result['created'])} draft rule(s) inferred ({', '.join(i['rule'] for i in result['created']) or 'none'}); each needs approval before use"]
+    if result["skipped"]:
+        parts.append(f"{len(result['skipped'])} already exist")
+    if result["unrecognised"]:
+        parts.append(f"{len(result['unrecognised'])} not recognised: " + " | ".join(u["statement"][:60] for u in result["unrecognised"][:3]))
+    return _rules_redirect("error" if not result["created"] and not result["skipped"] else "notice", "; ".join(parts) + ".")
 
 
 @app.post("/api/transformation-rules")

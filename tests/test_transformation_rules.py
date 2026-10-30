@@ -163,6 +163,16 @@ def test_routes_are_role_gated_and_rule_can_be_applied_during_mapping_review(db,
     check = sqlite3.connect(db)
     tr.ensure_table(check)
     assert check.execute("SELECT COUNT(*) FROM transformation_rules").fetchone()[0] == 0
+    infer_form = {"rule_text": "- Map SCH to SCHWAB\n- Make it nicer"}
+    for role in ("Validation Specialist", "Domain SME"):
+        assert "may+not+perform" in asyncio.run(call(role, "POST", "/api/transformation-rules/infer", infer_form)).headers["location"]
+    assert "Infer draft rules" in asyncio.run(call("Migration Analyst", "GET", "/transformation-rules")).text
+    inferred = asyncio.run(call("Migration Analyst", "POST", "/api/transformation-rules/infer", infer_form)).headers["location"]
+    assert "notice=" in inferred and "1+draft+rule" in inferred and "not+recognised" in inferred
+    assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/transformation-rules/infer", {"rule_text": "nonsense"})).headers["location"]
+    assert check.execute("SELECT COUNT(*) FROM transformation_rules WHERE status = 'DRAFT'").fetchone()[0] == 1
+    check.execute("DELETE FROM transformation_rules")
+    check.commit()
     bad = asyncio.run(call("Migration Analyst", "POST", "/api/transformation-rules", {**form, "params_json": '{"map": {}}'}))
     assert "error=" in bad.headers["location"]
     ok = asyncio.run(call("Migration Analyst", "POST", "/api/transformation-rules", form))
@@ -193,3 +203,32 @@ def test_bare_custodian_column_is_proposed_as_custodian_code(db):
     result = SchemaMapperAgent().map_source_to_canonical("Account", [{"LEGACY_ACCT_NO": "AC-1", "CUSTODIAN": "CUST-A"}])
     lineage = {l["source_field"]: l["canonical_field"] for l in result["field_lineages"]}
     assert lineage["CUSTODIAN"] == "CUSTODIAN_CODE"
+
+
+# ---------------------------------------------------------------- XODUS-008 inference from business-rule text
+def test_text_rules_infer_validated_proposals_and_report_what_is_not_recognised():
+    from control_plane.services import rule_inference as ri
+    text = ("# heading ignored\n- Map SCH to SCHWAB, FID to FIDELITY\n- Dates are MM/DD/YYYY or YYYYMMDD\n- Strip $ and , and keep 2 decimals for amounts\n"
+            "- Concatenate FIRST_NAME and LAST_NAME with a space\n- Split on \"-\" and take the second part\n- Default to \"UNKNOWN\" if blank\n"
+            "- Replace \"N/A\" with \"\"\n- Run DROP TABLE accounts\n- Make it nicer")
+    out = ri.infer(text)
+    kinds = [r.get("rule_type") for r in out]
+    assert kinds == ["VALUE_MAP", "DATE_FORMAT", "NUMBER_CLEAN", "CONCAT", "SPLIT_PART", "DEFAULT_IF_BLANK", "IF_EQUALS", None, None]
+    assert out[0]["params"]["map"] == {"SCH": "SCHWAB", "FID": "FIDELITY"} and out[3]["params"]["sources"] == ["FIRST_NAME", "LAST_NAME"]
+    assert out[4]["params"] == {"delimiter": "-", "index": 1} and out[1]["params"]["input_formats"] == ["MM/DD/YYYY", "YYYYMMDD"]
+    assert not out[7]["recognised"] and "No supported pattern" in out[7]["reason"]
+
+
+def test_inferred_rules_are_drafts_deduplicated_and_unusable_until_approved(tmp_path, monkeypatch):
+    import sqlite3
+    from control_plane.services import rule_inference as ri, transformation_rules as tr
+    conn = sqlite3.connect(tmp_path / "r.db")
+    conn.row_factory = sqlite3.Row
+    tr.ensure_table(conn)
+    first = ri.save_drafts(conn, "Map SCH to SCHWAB\nGibberish line", "Ann")
+    assert len(first["created"]) == 1 and len(first["unrecognised"]) == 1
+    rule = tr.list_rules(conn)[0]
+    assert rule["status"] == "DRAFT" and 'From business rule: "Map SCH to SCHWAB"' in rule["description"] and rule["created_by"] == "Ann"
+    again = ri.save_drafts(conn, "Map SCH to SCHWAB", "Ann")
+    assert again["created"] == [] and len(again["skipped"]) == 1 and len(tr.list_rules(conn)) == 1
+    assert tr.list_rules(conn)[0]["status"] == "DRAFT"  # still needs a human approval
