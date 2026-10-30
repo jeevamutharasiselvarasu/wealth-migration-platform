@@ -543,6 +543,7 @@ async def load_demo_migration(request: Request):
     knowledge_items = manifest.get("knowledge_files") or [
         {"path": setup.get("knowledge_schema_ref", ""), "category": "data_dictionary"},
         {"path": setup.get("knowledge_rules_ref", ""), "category": "transformation_rule"},
+        {"path": "demo_data/knowledge/corecap_business_rules.md", "category": "business_rules"},
     ]
     registered_knowledge = []
     for item in knowledge_items:
@@ -1771,6 +1772,7 @@ async def transformation_rules_page(request: Request, notice: str = "", error: s
         "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
         "date_formats": list(transformation_rules.DATE_FORMATS),
         "can_author": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
+        "rule_assets": [d for d in state_store.firm_knowledge_docs if d.get("category") in ("business_rules", "transformation_rule") and d.get("full_text")],
         "notice": notice, "error": error,
     })
 
@@ -1787,14 +1789,20 @@ async def preview_transformation_rule(request: Request, rule_type: str = Form(..
 
 
 @app.post("/api/transformation-rules/infer")
-async def infer_transformation_rules(request: Request, rule_text: str = Form("")):
+async def infer_transformation_rules(request: Request, rule_text: str = Form(""), asset_id: str = Form("")):
     """Turn business-rule text into DRAFT governed rules. Each still needs Analyst/Admin approval; unmatched sentences are reported, not guessed."""
     user = get_current_user(request)
+    label = ""
+    if asset_id:
+        doc = next((d for d in state_store.firm_knowledge_docs if d.get("id") == asset_id), None)
+        if not doc or not doc.get("full_text"):
+            return _rules_redirect("error", "That knowledge asset has no readable text. Register the business rules as a Markdown or text file.")
+        rule_text, label = doc["full_text"], f"asset {doc['id']}, {doc['filename']}"
     if not rule_text.strip():
-        return _rules_redirect("error", "Paste at least one business rule.")
+        return _rules_redirect("error", "Paste at least one business rule or choose a business-rules knowledge asset.")
     conn = get_db_connection()
     try:
-        result = rule_inference.save_drafts(conn, rule_text, user["name"])
+        result = rule_inference.save_drafts(conn, rule_text, user["name"], label)
         conn.commit()
     finally:
         conn.close()

@@ -92,12 +92,13 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     migration_id = state.questionnaire_data["migration_id"]
     assert state.questionnaire_data["migration_setup"]["target_system"] == "Simplicity"
     assert sum(len(files) for files in state.entity_source_files.values()) == 9
-    assert len(state.firm_knowledge_docs) == 2
+    assert len(state.firm_knowledge_docs) == 3
+    assert any(d["category"] == "business_rules" and d["filename"] == "corecap_business_rules.md" and d["full_text"] for d in state.firm_knowledge_docs)
 
     events = read_events(migration_id, limit=5000)
     source_events = [event for event in events if event["event_type"] == "SOURCE_FILE_UPLOADED"]
     assert len(source_events) == 9
-    assert sum(event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED" for event in events) == 2
+    assert sum(event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED" for event in events) == 3
 
     def contains_sample_values(value):
         if isinstance(value, dict):
@@ -115,8 +116,8 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     assert restarted.questionnaire_data["migration_id"] == migration_id
     assert restarted.questionnaire_data["migration_setup"]["target_system"] == "Simplicity"
     assert sum(len(files) for files in restarted.entity_source_files.values()) == 9
-    assert len(restarted.firm_knowledge_docs) == 2
-    assert restarted.generated_dashboard["knowledge_asset_count"] == 2
+    assert len(restarted.firm_knowledge_docs) == 3
+    assert restarted.generated_dashboard["knowledge_asset_count"] == 3
 
 
 
