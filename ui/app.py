@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -723,6 +723,19 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             display_status = "NEEDS_CLARIFICATION" if inferred_entity not in {"Account", "Household", "Client"} else "OUT_OF_SCOPE" if not selected else review_status
             source_uploads.append({**record, "file_id": record.get("file_id", file_id), "inferred_entity": inferred_entity, "display_status": display_status, "scope_eligible": selected})
     source_uploads.sort(key=lambda item: item.get("uploaded_at", ""), reverse=True)
+    cross = None
+    loaded = []
+    for item in source_uploads:
+        stored = item.get("stored_path")
+        if item.get("inference_approval_status") == "REJECTED" or not stored or not Path(stored).is_file() or len(loaded) >= 12:
+            continue
+        try:
+            loaded.append({"name": item.get("filename", "source"), "entity": item["inferred_entity"],
+                           "rows": read_source_records(item.get("filename", "source.csv"), Path(stored).read_bytes())})
+        except (OSError, ValueError):
+            continue
+    if len(loaded) >= 2:
+        cross = cross_file.analyze(loaded)
     return render_template_with_context(
         request=request,
         template_name="entity_sample_files.html",
@@ -733,7 +746,7 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             "user_role": user["role"],
             "selected_entities": state_store.get_source_upload_entities(),
             "in_scope_entities": in_scope_entities,
-            "source_uploads": source_uploads,
+            "source_uploads": source_uploads, "cross_file": cross,
             "uploaded_entity": uploaded,
             "notice": notice,
             "error": error,

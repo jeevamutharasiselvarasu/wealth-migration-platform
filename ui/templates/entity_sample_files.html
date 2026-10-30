@@ -80,6 +80,24 @@
     {% endif %}
   </section>
 
+  {% if cross_file %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="cross-file-analysis">
+    <h2 class="text-sm font-bold text-[#152C6B]">Cross-file analysis <span class="font-mono text-[10px] font-normal text-[#8A97B2]">{{ cross_file.files_analyzed }} files</span></h2>
+    <p class="mt-1 text-xs text-[#5A6A88]">Evidence for review: how the uploaded files relate. Counts and column names only; no values are shown and nothing is merged for you.</p>
+    {% if cross_file.duplicate_files %}<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><b>Duplicate files</b>{% for d in cross_file.duplicate_files %}<div>{{ d.files|join(' and ') }}: {{ d.detail }}</div>{% endfor %}</div>{% endif %}
+    {% if cross_file.relationships %}<h3 class="mt-4 text-xs font-bold text-[#152C6B]">Relationship candidates</h3>
+    <div class="overflow-x-auto"><table class="mt-1 w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Child column</th><th class="p-1">Parent column</th><th class="p-1">Kind</th><th class="p-1">Contained</th></tr></thead><tbody>
+      {% for r in cross_file.relationships %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ r.child }} <span class="text-[#8A97B2]">({{ r.child_entity }})</span></td><td class="p-1 font-mono">{{ r.parent }} <span class="text-[#8A97B2]">({{ r.parent_entity }})</span></td><td class="p-1">{{ r.kind }}</td><td class="p-1">{{ r.contained_pct }}%</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if cross_file.conflicts %}<h3 class="mt-4 text-xs font-bold text-rose-800">Conflicting values across files</h3>
+    <div class="overflow-x-auto"><table class="mt-1 w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Files</th><th class="p-1">Joined on</th><th class="p-1">Column</th><th class="p-1">Differing rows</th></tr></thead><tbody>
+      {% for c in cross_file.conflicts %}<tr class="border-t border-[#EEF2FA]"><td class="p-1">{{ c.files|join(' vs ') }}</td><td class="p-1 font-mono">{{ c.key }}</td><td class="p-1 font-mono">{{ c.column }}</td><td class="p-1 font-bold text-rose-700">{{ c.differing_rows }} of {{ c.compared_rows }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if cross_file.equivalent_columns %}<details class="mt-4"><summary class="cursor-pointer text-xs font-bold text-blue-700">Equivalent or overlapping columns ({{ cross_file.equivalent_columns|length }})</summary>
+    <div class="overflow-x-auto"><table class="mt-1 w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Column A</th><th class="p-1">Column B</th><th class="p-1">Shared values</th><th class="p-1">Evidence</th></tr></thead><tbody>
+      {% for e in cross_file.equivalent_columns %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ e.a }}</td><td class="p-1 font-mono">{{ e.b }}</td><td class="p-1">{{ e.shared_values }} ({{ e.overlap_pct }}%)</td><td class="p-1">{{ e.evidence }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+    {% if not (cross_file.duplicate_files or cross_file.relationships or cross_file.conflicts or cross_file.equivalent_columns) %}<p class="mt-3 text-xs text-[#5A6A88]">No relationships, overlaps or conflicts were detected between these files.</p>{% endif %}
+  </section>
+  {% endif %}
+
   <details class="space-y-3" ><summary class="cursor-pointer rounded-xl border border-[#D9E3F5] bg-white px-5 py-3 text-sm font-bold text-[#152C6B] shadow-sm hover:border-blue-300">Approve all files for an entity <span class="ml-2 text-xs font-medium text-[#5A6A88]">bulk action, only when every file passes the evidence gate</span></summary>
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
     <div class="border-b border-[#E9EFF9] pb-3"><h2 class="font-bold text-[#152C6B]">Entity-level scope approval</h2><p class="mt-1 text-xs leading-5 text-[#5A6A88]">Approve all files for an entity in one action when every file has a confident, matching inference and signature-field evidence. If even one file is ambiguous, needs review, or was rejected, the bulk action is blocked and individual review remains available.</p></div>
