@@ -132,6 +132,16 @@
   </section>
   {% endif %}
 
+  {% if can_preview and spec %}
+  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="deployment-package">
+    <h2 class="text-sm font-bold text-[#152C6B]">Deployment package <span class="font-mono text-[10px] font-normal text-amber-800">DRAFT contract, not yet agreed</span></h2>
+    <p class="mt-1 text-xs text-[#5A6A88]">A versioned <span class="font-mono">package.yaml</span> built only from approved configuration (confirmed target model, approved mappings and rules, active validation scenarios) and validated against the draft schema. Replace the schema with the agreed template when the technical owner provides it.</p>
+    <form action="/api/packages/generate" method="post" class="mt-3"><button class="rounded-lg border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-blue-700">Generate package</button></form>
+    {% if packages %}<table class="mt-3 w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Version</th><th class="p-1">Package</th><th class="p-1">Generated</th><th class="p-1">By</th><th class="p-1">Content hash</th><th class="p-1"></th></tr></thead><tbody>
+      {% for p in packages %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-bold">v{{ p.package_version }}</td><td class="p-1 font-mono">{{ p.package_id }}</td><td class="p-1">{{ p.generated_utc[:19] }}</td><td class="p-1">{{ p.generated_by }}</td><td class="p-1 font-mono text-[10px]">{{ p.content_sha256[:12] }}</td><td class="p-1"><a href="/api/packages/{{ p.package_id }}/download" class="text-blue-700">Download YAML</a></td></tr>{% endfor %}</tbody></table>{% endif %}
+  </section>
+  {% endif %}
+
   {% if can_preview %}
   <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" id="target-preview">
     <h2 class="text-sm font-bold text-[#152C6B]">Preview (dry run)</h2>

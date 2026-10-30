@@ -64,6 +64,7 @@ POST_POLICY = [
     (r"^/api/target-mapping/propose$", DISCOVERY_ROLES),
     (r"^/api/target-mapping/preview$", TARGET_PREVIEW_ROLES),
     (r"^/api/target-mapping/adf-package$", TARGET_PREVIEW_ROLES),
+    (r"^/api/packages/generate$", TARGET_PREVIEW_ROLES),
     (r"^/api/target-mapping/[^/]+/review$", APPROVAL_ROLES),
     (r"^/api/transformation-rules/preview$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules/infer$", DISCOVERY_ROLES),

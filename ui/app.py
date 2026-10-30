@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1336,6 +1336,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         mappings = target_mapping.list_mappings(conn, migration_id, spec)
         approved_src = conn.execute(
             "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
+        packages = package_contract.list_packages(conn, migration_id)
         ccr = {(r["entity_name"], r["canonical_field"]): r for r in conn.execute(
             "SELECT entity_name, canonical_field, request_id, status FROM canonical_change_requests WHERE migration_id = ? "
             "AND change_type = 'ADD_FIELD' AND status != 'REJECTED' ORDER BY created_utc", (migration_id,)).fetchall()}
@@ -1356,7 +1357,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
-        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings),
+        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
@@ -1537,6 +1538,65 @@ async def propose_target_mappings(request: Request):
     if parts:
         return _target_redirect("notice", "; ".join(parts) + ". Each needs human approval.")
     return _target_redirect("notice", "Nothing to refresh: every target field already has a proposal and a canonical source.")
+
+
+@app.post("/api/packages/generate")
+async def generate_deployment_package(request: Request):
+    """Generate a versioned, schema-validated deployment package (DRAFT contract) from approved configuration only."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    try:
+        cfg_firm = load_firm_config()
+    except FirmConfigError as exc:
+        return _target_redirect("error", f"Firm configuration is required: {exc}")
+    conn = get_db_connection()
+    try:
+        tcfg = target_connector.get_config(conn)
+        spec = target_connector.spec(conn)
+        if not spec or not tcfg:
+            return _target_redirect("error", "Confirm the target system before generating a deployment package.")
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+        source_maps = [{"entity": r["entity_name"], "source_field": r["source_field"], "canonical_field": r["canonical_field"],
+                        "transformation": r["transformation_expression"] or "DIRECT_COPY"} for r in conn.execute(
+            "SELECT entity_name, source_field, canonical_field, transformation_expression FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1",
+            (migration_id,)).fetchall()]
+        rules = {r["expression"]: r for r in transformation_rules.list_rules(conn)}
+        scenarios = validation_scenarios.list_scenarios(conn, migration_id, active_only=True)
+        files = [{"filename": rec.get("filename", "source"), "entity": entity} for entity, group in state_store.entity_source_files.items()
+                 for rec in group.values() if rec.get("inference_approval_status") == "APPROVED"]
+        try:
+            body = package_contract.build_body(
+                migration_id=migration_id, source_system=str(setup.get("source_firm") or "CoreCap"), target_system=str(setup.get("target_system") or tcfg["target_name"]),
+                firm={"firm_id": cfg_firm.firm_id, "config_version": str(cfg_firm.config_version), "canonical_contract_ref": str(cfg_firm.canonical_contract_ref)},
+                target={"name": tcfg["target_name"], "model_version": str(tcfg["schema_hash"]), "confirmed_by": tcfg["confirmed_by"] or "", "confirmed_utc": tcfg["confirmed_utc"] or ""},
+                source_files=files, source_mappings=source_maps, spec=spec, approved_target=approved, rules=rules, scenarios=scenarios,
+                environment=azure_simulated.simulated_environment(migration_id))
+            result = package_contract.generate(conn, migration_id, user["name"], body)
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    if result["new"]:
+        _target_setup_audit("DEPLOYMENT_PACKAGE_GENERATED", user, {"package_id": result["package_id"], "version": result["package_version"], "schema": package_contract.SCHEMA_VERSION})
+        return _target_redirect("notice", f"Package v{result['package_version']} ({result['package_id']}) generated against the DRAFT contract. Download it below.")
+    return _target_redirect("notice", f"Nothing changed since package v{result['package_version']} ({result['package_id']}); no new version was created.")
+
+
+@app.get("/api/packages/{package_id}/download")
+async def download_deployment_package(request: Request, package_id: str):
+    get_current_user(request)
+    conn = get_db_connection()
+    try:
+        pkg = package_contract.get_package(conn, package_id)
+        conn.commit()
+    finally:
+        conn.close()
+    if not pkg or pkg["migration_id"] != str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")):
+        raise HTTPException(status_code=404, detail="Package not found for this migration.")
+    return Response(content=pkg["yaml_text"], media_type="application/x-yaml",
+                    headers={"Content-Disposition": f'attachment; filename="{package_id}_v{pkg["package_version"]}_package.yaml"'})
 
 
 @app.post("/api/target-mapping/adf-package")

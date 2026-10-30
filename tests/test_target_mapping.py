@@ -203,6 +203,27 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
     assert "Generate ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/packages/generate")).headers["location"]
+    gen = asyncio.run(call("Validation Specialist", "POST", "/api/packages/generate")).headers["location"]
+    assert "notice=" in gen and "generated+against+the+DRAFT+contract" in gen
+    assert "Nothing+changed" in asyncio.run(call("Validation Specialist", "POST", "/api/packages/generate")).headers["location"]
+    pkg_row = conn.execute("SELECT package_id, package_version, yaml_text FROM deployment_packages").fetchone()
+    assert pkg_row["package_version"] == 1
+    from control_plane.services import package_contract as pc
+    doc = pc.validate_text(pkg_row["yaml_text"])
+    assert doc.meta.simulated and doc.meta.contract_status == "DRAFT_NOT_AGREED" and len(doc.canonical_to_target) == 2 and doc.target.confirmed_by
+    dl = asyncio.run(call("Validation Specialist", "GET", f"/api/packages/{pkg_row['package_id']}/download"))
+    assert dl.status_code == 200 and "x-yaml" in dl.headers["content-type"] and dl.text == pkg_row["yaml_text"]
+    assert asyncio.run(call("Validation Specialist", "GET", "/api/packages/PKG-NOPE/download")).status_code == 404
+    import pytest
+    with pytest.raises(ValueError, match="draft contract"):
+        pc.validate_text(pkg_row["yaml_text"].replace("canonical_to_target:", "canonical_to_target_x:", 1))
+    import yaml as _y
+    tampered = _y.safe_load(pkg_row["yaml_text"])
+    tampered["environment"]["values"]["password"] = "x"
+    with pytest.raises(ValueError, match="secret-like"):
+        pc.validate_text(_y.safe_dump(tampered))
+    assert "Download YAML" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]
@@ -511,3 +532,29 @@ def test_coverage_splits_direct_transformed_pending_and_counts_only_approved():
     assert (cov["direct"], cov["transformed"], cov["effective"], cov["pending"], cov["unmapped"]) == (1, 1, 2, 1, 2)
     assert cov["effective_pct"] == 40 and (cov["required_effective"], cov["required_total"]) == (2, 3)
     assert tm.coverage(None, []) == {}
+
+
+def test_package_refuses_unapproved_rules_versions_on_change_and_exports_schema(tmp_path):
+    import sqlite3 as sq
+    import pytest
+    from control_plane.services import package_contract as pc
+    spec = {"entities": {"Account": {"fields": [{"name": "T.A", "table": "T", "column": "A"}]}}}
+    base = dict(migration_id="M", source_system="CoreCap", target_system="Simplicity", firm={"firm_id": "F", "config_version": "1", "canonical_contract_ref": "c"},
+                target={"name": "S", "model_version": "v", "confirmed_by": "x", "confirmed_utc": "u"}, source_files=[], spec=spec, scenarios=[],
+                source_mappings=[{"entity": "Account", "source_field": "ACCT", "canonical_field": "ACCT_NUM", "transformation": "DIRECT_COPY"}],
+                environment={"simulated": True, "banner": "b", "factoryName": "f"})
+    m = {"entity_name": "Account", "target_field": "T.A", "canonical_field": "ACCT_NUM", "status": "APPROVED", "reviewer": "Ann", "transformation_expression": "RULE:X@1"}
+    with pytest.raises(ValueError, match="not an approved rule"):
+        pc.build_body(approved_target=[m], rules={"RULE:X@1": {"status": "DRAFT", "rule_type": "VALUE_MAP", "params": {}, "description": "d"}}, **base)
+    with pytest.raises(ValueError, match="Approve at least one target mapping"):
+        pc.build_body(approved_target=[{**m, "status": "PROPOSED"}], rules={}, **base)
+    body = pc.build_body(approved_target=[{**m, "transformation_expression": "DIRECT_COPY"}], rules={}, **base)
+    conn = sq.connect(tmp_path / "p.db")
+    conn.row_factory = sq.Row
+    first = pc.generate(conn, "M", "Ann", body)
+    assert first == {**first, "package_version": 1, "new": True}
+    assert pc.generate(conn, "M", "Ann", body)["new"] is False
+    body2 = pc.build_body(approved_target=[{**m, "transformation_expression": "DIRECT_COPY", "target_field": "T.A"}], rules={}, **{**base, "firm": {**base["firm"], "config_version": "2"}})
+    assert pc.generate(conn, "M", "Ann", body2)["package_version"] == 2
+    assert [p["package_version"] for p in pc.list_packages(conn, "M")] == [2, 1]
+    assert "canonical_to_target" in pc.json_schema()["properties"]

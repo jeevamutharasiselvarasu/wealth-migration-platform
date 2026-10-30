@@ -1,7 +1,7 @@
 # Firm configuration: target-first, versioned, reusable across migrations.
 # Defines the firm's CANONICAL contract (types, nullability, keys) and registers the
 # target system. It does NOT define canonical-to-target mapping; that lives in
-# platform_knowledge/simplicity_target_system.yaml (demo spec) and the target_mappings table.
+# the confirmed target model (inferred from the target service) and the target_mappings table.
 # SEED VALUES: required fields mirror the platform kernel; keys/types need business
 # owner confirmation before being treated as final.
 schema_version: 1
