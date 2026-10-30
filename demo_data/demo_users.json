@@ -52,6 +52,14 @@
       "roles": [
         "Platform Admin"
       ]
+    },
+    {
+      "email": "admin2.demo@simplicitywealth.com",
+      "name": "Demo Admin Two",
+      "default_role": "Platform Admin",
+      "roles": [
+        "Platform Admin"
+      ]
     }
   ]
 }
