@@ -73,6 +73,7 @@
     </section>
 
     {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">{{ error }}</div>{% endif %}
+    {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800" role="status">{{ notice }}</div>{% endif %}
     <section id="validation-results" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3">
             <div>
@@ -92,14 +93,43 @@
             <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">{{ validation_run.summary.PASS }} passed</span>
             <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800">{{ validation_run.summary.WARN + validation_run.summary.NOT_EVALUATED }} warnings / not evaluated</span>
             <span class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">{{ validation_run.summary.FAIL }} failed</span>
+            {% if validation_run.effective_status != validation_run.status %}<span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">After approved exceptions: {{ validation_run.effective_status }}</span>{% endif %}
         </div>
         <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[640px] text-left">
             <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Status</th><th class="p-3">Check</th><th class="p-3">Entity</th><th class="p-3">Scope</th><th class="p-3">Finding</th></tr></thead>
             <tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for c in validation_run.checks|sort(attribute='status', reverse=True) %}
-            <tr><td class="p-3"><span class="rounded border px-2 py-0.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span></td><td class="p-3 font-mono">{{ c.check }}</td><td class="p-3 font-bold text-[#152C6B]">{{ c.entity }}</td><td class="p-3 text-[#5A6A88]">{{ c.file|default('') }}{% if c.field %} {{ c.field }}{% endif %}</td><td class="p-3 text-[#41506B]">{{ c.detail }}{% if c.orphans %} <span class="font-mono text-[10px] text-rose-700">e.g. {{ c.orphans|join(', ') }}</span>{% endif %}</td></tr>
+            <tr><td class="p-3"><span class="rounded border px-2 py-0.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span></td><td class="p-3 font-mono">{{ c.check }}</td><td class="p-3 font-bold text-[#152C6B]">{{ c.entity }}</td><td class="p-3 text-[#5A6A88]">{{ c.file|default('') }}{% if c.field %} {{ c.field }}{% endif %}</td><td class="p-3 text-[#41506B]">{{ c.detail }}{% if c.orphans %} <span class="font-mono text-[10px] text-rose-700">e.g. {{ c.orphans|join(', ') }}</span>{% endif %}
+              {% if c.status != 'PASS' %}{% set ex = exceptions.get(c.ref) %}
+                {% if ex %}<div class="mt-1 text-[10px]"><span class="rounded border px-1.5 py-0.5 font-mono font-bold {% if ex.status == 'APPROVED' %}border-teal-200 bg-teal-50 text-teal-800{% elif ex.status == 'REJECTED' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">Exception {{ ex.exception_id }} {{ ex.status }}</span> proposed by {{ ex.proposed_by }}: {{ ex.reason }}{% if ex.decided_by %} · decided by {{ ex.decided_by }}{% endif %}</div>
+                  {% if ex.status == 'PROPOSED' and can_decide_exception and ex.proposed_by != current_user_name %}<form action="/api/validation/exceptions/{{ ex.exception_id }}/decision" method="post" class="mt-1 flex flex-wrap gap-1"><input name="comments" placeholder="Comment (required to reject)" aria-label="Decision comment" class="rounded border border-[#C3D2EC] p-1 text-[10px]"><button name="decision" value="APPROVED" class="rounded bg-teal-700 px-2 py-1 text-[10px] font-bold text-white">Approve exception</button><button name="decision" value="REJECTED" class="rounded border border-rose-300 px-2 py-1 text-[10px] font-bold text-rose-700">Reject</button></form>{% endif %}
+                {% elif can_run_validation %}<form action="/api/validation/exceptions" method="post" class="mt-1 flex flex-wrap gap-1"><input type="hidden" name="run_id" value="{{ validation_run.run_id }}"><input type="hidden" name="check_ref" value="{{ c.ref }}"><input name="reason" required placeholder="Reason to accept" aria-label="Reason to accept this finding" class="rounded border border-[#C3D2EC] p-1 text-[10px]"><button class="rounded border border-blue-200 px-2 py-1 text-[10px] font-bold text-blue-700">Propose exception</button></form>{% endif %}
+              {% endif %}</td></tr>
             {% endfor %}</tbody></table></div>
         {% else %}
         <p class="mt-3 rounded-xl bg-[#F8FAFD] p-4 text-xs text-[#5A6A88]">No validation run recorded for this migration yet.</p>
+        {% endif %}
+    </section>
+
+    <section id="validation-scenarios" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <h2 class="text-sm font-bold text-[#152C6B]">Validation scenarios</h2>
+        <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst or Platform Admin approves (never the proposer).</p>
+        {% if scenarios %}<div class="mt-3 overflow-x-auto"><table class="w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Id</th><th class="p-1">Entity</th><th class="p-1">Check</th><th class="p-1">Field</th><th class="p-1">Stage</th><th class="p-1">Why</th><th class="p-1">Status</th><th class="p-1"></th></tr></thead><tbody>
+        {% for s in scenarios %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ s.scenario_id }}</td><td class="p-1">{{ s.entity_name }}</td><td class="p-1 font-mono">{{ s.check_type }}</td><td class="p-1 font-mono">{{ s.field_name or '' }}</td><td class="p-1">{{ s.stage }}</td><td class="p-1">{{ s.description }}</td><td class="p-1">{{ s.status }}</td>
+          <td class="p-1">{% if can_run_validation and s.status == 'ACTIVE' %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/retire" method="post"><button class="rounded border border-[#C3D2EC] px-2 py-1 text-[10px] font-bold text-[#41506B]">Retire</button></form>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>{% else %}<p class="mt-3 text-xs text-[#5A6A88]">No custom scenarios yet.</p>{% endif %}
+        {% if can_run_validation %}
+        <form action="/api/validation/scenarios" method="post" class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-4">
+          <label class="text-[11px] font-bold text-[#41506B]">Entity<select name="entity_name" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal"><option>Account</option><option>Client</option><option>Household</option></select></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Check<select name="check_type" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal">{% for k, v in check_types.items() %}<option value="{{ k }}">{{ k }} - {{ v }}</option>{% endfor %}</select></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Canonical field<input name="field_name" placeholder="e.g. ACCT_NUM" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-mono font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Stage<select name="stage" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal"><option value="PRE">PRE (before execution)</option><option value="POST">POST (needs data-plane results)</option></select></label>
+          <label class="text-[11px] font-bold text-[#41506B] md:col-span-2">Business reason (required)<input name="description" required class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Allowed values (comma list)<input name="values" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Date formats (comma list)<input name="formats" placeholder="MM/DD/YYYY, YYYYMMDD" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Min<input name="min_value" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Max / max length<input name="max_value" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <div class="flex items-end"><button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Save scenario</button></div>
+        </form>
         {% endif %}
     </section>
 

@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -826,7 +826,7 @@ async def hitl_approval_queue(request: Request):
 
 
 @app.get("/reconciliation", response_class=HTMLResponse)
-async def reconciliation_dashboard(request: Request, error: str = ""):
+async def reconciliation_dashboard(request: Request, error: str = "", notice: str = ""):
     user = get_current_user(request)
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
     conn = get_db_connection()
@@ -893,12 +893,16 @@ async def reconciliation_dashboard(request: Request, error: str = ""):
         latest = conn.execute(
             "SELECT run_id, status, results_json, executed_by, executed_utc FROM validation_runs "
             "WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
+        scenarios = validation_scenarios.list_scenarios(conn, migration_id)
+        exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
+        conn.commit()
     finally:
         conn.close()
     validation_run = None
     if latest:
         validation_run = {"run_id": latest["run_id"], "executed_by": latest["executed_by"],
                           "executed_utc": latest["executed_utc"], **json.loads(latest["results_json"])}
+        validation_run["effective_status"] = validation_scenarios.effective_status(validation_run["checks"], exceptions)
     return render_template_with_context(
         request=request,
         template_name="reconciliation.html",
@@ -913,10 +917,105 @@ async def reconciliation_dashboard(request: Request, error: str = ""):
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error,
+            "validation_run": validation_run, "error": error, "notice": notice,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
+            "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES,
+            "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES,
+            "current_user_name": user["name"],
         }
     )
+
+
+def _validation_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/reconciliation?{key}=" + quote_plus(message) + "#validation-scenarios", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/validation/scenarios")
+async def create_validation_scenario(request: Request, entity_name: str = Form(...), check_type: str = Form(...), field_name: str = Form(""),
+                                     stage: str = Form("PRE"), description: str = Form(""), values: str = Form(""), min_value: str = Form(""),
+                                     max_value: str = Form(""), formats: str = Form("")):
+    """A Validation Specialist defines an allow-listed validation scenario. Evaluated on the next run; nothing is executed as code."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+
+    def num(text: str):
+        t = text.strip()
+        return None if not t else (int(t) if re.fullmatch(r"-?\d+", t) else float(t))
+    try:
+        params: Dict[str, Any] = {}
+        if check_type == "ALLOWED_VALUES":
+            params["values"] = [v for v in re.split(r"[,\n]+", values) if v.strip()]
+        elif check_type == "MAX_LENGTH":
+            params["max"] = num(max_value)
+        elif check_type == "ROW_COUNT_MIN":
+            params["min"] = num(min_value)
+        elif check_type == "NUMERIC_RANGE":
+            params["min"], params["max"] = num(min_value), num(max_value)
+        elif check_type == "DATE_PARSEABLE":
+            params["input_formats"] = [f.strip() for f in formats.split(",") if f.strip()]
+        conn = get_db_connection()
+        try:
+            created = validation_scenarios.create_scenario(conn, migration_id, entity_name, check_type, field_name, params, stage, description, user["name"])
+            conn.commit()
+        finally:
+            conn.close()
+    except ValueError as exc:
+        return _validation_redirect("error", str(exc))
+    _target_setup_audit("VALIDATION_SCENARIO_DEFINED", user, {"scenario_id": created["scenario_id"], "check_type": check_type, "entity": entity_name, "stage": stage})
+    return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
+
+
+@app.post("/api/validation/scenarios/{scenario_id}/retire")
+async def retire_validation_scenario(request: Request, scenario_id: str):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            validation_scenarios.retire_scenario(conn, scenario_id)
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_SCENARIO_RETIRED", user, {"scenario_id": scenario_id})
+    return _validation_redirect("notice", f"Scenario {scenario_id} retired.")
+
+
+@app.post("/api/validation/exceptions")
+async def propose_validation_exception(request: Request, run_id: str = Form(...), check_ref: str = Form(...), reason: str = Form("")):
+    """A Validation Specialist proposes accepting a finding; a Migration Analyst or Platform Admin decides."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            run = conn.execute("SELECT results_json FROM validation_runs WHERE run_id = ? AND migration_id = ?", (run_id, migration_id)).fetchone()
+            if not run or not any(c.get("ref") == check_ref and c["status"] in ("FAIL", "WARN", "NOT_EVALUATED") for c in json.loads(run["results_json"])["checks"]):
+                raise ValueError("That finding does not exist in the run, or it passed.")
+            eid = validation_scenarios.propose_exception(conn, migration_id, run_id, check_ref, reason, user["name"])
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_EXCEPTION_PROPOSED", user, {"exception_id": eid, "run_id": run_id, "check_ref": check_ref})
+    return _validation_redirect("notice", f"Exception {eid} proposed. A Migration Analyst or Platform Admin must decide it.")
+
+
+@app.post("/api/validation/exceptions/{exception_id}/decision")
+async def decide_validation_exception(request: Request, exception_id: str, decision: str = Form(...), comments: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            row = validation_scenarios.decide_exception(conn, exception_id, decision.upper(), user["name"], comments)
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_EXCEPTION_" + row["status"], user, {"exception_id": exception_id, "check_ref": row["check_ref"]})
+    return _validation_redirect("notice", f"Exception {exception_id} {row['status'].lower()}.")
 
 
 @app.post("/api/validation/run")
@@ -938,6 +1037,8 @@ async def run_validation(request: Request):
                 "SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1",
                 (migration_id,)).fetchall():
             mappings.setdefault(row["entity_name"], {})[row["source_field"]] = row["canonical_field"]
+        scenarios = validation_scenarios.list_scenarios(conn, migration_id, active_only=True)
+        conn.commit()
     finally:
         conn.close()
     if not mappings:
@@ -956,7 +1057,7 @@ async def run_validation(request: Request):
             except (OSError, ValueError):
                 continue
             files.setdefault(entity, []).append({"filename": rec.get("filename", "source"), "records": records})
-    results = migration_validation.run_checks(contract, mappings, files)
+    results = migration_validation.run_checks(contract, mappings, files, scenarios)
     run_id = "VAL-" + uuid.uuid4().hex[:10].upper()
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db_connection()
