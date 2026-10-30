@@ -203,6 +203,8 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
     assert "Generate ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]
     zipped = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
     assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "SIMULATED" in zipped.headers["content-disposition"]
@@ -497,3 +499,15 @@ def test_adf_package_needs_an_approved_mapping():
     from control_plane.services import adf_package, azure_simulated
     with pytest.raises(ValueError, match="Approve at least one"):
         adf_package.build("M", _adf_spec(), _adf_maps(**{"T.ACCT_NO": "PROPOSED", "T.OPEN_DT": "REJECTED", "T.REG_CD": "PROPOSED"}), {}, azure_simulated.simulated_environment("M"), "Ann")
+
+
+def test_coverage_splits_direct_transformed_pending_and_counts_only_approved():
+    spec = {"entities": {"Account": {"fields": [
+        {"name": "A", "required": True}, {"name": "B", "required": True}, {"name": "C", "required": False},
+        {"name": "D", "required": True}, {"name": "E", "required": False}]}}}
+    def m(f, st, expr="DIRECT_COPY"):
+        return {"entity_name": "Account", "target_field": f, "status": st, "transformation_expression": expr}
+    cov = tm.coverage(spec, [m("A", "APPROVED"), m("B", "APPROVED", "RULE:X@1"), m("C", "PROPOSED"), m("D", "REJECTED")])["Account"]
+    assert (cov["direct"], cov["transformed"], cov["effective"], cov["pending"], cov["unmapped"]) == (1, 1, 2, 1, 2)
+    assert cov["effective_pct"] == 40 and (cov["required_effective"], cov["required_total"]) == (2, 3)
+    assert tm.coverage(None, []) == {}

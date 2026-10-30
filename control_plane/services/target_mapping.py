@@ -63,6 +63,34 @@ def gap_report(spec: Dict[str, Any], canonical_fields: Dict[str, List[str]]) -> 
     return {"missing": missing, "unused": unused, "code_lists": code_lists}
 
 
+def coverage(spec: Optional[Dict[str, Any]], mappings: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Per-entity target coverage split by how each field is populated. Only APPROVED mappings count.
+
+    direct: approved DIRECT_COPY. transformed: approved with a governed rule. effective = direct + transformed.
+    pending: still PROPOSED (never counted). unmapped: no approved mapping. Required fields are counted separately.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for entity, body in (spec or {"entities": {}})["entities"].items():
+        by_field = {m["target_field"]: m for m in mappings if m["entity_name"] == entity}
+        row = {"total": 0, "direct": 0, "transformed": 0, "pending": 0, "unmapped": 0, "required_total": 0, "required_effective": 0}
+        for f in body["fields"]:
+            m = by_field.get(f["name"])
+            state = "unmapped"
+            if m and m["status"] == "APPROVED":
+                state = "direct" if m["transformation_expression"] == "DIRECT_COPY" else "transformed"
+            elif m and m["status"] == "PROPOSED":
+                state = "pending"
+            row["total"] += 1
+            row[state] += 1
+            if f.get("required"):
+                row["required_total"] += 1
+                row["required_effective"] += state in ("direct", "transformed")
+        row["effective"] = row["direct"] + row["transformed"]
+        row["effective_pct"] = round(100 * row["effective"] / row["total"]) if row["total"] else 0
+        out[entity] = row
+    return out
+
+
 def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[str, List[str]],
             spec: Dict[str, Any]) -> int:
     """Create PROPOSED rows for target fields not yet proposed. Idempotent. Returns rows created."""

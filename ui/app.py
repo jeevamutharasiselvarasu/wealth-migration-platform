@@ -1242,7 +1242,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
-        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result,
+        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings),
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
