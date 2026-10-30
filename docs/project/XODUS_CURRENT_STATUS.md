@@ -1,6 +1,6 @@
 # XODUS — Current Status Snapshot
 
-> Compact handoff note, not a live repository status. Verify branch, HEAD, working tree and CI before relying on it. Last updated 2026-10-26.
+> Compact handoff note, not a live repository status. Verify branch, HEAD, working tree and CI before relying on it. Last updated 2026-10-30 (see the 2026-10-30 section; earlier sections are older).
 
 ## Project
 XODUS / XODUS-AMP — WealthAI Labs wealth-management business migration POC. Demo deadline 13 Nov 2026.
@@ -57,6 +57,21 @@ XODUS / XODUS-AMP — WealthAI Labs wealth-management business migration POC. De
 2. Decide the migration reset procedure and the `REP-` prefix rule.
 3. Decide whether approved canonical change requests should ever update the canonical model.
 4. Rehearse the end-to-end demo journey with the demo logins before 13 Nov; then start the Azure phase.
+
+
+## 2026-10-30 update (verify against the repository before relying on it)
+Commits after `3d2d491` (which is pushed and CI-green), all local and unpushed at the time of writing: target coverage split (`da637f4`), XODUS-009 validation scenarios and exception sign-off (`f96a19a`), XODUS-008 rule inference from text (`27124cf`), XODUS-006 cross-file analysis (`6851b95`), XODUS-010/011 draft package contract (`41828b6`), XODUS-012 simulated execution (`c60de2e`). Full local suite 248 passed; CI not yet run on these commits. Not browser-tested except an in-process page smoke (9 pages x 4 roles, all 200) against a copy of the real database.
+
+- Target: separate simulated service; one-time configure, infer and confirm (Platform Admin); a Platform Admin can reopen it with a reason (withdraws the confirmed model until re-confirmed).
+- Coverage (target mapping page): direct, transformation-assisted and effective, approved mappings only.
+- Validation: Validation Specialist defines allow-listed scenarios (PRE evaluated; POST evaluated on simulated execution output) and proposes exceptions; Migration Analyst or Platform Admin decides, never the proposer. Effective status after approved exceptions is shown; the workflow bar still uses the stored run status.
+- Rule inference: business-rule text becomes DRAFT governed rules (deterministic patterns, source sentence kept); approval still required.
+- Cross-file analysis (discovery page): equivalent columns, relationship candidates, conflicts, duplicate files; counts only.
+- Package: `package.yaml` v0.1-DRAFT (pydantic schema in `package_contract.py`, NOT agreed with the technical owner), versioned per migration, generated from approved configuration only. Simulated ADF zip with fictitious Azure values kept separately (`azure_simulated.py`).
+- Execution: SIMULATED data plane (`execution_simulator.py`): telemetry, rule-linked problems, reconciled counts, guarded retry (infrastructure failures only, max 3). No Azure call is made.
+
+Assumptions taken without a stakeholder answer: exception approver = Analyst/Admin; package contract drafted locally; `REP-` prefix rule left unchanged; approved canonical change requests remain backlog only; accounts `owner.demo` and `admin2.demo` are Platform Admin without demo load (only `admin2.demo` has a password hash).
+Still open: real package template, Azure sandbox and ADF interface, identity-provider integration, managed-identity connection test and storage setup template, wave and delta, the old `/api/runs/{run_id}/export-package` exporter (hard-coded Azure values, out-of-scope entities).
 
 ## Honesty rule
 Do not present this status as current without rechecking the repository and CI. Do not claim browser testing succeeded unless it was actually run.
