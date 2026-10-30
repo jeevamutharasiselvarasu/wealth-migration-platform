@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XODUS P0 Architecture and Workflow</title>
+<style>
+  :root { --bg:#0b0f19; --card:#121a2b; --line:#24304a; --text:#e8edf7; --muted:#9aa8c3; --accent:#6d7cff; --ok:#3ecf8e; --warn:#f5b84b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:18px; margin:36px 0 12px; }
+  p.lead { color:var(--muted); margin:0 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:10px 0; }
+  .step { display:flex; gap:14px; } .num { flex:none; width:30px; height:30px; border-radius:50%; background:var(--accent); display:grid; place-items:center; font-weight:700; }
+  .step h3 { margin:0 0 2px; font-size:16px; } .meta { color:var(--muted); font-size:13px; }
+  code { background:#0a1020; border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; } th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  .tag { display:inline-block; font-size:12px; border-radius:999px; padding:1px 9px; border:1px solid var(--line); color:var(--muted); }
+  .ok { color:var(--ok); border-color:var(--ok); } .warn { color:var(--warn); border-color:var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>XODUS P0 — Architecture and Workflow</h1>
+  <p class="lead">WealthAI Labs proof of concept: migrating acquired-firm wealth-management data (CoreCap source, Simplicity target) into a canonical model with lineage, explainable recommendations and human approval.</p>
+  <p class="lead">Scope: Account, Client, Household. Direction: source to canonical only. Agents recommend; deterministic services check; authenticated humans approve. Keep this page in step with the code (routes in <code>ui/app.py</code>, roles in <code>ui/role_policy.py</code>).</p>
+
+  <h2>Layers</h2>
+  <div class="card"><table>
+    <tr><th>Layer</th><th>Location</th><th>Responsibility</th></tr>
+    <tr><td>UI and API</td><td><code>ui/</code></td><td>FastAPI routes, Jinja pages, session and persona handling, server-side role policy middleware.</td></tr>
+    <tr><td>Control plane</td><td><code>control_plane/</code></td><td>Profiling, entity inference and classification, value evidence, mapping validation (MCL), workflow event engine, SQLite persistence, canonical kernel, firm config, ADF client/exporter scaffolding.</td></tr>
+    <tr><td>Agents</td><td><code>agents/</code></td><td>Schema-mapping agent and P0 agent suite that propose mappings with evidence and confidence.</td></tr>
+    <tr><td>Data plane</td><td><code>data_plane/</code></td><td>Local source-file storage. Target loading and legacy connectors are out of P0.</td></tr>
+    <tr><td>Knowledge</td><td><code>knowledge/</code>, <code>platform_knowledge/</code></td><td>Inference rules, dictionary, firm profiles, canonical contract, mapping notes and wealth-management research. Kept separate from <code>demo_data/</code>.</td></tr>
+    <tr><td>State</td><td><code>App_Data/</code> (local, ignored)</td><td>SQLite control-plane database and uploaded source files. Workflow state is event-sourced and rebuilt on restart.</td></tr>
+  </table></div>
+
+  <h2>Roles (personas)</h2>
+  <div class="card"><table>
+    <tr><th>Persona</th><th>Can</th></tr>
+    <tr><td>Platform Admin</td><td>Everything, including demo load and workflow replay.</td></tr>
+    <tr><td>Migration Analyst</td><td>Set up a migration, choose scope, upload and profile sources, confirm file classification, generate and approve mappings and transformations, answer information requests, raise canonical change requests.</td></tr>
+    <tr><td>Validation Specialist</td><td>Validation-side evaluation after transformation rules exist (data plane). Read-only on setup and discovery.</td></tr>
+    <tr><td>Domain SME / Data Steward</td><td>Owns canonical-model changes: updates the kernel and decides change requests; also answers business-definition questions.</td></tr>
+  </table>
+  <p class="meta">A user may hold several personas (a normal user: Analyst and Validation Specialist; the SME holds both plus the SME persona) and acts under the persona selected at <code>/persona-selection</code>. Forms a persona cannot use are hidden, and the server enforces the same rules.</p></div>
+
+  <h2>Workflow</h2>
+  <div class="card step"><div class="num">1</div><div><h3>Sign in and choose a persona</h3><div class="meta"><code>/login</code> · <code>/persona-selection</code></div>Reviewer identity always comes from the authenticated session.</div></div>
+  <div class="card step"><div class="num">2</div><div><h3>Migration setup</h3><div class="meta"><code>/migration-setup</code> · <code>POST /api/migration/setup</code> · admin demo load <code>POST /api/demo/load</code></div>Name the migration, pick source and target, select entities (Account, Client, Household), attach knowledge references.</div></div>
+  <div class="card step"><div class="num">3</div><div><h3>Source discovery</h3><div class="meta"><code>/entity-sample-files</code> · <code>POST /api/entities/upload-sample-file</code> · <code>confirm-inference</code> / <code>confirm-entity</code></div>Upload CSV, TSV, XLSX, XLSM, XLS or JSON files. Profiling and entity inference propose a classification with evidence; an analyst confirms or rejects it. Relationship files are deferred rather than forced into a master entity.</div></div>
+  <div class="card step"><div class="num">4</div><div><h3>Mapping recommendations</h3><div class="meta"><code>/agent-pipeline</code> · <code>POST /api/entities/map-approved-files</code> · <code>GET /api/mapping-suggestions</code></div>Agents propose source-to-canonical field mappings with rationale, confidence and lineage. Missing definitions become information requests (<code>/api/mapping-gaps/{id}/response</code>).</div></div>
+  <div class="card step"><div class="num">5</div><div><h3>Human review and approval</h3><div class="meta"><code>POST /api/mapping-suggestions/{id}/review</code> · <code>approve-entity</code></div>Analysts approve, reject or override. Only registered transformations are accepted; bulk approval is atomic. Approvals persist and survive restart.</div></div>
+  <div class="card step"><div class="num">6</div><div><h3>Canonical change requests</h3><div class="meta"><code>/canonical-changes</code></div>An analyst raises a request (entity, field, change type, reason); the Domain SME approves, rejects or defers with a note. Approved requests are backlog only and do not edit the canonical model automatically.</div></div>
+  <div class="card step"><div class="num">7</div><div><h3>Reconciliation view and lineage</h3><div class="meta"><code>/reconciliation</code> · <code>GET /api/pilot/{entity}/lineage</code></div>Review completeness, keys, relationships and data-quality exceptions with source-to-canonical lineage.</div></div>
+
+  <h2>Status of capabilities</h2>
+  <div class="card"><table>
+    <tr><th>Capability</th><th>Status</th></tr>
+    <tr><td>Profiling, classification, mapping, review, lineage, persistence, roles, change requests</td><td><span class="tag ok">P0 implemented</span></td></tr>
+    <tr><td>ADLS upload and ADF trigger/status/export routes</td><td><span class="tag warn">Scaffolding, next phase (Azure)</span> · <code>infrastructure/</code> holds Bicep and ADF assets; no cloud resources are implied.</td></tr>
+    <tr><td>Target loading, reverse mapping, wave assignment, cutover, sleeve and AUM reconciliation</td><td><span class="tag">Out of P0</span></td></tr>
+    <tr><td>Client consent tracking, billing, performance history</td><td><span class="tag">Not modelled; see platform research</span></td></tr>
+  </table></div>
+</main>
+</body>
+</html>

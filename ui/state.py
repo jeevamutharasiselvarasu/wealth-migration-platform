@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import hashlib
 from pathlib import Path
 import json
 import pandas as pd
@@ -18,15 +19,16 @@ class WorkspaceStateStore:
 
     def __init__(self):
         init_db()
+        self.kernel_specs: Dict[str, Any] = {}
         self.active_role: str = "Platform Admin"
-        self.adls_connected: bool = True
-        self.adls_container: str = "stg-corecap-data"
+        self.adls_connected: bool = False
+        self.adls_container: str = ""
 
         # 1. Configurable Acquisition Discovery Context
         self.questionnaire_data: Dict[str, Any] = {
-            "firm_name": "Core Cap Wealth Management",
-            "migration_id": "MIG-CORECAP-2026",
-            "source_systems": "Amplify; Black Diamond",
+            "firm_name": "New Migration",
+            "migration_id": "MIG-UNCONFIGURED",
+            "source_systems": "",
             "business_data_owner": "",
             "mapping_approver": "",
             "identifier_relationship_notes": "",
@@ -47,6 +49,167 @@ class WorkspaceStateStore:
         self.pipeline_runs: List[Dict[str, Any]] = []
         self.audit_log: List[Dict[str, Any]] = []
         self.generated_dashboard: Dict[str, Any] = self._build_dashboard_from_form()
+        # Rehydrate durable workflow facts before any request handler reads state.
+        self.hydrate_from_durable_state()
+
+    def hydrate_from_durable_state(self) -> None:
+        """Restore the active migration's UI-facing state from SQLite and upload files."""
+        from control_plane.services.workflow_event_engine import _ensure_event_table, get_projection, read_events, replay_events
+        _ensure_event_table()
+
+        conn = get_db_connection()
+        try:
+            has_events = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workflow_events'"
+            ).fetchone() is not None
+            row = conn.execute(
+                """SELECT migration_id FROM workflow_events
+                   WHERE event_type = 'MIGRATION_CONTEXT_UPDATED'
+                   ORDER BY occurred_utc DESC, event_id DESC LIMIT 1"""
+            ).fetchone() if has_events else None
+            migration_id = str(row["migration_id"]) if row else str(
+                self.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")
+            )
+        finally:
+            conn.close()
+
+        if has_events and migration_id and migration_id != "MIG-UNCONFIGURED":
+            replay_events(migration_id, rebuild=False)
+            projection = get_projection(migration_id, "migration", migration_id)
+            context = projection.get("context", {})
+            if isinstance(context, dict):
+                self.questionnaire_data.update(context)
+            self.questionnaire_data["migration_id"] = migration_id
+            scopes = projection.get("scopes", {})
+            if isinstance(scopes, dict):
+                self.save_entity_scopes(scopes)
+
+            for event in read_events(migration_id, limit=5000):
+                payload = event.get("payload", {})
+                if event["event_type"] == "SOURCE_FILE_UPLOADED":
+                    record = dict(payload)
+                    record.setdefault("file_id", event["aggregate_id"])
+                    entity = record.get("entity") or record.get("entity_name")
+                    if entity not in self.P0_ENTITIES and entity != "Needs clarification":
+                        continue
+                    stored_path = record.get("stored_path")
+                    if stored_path and Path(stored_path).is_file():
+                        try:
+                            records = read_source_records(record.get("filename", "source.csv"), Path(stored_path).read_bytes())
+                            record.setdefault("columns", list(records[0].keys()) if records else [])
+                            record.setdefault("row_count", len(records))
+                            record.setdefault("column_count", len(record.get("columns", [])))
+                        except (OSError, ValueError):
+                            pass
+                    role = str(record.get("source_role", "ENTITY_MASTER"))
+                    key = role
+                    entity_files = self.entity_source_files.setdefault(entity, {})
+                    if key in entity_files:
+                        key = role + ":" + str(record.get("filename", "source")) + ":" + event["aggregate_id"]
+                    entity_files[key] = record
+                    if role in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
+                        self.entity_sample_files[entity] = record
+                elif event["event_type"] == "ENTITY_INFERENCE_REVIEWED":
+                    # Reapply review decisions to the in-memory source inventory after restart.
+                    reviewed_files = payload.get("files", [])
+                    if event.get("aggregate_type") == "source_file":
+                        reviewed_files = [{**payload, "file_id": event.get("aggregate_id")}]
+                    for reviewed in reviewed_files:
+                        file_id = str(reviewed.get("file_id", ""))
+                        if not file_id:
+                            continue
+                        located = None
+                        old_entity = None
+                        for bucket_entity, files in self.entity_source_files.items():
+                            for file_key, candidate in files.items():
+                                if str(candidate.get("file_id", "")) == file_id:
+                                    located = (bucket_entity, file_key, candidate)
+                                    old_entity = bucket_entity
+                                    break
+                            if located:
+                                break
+                        if not located:
+                            continue
+                        _, file_key, record = located
+                        for field in ("inference", "inference_review", "inference_approval_status", "discovery_status", "inferred_entity"):
+                            if field in reviewed:
+                                record[field] = reviewed[field]
+                        selected_entity = str(reviewed.get("entity") or payload.get("entity") or old_entity or "")
+                        if selected_entity in self.P0_ENTITIES:
+                            record["entity"] = selected_entity
+                            record["entity_name"] = selected_entity
+                            record["inferred_entity"] = selected_entity
+                            if old_entity != selected_entity:
+                                self.entity_source_files[old_entity].pop(file_key, None)
+                                if self.entity_sample_files.get(old_entity, {}).get("file_id") == file_id:
+                                    self.entity_sample_files.pop(old_entity, None)
+                                new_files = self.entity_source_files.setdefault(selected_entity, {})
+                                new_key = str(record.get("source_role", "ENTITY_MASTER"))
+                                if new_key in new_files:
+                                    new_key = new_key + ":" + str(record.get("filename", "source")) + ":" + file_id
+                                new_files[new_key] = record
+                                old_entity = selected_entity
+                        if record.get("source_role") in {"ENTITY_MASTER", "ACCOUNT_MASTER"} and old_entity in self.P0_ENTITIES:
+                            self.entity_sample_files[old_entity] = record
+                    reviewed_entity = str(payload.get("entity") or event.get("aggregate_id") or "")
+                    reviewed_scope = payload.get("scope")
+                    if reviewed_entity in self.P0_ENTITIES and reviewed_scope in {"IN_SCOPE", "OUT_OF_SCOPE", "PHASE_2", "ARCHIVE_ONLY"}:
+                        self.entity_scopes[reviewed_entity] = reviewed_scope
+                elif event["event_type"] == "MAPPING_PROPOSALS_GENERATED":
+                    file_id = str(payload.get("file_id", ""))
+                    if file_id:
+                        for files in self.entity_source_files.values():
+                            for record in files.values():
+                                if str(record.get("file_id", "")) == file_id:
+                                    record["mapping_generated"] = True
+                                    record["last_mapping_run_id"] = payload.get("run_id") or event.get("aggregate_id")
+                                    break
+                elif event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED":
+                    doc = dict(payload)
+                    if doc and not any(existing.get("id") == doc.get("id") for existing in self.firm_knowledge_docs):
+                        self.firm_knowledge_docs.append(doc)
+
+        conn = get_db_connection()
+        try:
+            has_requests = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mapping_information_requests'"
+            ).fetchone() is not None
+            request_rows = conn.execute(
+                """SELECT request_id, migration_id, entity_name, canonical_field, source_file,
+                          status, question, requested_by, created_utc, resolved_utc, resolution, response
+                   FROM mapping_information_requests WHERE migration_id = ?
+                   ORDER BY created_utc, request_id""",
+                (migration_id,),
+            ).fetchall() if has_requests else []
+            self.questionnaire_data["mapping_information_requests"] = [
+                {"request_id": row["request_id"], "migration_id": row["migration_id"],
+                 "entity": row["entity_name"], "canonical_field": row["canonical_field"],
+                 "source_file": row["source_file"], "status": row["status"],
+                 "question": row["question"], "requested_by": row["requested_by"],
+                 "created_utc": row["created_utc"], "resolved_utc": row["resolved_utc"],
+                 "resolution": row["resolution"], "response": row["response"]}
+                for row in request_rows
+            ]
+            has_mcl_runs = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mcl_execution_runs'"
+            ).fetchone() is not None
+            run_rows = conn.execute(
+                """SELECT mcl_run_id, status, entity_summary_json, relationship_summary_json,
+                          execution_boundary_json, executed_utc
+                   FROM mcl_execution_runs WHERE migration_id = ? ORDER BY executed_utc""",
+                (migration_id,),
+            ).fetchall() if has_mcl_runs else []
+            self.pipeline_runs = [
+                {"run_id": row["mcl_run_id"], "status": row["status"],
+                 "entity_summary": json.loads(row["entity_summary_json"] or "{}"),
+                 "relationship_summary": json.loads(row["relationship_summary_json"] or "{}"),
+                 "execution_boundary": json.loads(row["execution_boundary_json"] or "{}"),
+                 "executed_utc": row["executed_utc"]}
+                for row in run_rows
+            ]
+        finally:
+            conn.close()
+        self.generated_dashboard = self._build_dashboard_from_form()
 
     def update_kernel_specs(self, updated_by: str, sleeve_invariant: str, sleeve_tolerance: str, aum_drift_gate: str) -> Dict[str, Any]:
         """Updates Kernel invariants when executed by Platform Admin or Domain SME."""
@@ -142,11 +305,43 @@ class WorkspaceStateStore:
                         now,
                     ),
                 )
+            migration_id = self.questionnaire_data.get("migration_id", "UNCONFIGURED")
             for index, field_lineage in enumerate(mapping_result.get("field_lineages", [])):
                 source_field = str(field_lineage.get("source_field", "")).strip()
-                canonical_field = field_lineage.get("canonical_field")
+                canonical_field = str(field_lineage.get("canonical_field") or "").strip()
+                proposed_rule = str(field_lineage.get("rule_applied") or "DIRECT_COPY").strip()
                 if not source_field or not canonical_field:
                     continue
+
+                # Do not recreate approval work for a rule that is already approved.
+                # This is migration/entity/source/canonical scoped so an approval in
+                # one entity or migration cannot suppress a different mapping.
+                approved = conn.execute(
+                    """
+                    SELECT 1 FROM canonical_mappings
+                    WHERE migration_id = ? AND entity_name = ? AND source_field = ?
+                      AND canonical_field = ? AND is_confirmed = 1
+                    LIMIT 1
+                    """,
+                    (migration_id, entity_name, source_field, canonical_field),
+                ).fetchone()
+                if approved:
+                    continue
+
+                # Repeated profiling runs should reuse the existing review item for
+                # the same proposed mapping instead of creating a new PENDING row.
+                existing = conn.execute(
+                    """
+                    SELECT suggestion_id FROM mapping_suggestions
+                    WHERE migration_id = ? AND entity_name = ? AND source_field = ?
+                      AND canonical_field = ? AND COALESCE(proposed_rule, 'DIRECT_COPY') = ?
+                    LIMIT 1
+                    """,
+                    (migration_id, entity_name, source_field, canonical_field, proposed_rule),
+                ).fetchone()
+                if existing:
+                    continue
+
                 conn.execute(
                     "INSERT INTO mapping_suggestions "
                     "(suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, "
@@ -155,12 +350,12 @@ class WorkspaceStateStore:
                     (
                         f"MAPSUG-{run_id}-{index}-{uuid.uuid4().hex[:8]}",
                         run_id,
-                        self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+                        migration_id,
                         entity_name,
                         source_field,
-                        str(canonical_field),
-                        field_lineage.get("rule_applied"),
-                        float(mapping_result.get("confidence_score", 0.0)),
+                        canonical_field,
+                        proposed_rule,
+                        float(field_lineage.get("confidence", mapping_result.get("confidence_score", 0.0))),
                         now,
                     ),
                 )
@@ -185,16 +380,27 @@ class WorkspaceStateStore:
 
         safe_entity = re.sub(r"[^A-Za-z0-9_-]+", "_", entity_name).strip("_") or "entity"
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name)
+        content_sha256 = hashlib.sha256(content_bytes).hexdigest()
+        migration_id = self.questionnaire_data.get("migration_id", "UNCONFIGURED")
+        # Exact same bytes in the same migration/entity are an idempotent re-upload.
+        # Same-name files with different bytes remain distinct source assets.
+        for existing in self.entity_source_files.get(entity_name, {}).values():
+            if (existing.get("migration_id") == migration_id
+                    and existing.get("content_sha256") == content_sha256):
+                existing["_duplicate_upload"] = True
+                return existing
         upload_dir = SOURCE_UPLOAD_ROOT / safe_entity
         upload_dir.mkdir(parents=True, exist_ok=True)
         stored_path = upload_dir / f"{uuid.uuid4().hex}_{safe_name}"
         stored_path.write_bytes(content_bytes)
 
         record = {
+            "file_id": uuid.uuid4().hex,
+            "content_sha256": content_sha256,
             "filename": Path(filename).name,
             "source_role": str(source_role or "ENTITY_MASTER").strip().upper(),
             "entity_name": entity_name,
-            "migration_id": self.questionnaire_data.get("migration_id", "UNCONFIGURED"),
+            "migration_id": migration_id,
             "stored_path": str(stored_path.resolve()),
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(content_bytes),
@@ -203,9 +409,15 @@ class WorkspaceStateStore:
             "columns": columns,
             "status": "UPLOADED",
         }
-        role_files = self.entity_source_files.setdefault(entity_name, {})
-        role_files[record["source_role"]] = record
-        # Keep the existing entity-level mapping path tied to the master file only.
+        # Store every file independently. A single entity can have many source extracts.
+        entity_files = self.entity_source_files.setdefault(entity_name, {})
+        # Preserve the historical role-key lookup for the first file of each role.
+        # Additional extracts of the same role get a unique key instead of overwriting it.
+        storage_key = record["source_role"]
+        if storage_key in entity_files:
+            storage_key = record["source_role"] + ":" + record["filename"] + ":" + record["file_id"]
+        entity_files[storage_key] = record
+        # Preserve compatibility for legacy entity-level endpoints by pointing at the latest upload.
         if record["source_role"] in {"ENTITY_MASTER", "ACCOUNT_MASTER"}:
             self.entity_sample_files[entity_name] = record
         return record
@@ -264,7 +476,7 @@ class WorkspaceStateStore:
 
     def save_entity_scopes(self, scopes_map: Dict[str, str]):
         """Persist only the three entities enabled in the P0 source-to-canonical workflow."""
-        allowed_scopes = {"IN_SCOPE", "PHASE_2", "ARCHIVE_ONLY", "OUT_OF_SCOPE"}
+        allowed_scopes = {"PENDING_DISCOVERY", "IN_SCOPE", "PHASE_2", "ARCHIVE_ONLY", "OUT_OF_SCOPE"}
         for entity_name, scope in scopes_map.items():
             if entity_name in self.P0_ENTITIES and scope in allowed_scopes:
                 self.entity_scopes[entity_name] = scope
@@ -498,7 +710,7 @@ class WorkspaceStateStore:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 f"AUD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
-                self.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
+                self.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"),
                 action,
                 "AUDIT_LINEAGE",
                 action,
@@ -512,7 +724,7 @@ class WorkspaceStateStore:
             pass
 
     def _build_dashboard_from_form(self) -> Dict[str, Any]:
-        firm_name = self.questionnaire_data.get("firm_name", "Core Cap Wealth Management")
+        firm_name = self.questionnaire_data.get("firm_name", "New Migration")
         knowledge_assets = self.firm_knowledge_docs
         transferable_rules = [rule for doc in knowledge_assets for rule in doc.get("transferable_knowledge", [])]
         return {

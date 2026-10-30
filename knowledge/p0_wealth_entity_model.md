@@ -25,3 +25,9 @@ Represents a business grouping used for relationship management or reporting. A 
 3. Mark missing required identifiers, unknown columns, and absent relationship evidence as exceptions.
 4. Require a named reviewer to approve each proposed mapping before it is reusable.
 5. Keep canonical-to-target mapping and cohort/wave assignment out of P0.
+
+## Source-system variation to expect (from `platform_knowledge/wealth_management_research.md`)
+- A "client" may be only a contact (it can own no account) in one system and the legal owner in another; record the meaning each source uses.
+- Joint accounts have several owners; joint tenants in common carry ownership percentages. A single `CLIENT_ID` on Account is a simplification.
+- A household may be a family unit, an advisory relationship or a billing unit, and it is distinct from billing and reporting groups.
+- Keep the system identifier and the custodian account number as separate fields.

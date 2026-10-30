@@ -1,0 +1,36 @@
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local runtime database and generated transformed packages
+App_Data/controlplane.db
+App_Data/Storage/
+dist/
+
+
+# Local source uploads and runtime-generated files
+App_Data/source_uploads/
+App_Data/Storage/
+App_Data/*.db
+App_Data/*.db-journal
+data_plane/storage/
+logs/
+*.log
+
+# Build and coverage output
+build/
+.coverage
+htmlcov/
+.coverage.*
+*.egg-info/
+
+# Local scratch outputs (may contain demo credentials)
+Claude outputs/
+
+# Local demo password hashes (never commit)
+demo_data/demo_passwords.local.json
+demo_data/demo_passwords.local.json.bak
+demo_data/demo_passwords.plaintext.local.json
+App_Data_backup_*/
+simulated_target_service/data/

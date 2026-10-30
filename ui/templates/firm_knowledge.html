@@ -5,9 +5,9 @@
     <!-- Step Banner -->
     <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
         <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">01</span>
+            <span class="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">K</span>
             <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Step 1: Firm Knowledge Studio & Discovery Form</h1>
+                <h1 class="text-lg font-bold text-[#152c6b]">Knowledge assets & discovery form</h1>
                 <p class="text-xs text-[#5a6a88]">Capture firm context and governance thresholds. P0 does not assign migration waves.</p>
             </div>
         </div>
@@ -24,15 +24,7 @@
                     <h2 class="text-xs font-bold uppercase text-blue-700 tracking-wider">Built-In Wealth Kernel</h2>
                     <p class="text-[10px] text-[#8a97b2]">Core Knowledge & Invariants</p>
                 </div>
-                {% if user_role in ['Platform Admin', 'Domain SME'] %}
-                <span class="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
-                    EDITABLE (ADMIN/SME)
-                </span>
-                {% else %}
-                <span class="bg-slate-100 text-[#5a6a88] border border-slate-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
-                    READ-ONLY (ADMIN/SME ONLY)
-                </span>
-                {% endif %}
+                <a href="/canonical-changes" class="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] px-2 py-0.5 rounded font-mono font-bold no-underline">CHANGES VIA CANONICAL CHANGE REQUESTS →</a>
             </div>
 
             <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
@@ -44,16 +36,17 @@
             <!-- Supplementary Data Attachments -->
             <div class="border-t border-[#e9eff9] pt-4 space-y-3">
                 <h3 class="text-xs font-bold uppercase text-[#41506b]">Supplementary Data Assets</h3>
-                <form action="/api/knowledge/file-upload" method="POST" enctype="multipart/form-data" class="space-y-2">
-                    <select name="category" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 text-[11px] text-[#1c2a4a] font-medium">
+                {% if not can_edit_knowledge %}<p class="rounded-lg bg-[#F8FAFD] p-2 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin registers knowledge assets.</p>{% endif %}
+                <form action="/api/knowledge/file-upload" method="POST" enctype="multipart/form-data" class="space-y-2"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-2 border-0 p-0">
+                    <select name="category" aria-label="Knowledge asset category" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 text-[11px] text-[#1c2a4a] font-medium">
                         <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
                         <option value="transformation_rule">Transferable Source-to-Canonical Rule (.md/.txt)</option><option value="source_analysis">Current System / Source Analysis</option><option value="mapping_reference">Reusable Mapping Reference</option>
                     </select>
-                    <input type="file" name="file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" required class="block w-full text-[10px text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">
+                    <input type="file" name="file" aria-label="Knowledge asset file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" required class="block w-full text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">
                     <button type="submit" class="w-full bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1c2a4a] font-bold py-1.5 rounded-lg text-xs transition border border-[#cbd5e1]">
                         Attach Data Asset
                     </button>
-                </form>
+                </fieldset></form>
 
                 <div class="space-y-1.5 max-h-64 overflow-y-auto">
                     {% for doc in docs %}
@@ -78,7 +71,8 @@
                 </span>
             </div>
 
-            <form action="/api/knowledge/submit-questionnaire" method="POST" class="space-y-6">
+            {% if not can_edit_knowledge %}<p class="rounded-lg bg-[#F8FAFD] p-2 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin submits the questionnaire.</p>{% endif %}
+            <form action="/api/knowledge/submit-questionnaire" method="POST" class="space-y-6"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-6 border-0 p-0">
                 
                 <!-- P0 discovery context: only details that help source-to-canonical mapping -->
                 <div class="space-y-3">
@@ -86,26 +80,26 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Firm Name</label>
-                            <input type="text" name="firm_name" value="{{ form.firm_name }}" required class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="firm_name" aria-label="Firm name" value="{{ form.firm_name }}" required class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Source System(s)</label>
-                            <input type="text" name="source_systems" value="{{ form.source_systems or 'Amplify; Black Diamond' }}" placeholder="e.g. custodian, CRM, portfolio system" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="source_systems" aria-label="Source systems" value="{{ form.source_systems or '' }}" placeholder="e.g. custodian, CRM, portfolio system" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Business / Data Owner</label>
-                            <input type="text" name="business_data_owner" value="{{ form.business_data_owner or '' }}" placeholder="Person or team responsible for source definitions" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="business_data_owner" aria-label="Business data owner" value="{{ form.business_data_owner or '' }}" placeholder="Person or team responsible for source definitions" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                         <div>
                             <label class="block font-semibold text-[#1c2a4a] mb-1">Mapping Approver</label>
-                            <input type="text" name="mapping_approver" value="{{ form.mapping_approver or '' }}" placeholder="Reviewer who approves canonical mappings" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
+                            <input type="text" name="mapping_approver" aria-label="Mapping approver" value="{{ form.mapping_approver or '' }}" placeholder="Reviewer who approves canonical mappings" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#1c2a4a]">
                         </div>
                     </div>
                 </div>
                 <div class="space-y-3 border-t border-[#e9eff9] pt-4">
                     <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">2. Identifier & Relationship Notes</h3>
                     <p class="text-[11px] text-[#5a6a88]">Document source primary keys, foreign keys, and known relationships for Account, Client, and Household. Do not infer or create joins when the source does not document them.</p>
-                    <textarea name="identifier_relationship_notes" rows="3" placeholder="e.g. source key names, documented account-to-client ownership, household grouping evidence" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-xs text-[#1c2a4a]">{{ form.identifier_relationship_notes or '' }}</textarea>
+                    <textarea name="identifier_relationship_notes" aria-label="Identifier and relationship notes" rows="3" placeholder="e.g. source key names, documented account-to-client ownership, household grouping evidence" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-xs text-[#1c2a4a]">{{ form.identifier_relationship_notes or '' }}</textarea>
                 </div>
                 <div class="flex justify-between items-center border-t border-[#e9eff9] pt-4">
                     <div class="text-[11px] text-[#5a6a88]">Only source-to-canonical discovery context is captured in P0. Custody, trading, performance, sleeve, AUM wave-sizing, and restricted-model questions are deferred.</div>
@@ -113,7 +107,7 @@
                         Save Mapping Context →
                     </button>
                 </div>
-            </form>
+            </fieldset></form>
         </div>
     </div>
 </div>

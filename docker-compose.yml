@@ -14,19 +14,4 @@ services:
       - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
     volumes:
       - ./App_Data:/app/App_Data
-      - ./data_plane/storage:/app/data_plane/storage
-    restart: unless-stopped
-
-  data_plane_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.data_plane
-    environment:
-      - EXECUTION_ENGINE=python_local
-      - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
-    volumes:
-      - ./data_plane/storage:/app/data_plane/storage
-      - ./App_Data:/app/App_Data
-    depends_on:
-      - control_plane
     restart: unless-stopped
