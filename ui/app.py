@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import quote, quote_plus, urlparse
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import activity_feed, canonical_overlay, migration_validation, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1423,6 +1423,34 @@ async def propose_target_mappings(request: Request):
     if parts:
         return _target_redirect("notice", "; ".join(parts) + ". Each needs human approval.")
     return _target_redirect("notice", "Nothing to refresh: every target field already has a proposal and a canonical source.")
+
+
+@app.post("/api/target-mapping/adf-package")
+async def download_adf_package(request: Request):
+    """Generate the ADF package zip from approved target mappings with simulated Azure values. Nothing is deployed."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        rules = {}
+        for m in approved:
+            expr = m["transformation_expression"]
+            if expr != "DIRECT_COPY" and expr not in rules:
+                rules[expr] = transformation_rules.approved_rule_for_expression(expr)
+        package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"])
+    except ValueError as exc:
+        return _target_redirect("error", str(exc))
+    _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
+                                                     "entities": sorted(package["manifest"]["entities"]), "warnings": len(package["manifest"]["warnings"])})
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", migration_id)
+    return Response(content=adf_package.to_zip(package), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="adf_package_{safe}_SIMULATED.zip"'})
 
 
 @app.post("/api/target-mapping/preview", response_class=HTMLResponse)

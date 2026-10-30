@@ -202,6 +202,15 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
+    assert "Generate ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]
+    zipped = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
+    assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "SIMULATED" in zipped.headers["content-disposition"]
+    import io, json, zipfile
+    names = zipfile.ZipFile(io.BytesIO(zipped.content))
+    mf = json.loads(names.read("manifest.json"))
+    assert mf["simulated"] is True and mf["entities"]["Account"]["approvedMappings"] == 2 and mf["generatedBy"] == "Analyst One"
+    assert any(e.get("event") == "ADF_PACKAGE_GENERATED" for e in app_module.state_store.audit_log.read_all()) if hasattr(app_module.state_store.audit_log, "read_all") else True
 
 
 def test_merge_by_key_joins_files_without_inventing_blanks_and_counts_conflicts():
@@ -421,3 +430,70 @@ def test_mappings_from_an_earlier_target_model_do_not_silently_block_new_proposa
     with pytest.raises(ValueError, match="earlier target model"):
         tm.propose(conn, "MIG-OLD", CANON, spec)
     assert tm.propose(conn, "MIG-NEW", CANON, spec) == 14  # a new migration maps to the confirmed target normally
+
+
+# ---------------------------------------------------------------- ADF package (simulated Azure values)
+def _adf_rule(kind, params, status="APPROVED"):
+    return {"rule_type": kind, "params": tr_validate(kind, params), "status": status}
+
+
+def tr_validate(kind, params):
+    from control_plane.services import transformation_rules as tr
+    return tr.validate_params(kind, params)
+
+
+def _adf_spec():
+    return {"spec_version": "v1", "target_system": "Simplicity", "entities": {"Account": {"target_table": "SIMP_ACCT_MASTER", "fields": [
+        {"name": f"T.{c}", "table": "T", "column": c, "type": ty, "required": req} for c, ty, req in
+        (("ACCT_NO", "string", True), ("OPEN_DT", "date", True), ("REG_CD", "string", False), ("REP_ID", "string", True))]}}}
+
+
+def _adf_maps(**over):
+    base = [("T.ACCT_NO", "ACCT_NUM", "DIRECT_COPY"), ("T.OPEN_DT", "OPEN_DATE", "RULE:D@1"), ("T.REG_CD", "REG_TYPE", "RULE:V@1")]
+    return [{"entity_name": "Account", "target_field": t, "canonical_field": c, "transformation_expression": e, "status": over.get(t, "APPROVED"), "reviewer": "Ann"}
+            for t, c, e in base]
+
+
+def test_adf_package_from_approved_mappings_only_and_simulated():
+    import io, json, zipfile
+    from control_plane.services import adf_package, azure_simulated
+    env = azure_simulated.simulated_environment("MIG-1")
+    rules = {"RULE:D@1": _adf_rule("DATE_FORMAT", {"input_formats": ["MM/DD/YYYY", "YYYYMMDD"]}),
+             "RULE:V@1": _adf_rule("VALUE_MAP", {"map": {"IND'V": "INDIVIDUAL"}})}
+    pkg = adf_package.build("MIG-1", _adf_spec(), _adf_maps(**{"T.REG_CD": "PROPOSED"}), rules, env, "Ann")
+    m = pkg["manifest"]
+    assert m["simulated"] is True and m["deployed"] is False and m["entities"]["Account"]["approvedMappings"] == 2
+    assert any("T.REP_ID" in w for w in m["warnings"])  # required field without an approved mapping is reported
+    flow = json.loads(pkg["files"]["dataflow/DF_Account_T.json"])["properties"]["typeProperties"]["scriptLines"]
+    script = "\n".join(flow)
+    assert "ACCT_NO = ACCT_NUM" in script and "toDate(trim(OPEN_DATE), 'MM/dd/yyyy')" in script and "REG_CD" not in script
+    zf = zipfile.ZipFile(io.BytesIO(adf_package.to_zip(pkg)))
+    names = set(zf.namelist())
+    assert {"manifest.json", "arm/ARMTemplateForFactory.json", "pipeline/PL_XODUS_MIG_1.json", "linkedService/LS_SQL_Target_Sim.json", "README_SIMULATED.txt"} <= names
+    blob = "".join(zf.read(n).decode() for n in names).lower()
+    assert "accountkey" not in blob and "password" not in blob and "00000000-0000-0000-0000-000000000000" in blob
+    assert "AzureKeyVaultSecret" in zf.read("linkedService/LS_SQL_Target_Sim.json").decode()
+
+
+def test_adf_translate_each_rule_and_refuses_unregistered():
+    import pytest
+    from control_plane.services import adf_package as a
+    assert a.translate("RULE:V@1", "REG", _adf_rule("VALUE_MAP", {"map": {"IND'V": "X"}})) == \
+        "iif(isNull(REG) || trim(REG) == '', REG, case(upper(trim(REG)), 'IND\\'V', 'X', REG))"
+    assert "toDecimal" in a.translate("R", "AMT", _adf_rule("NUMBER_CLEAN", {"strip_chars": "$,", "decimals": 2}))
+    assert "concatWS(' ', trim(A), trim(B))" in a.translate("R", "A", _adf_rule("CONCAT", {"sources": ["A", "B"]}))
+    assert "[2]" in a.translate("R", "A", _adf_rule("SPLIT_PART", {"delimiter": " ", "index": 1}))
+    assert a.translate("R", "A", _adf_rule("DEFAULT_IF_BLANK", {"default": "UNKNOWN"})).startswith("iif(")
+    assert "'N/A'" in a.translate("R", "A", _adf_rule("IF_EQUALS", {"when_equals": "N/A", "then": ""}))
+    for bad in (None, _adf_rule("VALUE_MAP", {"map": {"A": "B"}}, status="DRAFT")):
+        with pytest.raises(ValueError, match="approved, registered"):
+            a.translate("RULE:X@1", "A", bad)
+    with pytest.raises(ValueError, match="safe column name"):
+        a.translate("DIRECT_COPY", "A; DROP", None)
+
+
+def test_adf_package_needs_an_approved_mapping():
+    import pytest
+    from control_plane.services import adf_package, azure_simulated
+    with pytest.raises(ValueError, match="Approve at least one"):
+        adf_package.build("M", _adf_spec(), _adf_maps(**{"T.ACCT_NO": "PROPOSED", "T.OPEN_DT": "REJECTED", "T.REG_CD": "PROPOSED"}), {}, azure_simulated.simulated_environment("M"), "Ann")

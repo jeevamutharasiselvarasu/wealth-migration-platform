@@ -82,3 +82,6 @@ The local demo identities (email, name, personas) live in `demo_data/demo_users.
 - Do not treat unreviewed suggestions as approved mappings.
 - Do not claim that files were loaded into a target, that a production cutover ran, or that cloud infrastructure is connected based only on local demo state.
 - Preserve source lineage and explainable evidence for classification and mapping decisions.
+
+## ADF package (simulated Azure values)
+On Target system & mapping, "Generate ADF package (.zip)" builds an Azure Data Factory package (linked services, datasets, mapping data flows, pipeline, ARM template, manifest) from the **approved** target mappings only. All Azure values come from `control_plane/services/azure_simulated.py` and are fictitious; the SQL connection is a Key Vault secret reference and no secrets are included. Nothing is deployed or sent to Azure. Replace the simulated values (and review the package) before any real deployment.
