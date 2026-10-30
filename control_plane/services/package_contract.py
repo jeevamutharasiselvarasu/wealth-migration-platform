@@ -70,6 +70,8 @@ class TargetMapping(_M):
     entity: str
     target_table: str
     target_column: str
+    target_type: str = ""
+    required: bool = False
     canonical_field: str
     transformation: str
     approved_by: str
@@ -174,7 +176,8 @@ def build_body(*, migration_id: str, source_system: str, target_system: str, fir
         field = next((f for f in spec["entities"][m["entity_name"]]["fields"] if f["name"] == m["target_field"]), None)
         if not field:
             raise ValueError(f"{m['target_field']} is not in the confirmed target model.")
-        t_rows.append({"entity": m["entity_name"], "target_table": field["table"], "target_column": field["column"], "canonical_field": m["canonical_field"],
+        t_rows.append({"entity": m["entity_name"], "target_table": field["table"], "target_column": field["column"], "target_type": str(field.get("type") or ""),
+                       "required": bool(field.get("required")), "canonical_field": m["canonical_field"],
                        "transformation": expr, "approved_by": m.get("reviewer") or ""})
     return {
         "migration": {"migration_id": migration_id, "source_system": source_system, "target_system": target_system},

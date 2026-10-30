@@ -110,6 +110,40 @@
         {% endif %}
     </section>
 
+    <section id="execution" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-sm font-bold text-[#152C6B]">Execution <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED data plane</span></h2>
+                <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">Runs the latest deployment package against canonical rows in memory and records telemetry: counts, duration, and the mapping or rule behind each problem. Nothing is sent to Azure or loaded anywhere, and no record values are stored. Replace with the real ADF trigger when that integration is in scope.</p>
+            </div>
+            {% if can_run_validation %}
+            {% if has_package %}<form action="/api/execution/run" method="post" class="flex items-center gap-3"><label class="flex items-center gap-1 text-[11px] text-[#41506B]"><input type="checkbox" name="outage"> Simulate an infrastructure outage</label><button class="rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white">Run simulated execution</button></form>
+            {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Target system &amp; mapping first.</span>{% endif %}
+            {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
+        </div>
+        {% for r in exec_runs %}{% set t = r.telemetry %}
+        <article class="mt-4 rounded-xl border border-[#D9E3F5] p-4">
+            <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                <span class="font-mono font-bold text-[#152C6B]">{{ r.run_id }}</span>
+                <span class="rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold {% if r.status == 'SUCCEEDED' %}border-teal-200 bg-teal-50 text-teal-800{% elif r.status == 'FAILED' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ r.status }}</span>
+                <span class="rounded border border-amber-200 bg-amber-50 px-1.5 font-mono text-[9px] text-amber-800">{{ r.mode }}</span>
+                <span class="text-[#5A6A88]">package v{{ r.package_version }} · {{ r.triggered_by }} · {{ r.started_utc[:19] }} · {{ r.duration_ms }} ms{% if r.retry_of %} · retry of {{ r.retry_of }}{% endif %}</span>
+            </div>
+            {% if t.error %}<p class="mt-2 text-xs text-rose-800">{{ t.error }}</p>
+              {% if can_run_validation and r.status == 'FAILED' and t.retryable %}<form action="/api/execution/run" method="post" class="mt-2"><input type="hidden" name="retry_of" value="{{ r.run_id }}"><button class="rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-bold text-blue-700">Retry run</button></form>{% endif %}
+            {% else %}
+            <p class="mt-2 text-xs text-[#41506B]">{{ t.totals.read }} read · {{ t.totals.loaded }} loaded · {{ t.totals.skipped }} skipped · {{ t.totals.failed }} failed (counted per target table)</p>
+            <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Entity</th><th class="p-1">Table</th><th class="p-1">Read</th><th class="p-1">Loaded</th><th class="p-1">Skipped</th><th class="p-1">Failed</th><th class="p-1">Reconciled</th></tr></thead><tbody>
+              {% for ename, e in t.entities.items() %}{% for tname, c in e.tables.items() %}<tr class="border-t border-[#EEF2FA]"><td class="p-1">{{ ename }}</td><td class="p-1 font-mono">{{ tname }}</td><td class="p-1">{{ c.read }}</td><td class="p-1">{{ c.loaded }}</td><td class="p-1">{{ c.skipped }}</td><td class="p-1">{{ c.failed }}</td><td class="p-1">{{ 'yes' if c.balanced else 'NO' }}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
+            {% if t.failures %}<h3 class="mt-3 text-xs font-bold text-rose-800">Problems linked to mappings and rules</h3>
+            <ul class="mt-1 space-y-1 text-xs">{% for f in t.failures %}<li>{{ f.rows }} row(s) · {{ f.entity }}.{{ f.table }}.{{ f.column }} · {{ f.reason }} · {% if f.rule.startswith('RULE:') %}<a href="/transformation-rules" class="font-mono text-blue-700">{{ f.rule }}</a>{% else %}<a href="/target-mapping" class="font-mono text-blue-700">{{ f.rule }}</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
+            {% if t.post_checks %}<h3 class="mt-3 text-xs font-bold text-[#152C6B]">Post-execution validation scenarios</h3>
+            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="rounded border px-1.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul>{% endif %}
+            {% endif %}
+        </article>
+        {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No executions yet.</p>{% endfor %}
+    </section>
+
     <section id="validation-scenarios" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
         <h2 class="text-sm font-bold text-[#152C6B]">Validation scenarios</h2>
         <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst or Platform Admin approves (never the proposer).</p>

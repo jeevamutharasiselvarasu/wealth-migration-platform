@@ -224,6 +224,19 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     with pytest.raises(ValueError, match="secret-like"):
         pc.validate_text(_y.safe_dump(tampered))
     assert "Download YAML" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/execution/run")).headers["location"]
+    ran = asyncio.run(call("Validation Specialist", "POST", "/api/execution/run")).headers["location"]
+    assert "SIMULATED+run+RUN-" in ran and "No+data+left" in ran
+    down = asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"outage": "on"})).headers["location"]
+    assert "FAILED" in down
+    failed_id = conn.execute("SELECT run_id FROM execution_runs WHERE status = 'FAILED'").fetchone()[0]
+    first_id = conn.execute("SELECT run_id FROM execution_runs WHERE status != 'FAILED'").fetchone()[0]
+    assert "error=" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": first_id})).headers["location"]
+    assert "SIMULATED+run" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
+    assert "already+retried" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
+    exec_page = asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "SIMULATED data plane" in exec_page and "retry of " + failed_id in exec_page and "Run simulated execution" in exec_page
+    assert "Run simulated execution" not in asyncio.run(call("Migration Analyst", "GET", "/reconciliation")).text
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]

@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -907,6 +907,8 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "SELECT run_id, status, results_json, executed_by, executed_utc FROM validation_runs "
             "WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
         scenarios = validation_scenarios.list_scenarios(conn, migration_id)
+        runs = execution_simulator.list_runs(conn, migration_id)
+        has_package = bool(package_contract.list_packages(conn, migration_id))
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
         conn.commit()
     finally:
@@ -932,11 +934,48 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "migration_id": migration_id,
             "validation_run": validation_run, "error": error, "notice": notice,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
-            "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES,
+            "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
         }
     )
+
+
+@app.post("/api/execution/run")
+async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
+    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""
+    import time as _time
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        latest = package_contract.list_packages(conn, migration_id)
+        pkg_row = package_contract.get_package(conn, latest[0]["package_id"]) if latest else None
+        try:
+            if not pkg_row:
+                raise ValueError("Generate a deployment package first (Target system & mapping).")
+            if retry_of:
+                execution_simulator.retry_allowed(conn, retry_of)
+            package = package_contract.validate_text(pkg_row["yaml_text"]).model_dump()
+        except ValueError as exc:
+            return RedirectResponse(url="/reconciliation?error=" + quote_plus(str(exc)) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    started = datetime.now(timezone.utc)
+    t0 = _time.perf_counter()
+    rows = {} if outage == "on" else _canonical_rows_for_migration(migration_id)[0]
+    telemetry = execution_simulator.simulate(package, rows, outage == "on")
+    duration = int((_time.perf_counter() - t0) * 1000)
+    conn = get_db_connection()
+    try:
+        rid = execution_simulator.record_run(conn, migration_id, package, user["name"], telemetry, started, duration, retry_of or None)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("EXECUTION_SIMULATED_RUN", user, {"run_id": rid, "package_id": package["meta"]["package_id"], "status": telemetry["status"], "retry_of": retry_of or None})
+    return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"SIMULATED run {rid}: {telemetry['status']}. No data left this platform.") + "#execution",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _validation_redirect(key: str, message: str):
@@ -1627,20 +1666,8 @@ async def download_adf_package(request: Request):
                     headers={"Content-Disposition": f'attachment; filename="adf_package_{safe}_SIMULATED.zip"'})
 
 
-@app.post("/api/target-mapping/preview", response_class=HTMLResponse)
-async def preview_target_mapping(request: Request):
-    """Read-only dry run: canonical rows are derived in memory; only counts and findings are returned."""
-    user = get_current_user(request)
-    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-    conn = get_db_connection()
-    try:
-        spec = target_connector.spec(conn)
-        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
-        conn.commit()
-    finally:
-        conn.close()
-    if not approved:
-        return _target_redirect("error", "Approve at least one target mapping before running a preview.")
+def _canonical_rows_for_migration(migration_id: str):
+    """Canonical-shaped rows per entity, derived in memory from approved source files and mappings (files joined on the entity key)."""
     canonical_rows: Dict[str, List[Dict[str, Any]]] = {}
     join_info: Dict[str, Dict[str, int]] = {}
     try:
@@ -1669,6 +1696,24 @@ async def preview_target_mapping(request: Request):
         canonical_rows[entity] = joined["rows"]
         join_info[entity] = {"key": key_field, "files": len(file_rows), "keyed_rows": joined["keyed_rows"],
                              "unkeyed_rows": joined["unkeyed_rows"], "conflicts": joined["conflicts"]}
+    return canonical_rows, join_info
+
+
+@app.post("/api/target-mapping/preview", response_class=HTMLResponse)
+async def preview_target_mapping(request: Request):
+    """Read-only dry run: canonical rows are derived in memory; only counts and findings are returned."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+        conn.commit()
+    finally:
+        conn.close()
+    if not approved:
+        return _target_redirect("error", "Approve at least one target mapping before running a preview.")
+    canonical_rows, join_info = _canonical_rows_for_migration(migration_id)
     result = target_mapping.preview(spec, approved, canonical_rows, join_info)
     state_store.audit_log.append({"event": "TARGET_MAPPING_PREVIEWED", "actor": user["name"],
                                   "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"migration_id": migration_id}})
