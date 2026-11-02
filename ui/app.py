@@ -2304,6 +2304,39 @@ async def review_selected_target_mappings(request: Request):
     return _target_redirect(kind, msg)
 
 
+@app.post("/api/target-mapping/revise-selected")
+async def revise_selected_target_mappings(request: Request):
+    """Reopen decided (approved or rejected) target mappings for a new decision. A reason is required; the earlier
+    decision stays in the history, and any saved ADF package becomes stale because the approved set changed."""
+    user = get_current_user(request)
+    form = await request.form()
+    ids = [str(i) for i in form.getlist("revise_ids")]
+    if not ids:
+        return _target_redirect("error", "Tick at least one approved or rejected mapping to reopen.")
+    common = str(form.get("common_note", "")).strip()
+    done, failed = 0, []
+    conn = get_db_connection()
+    try:
+        labels = {r["target_mapping_id"]: f"{r['entity_name']}.{r['target_field']}" for r in conn.execute(
+            "SELECT target_mapping_id, entity_name, target_field FROM target_mappings").fetchall()}
+        for tid in ids:
+            reason = str(form.get("note::" + tid, "")).strip() or common
+            try:
+                row = target_mapping.revise(conn, tid, user["name"], reason)
+            except (LookupError, ValueError) as exc:
+                failed.append(f"{labels.get(tid, tid[-6:])}: {exc}")
+                continue
+            done += 1
+            state_store.audit_log.append({"event": "TARGET_MAPPING_REOPENED", "actor": user["name"],
+                                          "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                          "details": {"entity": row["entity_name"], "target_field": row["target_field"], "reason": reason}})
+        conn.commit()
+    finally:
+        conn.close()
+    kind, msg = _bulk_summary(done, failed, "reopened")
+    return _target_redirect(kind, msg)
+
+
 @app.post("/api/mapping-suggestions/review-selected")
 async def review_selected_source_mappings(request: Request):
     """Table review of source-to-canonical proposals: approve or reject every ticked row, with a note per row.

@@ -116,7 +116,9 @@ def build_provenance(conn: sqlite3.Connection, migration_id: str, spec: Optional
     src_ids = sorted(r[0] for r in conn.execute(
         "SELECT COALESCE(mapping_id, entity_name || '.' || source_field || '>' || canonical_field) FROM canonical_mappings "
         "WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()) if table_exists(conn, "canonical_mappings") else []
-    return {"approved_target_mapping_ids": ids, "approved_mapping_set_sha256": hashlib.sha256("\n".join(ids).encode()).hexdigest(),
+    # the hash covers each mapping's rule too, so re-approving a mapping with a different rule makes a saved package stale
+    signed = sorted(f"{m['target_mapping_id']}|{m.get('transformation_expression') or ''}" for m in approved if m.get("status") == "APPROVED")
+    return {"approved_target_mapping_ids": ids, "approved_mapping_set_sha256": hashlib.sha256("\n".join(signed).encode()).hexdigest(),
             "approved_source_mapping_ids": src_ids, "approved_source_mapping_set_sha256": hashlib.sha256("\n".join(src_ids).encode()).hexdigest(),
             "target_model_version": (spec or {}).get("spec_version"),
             "validation_run_id": run[0] if run else None, "validation_run_status": run[1] if run else None,
@@ -146,7 +148,9 @@ def staleness(art: Dict[str, Any], current: Dict[str, Any]) -> List[str]:
         return ["No provenance was recorded for this package (saved before provenance existed); regenerate it."]
     then, now = prov.get("approved_target_mapping_ids", []), current.get("approved_target_mapping_ids", [])
     if prov.get("approved_mapping_set_sha256") != current.get("approved_mapping_set_sha256"):
-        reasons.append(f"The approved target mappings changed ({len(then)} when built, {len(now)} now; {len(set(now) - set(then))} added, {len(set(then) - set(now))} removed).")
+        added, removed = len(set(now) - set(then)), len(set(then) - set(now))
+        note = "" if added or removed else "; same mappings, but a transformation rule was changed"
+        reasons.append(f"The approved target mappings changed ({len(then)} when built, {len(now)} now; {added} added, {removed} removed{note}).")
     if "approved_source_mapping_set_sha256" in prov and prov["approved_source_mapping_set_sha256"] != current.get("approved_source_mapping_set_sha256"):
         a, b = set(prov.get("approved_source_mapping_ids", [])), set(current.get("approved_source_mapping_ids", []))
         reasons.append(f"The approved source-to-canonical mappings changed ({len(b - a)} added, {len(a - b)} removed since the package was built).")

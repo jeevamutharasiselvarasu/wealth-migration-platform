@@ -329,3 +329,15 @@ def test_provenance_covers_confirmed_source_mappings_and_flags_changes():
     conn.execute("INSERT INTO canonical_mappings VALUES ('CM-4', 'MIG-X', 'Household', 'H', 'HH_ID', 1)")
     reasons = store.staleness(art, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, []))
     assert reasons == ["The approved source-to-canonical mappings changed (1 added, 1 removed since the package was built)."]
+
+
+def test_package_goes_stale_when_a_mapping_is_re_approved_with_a_different_rule():
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    first = [{"target_mapping_id": "TM-1", "status": "APPROVED", "transformation_expression": "DIRECT_COPY"}]
+    again = [{"target_mapping_id": "TM-1", "status": "APPROVED", "transformation_expression": "RULE:CUST_MAP@1"}]
+    built = store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, first)
+    assert store.staleness({"provenance": built}, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, first)) == []
+    reasons = " ".join(store.staleness({"provenance": built}, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, again)))
+    assert "transformation rule was changed" in reasons

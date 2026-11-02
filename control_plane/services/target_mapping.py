@@ -32,9 +32,25 @@ CREATE TABLE IF NOT EXISTS target_mappings (
 )
 """
 
+_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS target_mapping_history (
+    history_id TEXT PRIMARY KEY,
+    target_mapping_id TEXT NOT NULL,
+    prior_status TEXT NOT NULL,
+    prior_expression TEXT,
+    prior_reviewer TEXT,
+    prior_comments TEXT,
+    prior_reviewed_utc TEXT,
+    revised_by TEXT NOT NULL,
+    revision_reason TEXT NOT NULL,
+    revised_utc TEXT NOT NULL
+)
+"""
+
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
+    conn.execute(_HISTORY_DDL)
 
 
 def _source(field: Dict[str, Any]) -> Optional[str]:
@@ -128,7 +144,38 @@ def list_mappings(conn: sqlite3.Connection, migration_id: str, spec: Optional[Di
     # Rows from an earlier target specification version stay in the table for audit but are not current mappings.
     rows = conn.execute("SELECT * FROM target_mappings WHERE migration_id = ? AND spec_version = ? ORDER BY entity_name, target_field",
                         (migration_id, str(spec["spec_version"]))).fetchall()
-    return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    latest = {}
+    for h in conn.execute("SELECT * FROM target_mapping_history ORDER BY revised_utc").fetchall():
+        entry = latest.setdefault(h["target_mapping_id"], {"count": 0})
+        entry.update({"count": entry["count"] + 1, "by": h["revised_by"], "reason": h["revision_reason"],
+                      "was": h["prior_status"], "was_expression": h["prior_expression"], "utc": h["revised_utc"]})
+    for row in out:
+        row["revision"] = latest.get(row["target_mapping_id"])
+    return out
+
+
+def revise(conn: sqlite3.Connection, target_mapping_id: str, reviewer: str, reason: str) -> Dict[str, Any]:
+    """Reopen an approved or rejected mapping for a new decision (for example to apply a rule approved later).
+    The earlier decision is kept in the history table; the mapping goes back to PROPOSED and needs review again."""
+    ensure_table(conn)
+    row = conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = ?", (target_mapping_id,)).fetchone()
+    if row is None:
+        raise LookupError("Target mapping not found.")
+    if row["status"] not in ("APPROVED", "REJECTED"):
+        raise ValueError(f"Only an approved or rejected mapping can be reopened; this one is {row['status']}.")
+    if not str(reason or "").strip():
+        raise ValueError("A reason is required to reopen a decided mapping.")
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO target_mapping_history (history_id, target_mapping_id, prior_status, prior_expression, prior_reviewer, "
+        "prior_comments, prior_reviewed_utc, revised_by, revision_reason, revised_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("THI-" + uuid.uuid4().hex[:12].upper(), target_mapping_id, row["status"], row["transformation_expression"], row["reviewer"],
+         row["review_comments"], row["reviewed_utc"], reviewer, reason.strip(), now))
+    conn.execute(
+        "UPDATE target_mappings SET status = 'PROPOSED', reviewer = NULL, review_comments = NULL, reviewed_utc = NULL "
+        "WHERE target_mapping_id = ? AND status IN ('APPROVED', 'REJECTED')", (target_mapping_id,))
+    return dict(conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = ?", (target_mapping_id,)).fetchone())
 
 
 def review(conn: sqlite3.Connection, target_mapping_id: str, decision: str, reviewer: str,

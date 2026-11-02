@@ -224,6 +224,18 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "notice=1+rejected" in both.headers["location"]
     again = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "APPROVED"}))
     assert "error=" in again.headers["location"] and "already+REJECTED" in again.headers["location"]
+    # a decided mapping can be reopened with a reason (e.g. to apply a rule approved later); the earlier decision is kept
+    assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/revise-selected", {"revise_ids": [opened]})).headers["location"]
+    assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/revise-selected", {})).headers["location"]
+    nor = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/revise-selected", {"revise_ids": [opened]})).headers["location"]
+    assert "error=" in nor and "SIMP_ACCT_MASTER.OPENED_ON" in nor and "reason" in nor
+    reopened = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/revise-selected", {"revise_ids": [opened], f"note::{opened}": "needed after all"}))
+    assert "notice=1+reopened" in reopened.headers["location"]
+    page = asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
+    assert "Reopened by" in page and "needed after all" in page and "was rejected" in page
+    assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/revise-selected", {"revise_ids": [opened], "common_note": "x"})).headers["location"]  # now pending: nothing to reopen
+    back = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "REJECTED", "common_note": "still not needed"}))
+    assert "notice=1+rejected" in back.headers["location"]  # decided again; downstream expectations below are unchanged
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
@@ -741,3 +753,25 @@ def test_move_table_to_another_entity_rematches_columns_and_needs_review(conn, t
     assert tc.pending_reviews(moved) > 0
     with pytest.raises(ValueError, match="Unknown target table"):
         tc.move_table(conn, "Ann", "NO_SUCH_TABLE", dest, CANON_TYPES)
+
+
+def test_reopening_an_approved_mapping_lets_a_later_rule_be_applied_and_keeps_history(conn, spec):
+    tr.create_rule_version(conn, "CUST_MAP", "VALUE_MAP", "codes", {"map": {"SCH": "SCHWAB"}}, "Ann")
+    tr.decide_rule(conn, "CUST_MAP", 1, "APPROVED", "Bob", "ok")
+    tm.propose(conn, "MIG-T", CANON, spec)
+    conn.commit()
+    m = {(x["entity_name"], x["target_field"]): x for x in tm.list_mappings(conn, "MIG-T", spec)}[("Account", "SIMP_ACCT_MASTER.CUSTODIAN_CD")]
+    tid = m["target_mapping_id"]
+    with pytest.raises(ValueError, match="Only an approved or rejected"):
+        tm.revise(conn, tid, "Ann", "too early")  # still pending
+    tm.review(conn, tid, "APPROVED", "Ann", "ok")  # approved as DIRECT_COPY
+    with pytest.raises(ValueError, match="reason is required"):
+        tm.revise(conn, tid, "Ann", "  ")
+    reopened = tm.revise(conn, tid, "Ann", "custodian codes need the value map")
+    assert reopened["status"] == "PROPOSED" and reopened["reviewer"] is None and reopened["transformation_expression"] == "DIRECT_COPY"
+    done = tm.review(conn, tid, "APPROVED", "Ann", "rule applied", "RULE:CUST_MAP@1")
+    assert done["status"] == "APPROVED" and done["transformation_expression"] == "RULE:CUST_MAP@1"
+    row = {x["target_mapping_id"]: x for x in tm.list_mappings(conn, "MIG-T", spec)}[tid]
+    assert row["revision"]["count"] == 1 and row["revision"]["was"] == "APPROVED" and row["revision"]["by"] == "Ann"
+    hist = conn.execute("SELECT prior_status, prior_expression, prior_reviewer, prior_comments, revision_reason FROM target_mapping_history").fetchall()
+    assert [tuple(h) for h in hist] == [("APPROVED", "DIRECT_COPY", "Ann", "ok", "custodian codes need the value map")]
