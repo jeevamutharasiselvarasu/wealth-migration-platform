@@ -60,3 +60,33 @@ def test_retry_safeguards(tmp_path):
     with pytest.raises(ValueError, match="already retried"):
         ex.retry_allowed(conn, first)
     assert len(ex.list_runs(conn, "M")) == 5
+
+
+def test_problems_can_be_acknowledged_then_resolved_with_a_reason(tmp_path):
+    import sqlite3
+    from datetime import datetime, timezone
+    conn = sqlite3.connect(tmp_path / "e.db")
+    conn.row_factory = sqlite3.Row
+    pkg = _package()
+    rid = ex.record_run(conn, "M", pkg, "Val", ex.simulate(pkg, ROWS), datetime.now(timezone.utc), 5)
+    assert ex.simulate(pkg, ROWS)["failures"], "fixture must produce at least one problem"
+    with pytest.raises(ValueError, match="reason"):
+        ex.review_failure(conn, rid, 0, "ACKNOWLEDGED", " ", "Ann")
+    with pytest.raises(ValueError, match="does not exist"):
+        ex.review_failure(conn, rid, 99, "RESOLVED", "x", "Ann")
+    with pytest.raises(ValueError, match="Decision"):
+        ex.review_failure(conn, rid, 0, "IGNORED", "x", "Ann")
+    ex.review_failure(conn, rid, 0, "ACKNOWLEDGED", "seen, fix queued", "Ann")
+    assert ex.list_runs(conn, "M")[0]["reviews"][0]["status"] == "ACKNOWLEDGED"
+    ex.review_failure(conn, rid, 0, "RESOLVED", "source corrected", "Ann")
+    with pytest.raises(ValueError, match="already resolved"):
+        ex.review_failure(conn, rid, 0, "ACKNOWLEDGED", "again", "Ann")
+    review = ex.list_runs(conn, "M")[0]["reviews"][0]
+    assert review["status"] == "RESOLVED" and review["reviewer"] == "Ann" and "source corrected" in review["reason"]
+    assert "A2" not in str(review) and "ZZZ" not in str(review)
+
+
+def test_failure_review_route_is_analyst_or_admin_only():
+    from ui.role_policy import allowed_roles_for
+    roles = allowed_roles_for("POST", "/api/execution/runs/RUN-1/failures/0/review")
+    assert roles == {"Platform Admin", "Migration Analyst"}

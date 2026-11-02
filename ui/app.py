@@ -936,7 +936,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "validation_run": validation_run, "error": error, "notice": notice,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
-            "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES,
+            "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
         }
     )
@@ -976,6 +976,25 @@ async def run_simulated_execution(request: Request, outage: str = Form(""), retr
         conn.close()
     _target_setup_audit("EXECUTION_SIMULATED_RUN", user, {"run_id": rid, "package_id": package["meta"]["package_id"], "status": telemetry["status"], "retry_of": retry_of or None})
     return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"SIMULATED run {rid}: {telemetry['status']}. No data left this platform.") + "#execution",
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/execution/runs/{run_id}/failures/{idx}/review")
+async def review_execution_failure(request: Request, run_id: str, idx: int, decision: str = Form(...), reason: str = Form("")):
+    """Acknowledge or resolve a problem found by a simulated run. Analyst/Admin only; recorded with the reviewer from the session."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            res = execution_simulator.review_failure(conn, run_id, idx, decision, reason, user["name"])
+        except ValueError as exc:
+            return RedirectResponse(url="/reconciliation?error=" + quote_plus(str(exc)) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    f = res["failure"]
+    _target_setup_audit("EXECUTION_PROBLEM_" + res["status"], user, {"run_id": run_id, "entity": f["entity"], "table": f["table"], "column": f["column"], "rule": f["rule"]})
+    return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"Problem on {f['entity']}.{f['table']}.{f['column']} marked {res['status'].lower()}.") + "#execution",
                             status_code=status.HTTP_303_SEE_OTHER)
 
 

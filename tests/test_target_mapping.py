@@ -235,6 +235,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "SIMULATED+run" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
     assert "already+retried" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
     exec_page = asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "Mark resolved" not in exec_page  # reviewing problems is not a Validation Specialist action
     assert "SIMULATED data plane" in exec_page and "retry of " + failed_id in exec_page and "Run simulated execution" in exec_page
     assert "Run simulated execution" not in asyncio.run(call("Migration Analyst", "GET", "/reconciliation")).text
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
