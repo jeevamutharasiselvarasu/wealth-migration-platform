@@ -86,7 +86,7 @@ def analyze(files: List[Dict[str, Any]]) -> Dict[str, Any]:
                                                   "kind": "cross-entity link" if pk_f["entity"] != fk_f["entity"] else "companion file of the same entity"})
                             break
                     # Conflicts: join on this key pair and compare columns that share a name.
-                    if sa["unique_ratio"] >= UNIQUE_MIN or sb["unique_ratio"] >= UNIQUE_MIN:
+                    if (same_name or _key_like(ca) or _key_like(cb)) and (sa["unique_ratio"] >= UNIQUE_MIN or sb["unique_ratio"] >= UNIQUE_MIN):
                         idx = {}
                         for r, v in zip(b["rows"], sb["values"]):
                             if v and v not in idx:

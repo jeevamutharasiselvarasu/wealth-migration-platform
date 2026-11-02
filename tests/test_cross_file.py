@@ -82,3 +82,9 @@ def test_non_key_columns_that_share_values_are_not_offered_as_relationships():
     files = [{"name": "a.csv", "entity": "Account", "rows": [{"REG_TYPE": t} for t in ("IRA", "JNT", "TRU", "ORG")]},
              {"name": "b.csv", "entity": "Client", "rows": [{"CLIENT_TYPE": t} for t in ("IRA", "JNT", "TRU", "ORG")]}]
     assert cf.analyze(files)["relationships"] == []
+
+
+def test_conflicts_are_not_computed_by_joining_on_non_key_columns():
+    a = {"name": "a.csv", "entity": "Account", "rows": [{"REG_TYPE": t, "OPEN_DT": d} for t, d in (("IRA", "1"), ("JNT", "2"), ("TRU", "3"), ("ORG", "4"))]}
+    b = {"name": "b.csv", "entity": "Account", "rows": [{"REGISTRATION_TYPE": t, "OPEN_DT": d} for t, d in (("IRA", "9"), ("JNT", "8"), ("TRU", "7"), ("ORG", "6"))]}
+    assert cf.analyze([a, b])["conflicts"] == []
