@@ -38,7 +38,7 @@ def test_post_scenarios_run_on_loaded_output_and_outage_is_a_retryable_failure()
     assert t["post_checks"][0]["status"] == "PASS"  # only the fully clean row is loaded and its code was translated
     down = ex.simulate(_package(), ROWS, outage=True)
     assert down["status"] == "FAILED" and down["retryable"] and "SIMULATED" in down["error"]
-    assert ex.simulate(_package(), {"Account": []})["status"] == "SUCCEEDED"
+    assert ex.simulate(_package(), {"Account": []})["status"] == "NO_DATA"  # nothing was read, so nothing was exercised
 
 
 def test_retry_safeguards(tmp_path):
@@ -90,3 +90,9 @@ def test_failure_review_route_is_analyst_or_admin_only():
     from ui.role_policy import allowed_roles_for
     roles = allowed_roles_for("POST", "/api/execution/runs/RUN-1/failures/0/review")
     assert roles == {"Platform Admin", "Migration Analyst"}
+
+
+def test_a_run_that_read_no_rows_is_not_reported_as_succeeded():
+    assert ex.simulate(_package(), {})["status"] == "NO_DATA"
+    assert ex.simulate(_package(), {"Account": []})["status"] == "NO_DATA"
+    assert ex.simulate(_package(), ROWS)["status"] in ("PARTIAL_SUCCESS", "SUCCEEDED")

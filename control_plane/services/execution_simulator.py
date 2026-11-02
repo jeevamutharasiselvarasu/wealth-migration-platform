@@ -126,7 +126,7 @@ def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, A
         for t in e["tables"].values():
             t["balanced"] = t["loaded"] + t["skipped"] + t["failed"] == t["read"]
     problems = totals["skipped"] + totals["failed"]
-    status = "FAILED" if totals["read"] and not totals["loaded"] else ("PARTIAL_SUCCESS" if problems else "SUCCEEDED")
+    status = "NO_DATA" if not totals["read"] else ("FAILED" if not totals["loaded"] else ("PARTIAL_SUCCESS" if problems else "SUCCEEDED"))
     return {"status": status, "error": None, "retryable": False, "entities": entities, "failures": sorted(failures.values(), key=lambda f: (-f["rows"], f["entity"], f["column"])),
             "post_checks": post, "totals": totals}
 
