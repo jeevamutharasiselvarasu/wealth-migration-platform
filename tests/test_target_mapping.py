@@ -262,6 +262,18 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     fixed = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
     assert fixed.headers["location"].startswith("/reconciliation?notice=ADF+package+v") and "adf-stale" not in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "regen-package" not in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    # Simulated ADF: refused for roles without execution rights, blocked until deployed, then deploy and trigger the pipeline.
+    assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/adf/simulated-deploy")).headers["location"]
+    assert "Deploy+the+stored" in asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
+    dep = asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-deploy")).headers["location"]
+    assert "notice=" in dep and "SIMULATED+factory" in dep
+    page = asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "adf-deployment" in page and "DEPLOYED_SIMULATED" in page and "LinkedService: 3" in page
+    trig = asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
+    assert "notice=" in trig and "ADF-SIM-RUN" in trig.replace("%2D", "-") or "ADF-SIM-" in trig
+    assert "Last trigger" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # a newer package than the deployed one
+    assert "newer+package" in asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
     zipped = asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[0]['artifact_id']}/download"))
     assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "_v2.zip" in zipped.headers["content-disposition"]
     assert asyncio.run(call("Validation Specialist", "GET", "/api/artifacts/ART-NOPE/download")).status_code == 404
@@ -597,3 +609,47 @@ def test_package_refuses_unapproved_rules_versions_on_change_and_exports_schema(
     assert pc.generate(conn, "M", "Ann", body2)["package_version"] == 2
     assert [p["package_version"] for p in pc.list_packages(conn, "M")] == [2, 1]
     assert "canonical_to_target" in pc.json_schema()["properties"]
+
+
+def _mini_package(**over):
+    import io, json, zipfile
+    files = {
+        "manifest.json": {"simulated": True, "environment": {"factoryName": "adf-sim"}},
+        "arm/ARMTemplateForFactory.json": {"resources": []},
+        "linkedService/LS_A.json": {"name": "LS_A", "properties": {"type": "AzureSqlDatabase"}},
+        "dataset/DS_A.json": {"name": "DS_A", "properties": {"linkedServiceName": {"referenceName": "LS_A"}}},
+        "dataflow/DF_A.json": {"name": "DF_A", "properties": {"typeProperties": {"sources": [{"dataset": {"referenceName": "DS_A"}}], "sinks": [{"dataset": {"referenceName": "DS_A"}}]}}},
+        "pipeline/PL.json": {"name": "PL", "properties": {"activities": [{"name": "Load", "typeProperties": {"dataflow": {"referenceName": "DF_A"}}}]}},
+    }
+    files.update(over)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for path, doc in files.items():
+            if doc is not None:
+                z.writestr(path, doc if isinstance(doc, str) else json.dumps(doc))
+    return buf.getvalue()
+
+
+def test_simulated_adf_rejects_what_a_real_deployment_would_reject():
+    from control_plane.services import adf_simulator as sim
+    ok = sim.inspect(_mini_package())
+    assert ok["errors"] == [] and ok["pipeline"] == "PL" and ok["factory"] == "adf-sim" and {r["kind"] for r in ok["resources"]} == {"LinkedService", "Dataset", "DataFlow", "Pipeline"}
+    dangling = sim.inspect(_mini_package(**{"dataset/DS_A.json": {"name": "DS_A", "properties": {"linkedServiceName": {"referenceName": "LS_MISSING"}}}}))
+    assert any("missing linked service LS_MISSING" in e for e in dangling["errors"])
+    assert any("missing dataset DS_A" in e for e in sim.inspect(_mini_package(**{"dataset/DS_A.json": None}))["errors"])
+    assert any("clear text" in e for e in sim.inspect(_mini_package(**{"linkedService/LS_A.json": '{"name": "LS_A", "properties": {"cs": "Server=x;Password=hunter2;"}}'}))["errors"])
+    assert any("not marked simulated" in e for e in sim.inspect(_mini_package(**{"manifest.json": {"simulated": False}}))["errors"])
+    assert any("no pipeline" in e for e in sim.inspect(_mini_package(**{"pipeline/PL.json": None}))["errors"])
+    assert sim.inspect(b"nope")["errors"] == ["The stored file is not a valid zip."]
+    ls_ok = sim.inspect(_mini_package(**{"linkedService/LS_A.json": '{"name": "LS_A", "properties": {"password": {"type": "AzureKeyVaultSecret"}}}'}))
+    assert ls_ok["errors"] == []  # a Key Vault reference is not a secret
+
+
+def test_trigger_blocker_requires_a_current_deployed_package():
+    from control_plane.services import adf_simulator as sim
+    dep = {"status": "DEPLOYED_SIMULATED", "artifact_id": "ART-1"}
+    assert "Deploy" in sim.trigger_blocker(None, [], "ART-1")
+    assert "rejected" in sim.trigger_blocker({**dep, "status": "REJECTED"}, [], "ART-1")
+    assert "newer package" in sim.trigger_blocker(dep, [], "ART-2")
+    assert "stale" in sim.trigger_blocker(dep, ["The validation run moved on."], "ART-1")
+    assert sim.trigger_blocker(dep, [], "ART-1") is None

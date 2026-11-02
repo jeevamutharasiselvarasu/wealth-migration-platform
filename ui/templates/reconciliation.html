@@ -127,6 +127,22 @@
             {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Target system &amp; mapping first.</span>{% endif %}
             {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
         </div>
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="adf-sim">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="text-xs text-[#41506B]"><b class="text-[#152C6B]">Simulated Azure Data Factory</b> <span class="font-mono text-[10px] text-amber-800">SIMULATED, no Azure call</span><br>Deploys the latest <b>stored</b> ADF package into a fictitious factory (broken references, clear-text secrets and non-simulated packages are rejected), then triggers its pipeline on the simulated data plane. A real ADF client would replace this step.</div>
+                {% if can_run_validation and adf_status %}<div class="flex gap-2">
+                    <form action="/api/adf/simulated-deploy" method="post"><button class="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-bold text-amber-900" data-testid="adf-deploy">Deploy stored package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}</button></form>
+                    <form action="/api/adf/simulated-trigger" method="post"><button class="rounded-xl bg-[#2563EB] px-3 py-2 text-xs font-bold text-white disabled:opacity-40" data-testid="adf-trigger" {% if adf_trigger_blocker %}disabled title="{{ adf_trigger_blocker }}"{% endif %}>Trigger pipeline (simulated)</button></form>
+                </div>{% elif not adf_status %}<span class="text-[10px] text-[#5A6A88]">Save an ADF package on Target system &amp; mapping first.</span>{% endif %}
+            </div>
+            {% if adf_deployment %}<div class="mt-3 text-[11px] text-[#41506B]" data-testid="adf-deployment">
+                <span class="font-mono font-bold">{{ adf_deployment.deployment_id }}</span> &middot; package {{ adf_deployment.artifact_id }} v{{ adf_deployment.artifact_version }} &middot; factory <span class="font-mono">{{ adf_deployment.factory_name }}</span> &middot; <b>{{ adf_deployment.status }}</b> by {{ adf_deployment.deployed_by }} &middot; {{ adf_deployment.deployed_utc }}
+                <div class="mt-1">{% for kind in ['LinkedService','Dataset','DataFlow','Pipeline'] %}{{ kind }}: {{ adf_deployment.resources|selectattr('kind','equalto',kind)|list|length }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
+                {% if adf_deployment.errors %}<ul class="mt-1 list-disc pl-5 text-rose-800">{% for e in adf_deployment.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+                {% if adf_deployment.last_adf_run_id %}<div class="mt-1">Last trigger: <span class="font-mono">{{ adf_deployment.last_adf_run_id }}</span> by {{ adf_deployment.last_triggered_by }} &middot; {{ adf_deployment.last_triggered_utc }}</div>{% endif %}
+                {% if adf_trigger_blocker %}<div class="mt-1 text-amber-900">Trigger unavailable: {{ adf_trigger_blocker }}</div>{% endif %}
+            </div>{% endif %}
+        </div>
         {% for r in exec_runs %}{% set t = r.telemetry %}
         <article class="mt-4 rounded-xl border border-[#D9E3F5] p-4">
             <div class="flex flex-wrap items-center gap-2 text-[11px]">

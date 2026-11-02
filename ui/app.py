@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -946,6 +946,8 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
         has_package = bool(package_contract.list_packages(conn, migration_id))
         stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
         adf_status = _adf_status(conn, migration_id)
+        adf_deployment = adf_simulator.latest(conn, migration_id)
+        adf_trigger_blocker = adf_simulator.trigger_blocker(adf_deployment, adf_status["stale_reasons"] if adf_status else None, adf_status["latest"]["artifact_id"] if adf_status else None)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
         conn.commit()
     finally:
@@ -969,7 +971,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status,
+            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
@@ -979,12 +981,9 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
     )
 
 
-@app.post("/api/execution/run")
-async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
-    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""
+def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of: str = ""):
+    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Returns (run_id, telemetry, package) or (None, error, None)."""
     import time as _time
-    user = get_current_user(request)
-    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
         latest = package_contract.list_packages(conn, migration_id)
@@ -996,7 +995,7 @@ async def run_simulated_execution(request: Request, outage: str = Form(""), retr
                 execution_simulator.retry_allowed(conn, retry_of)
             package = package_contract.validate_text(pkg_row["yaml_text"]).model_dump()
         except ValueError as exc:
-            return RedirectResponse(url="/reconciliation?error=" + quote_plus(str(exc)) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+            return None, str(exc), None
         conn.commit()
     finally:
         conn.close()
@@ -1011,9 +1010,75 @@ async def run_simulated_execution(request: Request, outage: str = Form(""), retr
         conn.commit()
     finally:
         conn.close()
+    return rid, telemetry, package
+
+
+@app.post("/api/execution/run")
+async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
+    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    rid, telemetry, package = _run_simulated_execution(user, migration_id, outage, retry_of)
+    if rid is None:
+        return RedirectResponse(url="/reconciliation?error=" + quote_plus(telemetry) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
     _target_setup_audit("EXECUTION_SIMULATED_RUN", user, {"run_id": rid, "package_id": package["meta"]["package_id"], "status": telemetry["status"], "retry_of": retry_of or None})
     return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"SIMULATED run {rid}: {telemetry['status']}. No data left this platform.") + "#execution",
                             status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _execution_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/reconciliation?{key}=" + quote_plus(message) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/adf/simulated-deploy")
+async def adf_simulated_deploy(request: Request):
+    """Deploy the latest stored ADF package into a fictitious factory. Nothing is sent to Azure."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        art = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        if not art:
+            return _execution_redirect("error", "Save an ADF package first (Target system & mapping).")
+        try:
+            data = artifact_store.read(conn, art["artifact_id"])["data"]
+        except ValueError as exc:
+            return _execution_redirect("error", str(exc))
+        dep = adf_simulator.deploy(conn, migration_id, art, data, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_SIMULATED_DEPLOY", user, {"deployment_id": dep["deployment_id"], "artifact_id": art["artifact_id"], "status": dep["status"], "errors": len(dep["errors"])})
+    if dep["status"] != "DEPLOYED_SIMULATED":
+        return _execution_redirect("error", f"Simulated deployment {dep['deployment_id']} rejected: " + " ".join(dep["errors"][:3]))
+    return _execution_redirect("notice", f"Package v{art['artifact_version']} deployed to the SIMULATED factory {dep['factory_name']} ({dep['deployment_id']}); {len(dep['resources'])} resources. Nothing reached Azure.")
+
+
+@app.post("/api/adf/simulated-trigger")
+async def adf_simulated_trigger(request: Request):
+    """Trigger the deployed pipeline in the simulated factory; it runs on the simulated data plane."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        dep = adf_simulator.latest(conn, migration_id)
+        status_info = _adf_status(conn, migration_id)
+        blocker = adf_simulator.trigger_blocker(dep, status_info["stale_reasons"] if status_info else None, status_info["latest"]["artifact_id"] if status_info else None)
+    finally:
+        conn.close()
+    if blocker:
+        return _execution_redirect("error", blocker)
+    rid, telemetry, package = _run_simulated_execution(user, migration_id)
+    if rid is None:
+        return _execution_redirect("error", telemetry)
+    conn = get_db_connection()
+    try:
+        adf_run = adf_simulator.record_trigger(conn, dep["deployment_id"], rid, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_SIMULATED_TRIGGER", user, {"deployment_id": dep["deployment_id"], "adf_run_id": adf_run, "run_id": rid, "status": telemetry["status"]})
+    return _execution_redirect("notice", f"Pipeline triggered in the SIMULATED factory ({adf_run}): {telemetry['status']}. No data left this platform.")
 
 
 @app.post("/api/execution/runs/{run_id}/failures/{idx}/review")
