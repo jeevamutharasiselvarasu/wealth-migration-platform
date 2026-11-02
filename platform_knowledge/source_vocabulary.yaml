@@ -1,0 +1,66 @@
+# Platform knowledge (generic wealth management, not specific to any firm): extends field_vocabulary.yaml for
+# inferring what an unfamiliar SOURCE column means. Used by control_plane/services/source_inference.py.
+stop: [as, of, the, source, in, to, for, from, a, an, and, or]
+tokens:
+  given: [first, name]
+  first: [first, name]
+  fname: [first, name]
+  forename: [first, name]
+  surname: [last, name]
+  last: [last, name]
+  lname: [last, name]
+  family: [household]
+  fam: [household]
+  town: [city]
+  city: [city]
+  st: [state]
+  state: [state]
+  province: [state]
+  zip: [postal]
+  street: [address]
+  line: [line]
+  desc: [name]
+  description: [name]
+  label: [name]
+  title: [name]
+  party: [client]
+  contact: [client]
+  adv: [representative]
+  advisor: [representative]
+  broker: [representative]
+  trt: [treatment]
+  treatment: [treatment]
+  mkt: [balance]
+  market: [balance]
+  value: [balance]
+  val: [balance]
+  mv: [balance]
+  start: [open]
+  started: [open]
+  inception: [open]
+  seq: [order]
+  sequence: [order]
+  rank: [order]
+  position: [order]
+  born: [birth]
+  mobile: [phone]
+  cell: [phone]
+  fax: [fax]
+  stat: [status]
+  type: [type]
+  typ: [type]
+  kind: [type]
+  class: [type]
+# What a value looks like for fields about a concept. shape names are detected from sample values.
+shapes:
+  postal: zip
+  tax_id: ssn
+  phone: phone
+  email: email
+  birth: date
+  state: state2
+# Words that appear in sample values of a concept (case-insensitive substrings): evidence, never a rule.
+value_hints:
+  registration: [ira, roth, joint, trust, individual, wros, tenants, rollover, "401", custodial, corporate]
+  custodian: [schwab, fidelity, pershing, vanguard, tdameritrade, etrade, merrill, raymond, lpl]
+  tax: [taxable, taxdeferred, nontaxable, tax-deferred, tax exempt]

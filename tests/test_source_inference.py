@@ -1,0 +1,53 @@
+"""Generalization guard for source-column inference (renamed columns the platform has never seen)."""
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent / "generalization"))
+from control_plane.services import source_inference as si  # noqa: E402
+
+DIR = Path(__file__).parent / "generalization"
+
+
+def _run(file):
+    data = json.loads((DIR / file).read_text())
+    right = wrong = total = 0
+    for c in data["cases"]:
+        got = {p["source_field"]: p["canonical_field"] for p in si.infer_source_mappings(c["entity"], c["rows"])}
+        for src, want in c["truth"].items():
+            total += 1
+            g = got.get(src)
+            if g == want:
+                right += 1
+            elif g:
+                wrong += 1
+    return right, wrong, total
+
+
+def test_tuned_set_is_fully_mapped():
+    right, wrong, total = _run("renamed_source_cases.json")
+    assert (right, wrong) == (total, 0)
+
+
+def test_holdout_set_stays_above_floor():
+    # measured 36/40 with 2 wrong when written; the floor guards against regressions, not a target
+    right, wrong, total = _run("renamed_source_holdout.json")
+    assert right >= 36 and wrong <= 2 and total == 40
+
+
+def test_gate_rejects_unknown_fields_and_incompatible_shapes():
+    canonical = {"OPEN_DATE": {"type": "date", "description": ""}, "LEGAL_NAME": {"type": "string", "description": ""}}
+    cols = {"opened": si.profile_column(["2020-01-01"]), "nm": si.profile_column(["Ann Lee"])}
+    props = [{"source_field": "opened", "canonical_field": "LEGAL_NAME", "confidence": 0.9},   # date into text field
+             {"source_field": "nm", "canonical_field": "NOT_A_FIELD", "confidence": 0.9},        # invented field
+             {"source_field": "opened", "canonical_field": "OPEN_DATE", "confidence": 0.9},
+             {"source_field": "nm", "canonical_field": "LEGAL_NAME", "confidence": 0.1}]         # below threshold
+    out = si.gate("Client", props, cols, canonical)
+    assert [(p["source_field"], p["canonical_field"]) for p in out] == [("opened", "OPEN_DATE")]
+
+
+def test_profile_keeps_shapes_not_values():
+    prof = si.profile_column(["000-00-0001", "000-00-0002"])
+    assert prof["top"] == "ssn" and "0001" not in json.dumps({k: v for k, v in prof.items() if k != "blob"})

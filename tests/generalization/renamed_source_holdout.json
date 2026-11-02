@@ -1,0 +1,20 @@
+{
+  "note": "HOLD-OUT set: written after the heuristics were tuned on renamed_source_cases.json; do not tune against it. Columns mapped to null must stay unmapped.",
+  "cases": [
+    {"entity": "Account",
+     "rows": [
+       {"AccountNumber": "7712-0098", "Custodian": "Pershing LLC", "RegistrationType": "Individual", "CustodialStartDate": "2018-11-02", "RepCode": "KT22", "AccountId": "3f2b8c1e-5a6d-4e7f-9b21-0a1c2d3e4f50", "HouseholdId": "H-100", "Balance": "98123.40", "ReportedAsOfDate": "2026-10-31", "TaxStatus": "Taxable", "ClosedDate": "", "OperatorNotes": "Reviewed by ops", "RowVersion": "17"},
+       {"AccountNumber": "7712-0099", "Custodian": "Vanguard", "RegistrationType": "Trust", "CustodialStartDate": "2020-01-15", "RepCode": "KT22", "AccountId": "9d1e7a44-0b3c-4c58-8f10-2b3c4d5e6f71", "HouseholdId": "H-100", "Balance": "250000.00", "ReportedAsOfDate": "2026-10-31", "TaxStatus": "NonTaxable", "ClosedDate": "2024-05-01", "OperatorNotes": "", "RowVersion": "3"}],
+     "truth": {"AccountNumber": "ACCT_NUM", "Custodian": "CUSTODIAN_NAME", "RegistrationType": "REG_TYPE", "CustodialStartDate": "OPEN_DATE", "RepCode": "REP_CODE", "AccountId": "ACCOUNT_ID", "HouseholdId": "HH_ID", "Balance": "BALANCE", "ReportedAsOfDate": "BALANCE_AS_OF", "TaxStatus": "TAX_STATUS", "ClosedDate": "CLOSED_DATE", "OperatorNotes": null, "RowVersion": null}},
+    {"entity": "Client",
+     "rows": [
+       {"ContactId": "5b0a9e12-7c33-4d4b-a1f2-1122aabbccdd", "FirstName": "Priya", "MiddleName": "R", "LastName": "Shah", "TaxId": "000-00-0010", "DateOfBirth": "1975-04-09", "Address1": "22 Sample Ave", "Address2": "Apt 4", "City": "Austin", "State": "TX", "Zip": "78701", "Country": "US", "Phone": "512-555-0111", "HouseholdOrder": "1", "HouseholdRelationshipType": "Head", "EntityType": "individual", "UiThemePref": "dark"},
+       {"ContactId": "6c1b0f23-8d44-4e5c-b2a3-2233bbccddee", "FirstName": "Raj", "MiddleName": "", "LastName": "Shah", "TaxId": "000-00-0011", "DateOfBirth": "1973-12-01", "Address1": "22 Sample Ave", "Address2": "", "City": "Austin", "State": "TX", "Zip": "78701", "Country": "US", "Phone": "512-555-0112", "HouseholdOrder": "2", "HouseholdRelationshipType": "Spouse", "EntityType": "individual", "UiThemePref": "light"}],
+     "truth": {"ContactId": "CLIENT_ID", "FirstName": "FIRST_NAME", "MiddleName": "MIDDLE_NAME", "LastName": "LAST_NAME", "TaxId": "TAX_ID", "DateOfBirth": "DATE_OF_BIRTH", "Address1": "ADDRESS_LINE_1", "Address2": "ADDRESS_LINE_2", "City": "CITY", "State": "STATE", "Zip": "POSTAL_CODE", "Country": "COUNTRY", "Phone": "PHONE", "HouseholdOrder": "HH_ORDER", "HouseholdRelationshipType": "HH_RELATIONSHIP", "EntityType": "CLIENT_TYPE", "UiThemePref": null}},
+    {"entity": "Account",
+     "rows": [
+       {"num": "55-001", "cust_nm": "LPL Financial", "reg": "Joint Tenants", "opened": "01/20/2016", "rep": "AB7", "hh": "HX-9", "ending_bal": "10200.10", "asof": "09/30/2026", "tax_type": "TaxDeferred", "is_closed_flag": "N"},
+       {"num": "55-002", "cust_nm": "Raymond James", "reg": "Roth IRA", "opened": "03/05/2019", "rep": "AB7", "hh": "HX-9", "ending_bal": "47500.00", "asof": "09/30/2026", "tax_type": "TaxDeferred", "is_closed_flag": "N"}],
+     "truth": {"num": "ACCT_NUM", "cust_nm": "CUSTODIAN_NAME", "reg": "REG_TYPE", "opened": "OPEN_DATE", "rep": "REP_CODE", "hh": "HH_ID", "ending_bal": "BALANCE", "asof": "BALANCE_AS_OF", "tax_type": "TAX_STATUS", "is_closed_flag": null}}
+  ]
+}

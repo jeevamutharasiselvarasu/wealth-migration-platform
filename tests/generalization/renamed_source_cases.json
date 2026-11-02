@@ -1,0 +1,18 @@
+{
+  "note": "Synthetic CoreCap-like data with deliberately unfamiliar column names. truth maps source column -> canonical field.",
+  "cases": [
+    {"entity": "Account",
+     "rows": [
+       {"acct_no": "88231045", "custodian_desc": "Charles Schwab & Co", "acct_type": "Roth IRA", "start_dt": "03/15/2021", "adv_id": "R14", "household_ref": "HH-7001", "tax_trt": "TaxDeferred", "mkt_val": "125430.55", "val_date": "2026-09-30", "closed_on": ""},
+       {"acct_no": "88231046", "custodian_desc": "Fidelity Investments", "acct_type": "Joint WROS", "start_dt": "07/01/2019", "adv_id": "R14", "household_ref": "HH-7001", "tax_trt": "Taxable", "mkt_val": "56000.00", "val_date": "2026-09-30", "closed_on": "2025-12-31"}],
+     "truth": {"acct_no": "ACCT_NUM", "custodian_desc": "CUSTODIAN_NAME", "acct_type": "REG_TYPE", "start_dt": "OPEN_DATE", "adv_id": "REP_CODE", "household_ref": "HH_ID", "tax_trt": "TAX_STATUS", "mkt_val": "BALANCE", "val_date": "BALANCE_AS_OF", "closed_on": "CLOSED_DATE"}},
+    {"entity": "Client",
+     "rows": [
+       {"party_key": "P-0001", "given": "Alex", "surname": "Morgan", "ssn_tin": "000-00-0001", "dob": "1980-02-11", "zip_cd": "02110", "st": "MA", "town": "Boston", "street1": "1 Example St", "mobile": "555-0100", "family_ref": "HH-7001", "seq_in_family": "1"},
+       {"party_key": "P-0002", "given": "Sam", "surname": "Morgan", "ssn_tin": "000-00-0002", "dob": "1982-06-30", "zip_cd": "02111", "st": "MA", "town": "Boston", "street1": "1 Example St", "mobile": "555-0101", "family_ref": "HH-7001", "seq_in_family": "2"}],
+     "truth": {"party_key": "CLIENT_ID", "given": "FIRST_NAME", "surname": "LAST_NAME", "ssn_tin": "TAX_ID", "dob": "DATE_OF_BIRTH", "zip_cd": "POSTAL_CODE", "st": "STATE", "town": "CITY", "street1": "ADDRESS_LINE_1", "mobile": "PHONE", "family_ref": "HH_ID", "seq_in_family": "HH_ORDER"}},
+    {"entity": "Household",
+     "rows": [{"family_ref": "HH-7001", "family_label": "Morgan Family"}, {"family_ref": "HH-7002", "family_label": "Lee Family"}],
+     "truth": {"family_ref": "HH_ID", "family_label": "HH_NAME"}}
+  ]
+}
