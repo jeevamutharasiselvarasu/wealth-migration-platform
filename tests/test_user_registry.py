@@ -162,3 +162,24 @@ def test_demo_email_without_a_host_hash_signs_in_through_the_registry_when_named
     assert sid and mgr.active_sessions[sid]["email"] == "jeeva@simplicitywealth.com"
     assert mgr.assigned_roles("jeeva@simplicitywealth.com") == set(mgr.ALL_ROLES) and mgr.can_load_demo("jeeva@simplicitywealth.com") is True
     assert mgr.authenticate("jeeva@simplicitywealth.com", "wrong-password-1", "Platform Admin") is None
+
+
+def test_healthz_reports_setup_state_without_emails_or_secrets(tmp_path, monkeypatch):
+    from control_plane import db
+    import ui.app as app_module
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "h.db")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abcdef1234567890")
+    monkeypatch.setenv("XODUS_BOOTSTRAP_ADMIN_EMAIL", "jeeva@simplicitywealth.com")
+    db.init_db()
+
+    async def get():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://testserver") as c:
+            return await c.get("/healthz")
+    first = asyncio.run(get())
+    assert first.status_code == 200 and first.json()["commit"] == "abcdef1" and first.json()["bootstrap_admin_configured"] is True and first.json()["bootstrap_admin_registered"] is False
+    conn = db.get_db_connection()
+    ur.register(conn, "Jeeva S", "jeeva@simplicitywealth.com", PW, set(app_module.session_mgr.authorized_users), ur.bootstrap_admin_email())
+    conn.commit()
+    body = asyncio.run(get()).json()
+    assert body["bootstrap_admin_registered"] is True and body["bootstrap_admin_status"] == "ACTIVE" and body["active_admins"] == 1 and body["bootstrap_admin_is_demo_email"] is True
+    assert "@" not in str(body) and PW not in str(body)

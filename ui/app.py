@@ -276,6 +276,23 @@ async def process_login(email: str = Form(...), password: str = Form(...)):
     return response
 
 
+@app.get("/healthz")
+async def healthz():
+    """Public status for the host owner: which commit is running and whether account setup looks right. No emails, no secrets."""
+    conn = get_db_connection()
+    try:
+        users = user_registry.list_users(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    boot = user_registry.bootstrap_admin_email()
+    reg = next((u for u in users if u["email"] == boot), None) if boot else None
+    return {"status": "ok", "commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7], "registration_page": True,
+            "bootstrap_admin_configured": bool(boot), "bootstrap_admin_is_demo_email": bool(boot) and boot in session_mgr.authorized_users,
+            "bootstrap_admin_registered": bool(reg), "bootstrap_admin_status": reg["status"] if reg else None,
+            "registered_users": len(users), "active_admins": sum(1 for u in users if u["status"] == "ACTIVE" and "Platform Admin" in u["roles"])}
+
+
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, error: str = "", notice: str = ""):
     return templates.TemplateResponse(request=request, name="register.html", context={"error": error, "notice": notice})
