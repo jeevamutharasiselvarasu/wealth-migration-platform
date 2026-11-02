@@ -179,6 +179,16 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     page = asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert "Inferred target model" in page and "Confirm target model" in page and "SIMP_ACCT_MASTER.ACCT_NO" in page
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]  # fields not reviewed yet
+    # table review: tick rows, one note per row, a change picked on a row; reviewers other than Platform Admin are refused
+    assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/target-system/review-selected", {"rows": ["SIMP_ACCT_MASTER|ACCT_NO"]})).headers["location"]
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-selected", {})).headers["location"]  # nothing ticked
+    bulk = asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-selected", {
+        "rows": ["SIMP_ACCT_MASTER|ACCT_NO", "SIMP_ACCT_MASTER|OPENED_ON"], "note::SIMP_ACCT_MASTER|ACCT_NO": "checked with the SME",
+        "change::SIMP_ACCT_MASTER|OPENED_ON": "OPEN_DATE", "common_note": "bulk pass"}))
+    assert "notice=2+recorded" in bulk.headers["location"]
+    page = asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "checked with the SME" in page and "bulk pass" in page and 'name="rows"' in page and "Approve selected" in page
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-selected", {"rows": ["SIMP_ACCT_MASTER|ACCT_NO"], "change::SIMP_ACCT_MASTER|ACCT_NO": "NOT_A_FIELD"})).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-all")).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]
     locked = asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", cfg_form)).headers["location"]
@@ -205,6 +215,14 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
         assert "notice=" in ok.headers["location"]
     sme = asyncio.run(call("Domain SME", "POST", f"/api/target-mapping/{ids[('Account', 'SIMP_ACCT_MASTER.OPENED_ON')]}/review", {"decision": "APPROVED", "comments": "x"}))
     assert "may+not+perform" in sme.headers["location"]
+    opened = ids[("Account", "SIMP_ACCT_MASTER.OPENED_ON")]
+    assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "APPROVED"})).headers["location"]
+    assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"decision": "APPROVED"})).headers["location"]  # nothing ticked
+    assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "REJECTED"})).headers["location"]  # reason required
+    both = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "REJECTED", f"note::{opened}": "not needed for the demo"}))
+    assert "notice=1+rejected" in both.headers["location"]
+    again = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "APPROVED"}))
+    assert "error=" in again.headers["location"] and "already+REJECTED" in again.headers["location"]
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]

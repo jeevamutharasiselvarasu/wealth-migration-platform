@@ -37,6 +37,7 @@
       {% set ns = namespace(current_entity='') %}
       {% for suggestion in mapping_suggestions %}
       {% if ns.current_entity != suggestion.entity_name %}
+      {% if ns.current_entity %}</tbody></table></div>{% endif %}
       <div class="mt-5 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div><div class="font-mono text-[9px] uppercase tracking-wider text-blue-700">Entity review queue</div><h3 class="mt-1 text-sm font-bold text-[#152C6B]">{{ suggestion.entity_name }}</h3><p class="mt-1 text-[10px] text-[#5A6A88]">Bulk approval succeeds only if every pending mapping for this entity passes validation.</p></div>
         <div class="flex flex-wrap items-center gap-2">
@@ -52,25 +53,20 @@
         </div>
       </div>
       {% set ns.current_entity = suggestion.entity_name %}
+      <div class="overflow-x-auto"><table class="w-full text-left text-[11px]" data-bulk-table><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]">{% if can_review_mappings %}<th class="p-1 w-8"><input type="checkbox" data-select-all aria-label="Select all {{ suggestion.entity_name }} proposals"></th>{% endif %}<th class="p-1">Source field</th><th class="p-1">Inferred canonical field</th><th class="p-1">Confidence</th>{% if can_review_mappings %}<th class="p-1">Transformation</th><th class="p-1">Note</th>{% endif %}</tr></thead><tbody>
       {% endif %}
-      <article class="rounded-xl border border-[#D9E3F5] p-4">
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-start">
-          <div><div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">{{ suggestion.entity_name }} · Source field</div><div class="mt-1 break-words text-sm font-bold text-[#152C6B]">{{ suggestion.source_field }}</div></div>
-          <div><div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Proposed canonical field</div><div class="mt-1 break-words text-sm font-bold text-teal-700">{{ suggestion.canonical_field|default('UNRESOLVED') }}</div><div class="mt-1 text-[10px] text-[#5A6A88]">Rule: <span class="font-mono">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span> · Kind: <span class="font-mono">{{ suggestion.proposed_rule|mapping_kind(suggestion.canonical_field) }}</span></div></div>
-          <div class="rounded-lg bg-[#F8FAFD] p-3"><div class="font-mono text-[9px] text-[#8A97B2]">CONFIDENCE</div><div class="mt-1 text-sm font-bold text-[#152C6B]">{{ ((suggestion.confidence_score|float) * 100)|round(1) }}%</div><div class="mt-1 text-[9px] text-amber-700">Suggestion only</div></div>
-        </div>
-        {% if can_review_mappings %}
-        <form action="/api/mapping-suggestions/{{ suggestion.suggestion_id }}/review" method="post" class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-[minmax(12rem,1fr)_auto_auto]">
-          <input type="hidden" name="reviewer" value="{{ user_name }}">
-          <input name="comments" placeholder="Approval note or required rejection reason" required aria-label="Review comments" class="rounded-lg border border-[#C3D2EC] p-2.5 text-xs">
-          {% if approved_rules %}<select name="rule_override" aria-label="Apply an approved transformation rule" class="rounded-lg border border-[#C3D2EC] bg-white p-2 text-xs md:col-span-3"><option value="">Keep proposed rule ({{ suggestion.proposed_rule|default('DIRECT_COPY') }})</option>{% for r in approved_rules %}<option value="{{ r.expression }}">Use {{ r.expression }} · {{ r.description[:50] }}</option>{% endfor %}</select>{% endif %}
-          <button name="decision" value="APPROVED" class="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800">Approve mapping</button>
-          <button name="decision" value="REJECTED" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800 hover:bg-rose-100">Reject</button>
-        </form>
-        {% else %}<p class="mt-4 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects this proposal.</p>{% endif %}
-      </article>
+      <tr class="border-t border-[#EEF2FA] align-top">
+        {% if can_review_mappings %}<td class="p-1"><input type="checkbox" form="src-review" name="ids" value="{{ suggestion.suggestion_id }}" data-row-check aria-label="Approve {{ suggestion.source_field }}"></td>{% endif %}
+        <td class="p-1 break-words font-bold text-[#152C6B]">{{ suggestion.source_field }}</td>
+        <td class="p-1"><span class="font-mono font-bold text-teal-700">{{ suggestion.canonical_field|default('UNRESOLVED') }}</span><div class="text-[10px] text-[#5A6A88]">Rule: <span class="font-mono">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span> · Kind: <span class="font-mono">{{ suggestion.proposed_rule|mapping_kind(suggestion.canonical_field) }}</span></div></td>
+        <td class="p-1 font-bold text-[#152C6B]">{{ ((suggestion.confidence_score|float) * 100)|round(1) }}%<div class="text-[9px] font-normal text-amber-700">Suggestion only</div></td>
+        {% if can_review_mappings %}<td class="p-1">{% if approved_rules %}<select form="src-review" name="rule::{{ suggestion.suggestion_id }}" data-row-input aria-label="Transformation for {{ suggestion.source_field }}" class="max-w-[14rem] rounded border border-[#C3D2EC] bg-white p-1 text-[10px]"><option value="">Keep {{ suggestion.proposed_rule|default('DIRECT_COPY') }}</option>{% for r in approved_rules %}<option value="{{ r.expression }}">Use {{ r.expression }}</option>{% endfor %}</select>{% else %}<span class="font-mono text-[10px]">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span>{% endif %}</td>
+        <td class="p-1"><input form="src-review" name="note::{{ suggestion.suggestion_id }}" data-row-input placeholder="Comment" aria-label="Note for {{ suggestion.source_field }}" class="w-48 rounded border border-[#C3D2EC] p-1 text-[10px]"></td>{% endif %}
+      </tr>
       {% endfor %}
+      </tbody></table></div>
     </div>
+    {% if can_review_mappings %}<form id="src-review" action="/api/mapping-suggestions/review-selected" method="post" data-bulk-bar class="sticky bottom-0 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3 shadow-sm"><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="w-64 rounded-lg border border-[#C3D2EC] bg-white p-2 text-[10px]"><button name="decision" value="APPROVED" data-needs-selection class="rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Approve selected</button><button name="decision" value="REJECTED" data-needs-selection class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 disabled:opacity-40">Reject selected</button><span class="text-[10px] text-[#8A97B2]">A rejection reason is required: add it on the row or in the shared note. Tick the header box to select every pending row in an entity.</span></form>{% else %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects these proposals.</p>{% endif %}
     {% else %}
     {% if progress and progress.mappings_approved %}<div class="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-6 text-center"><div class="font-bold text-teal-900">All proposals reviewed · {{ progress.mappings_approved }} mappings approved</div><p class="mt-1 text-xs text-teal-800">{% if progress.rfi_open %}{{ progress.rfi_open }} information request{{ '' if progress.rfi_open == 1 else 's' }} still open below.{% else %}Nothing is waiting here. Continue to validation.{% endif %}</p><a href="/reconciliation" class="mt-3 inline-block rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white no-underline">Continue to validation →</a></div>
     {% else %}

@@ -2217,6 +2217,120 @@ async def review_target_mapping(request: Request, target_mapping_id: str, decisi
     return _target_redirect("notice", f"{row['entity_name']}.{row['target_field']} {row['status'].lower()}.")
 
 
+def _bulk_summary(done: int, failed: List[str], verb: str) -> tuple:
+    """One notice or error line for a table-style bulk review."""
+    if failed and not done:
+        return "error", "Nothing was " + verb + ". " + "; ".join(failed[:4]) + (" …" if len(failed) > 4 else "")
+    msg = f"{done} {verb}."
+    if failed:
+        msg += f" {len(failed)} not changed: " + "; ".join(failed[:4]) + (" …" if len(failed) > 4 else "")
+    return "notice", msg
+
+
+@app.post("/api/target-system/review-selected")
+async def review_selected_target_fields(request: Request):
+    """Table review of inferred target fields: every ticked row is approved as inferred, or changed when a different
+    canonical field (or none / reject) is picked on its row. The row note is kept with the decision."""
+    user = get_current_user(request)
+    form = await request.form()
+    keys = [str(k) for k in form.getlist("rows")]
+    if not keys:
+        return _target_redirect("error", "Tick at least one field to approve.")
+    common = str(form.get("common_note", "")).strip()
+    canonical = _canonical_types()
+    done, failed = 0, []
+    conn = get_db_connection()
+    try:
+        for key in keys:
+            table, _, column = key.partition("|")
+            change = str(form.get("change::" + key, "")).strip()
+            note = str(form.get("note::" + key, "")).strip() or common
+            if change == "":
+                decision, canonical_field = "correct", ""
+            elif change == "__reject__":
+                decision, canonical_field = "reject", ""
+            elif change == "__none__":
+                decision, canonical_field = "change", ""
+            else:
+                decision, canonical_field = "change", change
+            try:
+                target_connector.review_field(conn, user["name"], table, column, decision, canonical_field, canonical, note)
+                done += 1
+                _target_setup_audit("TARGET_FIELD_REVIEWED", user, {"field": f"{table}.{column}", "decision": decision.upper(),
+                                                                    "canonical_field": canonical_field.upper(), "note": note})
+            except ValueError as exc:
+                failed.append(f"{table}.{column}: {exc}")
+        conn.commit()
+    finally:
+        conn.close()
+    kind, msg = _bulk_summary(done, failed, "recorded")
+    return _target_redirect(kind, msg)
+
+
+@app.post("/api/target-mapping/review-selected")
+async def review_selected_target_mappings(request: Request):
+    """Table review of target mapping proposals: approve or reject every ticked row, with a note per row."""
+    user = get_current_user(request)
+    form = await request.form()
+    ids = [str(i) for i in form.getlist("ids")]
+    decision = str(form.get("decision", "")).strip().upper()
+    if decision not in {"APPROVED", "REJECTED"}:
+        return _target_redirect("error", "Choose approve or reject.")
+    if not ids:
+        return _target_redirect("error", "Tick at least one mapping first.")
+    common = str(form.get("common_note", "")).strip()
+    done, failed = 0, []
+    conn = get_db_connection()
+    try:
+        for tid in ids:
+            note = str(form.get("note::" + tid, "")).strip() or common
+            rule = str(form.get("rule::" + tid, "")).strip()
+            try:
+                row = target_mapping.review(conn, tid, decision, user["name"], note, rule if decision == "APPROVED" else "")
+            except (LookupError, ValueError) as exc:
+                failed.append(f"{tid[-6:]}: {exc}")
+                continue
+            done += 1
+            state_store.audit_log.append({"event": "TARGET_MAPPING_" + row["status"], "actor": user["name"],
+                                          "timestamp_utc": row["reviewed_utc"],
+                                          "details": {"entity": row["entity_name"], "target_field": row["target_field"],
+                                                      "canonical_field": row["canonical_field"], "rule": row["transformation_expression"]}})
+        conn.commit()
+    finally:
+        conn.close()
+    kind, msg = _bulk_summary(done, failed, decision.lower())
+    return _target_redirect(kind, msg)
+
+
+@app.post("/api/mapping-suggestions/review-selected")
+async def review_selected_source_mappings(request: Request):
+    """Table review of source-to-canonical proposals: approve or reject every ticked row, with a note per row.
+    Each row goes through the same single-item review, so validation, rules and audit trail are unchanged."""
+    user = get_current_user(request)
+    if user.get("role") not in APPROVAL_ROLES:
+        raise HTTPException(status_code=403, detail="Only Migration Analyst or Platform Admin may approve or reject mappings.")
+    form = await request.form()
+    ids = [str(i) for i in form.getlist("ids")]
+    decision = str(form.get("decision", "")).strip().upper()
+    back = "/agent-pipeline?{}=" 
+    if decision not in {"APPROVED", "REJECTED"}:
+        return RedirectResponse(url=back.format("error") + quote_plus("Choose approve or reject."), status_code=status.HTTP_303_SEE_OTHER)
+    if not ids:
+        return RedirectResponse(url=back.format("error") + quote_plus("Tick at least one mapping first."), status_code=status.HTTP_303_SEE_OTHER)
+    common = str(form.get("common_note", "")).strip()
+    done, failed = 0, []
+    for sid in ids:
+        note = str(form.get("note::" + sid, "")).strip() or common
+        rule = str(form.get("rule::" + sid, "")).strip()
+        try:
+            await review_source_mapping_suggestion(sid, decision, user["name"], note, rule if decision == "APPROVED" else "", None)
+            done += 1
+        except HTTPException as exc:
+            failed.append(f"{sid[-6:]}: {exc.detail}")
+    kind, msg = _bulk_summary(done, failed, decision.lower())
+    return RedirectResponse(url=back.format(kind) + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
+
+
 # ---------------------------------------------------------------------------
 # Transformation rules: governed, versioned, human-approved, registered types only
 # ---------------------------------------------------------------------------

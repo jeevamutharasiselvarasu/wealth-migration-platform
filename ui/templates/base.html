@@ -300,7 +300,42 @@
     document.body.appendChild(d);
     setTimeout(function () { d.remove(); }, 8000);
   }
-  document.addEventListener("DOMContentLoaded", function () { restore(); toast(); });
+  /* Table-style approvals: tick rows, add a note or a change, then submit. Editing a row's
+     change/note ticks it automatically; the header box selects every row in that table. */
+  function bulk() {
+    var checks = function () { return Array.prototype.slice.call(document.querySelectorAll("[data-row-check]")); };
+    function refresh() {
+      var n = checks().filter(function (c) { return c.checked; }).length;
+      document.querySelectorAll("[data-selected-count]").forEach(function (el) { el.textContent = n; });
+      document.querySelectorAll("[data-needs-selection]").forEach(function (b) { b.disabled = n === 0; });
+      document.querySelectorAll("[data-bulk-table]").forEach(function (t) {
+        var rows = t.querySelectorAll("[data-row-check]"), all = t.querySelector("[data-select-all]");
+        if (!all || !rows.length) return;
+        var on = Array.prototype.filter.call(rows, function (c) { return c.checked; }).length;
+        all.checked = on === rows.length; all.indeterminate = on > 0 && on < rows.length;
+      });
+    }
+    document.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (t.matches && t.matches("[data-select-all]")) {
+        var tbl = t.closest("table");
+        tbl.querySelectorAll("[data-row-check]").forEach(function (c) { c.checked = t.checked; });
+      } else if (t.matches && t.matches("[data-row-input]")) {
+        var tr = t.closest("tr"), c = tr && tr.querySelector("[data-row-check]");
+        if (c && t.value) c.checked = true;
+      }
+      refresh();
+    });
+    document.addEventListener("input", function (ev) {
+      var t = ev.target;
+      if (t.matches && t.matches("[data-row-input]") && t.value) {
+        var tr = t.closest("tr"), c = tr && tr.querySelector("[data-row-check]");
+        if (c && !c.checked) { c.checked = true; refresh(); }
+      }
+    });
+    refresh();
+  }
+  document.addEventListener("DOMContentLoaded", function () { restore(); toast(); bulk(); });
   window.addEventListener("load", restore);
 })();
 </script>

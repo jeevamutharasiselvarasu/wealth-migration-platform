@@ -617,7 +617,7 @@ def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch
     for role, allowed in (("Platform Admin", True), ("Migration Analyst", True),
                           ("Domain SME", False), ("Validation Specialist", False)):
         html = asyncio.run(page(role))
-        assert ("Approve mapping" in html) is allowed, role
+        assert ("Approve selected" in html) is allowed, role
         assert ("Approve all Account mappings" in html) is allowed, role
         assert ("Read-only for" in html) is (not allowed), role
         can_generate = role in ("Platform Admin", "Migration Analyst")
@@ -679,3 +679,46 @@ def test_start_new_migration_isolates_state_and_survives_restart(tmp_path, monke
     fresh.hydrate_from_durable_state()
     assert fresh.questionnaire_data["migration_id"] == new_id
     assert fresh.entity_source_files == {}
+
+
+def test_source_mappings_are_reviewed_as_a_table_with_one_note_per_row(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "bulkreview")
+    assert _post_setup(app_module, session_id).status_code == 303
+    active = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "bulkreview.db")
+    for sid, src, canon in (("S-1", "ACCT_REF", "ACCT_NUM"), ("S-2", "OPEN_ON", "OPEN_DATE"), ("S-3", "NOTE_X", "REG_TYPE")):
+        conn.execute("INSERT INTO mapping_suggestions (suggestion_id, run_id, migration_id, entity_name, source_field, "
+                     "canonical_field, proposed_rule, confidence_score, status, created_utc) "
+                     "VALUES (?, 'R', ?, 'Account', ?, ?, 'DIRECT_COPY', 0.9, 'PENDING', '2026-01-01')", (sid, active, src, canon))
+    conn.commit()
+
+    async def post(role, data):
+        app_module.session_mgr.active_sessions[session_id]["role"] = role
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": session_id}) as client:
+            return await client.post("/api/mapping-suggestions/review-selected", data=data, follow_redirects=False,
+                                     headers={"accept": "text/html"})
+
+    def status(sid):
+        return conn.execute("SELECT status, review_comments, reviewer FROM mapping_suggestions WHERE suggestion_id = ?", (sid,)).fetchone()
+
+    assert "may+not+perform" in asyncio.run(post("Domain SME", {"ids": ["S-1"], "decision": "APPROVED"})).headers["location"]
+    assert "error=" in asyncio.run(post("Migration Analyst", {"decision": "APPROVED"})).headers["location"]  # nothing ticked
+    missing = asyncio.run(post("Migration Analyst", {"ids": ["S-3"], "decision": "REJECTED"}))  # a rejection needs a reason
+    assert "error=" in missing.headers["location"] and status("S-3")[0] == "PENDING"
+    done = asyncio.run(post("Migration Analyst", {"ids": ["S-1", "S-2"], "decision": "APPROVED", "note::S-1": "key matches",
+                                                  "common_note": "reviewed together"}))
+    assert "notice=2+approved" in done.headers["location"]
+    assert tuple(status("S-1")) == ("APPROVED", "key matches", "Firm Config Test")
+    assert status("S-2")[1] == "reviewed together" and status("S-3")[0] == "PENDING"
+    mapped = {r[0] for r in conn.execute("SELECT canonical_field FROM canonical_mappings WHERE is_confirmed = 1")}
+    assert {"ACCT_NUM", "OPEN_DATE"} <= mapped
+    assert conn.execute("SELECT COUNT(*) FROM approvals WHERE stage = 'SOURCE_TO_CANONICAL_MAPPING'").fetchone()[0] == 2
+    repeat = asyncio.run(post("Migration Analyst", {"ids": ["S-1", "S-3"], "decision": "REJECTED", "common_note": "wrong column"}))
+    assert "notice=1+rejected" in repeat.headers["location"] and "not+changed" in repeat.headers["location"]
+    assert status("S-3")[0] == "REJECTED" and status("S-1")[0] == "APPROVED"
+    conn.close()

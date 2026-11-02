@@ -187,7 +187,7 @@ def _find_field(model: Dict[str, Any], table: str, column: str) -> Dict[str, Any
 
 
 def review_field(conn: sqlite3.Connection, actor: str, table: str, column: str, decision: str, canonical_field: str,
-                 canonical: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
+                 canonical: Dict[str, Dict[str, str]], note: str = "") -> Dict[str, Any]:
     """Reviewer decision on one inferred target field: CORRECT (as inferred), CHANGE (another canonical field, or none
     when canonical_field is blank) or REJECT (the field is not part of the target model). The inference is kept alongside."""
     cfg = _inferred_for_review(conn)
@@ -210,6 +210,8 @@ def review_field(conn: sqlite3.Connection, actor: str, table: str, column: str, 
         f["canonical_hint"], f["confidence"] = prior, prior_conf  # a correct/reject decision stands on the original inference
         status = "CONFIRMED" if decision == "CORRECT" else "REJECTED"
     f["review"] = {"status": status, "by": actor, "utc": _now(), "inferred_hint": prior, "inferred_confidence": prior_conf}
+    if str(note or "").strip():
+        f["review"]["note"] = str(note).strip()
     return _save_model(conn, model)
 
 
