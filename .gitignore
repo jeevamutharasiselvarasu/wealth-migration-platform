@@ -37,3 +37,4 @@ simulated_target_service/data/
 
 # Local rehearsal accounts (extra demo users on this machine only)
 demo_data/demo_users.local.json
+.venv/
