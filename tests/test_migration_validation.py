@@ -212,6 +212,26 @@ def test_exception_proposed_by_validator_approved_by_analyst_never_the_proposer(
     assert any(e["status"] == "APPROVED" and e["decided_by"] == "Ann" and e["reason"] for e in doc["exceptions"])
     assert "no source record values" in " ".join(doc["notes"])
 
+    # A stale stored ADF package blocks saving the sign-off unless the reviewer states why.
+    from control_plane.services import artifact_store as _as
+    monkeypatch.setattr(_as, "STORAGE_ROOT", tmp_path / "storage")
+    _as.save(conn, "MIG-V", "ADF_PACKAGE", b"zip", "Val", provenance={"approved_target_mapping_ids": ["T1"], "approved_mapping_set_sha256": "old", "validation_run_id": "VAL-OLD"})
+    conn.commit()
+    save = "/api/validation/signoff-evidence/save"
+    for data in (None, {"stale_reason": "too short"}):
+        blocked = asyncio.run(call("sid", "Validation Specialist", "POST", save, data)).headers["location"]
+        assert "error=" in blocked and "is+stale" in blocked
+    assert "is+stale" in asyncio.run(call("sid", "Validation Specialist", "GET", "/api/validation/signoff-evidence")).headers["location"]
+    assert not conn.execute("SELECT 1 FROM stored_artifacts WHERE kind = 'SIGNOFF_EVIDENCE'").fetchall()
+    page = asyncio.run(call("sid", "Validation Specialist", "GET", "/reconciliation")).text
+    assert "stale-reason" in page and "STALE" in page
+    ok = asyncio.run(call("sid", "Validation Specialist", "POST", save, {"stale_reason": "Rehearsal only; package regenerated after sign-off review"})).headers["location"]
+    assert "notice=" in ok
+    saved = _as.latest(conn, "MIG-V", "SIGNOFF_EVIDENCE")
+    saved_doc = _j.loads(_as.read(conn, saved["artifact_id"])["data"])
+    assert saved_doc["stale_package_override"]["reviewer_reason"].startswith("Rehearsal only") and saved_doc["stale_package_override"]["reviewer"] == "Val" and saved_doc["stale_package_override"]["stale_reasons"]
+    assert saved_doc["adf_package"]["mapping_set_matches_current"] is False
+
 
 def _spec():
     return {"entities": {"Account": {"fields": [{"name": "T.ACCT_NO", "required": True}, {"name": "T.NOTE", "required": False}, {"name": "T.OWNER", "required": True}]},

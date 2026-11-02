@@ -1084,6 +1084,23 @@ def _adf_status(conn, migration_id: str):
     return {"latest": stored[0], "stale_reasons": artifact_store.staleness(stored[0], artifact_store.build_provenance(conn, migration_id, spec, approved))}
 
 
+MIN_STALE_REASON = 10
+
+
+def _stale_gate(conn, migration_id: str, reason: str):
+    """Sign-off evidence may not be saved while the latest ADF package is stale unless the reviewer states why.
+    Returns (error_message_or_None, override_record_or_None)."""
+    status = _adf_status(conn, migration_id)
+    if not status or not status["stale_reasons"]:
+        return None, None
+    reason = " ".join(str(reason or "").split())
+    if len(reason) < MIN_STALE_REASON:
+        return ("The latest ADF package " + status["latest"]["artifact_id"] + " is stale: " + " ".join(status["stale_reasons"]) +
+                " Generate a new package, or give a reason (at least 10 characters) for signing off against it."), None
+    return None, {"package_artifact_id": status["latest"]["artifact_id"], "package_version": status["latest"]["artifact_version"],
+                  "stale_reasons": status["stale_reasons"], "reviewer_reason": reason[:500]}
+
+
 def _adf_reference(conn, migration_id: str, run_id: str):
     spec = target_connector.spec(conn)
     approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
@@ -1099,8 +1116,13 @@ async def download_signoff_evidence(request: Request):
     try:
         try:
             approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
+            blocked, override = _stale_gate(conn, migration_id, request.query_params.get("stale_reason", ""))
+            if blocked:
+                return _validation_redirect("error", blocked)
             doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
             doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
+            if override:
+                doc["stale_package_override"] = {**override, "reviewer": user["name"]}
         except ValueError as exc:
             return _validation_redirect("error", str(exc))
         conn.commit()
@@ -1813,19 +1835,26 @@ async def save_signoff_evidence(request: Request):
     """Save the sign-off evidence for the latest validation run with the migration's data (counts, ids and reasons only)."""
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    form = await request.form()
     conn = get_db_connection()
     try:
         try:
             approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
+            blocked, override = _stale_gate(conn, migration_id, form.get("stale_reason", ""))
+            if blocked:
+                return _validation_redirect("error", blocked)
             doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
             doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
+            if override:
+                doc["stale_package_override"] = {**override, "reviewer": user["name"]}
         except ValueError as exc:
             return _validation_redirect("error", str(exc))
         stored = artifact_store.save(conn, migration_id, "SIGNOFF_EVIDENCE", json.dumps(doc, indent=2, default=str).encode("utf-8"), user["name"])
         conn.commit()
     finally:
         conn.close()
-    _target_setup_audit("SIGNOFF_EVIDENCE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "run_id": doc["validation_run"]["run_id"]})
+    _target_setup_audit("SIGNOFF_EVIDENCE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "run_id": doc["validation_run"]["run_id"],
+                                                          "stale_package_override": bool(override)})
     return _validation_redirect("notice", f"Sign-off evidence v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}).")
 
 
