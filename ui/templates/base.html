@@ -158,6 +158,7 @@
             <a href="/target-mapping" class="xa-nav-link {% if path == '/target-mapping' %}active{% endif %}" {% if path == '/target-mapping' %}aria-current="page"{% endif %}><span class="xa-nav-num">→</span><span class="xa-nav-copy">Target system &amp; mapping</span></a>
             <a href="/transformation-rules" class="xa-nav-link {% if path == '/transformation-rules' %}active{% endif %}" {% if path == '/transformation-rules' %}aria-current="page"{% endif %}><span class="xa-nav-num">T</span><span class="xa-nav-copy">Transformation rules</span></a>
             <a href="/firm-knowledge" class="xa-nav-link {% if path == '/firm-knowledge' %}active{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}><span class="xa-nav-num">K</span><span class="xa-nav-copy">Knowledge assets</span></a>
+            {% if user_role == 'Platform Admin' %}<a href="/admin/users" class="xa-nav-link {% if path == '/admin/users' %}active{% endif %}" {% if path == '/admin/users' %}aria-current="page"{% endif %}><span class="xa-nav-num">U</span><span class="xa-nav-copy">Users &amp; access</span></a>{% endif %}
         </nav>
         <div class="xa-nav-divider"></div>
         <div class="px-2 py-2 xa-pilot-scope">

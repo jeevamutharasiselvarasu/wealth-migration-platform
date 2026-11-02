@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -267,13 +267,79 @@ async def login_page(request: Request, error: str = None):
 @app.post("/login")
 async def process_login(email: str = Form(...), password: str = Form(...)):
     # Authentication and persona selection are intentionally separate steps.
-    default_role = session_mgr.authorized_users.get(email.lower(), {}).get("default_role", "Migration Analyst")
-    session_id = session_mgr.authenticate(email, password, default_role)
+    session_id = session_mgr.authenticate(email, password, session_mgr.default_role_for(email))
     if not session_id:
-        return RedirectResponse(url="/login?error=Invalid+credentials+provided", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/login?error=" + quote_plus(session_mgr.last_error), status_code=status.HTTP_303_SEE_OTHER)
     response = RedirectResponse(url="/persona-selection", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(key="session_id", value=session_id, httponly=True, samesite="lax")
     return response
+
+
+@app.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request, error: str = "", notice: str = ""):
+    return templates.TemplateResponse(request=request, name="register.html", context={"error": error, "notice": notice})
+
+
+@app.post("/register")
+async def register_account(name: str = Form(""), email: str = Form(""), password: str = Form(""), confirm: str = Form(""), website: str = Form("")):
+    """Public self-registration. Accounts are pending (no roles) until a Platform Admin approves them; only the bootstrap admin is active at once."""
+    def back(key: str, message: str):
+        return RedirectResponse(url=f"/register?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+    if website.strip():  # honeypot: real people never fill this hidden field
+        return back("notice", "Registration received.")
+    problem = user_registry.validate_registration(name, email, password, confirm)
+    if problem:
+        return back("error", problem)
+    conn = get_db_connection()
+    try:
+        try:
+            result = user_registry.register(conn, name, email, password, set(session_mgr.authorized_users), user_registry.bootstrap_admin_email())
+        except ValueError as exc:
+            return back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("USER_REGISTERED", {"email": email.strip().lower(), "name": " ".join(name.split()), "role": "self-registration"}, {"status": result["status"], "bootstrap": result["bootstrap"]})
+    if result["status"] == "ACTIVE":
+        return RedirectResponse(url="/login?error=" + quote_plus("Administrator account created. Sign in with the email and password you just chose."), status_code=status.HTTP_303_SEE_OTHER)
+    return back("notice", "Registration received. A Platform Admin must approve it and assign your roles before you can sign in.")
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    if user.get("role") not in PLATFORM_ROLES:
+        return RedirectResponse(url="/?error=" + quote_plus("Only a Platform Admin manages users."), status_code=status.HTTP_303_SEE_OTHER)
+    conn = get_db_connection()
+    try:
+        users = user_registry.list_users(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    demo = [{"email": e, "name": v["name"], "roles": v["roles"], "has_password": bool(v["password_sha256"])} for e, v in session_mgr.authorized_users.items()]
+    return render_template_with_context(request, "admin_users.html", {
+        "page_title": "Users & access", "user_name": user["name"], "user_role": user["role"], "users": users, "demo_users": demo,
+        "all_roles": user_registry.ALL_ROLES, "notice": notice, "error": error})
+
+
+@app.post("/api/users/{email}/decision")
+async def decide_user(email: str, request: Request, action: str = Form(...)):
+    actor = get_current_user(request)
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            updated = user_registry.decide(conn, actor["email"], email, action, [str(r) for r in form.getlist("roles")])
+        except ValueError as exc:
+            return RedirectResponse(url="/admin/users?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    for sid, sess in list(session_mgr.active_sessions.items()):  # a changed or disabled account must not keep an old session
+        if sess.get("email") == updated["email"]:
+            del session_mgr.active_sessions[sid]
+    _target_setup_audit("USER_ACCESS_CHANGED", actor, {"target": updated["email"], "action": action.upper(), "status": updated["status"], "roles": updated["roles"]})
+    return RedirectResponse(url="/admin/users?notice=" + quote_plus(f"{updated['email']}: {updated['status']}, roles {', '.join(updated['roles']) or 'none'}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/persona-selection", response_class=HTMLResponse)
