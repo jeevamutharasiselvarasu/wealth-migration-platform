@@ -73,5 +73,14 @@ Commits after `3d2d491` (which is pushed and CI-green), all local and unpushed a
 Assumptions taken without a stakeholder answer: exception approver = Analyst/Admin; package contract drafted locally; `REP-` prefix rule left unchanged; approved canonical change requests remain backlog only; accounts `owner.demo` and `admin2.demo` are Platform Admin without demo load (only `admin2.demo` has a password hash).
 Still open: real package template, Azure sandbox and ADF interface, identity-provider integration, managed-identity connection test and storage setup template, wave and delta, the old `/api/runs/{run_id}/export-package` exporter (hard-coded Azure values, out-of-scope entities).
 
+## 2026-11-02 update (verify against the repository before relying on it)
+Local commits after `8c23442`: browser-walk fixes (`3308b19`), execution problem acknowledge/resolve (`0cc6ae9`, `4c0907e`), default validation scenarios from the target contract (`96b23f6`), relationship confirm/reject and stricter key-like detection (`a511a37`), workflow bar on effective status plus sign-off evidence JSON (`6ec2144`), source drift (`a67edfb`). Full local suite 259 passed on a clean export of the working tree. CI last confirmed green on `e1407a1`; later commits are unpushed and unchecked.
+- Browser: each new flow was exercised in headless Chromium against a copy of the app in the cloud workspace (approve mappings, package and ADF zip, validation, scenarios, execution, problem review, relationship review, evidence download). The Tailwind CDN was blocked there, so layout and styling were NOT checked, and the drift banner was not triggered live (unit-tested only). The desktop browser pane could not reach the local VM.
+- Validation: default scenarios are DRAFT until a Validation Specialist adopts them; the workflow bar now uses the effective status (approved exceptions); sign-off evidence is a JSON download with counts, ids and reasons only.
+- Execution: problems can be acknowledged or resolved (Analyst/Admin) with a reason; tables with no source rows are flagged instead of shown as reconciled.
+- Discovery: relationship candidates can be confirmed or rejected (rejection needs a reason); columns that are not key-like are no longer offered as relationships.
+- Limitations, reset procedure and a rehearsal script: `docs/project/XODUS_LIMITATIONS_AND_RESET.md`.
+Still open: real package template, Azure/ADF and identity integrations, firm-level contract versions, joins beyond CONCAT, wave and delta, styled-browser rehearsal, pushing and CI for the local commits.
+
 ## Honesty rule
 Do not present this status as current without rechecking the repository and CI. Do not claim browser testing succeeded unless it was actually run.
