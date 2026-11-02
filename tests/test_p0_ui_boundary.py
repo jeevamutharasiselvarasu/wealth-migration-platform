@@ -498,3 +498,19 @@ def test_target_mapping_wide_tables_scroll_inside_their_own_container():
     from pathlib import Path
     tm = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "target_mapping.html").read_text(encoding="utf-8")
     assert tm.count('<div class="overflow-x-auto"><table') == 2  # gap report and preview must not widen the phone layout
+
+
+def test_git_ignored_local_users_add_rehearsal_accounts_without_replacing_tracked_ones(tmp_path, monkeypatch):
+    import json, shutil
+    from ui.auth import SessionManager
+    shutil.copy(ROOT / "demo_data" / "demo_users.json", tmp_path / "demo_users.json")
+    (tmp_path / "demo_passwords.local.json").write_text(json.dumps({"extra@example.invalid": "h1", "jeeva@simplicitywealth.com": "h2"}))
+    (tmp_path / "demo_users.local.json").write_text(json.dumps({"users": [
+        {"email": "extra@example.invalid", "name": "Extra", "default_role": "Platform Admin", "can_load_demo": True},
+        {"email": "jeeva@simplicitywealth.com", "name": "Impostor", "default_role": "Domain SME"}]}))
+    monkeypatch.setattr(SessionManager, "DEMO_DIR", tmp_path)
+    mgr = SessionManager()
+    assert mgr.authorized_users["extra@example.invalid"]["name"] == "Extra" and mgr.authorized_users["extra@example.invalid"]["can_load_demo"] is False
+    assert mgr.authorized_users["jeeva@simplicitywealth.com"]["name"] != "Impostor"  # a local file cannot override a tracked user
+    (tmp_path / "demo_users.local.json").unlink()
+    assert "extra@example.invalid" not in SessionManager().authorized_users  # absent file is fine
