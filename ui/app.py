@@ -1788,6 +1788,14 @@ async def preview_transformation_rule(request: Request, rule_type: str = Form(..
     return JSONResponse({"ok": True, "rows": rows})
 
 
+def _shorten(text: str, limit: int) -> str:
+    """Cut at a word boundary and mark the cut, so notices never end mid-word."""
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:.") + "…"
+
+
 @app.post("/api/transformation-rules/infer")
 async def infer_transformation_rules(request: Request, rule_text: str = Form(""), asset_id: str = Form("")):
     """Turn business-rule text into DRAFT governed rules. Each still needs Analyst/Admin approval; unmatched sentences are reported, not guessed."""
@@ -1813,7 +1821,8 @@ async def infer_transformation_rules(request: Request, rule_text: str = Form("")
     if result["skipped"]:
         parts.append(f"{len(result['skipped'])} already exist")
     if result["unrecognised"]:
-        parts.append(f"{len(result['unrecognised'])} not recognised: " + " | ".join(u["statement"][:60] for u in result["unrecognised"][:3]))
+        examples = " | ".join(_shorten(u["statement"], 60) for u in result["unrecognised"][:2])
+        parts.append(f"{len(result['unrecognised'])} line(s) not recognised, e.g. {examples}")
     return _rules_redirect("error" if not result["created"] and not result["skipped"] else "notice", "; ".join(parts) + ".")
 
 

@@ -279,3 +279,11 @@ def test_demo_manifest_registers_a_business_rules_asset():
     from control_plane.services import rule_inference as ri
     assert sum(1 for r in ri.infer(text) if r["recognised"]) == 4
     assert "corecap_business_rules.md" in (root / "ui" / "app.py").read_text()
+
+
+def test_notice_text_is_cut_at_a_word_boundary():
+    from ui.app import _shorten
+    long = "Synthetic demo rules for the CoreCap pilot. Each line is a business rule that becomes a draft"
+    out = _shorten(long, 60)
+    assert out.endswith("…") and len(out) <= 61 and not out.rstrip("…").endswith(("Migratio", "bus"))
+    assert _shorten("short text", 60) == "short text"
