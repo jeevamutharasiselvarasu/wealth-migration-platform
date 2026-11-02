@@ -34,6 +34,9 @@
 
         <!-- Login Form -->
         <form action="/login" method="POST" class="space-y-4">
+            {% if notice %}
+            <div class="bg-teal-50 border border-teal-200 text-teal-900 text-xs p-3 rounded-xl font-medium text-center" data-testid="login-notice">{{ notice }}</div>
+            {% endif %}
             {% if error %}
             <div class="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium text-center">
                 {{ error }}
@@ -57,6 +60,7 @@
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl text-xs transition shadow-md mt-2">
                 Sign in →
             </button>
+            <p class="text-center text-xs text-[#5a6a88]">New here? <a href="/register" class="font-bold text-blue-700">Request an account</a></p>
         </form>
 
         <div class="text-center text-[11px] text-[#8a97b2] font-mono">

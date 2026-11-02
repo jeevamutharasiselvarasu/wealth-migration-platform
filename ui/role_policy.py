@@ -28,11 +28,12 @@ VALIDATION_ROLES: Set[str] = {ADMIN, VALIDATOR}       # validation-side evaluati
 TARGET_PREVIEW_ROLES: Set[str] = {ADMIN, ANALYST, VALIDATOR}  # read-only canonical-to-target dry run
 
 # Routes any authenticated user may POST (authentication/persona handled by their own checks).
-OPEN_POST_PATHS = {"/login", "/persona-selection"}
+OPEN_POST_PATHS = {"/login", "/persona-selection", "/register"}
 
 POST_POLICY = [
     (r"^/api/migration/setup$", SETUP_ROLES),
     (r"^/api/demo/load$", PLATFORM_ROLES),
+    (r"^/api/users/[^/]+/decision$", PLATFORM_ROLES),
     (r"^/api/migration/new$", SETUP_ROLES),
     (r"^/api/entities/save-scopes$", SETUP_ROLES),
     (r"^/api/adls/upload$", SETUP_ROLES),

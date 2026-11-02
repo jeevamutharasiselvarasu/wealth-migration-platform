@@ -8,6 +8,9 @@ from typing import Dict, Optional
 
 from fastapi import Request
 
+from control_plane import db as _cp_db
+from control_plane.services import user_registry
+
 
 class SessionManager:
     """Manages local demo sessions and role permissions.
@@ -25,6 +28,7 @@ class SessionManager:
 
     def __init__(self):
         self.active_sessions: Dict[str, Dict[str, str]] = {}
+        self.last_error = "Invalid credentials provided"
         self.demo_mode = os.getenv("XODUS_DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
         self.authorized_users = {}
         if self.demo_mode:
@@ -67,28 +71,66 @@ class SessionManager:
             return {}
         return {str(k).strip().lower(): str(v).strip().lower() for k, v in data.items()}
 
+    def _registry_user(self, email: str) -> Optional[dict]:
+        """Active self-registered user (control-plane database), or None. Failures to read the database fail closed."""
+        try:
+            conn = _cp_db.get_db_connection()
+            try:
+                user = user_registry.get_user(conn, email)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            return None
+        return user if user and user["status"] == "ACTIVE" else None
+
+    def default_role_for(self, email: str) -> str:
+        email = email.strip().lower()
+        if email in self.authorized_users:
+            return self.authorized_users[email]["default_role"]
+        reg = self._registry_user(email)
+        return (reg or {}).get("default_role") or "Migration Analyst"
+
     def authenticate(self, email: str, password: str, role: str) -> Optional[str]:
-        user = self.authorized_users.get(email.strip().lower())
+        """Returns a session id, or None. self.last_error carries a user-safe reason for the login page."""
+        self.last_error = "Invalid credentials provided"
+        email = email.strip().lower()
+        user = self.authorized_users.get(email)
         supplied_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        name = None
         if user and len(user["password_sha256"]) == 64 and hmac.compare_digest(user["password_sha256"], supplied_hash):
-            session_id = str(uuid.uuid4())
-            self.active_sessions[session_id] = {
-                "email": email.strip().lower(),
-                "name": user["name"],
-                "role": role,
-            }
-            return session_id
-        return None
+            name = user["name"]
+        elif not user or not user["password_sha256"]:
+            conn = _cp_db.get_db_connection()
+            try:
+                result = user_registry.verify(conn, email, password)
+                conn.commit()
+            finally:
+                conn.close()
+            if "user" in result:
+                name, role = result["user"]["name"], result["user"]["default_role"] or role
+            else:
+                self.last_error = result["error"]
+        if name is None:
+            return None
+        session_id = str(uuid.uuid4())
+        self.active_sessions[session_id] = {"email": email, "name": name, "role": role}
+        return session_id
 
     ALL_ROLES = ("Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist")
 
     def can_load_demo(self, email: str) -> bool:
         """One-click demo load is granted per account in demo_data/demo_users.json (never by role alone)."""
-        return bool(self.demo_mode and self.authorized_users.get(str(email or "").strip().lower(), {}).get("can_load_demo"))
+        email = str(email or "").strip().lower()
+        if self.demo_mode and self.authorized_users.get(email, {}).get("can_load_demo"):
+            return True
+        reg = self._registry_user(email) if email and email not in self.authorized_users else None
+        return bool(self.demo_mode and reg and reg.get("can_load_demo"))
 
     def assigned_roles(self, email: str) -> set:
         """Personas a user may act under: Platform Admin holds all; others hold their configured roles."""
-        user = self.authorized_users.get(email.strip().lower(), {})
+        email = email.strip().lower()
+        user = self.authorized_users.get(email) or (self._registry_user(email) or {})
         roles = set(user.get("roles", []))
         if user.get("default_role") == "Platform Admin" or "Platform Admin" in roles:
             return set(self.ALL_ROLES)
