@@ -324,6 +324,37 @@ async def register_account(name: str = Form(""), email: str = Form(""), password
     return back("notice", "Registration received. A Platform Admin must approve it and assign your roles before you can sign in.")
 
 
+@app.get("/api/admin/storage-status")
+async def storage_status(request: Request):
+    """Platform Admin only: which database is live and what it holds (table names, row counts, stored-file totals). No values are returned."""
+    user = get_current_user(request)
+    if user.get("role") not in PLATFORM_ROLES:
+        raise HTTPException(status_code=403, detail="Only a Platform Admin can view storage status.")
+    conn = get_db_connection()
+    try:
+        if using_postgres():
+            names = [r[0] for r in conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name").fetchall()]
+        else:
+            names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()]
+        tables = {n: conn.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names}
+        files = None
+        if "stored_files" in tables:
+            r = conn.execute("SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM stored_files").fetchone()
+            files = {"count": r[0], "total_bytes": int(r[1])}
+        events = {}
+        if "workflow_events" in tables:
+            events = {r[0]: r[1] for r in conn.execute("SELECT event_type, COUNT(*) FROM workflow_events GROUP BY event_type ORDER BY event_type").fetchall()}
+        users = {}
+        if "app_users" in tables:
+            users = {r[0]: r[1] for r in conn.execute("SELECT status, COUNT(*) FROM app_users GROUP BY status").fetchall()}
+        conn.commit()
+    finally:
+        conn.close()
+    return {"database": "postgresql" if using_postgres() else "sqlite", "tables": tables, "stored_files": files,
+            "workflow_events_by_type": events, "registered_users_by_status": users,
+            "active_migration_id": state_store.questionnaire_data.get("migration_id")}
+
+
 @app.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(request: Request, notice: str = "", error: str = ""):
     user = get_current_user(request)
