@@ -247,7 +247,14 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # second save is v2; nothing is overwritten
     rows = app_module.artifact_store.list_artifacts(conn, conn.execute("SELECT migration_id FROM stored_artifacts LIMIT 1").fetchone()[0], "ADF_PACKAGE")
     assert [r["artifact_version"] for r in rows] == [2, 1] and all((tmp_path / "storage" / r["rel_path"]).is_file() for r in rows)
-    assert "Saved package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Saved package" in page and "adf-current" in page and "adf-stale" not in page and "approved mappings" in page
+    assert "signoff-adf" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    conn.execute("UPDATE target_mappings SET status = 'PROPOSED' WHERE target_mapping_id = (SELECT target_mapping_id FROM target_mappings WHERE status = 'APPROVED' LIMIT 1)")
+    conn.commit()
+    stale = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "adf-stale" in stale and "approved target mappings changed" in stale and "adf-current" not in stale
+    assert "STALE" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
     zipped = asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[0]['artifact_id']}/download"))
     assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "_v2.zip" in zipped.headers["content-disposition"]
     assert asyncio.run(call("Validation Specialist", "GET", "/api/artifacts/ART-NOPE/download")).status_code == 404

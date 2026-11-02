@@ -945,6 +945,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
         runs = execution_simulator.list_runs(conn, migration_id)
         has_package = bool(package_contract.list_packages(conn, migration_id))
         stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
+        adf_status = _adf_status(conn, migration_id)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
         conn.commit()
     finally:
@@ -968,7 +969,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff,
+            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
@@ -1071,6 +1072,16 @@ async def create_validation_scenario(request: Request, entity_name: str = Form(.
         return _validation_redirect("error", str(exc))
     _target_setup_audit("VALIDATION_SCENARIO_DEFINED", user, {"scenario_id": created["scenario_id"], "check_type": check_type, "entity": entity_name, "stage": stage})
     return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
+
+
+def _adf_status(conn, migration_id: str):
+    """Latest stored ADF package with the reasons (if any) it is stale; None when no package was saved."""
+    stored = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
+    if not stored:
+        return None
+    spec = target_connector.spec(conn)
+    approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+    return {"latest": stored[0], "stale_reasons": artifact_store.staleness(stored[0], artifact_store.build_provenance(conn, migration_id, spec, approved))}
 
 
 def _adf_reference(conn, migration_id: str, run_id: str):
@@ -1496,6 +1507,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
             "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
         packages = package_contract.list_packages(conn, migration_id)
         stored_adf = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
+        adf_status = _adf_status(conn, migration_id)
         ccr = {(r["entity_name"], r["canonical_field"]): r for r in conn.execute(
             "SELECT entity_name, canonical_field, request_id, status FROM canonical_change_requests WHERE migration_id = ? "
             "AND change_type = 'ADD_FIELD' AND status != 'REJECTED' ORDER BY created_utc", (migration_id,)).fetchall()}
@@ -1516,7 +1528,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
-        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf,
+        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),

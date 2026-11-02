@@ -124,3 +124,21 @@ def package_reference(conn: sqlite3.Connection, migration_id: str, current: Dict
             "approved_target_mapping_count": len(prov.get("approved_target_mapping_ids", [])),
             "mapping_set_matches_current": prov.get("approved_mapping_set_sha256") == current.get("approved_mapping_set_sha256"),
             "built_from_signed_off_validation_run": bool(evidence_run_id) and prov.get("validation_run_id") == evidence_run_id}
+
+
+def staleness(art: Dict[str, Any], current: Dict[str, Any]) -> List[str]:
+    """Plain-language reasons the stored package no longer reflects the current approved state (empty list = current)."""
+    prov, reasons = art.get("provenance") or {}, []
+    if not prov:
+        return ["No provenance was recorded for this package (saved before provenance existed); regenerate it."]
+    then, now = prov.get("approved_target_mapping_ids", []), current.get("approved_target_mapping_ids", [])
+    if prov.get("approved_mapping_set_sha256") != current.get("approved_mapping_set_sha256"):
+        reasons.append(f"The approved target mappings changed ({len(then)} when built, {len(now)} now).")
+    if prov.get("target_model_version") != current.get("target_model_version"):
+        reasons.append("The confirmed target model changed.")
+    if prov.get("validation_run_id") != current.get("validation_run_id"):
+        reasons.append(f"The validation run moved on (built after {prov.get('validation_run_id') or 'no run'}, latest is {current.get('validation_run_id') or 'none'}).")
+    pc, cc = prov.get("contract_package") or {}, current.get("contract_package") or {}
+    if pc.get("content_sha256") != cc.get("content_sha256"):
+        reasons.append(f"The deployment contract changed (v{pc.get('version', '-')} when built, v{cc.get('version', '-')} now).")
+    return reasons

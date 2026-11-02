@@ -280,3 +280,16 @@ def test_stored_package_records_provenance_and_signoff_cites_it(tmp_path):
     assert store.package_reference(conn, "MIG-X", changed, "VAL-1")["mapping_set_matches_current"] is False
     assert store.package_reference(conn, "MIG-X", prov, "VAL-2")["built_from_signed_off_validation_run"] is False
     assert store.package_reference(conn, "MIG-NONE", prov, "VAL-1") is None
+
+
+def test_staleness_names_each_way_a_stored_package_can_fall_behind():
+    from control_plane.services import artifact_store as store
+    base = {"approved_target_mapping_ids": ["T1", "T2"], "approved_mapping_set_sha256": "m1", "target_model_version": "v1", "validation_run_id": "VAL-1",
+            "contract_package": {"version": 3, "content_sha256": "c3"}}
+    art = {"provenance": dict(base)}
+    assert store.staleness(art, dict(base)) == []
+    joined = " ".join(store.staleness(art, {**base, "approved_target_mapping_ids": ["T1"], "approved_mapping_set_sha256": "m2", "validation_run_id": "VAL-2",
+                                           "target_model_version": "v2", "contract_package": {"version": 4, "content_sha256": "c4"}}))
+    for needle in ("approved target mappings changed (2 when built, 1 now)", "target model changed", "VAL-1", "VAL-2", "v3 when built, v4 now"):
+        assert needle in joined
+    assert "regenerate" in store.staleness({"provenance": {}}, base)[0]
