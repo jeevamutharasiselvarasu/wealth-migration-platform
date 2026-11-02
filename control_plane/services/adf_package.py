@@ -98,7 +98,7 @@ def _table_flow(entity: str, table: str, fields: Dict[str, Dict[str, Any]], mapp
 
 
 def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
-          env: Dict[str, Any], generated_by: str) -> Dict[str, Any]:
+          env: Dict[str, Any], generated_by: str, provenance: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Return {'files': {path: text}, 'manifest': {...}}. Raises ValueError when there is nothing safe to package."""
     approved = [m for m in approved if m.get("status") == "APPROVED"]
     if not spec or not approved:
@@ -170,7 +170,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         "simulated": True, "banner": env["banner"], "migrationId": migration_id, "generatedBy": generated_by,
         "generatedUtc": datetime.now(timezone.utc).isoformat(), "targetSystem": spec.get("target_system"), "targetModelVersion": spec["spec_version"],
         "pipeline": pipeline, "environment": {k: v for k, v in env.items() if k != "banner"}, "entities": entities, "warnings": warnings,
-        "deployed": False, "note": "Nothing was deployed or sent to Azure. A human must review the package and replace the simulated environment values.",
+        "provenance": provenance or {}, "deployed": False, "note": "Nothing was deployed or sent to Azure. A human must review the package and replace the simulated environment values.",
     }
     out = {p: json.dumps(c, indent=2) for p, c in files.items()}
     out["arm/ARMTemplateForFactory.json"] = json.dumps(arm, indent=2)

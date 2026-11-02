@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import sqlite3
 
@@ -197,3 +198,134 @@ def test_exception_proposed_by_validator_approved_by_analyst_never_the_proposer(
     assert "Validation scenarios" in page and "SCENARIO SCN-" in page and f"Exception {eid} APPROVED" in page and "decided by Ann" in page
     row = conn.execute("SELECT status, decided_by FROM validation_exceptions").fetchone()
     assert row == ("APPROVED", "Ann")
+    from control_plane.services import validation_scenarios as _vs
+    conn.row_factory = sqlite3.Row
+    last = conn.execute("SELECT migration_id, run_id, status, results_json FROM validation_runs ORDER BY executed_utc DESC LIMIT 1").fetchone()
+    checks = __import__("json").loads(last["results_json"])["checks"]
+    expected = _vs.effective_status(checks, _vs.list_exceptions(conn, last["migration_id"], last["run_id"]))
+    assert app_module.workflow_progress()["validation_status"] == expected  # the workflow bar uses the effective status
+    assert expected != "FAIL" or last["status"] == "FAIL"
+    ev = asyncio.run(call("sid", "Validation Specialist", "GET", "/api/validation/signoff-evidence"))
+    assert ev.status_code == 200 and "attachment" in ev.headers["content-disposition"]
+    doc = ev.json()
+    assert doc["schema"] == "xodus.signoff-evidence/v1" and doc["validation_run"]["run_id"] == last["run_id"] and doc["validation_run"]["effective_status"] == expected
+    assert any(e["status"] == "APPROVED" and e["decided_by"] == "Ann" and e["reason"] for e in doc["exceptions"])
+    assert "no source record values" in " ".join(doc["notes"])
+
+    # A stale stored ADF package blocks saving the sign-off unless the reviewer states why.
+    from control_plane.services import artifact_store as _as
+    monkeypatch.setattr(_as, "STORAGE_ROOT", tmp_path / "storage")
+    _as.save(conn, "MIG-V", "ADF_PACKAGE", b"zip", "Val", provenance={"approved_target_mapping_ids": ["T1"], "approved_mapping_set_sha256": "old", "validation_run_id": "VAL-OLD"})
+    conn.commit()
+    save = "/api/validation/signoff-evidence/save"
+    for data in (None, {"stale_reason": "too short"}):
+        blocked = asyncio.run(call("sid", "Validation Specialist", "POST", save, data)).headers["location"]
+        assert "error=" in blocked and "is+stale" in blocked
+    assert "is+stale" in asyncio.run(call("sid", "Validation Specialist", "GET", "/api/validation/signoff-evidence")).headers["location"]
+    assert not conn.execute("SELECT 1 FROM stored_artifacts WHERE kind = 'SIGNOFF_EVIDENCE'").fetchall()
+    page = asyncio.run(call("sid", "Validation Specialist", "GET", "/reconciliation")).text
+    assert "stale-reason" in page and "STALE" in page
+    ok = asyncio.run(call("sid", "Validation Specialist", "POST", save, {"stale_reason": "Rehearsal only; package regenerated after sign-off review"})).headers["location"]
+    assert "notice=" in ok
+    saved = _as.latest(conn, "MIG-V", "SIGNOFF_EVIDENCE")
+    saved_doc = _j.loads(_as.read(conn, saved["artifact_id"])["data"])
+    assert saved_doc["stale_package_override"]["reviewer_reason"].startswith("Rehearsal only") and saved_doc["stale_package_override"]["reviewer"] == "Val" and saved_doc["stale_package_override"]["stale_reasons"]
+    assert saved_doc["adf_package"]["mapping_set_matches_current"] is False
+
+
+def _spec():
+    return {"entities": {"Account": {"fields": [{"name": "T.ACCT_NO", "required": True}, {"name": "T.NOTE", "required": False}, {"name": "T.OWNER", "required": True}]},
+                         "Client": {"fields": []}}}
+
+
+def test_default_scenarios_come_from_required_approved_fields_and_keys_and_stay_draft_until_adopted(tmp_path):
+    from control_plane.services import validation_scenarios as vs
+    maps = [{"entity_name": "Account", "target_field": "T.ACCT_NO", "canonical_field": "ACCT_NUM", "status": "APPROVED"},
+            {"entity_name": "Account", "target_field": "T.NOTE", "canonical_field": "NOTES", "status": "APPROVED"},      # not required
+            {"entity_name": "Account", "target_field": "T.OWNER", "canonical_field": "OWNER_ID", "status": "PROPOSED"}]  # not approved
+    conn = sqlite3.connect(tmp_path / "v.db")
+    conn.row_factory = sqlite3.Row
+    found = vs.suggest_defaults(_spec(), maps, [])
+    assert {(f["entity"], f["check_type"], f["field"]) for f in found} == {("Account", "NOT_BLANK", "ACCT_NUM"), ("Account", "UNIQUE", "ACCT_NUM"), ("Client", "UNIQUE", "CLIENT_ID")}
+    assert vs.suggest_defaults(None, maps, []) == []
+    assert vs.save_suggestions(conn, "M", found, "Val") == 3
+    assert vs.list_scenarios(conn, "M", active_only=True) == []          # drafts are not evaluated
+    assert vs.suggest_defaults(_spec(), maps, vs.list_scenarios(conn, "M")) == []   # no duplicates once drafted
+    sid = vs.list_scenarios(conn, "M")[0]["scenario_id"]
+    vs.adopt_scenario(conn, sid)
+    assert [s["scenario_id"] for s in vs.list_scenarios(conn, "M", active_only=True)] == [sid]
+    with pytest.raises(ValueError):
+        vs.adopt_scenario(conn, sid)
+    dismissed = vs.list_scenarios(conn, "M")[1]["scenario_id"]
+    vs.retire_scenario(conn, dismissed)
+    assert vs.suggest_defaults(_spec(), maps, vs.list_scenarios(conn, "M")) != []  # a dismissed suggestion may be suggested again
+
+
+def test_suggest_and_adopt_routes_are_validator_or_admin_only():
+    from ui.role_policy import allowed_roles_for
+    for path in ("/api/validation/scenarios/suggest", "/api/validation/scenarios/SCN-1/adopt"):
+        assert allowed_roles_for("POST", path) == {"Platform Admin", "Validation Specialist"}
+
+
+def test_signoff_evidence_is_saved_with_the_migration_and_hash_checked(tmp_path):
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    a = store.save(conn, "MIG-X", "SIGNOFF_EVIDENCE", b'{"k": 1}', "Reviewer", root=tmp_path)
+    b = store.save(conn, "MIG-X", "SIGNOFF_EVIDENCE", b'{"k": 2}', "Reviewer", root=tmp_path)
+    assert (a["artifact_version"], b["artifact_version"]) == (1, 2) and (tmp_path / a["rel_path"]).read_bytes() == b'{"k": 1}'
+    assert [r["artifact_version"] for r in store.list_artifacts(conn, "MIG-X")] == [2, 1] and store.list_artifacts(conn, "MIG-OTHER") == []
+    assert store.read(conn, a["artifact_id"], root=tmp_path)["data"] == b'{"k": 1}'
+    (tmp_path / a["rel_path"]).write_bytes(b"x")
+    with pytest.raises(ValueError):
+        store.read(conn, a["artifact_id"], root=tmp_path)
+    with pytest.raises(ValueError):
+        store.save(conn, "MIG-X", "UNKNOWN", b"", "Reviewer", root=tmp_path)
+
+
+def test_stored_package_records_provenance_and_signoff_cites_it(tmp_path):
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    approved = [{"target_mapping_id": "TM-2", "status": "APPROVED"}, {"target_mapping_id": "TM-1", "status": "APPROVED"}, {"target_mapping_id": "TM-9", "status": "PROPOSED"}]
+    conn.execute("CREATE TABLE validation_runs (run_id TEXT, migration_id TEXT, status TEXT, executed_utc TEXT)")
+    conn.execute("INSERT INTO validation_runs VALUES ('VAL-1', 'MIG-X', 'FAIL', '2026-11-02T10:00:00')")
+    prov = store.build_provenance(conn, "MIG-X", {"spec_version": "abc"}, approved)
+    assert prov["approved_target_mapping_ids"] == ["TM-1", "TM-2"] and prov["validation_run_id"] == "VAL-1" and prov["target_model_version"] == "abc" and prov["contract_package"] is None
+    art = store.save(conn, "MIG-X", "ADF_PACKAGE", b"zip", "Reviewer", root=tmp_path, provenance=prov)
+    assert store.latest(conn, "MIG-X", "ADF_PACKAGE")["provenance"]["approved_target_mapping_ids"] == ["TM-1", "TM-2"] and art["provenance"] == prov
+    ref = store.package_reference(conn, "MIG-X", prov, "VAL-1")
+    assert ref["artifact_id"] == art["artifact_id"] and ref["mapping_set_matches_current"] and ref["built_from_signed_off_validation_run"] and ref["approved_target_mapping_count"] == 2
+    changed = store.build_provenance(conn, "MIG-X", {"spec_version": "abc"}, approved[:1])  # a mapping was un-approved after the package was built
+    assert store.package_reference(conn, "MIG-X", changed, "VAL-1")["mapping_set_matches_current"] is False
+    assert store.package_reference(conn, "MIG-X", prov, "VAL-2")["built_from_signed_off_validation_run"] is False
+    assert store.package_reference(conn, "MIG-NONE", prov, "VAL-1") is None
+
+
+def test_staleness_names_each_way_a_stored_package_can_fall_behind():
+    from control_plane.services import artifact_store as store
+    base = {"approved_target_mapping_ids": ["T1", "T2"], "approved_mapping_set_sha256": "m1", "target_model_version": "v1", "validation_run_id": "VAL-1",
+            "contract_package": {"version": 3, "content_sha256": "c3"}}
+    art = {"provenance": dict(base)}
+    assert store.staleness(art, dict(base)) == []
+    joined = " ".join(store.staleness(art, {**base, "approved_target_mapping_ids": ["T1"], "approved_mapping_set_sha256": "m2", "validation_run_id": "VAL-2",
+                                           "target_model_version": "v2", "contract_package": {"version": 4, "content_sha256": "c4"}}))
+    for needle in ("approved target mappings changed (2 when built, 1 now; 0 added, 1 removed)", "target model changed", "VAL-1", "VAL-2", "v3 when built, v4 now"):
+        assert needle in joined
+    assert "regenerate" in store.staleness({"provenance": {}}, base)[0]
+
+
+def test_provenance_covers_confirmed_source_mappings_and_flags_changes():
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE canonical_mappings (mapping_id TEXT, migration_id TEXT, entity_name TEXT, source_field TEXT, canonical_field TEXT, is_confirmed INTEGER)")
+    conn.execute("INSERT INTO canonical_mappings VALUES ('CM-1', 'MIG-X', 'Account', 'A', 'ACCT_NUM', 1), (NULL, 'MIG-X', 'Client', 'C', 'CLIENT_ID', 1), ('CM-3', 'MIG-X', 'Client', 'D', 'X', 0)")
+    prov = store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, [])
+    assert prov["approved_source_mapping_ids"] == ["CM-1", "Client.C>CLIENT_ID"]  # unconfirmed excluded; id-less rows get a stable key
+    art = {"provenance": prov}
+    assert store.staleness(art, prov) == []
+    conn.execute("UPDATE canonical_mappings SET is_confirmed = 0 WHERE mapping_id = 'CM-1'")
+    conn.execute("INSERT INTO canonical_mappings VALUES ('CM-4', 'MIG-X', 'Household', 'H', 'HH_ID', 1)")
+    reasons = store.staleness(art, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, []))
+    assert reasons == ["The approved source-to-canonical mappings changed (1 added, 1 removed since the package was built)."]

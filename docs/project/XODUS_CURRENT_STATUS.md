@@ -73,5 +73,32 @@ Commits after `3d2d491` (which is pushed and CI-green), all local and unpushed a
 Assumptions taken without a stakeholder answer: exception approver = Analyst/Admin; package contract drafted locally; `REP-` prefix rule left unchanged; approved canonical change requests remain backlog only; accounts `owner.demo` and `admin2.demo` are Platform Admin without demo load (only `admin2.demo` has a password hash).
 Still open: real package template, Azure sandbox and ADF interface, identity-provider integration, managed-identity connection test and storage setup template, wave and delta, the old `/api/runs/{run_id}/export-package` exporter (hard-coded Azure values, out-of-scope entities).
 
+## 2026-11-02 update (verify against the repository before relying on it)
+Local commits after `8c23442`: browser-walk fixes (`3308b19`), execution problem acknowledge/resolve (`0cc6ae9`, `4c0907e`), default validation scenarios from the target contract (`96b23f6`), relationship confirm/reject and stricter key-like detection (`a511a37`), workflow bar on effective status plus sign-off evidence JSON (`6ec2144`), source drift (`a67edfb`). Full local suite 259 passed on a clean export of the working tree. CI last confirmed green on `e1407a1`; later commits are unpushed and unchecked.
+- Browser: each new flow was exercised in headless Chromium against a copy of the app in the cloud workspace (approve mappings, package and ADF zip, validation, scenarios, execution, problem review, relationship review, evidence download). The Tailwind CDN was blocked there, so layout and styling were NOT checked, and the drift banner was not triggered live (unit-tested only). The desktop browser pane could not reach the local VM.
+- Validation: default scenarios are DRAFT until a Validation Specialist adopts them; the workflow bar now uses the effective status (approved exceptions); sign-off evidence is a JSON download with counts, ids and reasons only.
+- Execution: problems can be acknowledged or resolved (Analyst/Admin) with a reason; tables with no source rows are flagged instead of shown as reconciled.
+- Discovery: relationship candidates can be confirmed or rejected (rejection needs a reason); columns that are not key-like are no longer offered as relationships.
+- Limitations, reset procedure and a rehearsal script: `docs/project/XODUS_LIMITATIONS_AND_RESET.md`.
+Still open: real package template, Azure/ADF and identity integrations, firm-level contract versions, joins beyond CONCAT, wave and delta, styled-browser rehearsal, pushing and CI for the local commits.
+
+## 2026-11-02 (later) update: stored artifacts and provenance (verify against the repository before relying on it)
+Local commits `4492990`, `a9ed835`, `a4968b9`, `0f2d165`, `81636d2`, `f9ea0f0`, all unpushed with CI not run. Full local suite 265 passed on a clean export.
+- Generated artifacts are saved with the migration instead of downloaded: the simulated ADF zip and the sign-off evidence JSON go to `App_Data/Storage/<migration>/ARTIFACTS/` (versioned, SHA-256, author) and are registered in the control plane (`stored_artifacts`, `control_plane/services/artifact_store.py`). Download is an optional "Export copy" of the stored file, hash-checked on read.
+- Each stored ADF package records its provenance (also in `manifest.json`): approved target mapping ids, confirmed source-to-canonical mapping ids with set hashes, target model version, latest validation run and the deployment contract package (id, version, hash).
+- The target mapping and validation pages show that provenance and a CURRENT or STALE marker (stale reasons: mappings added or removed, target model, validation run, deployment contract). Packages saved before provenance existed read "not recorded".
+- Saving sign-off evidence is refused while the latest package is stale unless the reviewer gives a reason (at least 10 characters); the reason, the stale causes and the reviewer are written into the evidence and the audit log. The sign-off page offers a one-click "Regenerate package" instead.
+- Verified in the desktop browser pane against the user's own running app, as my own demo accounts: save, stale and regenerate flows, refusal without a reason. The override save and the exception decision were done once with the user's approval; the override path is otherwise covered by tests only.
+- Demo accounts for walkthroughs: `walk.demo` (Platform Admin) and `walk.analyst.demo` (Migration Analyst) in `demo_data/demo_users.json`; their password hashes are only in the git-ignored local file. The users file change is uncommitted.
+Still open: real ADF connection (the stored package is the hand-off point), automatic sign-off save after regeneration (deliberately not built; sign-offs stay a human decision), pushing and CI.
+
+## 2026-11-02 (rehearsal pass) update: simulated approvals and simulated ADF (verify against the repository before relying on it)
+Local commits `594ba5e` and `d976390` (unpushed, CI not run). Full local suite 268 passed on a clean export.
+- Rehearsal accounts moved to the git-ignored `demo_data/demo_users.local.json` (extra users only; cannot override tracked users; never demo-load). The tracked users file is unchanged.
+- `household_accounts.csv` and `account_relationships.csv` were confirmed as deferred relationship files (rehearsal decision by the user).
+- SIMULATED approvals, recorded under my demo session with a "SIMULATED rehearsal approval" comment, NOT business-owner decisions: the 9 pending Account source mappings and 7 of the 9 pending target mappings. Not approved on purpose: `SIMP_CUSTOMER.ONBOARD_DT` (no source column) and `SIMP_CUSTOMER_TAX.TAX_COUNTRY` (required, no source column): real gaps. Validation then passed 21 of 21; Account target coverage 6 of 6 required, Client 4 of 5 required.
+- Simulated ADF (`control_plane/services/adf_simulator.py`): deploys the latest stored package into a fictitious factory after checking references, clear-text secrets and the simulated marker, then triggers its pipeline on the simulated data plane. A trigger is refused unless the deployed package is the latest and current. A real ADF client would replace this step; no Azure call is made.
+Still open: real ADF connection and a real package template, the two target gaps above, business-owner re-confirmation of the simulated approvals, pushing and CI.
+
 ## Honesty rule
 Do not present this status as current without rechecking the repository and CI. Do not claim browser testing succeeded unless it was actually run.

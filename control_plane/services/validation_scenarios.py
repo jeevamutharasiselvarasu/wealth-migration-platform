@@ -112,9 +112,51 @@ def list_scenarios(conn: sqlite3.Connection, migration_id: str, active_only: boo
 
 
 def retire_scenario(conn: sqlite3.Connection, scenario_id: str) -> None:
+    """Retire an active scenario, or dismiss a suggested (DRAFT) one."""
     ensure_tables(conn)
-    if not conn.execute("UPDATE validation_scenarios SET status = 'RETIRED' WHERE scenario_id = ? AND status = 'ACTIVE'", (scenario_id,)).rowcount:
-        raise ValueError("No active scenario with that id.")
+    if not conn.execute("UPDATE validation_scenarios SET status = 'RETIRED' WHERE scenario_id = ? AND status IN ('ACTIVE', 'DRAFT')", (scenario_id,)).rowcount:
+        raise ValueError("No active or suggested scenario with that id.")
+
+
+BUSINESS_KEYS = {"Account": "ACCT_NUM", "Client": "CLIENT_ID", "Household": "HH_ID"}
+
+
+def suggest_defaults(spec: Optional[Dict[str, Any]], mappings: List[Dict[str, Any]], existing: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Propose default checks from the confirmed target contract: every required target field with an APPROVED mapping must be
+    populated, and each entity's business key must be unique. Existing (non-retired) scenarios are not duplicated."""
+    if not spec:
+        return []
+    have = {(s["entity_name"], s["check_type"], s["field_name"]) for s in existing if s["status"] != "RETIRED"}
+    out, seen = [], set()
+
+    def add(entity: str, check: str, field: str, why: str) -> None:
+        key = (entity, check, field)
+        if key not in have and key not in seen and FIELD_OK.match(field or ""):
+            seen.add(key)
+            out.append({"entity": entity, "check_type": check, "field": field, "stage": "PRE", "description": why})
+    for entity, body in sorted(spec["entities"].items()):
+        required = {f["name"]: f for f in body["fields"] if f.get("required")}
+        for m in mappings:
+            if m["entity_name"] == entity and m["status"] == "APPROVED" and m["target_field"] in required and m.get("canonical_field"):
+                add(entity, "NOT_BLANK", m["canonical_field"], f"Suggested from the target contract: {m['target_field']} is required.")
+        if entity in BUSINESS_KEYS:
+            add(entity, "UNIQUE", BUSINESS_KEYS[entity], f"Suggested: {entity} business key should be unique within a file.")
+    return out
+
+
+def save_suggestions(conn: sqlite3.Connection, migration_id: str, suggestions: List[Dict[str, Any]], actor: str) -> int:
+    """Store suggestions as DRAFT scenarios. They are not evaluated until a Validation Specialist adopts them."""
+    ensure_tables(conn)
+    for sg in suggestions:
+        created = create_scenario(conn, migration_id, sg["entity"], sg["check_type"], sg["field"], {}, sg["stage"], sg["description"], actor)
+        conn.execute("UPDATE validation_scenarios SET status = 'DRAFT' WHERE scenario_id = ?", (created["scenario_id"],))
+    return len(suggestions)
+
+
+def adopt_scenario(conn: sqlite3.Connection, scenario_id: str) -> None:
+    ensure_tables(conn)
+    if not conn.execute("UPDATE validation_scenarios SET status = 'ACTIVE' WHERE scenario_id = ? AND status = 'DRAFT'", (scenario_id,)).rowcount:
+        raise ValueError("No suggested scenario with that id.")
 
 
 def _blank(v: Any) -> bool:

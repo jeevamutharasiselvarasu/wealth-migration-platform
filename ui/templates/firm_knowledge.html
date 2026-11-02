@@ -40,6 +40,7 @@
                 <form action="/api/knowledge/file-upload" method="POST" enctype="multipart/form-data" class="space-y-2"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-2 border-0 p-0">
                     <select name="category" aria-label="Knowledge asset category" class="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-2.5 py-1.5 text-[11px] text-[#1c2a4a] font-medium">
                         <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
+                        <option value="business_rules">Business Rules (migration-specific, .md/.txt)</option>
                         <option value="transformation_rule">Transferable Source-to-Canonical Rule (.md/.txt)</option><option value="source_analysis">Current System / Source Analysis</option><option value="mapping_reference">Reusable Mapping Reference</option>
                     </select>
                     <input type="file" name="file" aria-label="Knowledge asset file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" required class="block w-full text-[10px] text-[#5a6a88] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-200 file:text-[#1c2a4a]">

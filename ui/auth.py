@@ -21,27 +21,36 @@ class SessionManager:
     approved identity provider.
     """
 
+    DEMO_DIR = Path(__file__).resolve().parents[1] / "demo_data"
+
     def __init__(self):
         self.active_sessions: Dict[str, Dict[str, str]] = {}
         self.demo_mode = os.getenv("XODUS_DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
         self.authorized_users = {}
         if self.demo_mode:
-            config_path = Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json"
-            local_hashes = self._load_local_password_hashes(config_path.parent / "demo_passwords.local.json")
+            demo_dir = self.DEMO_DIR
+            local_hashes = self._load_local_password_hashes(demo_dir / "demo_passwords.local.json")
             try:
-                config = json.loads(config_path.read_text(encoding="utf-8"))
-                if config.get("demo_mode", False):
+                # demo_users.json is the tracked, reviewed list. demo_users.local.json (git-ignored) may add extra rehearsal
+                # accounts on this machine only; it can never replace a tracked user.
+                for name, extra in (("demo_users.json", False), ("demo_users.local.json", True)):
+                    path = demo_dir / name
+                    if extra and not path.exists():
+                        continue
+                    config = json.loads(path.read_text(encoding="utf-8"))
+                    if not config.get("demo_mode", extra):
+                        continue
                     for item in config.get("users", []):
                         email = str(item.get("email", "")).strip().lower()
-                        password_hash = local_hashes.get(email, "")
-                        if email:
-                            self.authorized_users[email] = {
-                                "password_sha256": password_hash,
-                                "name": str(item.get("name", email)),
-                                "default_role": str(item.get("default_role", "Migration Analyst")),
-                                "roles": [str(r) for r in item.get("roles", [])] or [str(item.get("default_role", "Migration Analyst"))],
-                                "can_load_demo": bool(item.get("can_load_demo", False)),
-                            }
+                        if not email or (extra and email in self.authorized_users):
+                            continue
+                        self.authorized_users[email] = {
+                            "password_sha256": local_hashes.get(email, ""),
+                            "name": str(item.get("name", email)),
+                            "default_role": str(item.get("default_role", "Migration Analyst")),
+                            "roles": [str(r) for r in item.get("roles", [])] or [str(item.get("default_role", "Migration Analyst"))],
+                            "can_load_demo": bool(item.get("can_load_demo", False)) and not extra,
+                        }
             except (OSError, ValueError, TypeError):
                 # A missing or invalid demo-user configuration fails closed.
                 self.authorized_users = {}

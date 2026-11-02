@@ -14,6 +14,12 @@ from control_plane.services.source_file_adapter import read_source_records
 SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
 
 
+# Knowledge asset categories accepted at registration. "business_rules" are migration-specific rules that rule inference can read.
+KNOWLEDGE_CATEGORIES = {"data_dictionary", "transformation_rule", "business_rules", "target_schema", "firm_profile", "questionnaire",
+                        "source_analysis", "mapping_reference"}
+FULL_TEXT_LIMIT = 50_000
+
+
 class WorkspaceStateStore:
     """State engine managing firm context, in-scope filtering, and metadata table persistence."""
 
@@ -661,7 +667,7 @@ class WorkspaceStateStore:
             raise ValueError(f"Could not parse knowledge asset {filename}: {exc}") from exc
         if not extracted_text.strip() and not columns:
             raise ValueError("Knowledge asset is empty or contains no readable schema.")
-        if category not in {"data_dictionary", "transformation_rule", "source_analysis", "mapping_reference"}:
+        if category not in KNOWLEDGE_CATEGORIES:
             raise ValueError("Unsupported knowledge category.")
         lines = [line.strip() for line in extracted_text.splitlines() if line.strip()]
         summary = ("Extracted " + str(len(columns)) + " column names: " + ", ".join(map(str, columns[:20])) if columns else "Extracted " + str(len(lines)) + " non-empty knowledge lines.")
@@ -676,6 +682,7 @@ class WorkspaceStateStore:
             "extracted_columns": list(map(str, columns)),
             "transferable_knowledge": rules,
             "content_preview": "\n".join(lines[:30])[:5000],
+            "full_text": extracted_text[:FULL_TEXT_LIMIT] if suffix in {".md", ".txt"} else "",
             "status": "REGISTERED_REVIEW_REQUIRED",
         }
         self.firm_knowledge_docs.append(doc_record)

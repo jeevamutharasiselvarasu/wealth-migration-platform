@@ -139,7 +139,7 @@ def rule_id_for(rule_type: str, params: Dict[str, Any]) -> str:
     return f"INF_{rule_type}_{digest}"[:41]
 
 
-def save_drafts(conn: sqlite3.Connection, text: str, actor: str) -> Dict[str, Any]:
+def save_drafts(conn: sqlite3.Connection, text: str, actor: str, source_label: str = "") -> Dict[str, Any]:
     """Create DRAFT rule versions for recognised statements. Identical live rules are not duplicated."""
     created, skipped, unrecognised = [], [], []
     for r in infer(text):
@@ -151,7 +151,8 @@ def save_drafts(conn: sqlite3.Connection, text: str, actor: str) -> Dict[str, An
         if live:
             skipped.append({"statement": r["statement"], "rule": live[-1]["expression"]})
             continue
-        desc = f"From business rule: \"{r['statement']}\". Inferred as {r['explanation']}"
+        origin = f" ({source_label})" if source_label else ""
+        desc = f"From business rule{origin}: \"{r['statement']}\". Inferred as {r['explanation']}"
         rule = tr.create_rule_version(conn, rid, r["rule_type"], desc[:900], r["params"], actor)
         created.append({"statement": r["statement"], "rule": rule["expression"]})
     return {"created": created, "skipped": skipped, "unrecognised": unrecognised}

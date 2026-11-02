@@ -140,6 +140,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     store = WorkspaceStateStore()
     store.questionnaire_data["migration_id"] = "MIG-R"
     monkeypatch.setattr(app_module, "state_store", store)
+    monkeypatch.setattr(app_module.artifact_store, "STORAGE_ROOT", tmp_path / "storage")
     monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
                         {"email": "t@example.invalid", "name": "Analyst One", "role": "Migration Analyst"})
     src = tmp_path / "accounts.csv"
@@ -202,7 +203,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
-    assert "Generate ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Generate and save ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/packages/generate")).headers["location"]
     gen = asyncio.run(call("Validation Specialist", "POST", "/api/packages/generate")).headers["location"]
     assert "notice=" in gen and "generated+against+the+DRAFT+contract" in gen
@@ -235,18 +236,55 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "SIMULATED+run" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
     assert "already+retried" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
     exec_page = asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "Mark resolved" not in exec_page  # reviewing problems is not a Validation Specialist action
     assert "SIMULATED data plane" in exec_page and "retry of " + failed_id in exec_page and "Run simulated execution" in exec_page
     assert "Run simulated execution" not in asyncio.run(call("Migration Analyst", "GET", "/reconciliation")).text
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]
-    zipped = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
-    assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "SIMULATED" in zipped.headers["content-disposition"]
+    saved = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
+    assert saved.status_code == 303 and "saved+with+this+migration" in saved.headers["location"]
+    asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # second save is v2; nothing is overwritten
+    rows = app_module.artifact_store.list_artifacts(conn, conn.execute("SELECT migration_id FROM stored_artifacts LIMIT 1").fetchone()[0], "ADF_PACKAGE")
+    assert [r["artifact_version"] for r in rows] == [2, 1] and all((tmp_path / "storage" / r["rel_path"]).is_file() for r in rows)
+    page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Saved package" in page and "adf-current" in page and "adf-stale" not in page and "approved mappings" in page
+    assert "signoff-adf" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    conn.execute("UPDATE target_mappings SET status = 'PROPOSED' WHERE target_mapping_id = (SELECT target_mapping_id FROM target_mappings WHERE status = 'APPROVED' LIMIT 1)")
+    conn.commit()
+    stale = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "adf-stale" in stale and "approved target mappings changed" in stale and "adf-current" not in stale
+    assert "STALE" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "regen-package" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    other = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "http://evil.example/"}))
+    assert other.headers["location"].startswith("/target-mapping")  # only the fixed allow-list is honoured
+    asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
+    fixed = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
+    assert fixed.headers["location"].startswith("/reconciliation?notice=ADF+package+v") and "adf-stale" not in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "regen-package" not in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    # Simulated ADF: refused for roles without execution rights, blocked until deployed, then deploy and trigger the pipeline.
+    assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/adf/simulated-deploy")).headers["location"]
+    assert "Deploy+the+stored" in asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
+    dep = asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-deploy")).headers["location"]
+    assert "notice=" in dep and "SIMULATED+factory" in dep
+    page = asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "adf-deployment" in page and "DEPLOYED_SIMULATED" in page and "LinkedService: 3" in page
+    trig = asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
+    assert "notice=" in trig and "ADF-SIM-RUN" in trig.replace("%2D", "-") or "ADF-SIM-" in trig
+    assert "Last trigger" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # a newer package than the deployed one
+    assert "newer+package" in asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
+    zipped = asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[0]['artifact_id']}/download"))
+    assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "_v2.zip" in zipped.headers["content-disposition"]
+    assert asyncio.run(call("Validation Specialist", "GET", "/api/artifacts/ART-NOPE/download")).status_code == 404
+    (tmp_path / "storage" / rows[1]["rel_path"]).write_bytes(b"tampered")
+    assert asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[1]['artifact_id']}/download")).status_code == 409
     import io, json, zipfile
     names = zipfile.ZipFile(io.BytesIO(zipped.content))
     mf = json.loads(names.read("manifest.json"))
     assert mf["simulated"] is True and mf["entities"]["Account"]["approvedMappings"] == 2 and mf["generatedBy"] == "Analyst One"
-    assert any(e.get("event") == "ADF_PACKAGE_GENERATED" for e in app_module.state_store.audit_log.read_all()) if hasattr(app_module.state_store.audit_log, "read_all") else True
+    assert len(mf["provenance"]["approved_target_mapping_ids"]) >= 2 and rows[0]["provenance"]["approved_mapping_set_sha256"] == mf["provenance"]["approved_mapping_set_sha256"]
+    assert any(e.get("event") == "ADF_PACKAGE_STORED" for e in app_module.state_store.audit_log.read_all()) if hasattr(app_module.state_store.audit_log, "read_all") else True
 
 
 def test_merge_by_key_joins_files_without_inventing_blanks_and_counts_conflicts():
@@ -571,3 +609,47 @@ def test_package_refuses_unapproved_rules_versions_on_change_and_exports_schema(
     assert pc.generate(conn, "M", "Ann", body2)["package_version"] == 2
     assert [p["package_version"] for p in pc.list_packages(conn, "M")] == [2, 1]
     assert "canonical_to_target" in pc.json_schema()["properties"]
+
+
+def _mini_package(**over):
+    import io, json, zipfile
+    files = {
+        "manifest.json": {"simulated": True, "environment": {"factoryName": "adf-sim"}},
+        "arm/ARMTemplateForFactory.json": {"resources": []},
+        "linkedService/LS_A.json": {"name": "LS_A", "properties": {"type": "AzureSqlDatabase"}},
+        "dataset/DS_A.json": {"name": "DS_A", "properties": {"linkedServiceName": {"referenceName": "LS_A"}}},
+        "dataflow/DF_A.json": {"name": "DF_A", "properties": {"typeProperties": {"sources": [{"dataset": {"referenceName": "DS_A"}}], "sinks": [{"dataset": {"referenceName": "DS_A"}}]}}},
+        "pipeline/PL.json": {"name": "PL", "properties": {"activities": [{"name": "Load", "typeProperties": {"dataflow": {"referenceName": "DF_A"}}}]}},
+    }
+    files.update(over)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for path, doc in files.items():
+            if doc is not None:
+                z.writestr(path, doc if isinstance(doc, str) else json.dumps(doc))
+    return buf.getvalue()
+
+
+def test_simulated_adf_rejects_what_a_real_deployment_would_reject():
+    from control_plane.services import adf_simulator as sim
+    ok = sim.inspect(_mini_package())
+    assert ok["errors"] == [] and ok["pipeline"] == "PL" and ok["factory"] == "adf-sim" and {r["kind"] for r in ok["resources"]} == {"LinkedService", "Dataset", "DataFlow", "Pipeline"}
+    dangling = sim.inspect(_mini_package(**{"dataset/DS_A.json": {"name": "DS_A", "properties": {"linkedServiceName": {"referenceName": "LS_MISSING"}}}}))
+    assert any("missing linked service LS_MISSING" in e for e in dangling["errors"])
+    assert any("missing dataset DS_A" in e for e in sim.inspect(_mini_package(**{"dataset/DS_A.json": None}))["errors"])
+    assert any("clear text" in e for e in sim.inspect(_mini_package(**{"linkedService/LS_A.json": '{"name": "LS_A", "properties": {"cs": "Server=x;Password=hunter2;"}}'}))["errors"])
+    assert any("not marked simulated" in e for e in sim.inspect(_mini_package(**{"manifest.json": {"simulated": False}}))["errors"])
+    assert any("no pipeline" in e for e in sim.inspect(_mini_package(**{"pipeline/PL.json": None}))["errors"])
+    assert sim.inspect(b"nope")["errors"] == ["The stored file is not a valid zip."]
+    ls_ok = sim.inspect(_mini_package(**{"linkedService/LS_A.json": '{"name": "LS_A", "properties": {"password": {"type": "AzureKeyVaultSecret"}}}'}))
+    assert ls_ok["errors"] == []  # a Key Vault reference is not a secret
+
+
+def test_trigger_blocker_requires_a_current_deployed_package():
+    from control_plane.services import adf_simulator as sim
+    dep = {"status": "DEPLOYED_SIMULATED", "artifact_id": "ART-1"}
+    assert "Deploy" in sim.trigger_blocker(None, [], "ART-1")
+    assert "rejected" in sim.trigger_blocker({**dep, "status": "REJECTED"}, [], "ART-1")
+    assert "newer package" in sim.trigger_blocker(dep, [], "ART-2")
+    assert "stale" in sim.trigger_blocker(dep, ["The validation run moved on."], "ART-1")
+    assert sim.trigger_blocker(dep, [], "ART-1") is None

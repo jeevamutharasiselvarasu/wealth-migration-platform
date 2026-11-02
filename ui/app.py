@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -127,9 +127,19 @@ def workflow_progress() -> dict:
         target_pending = len([m for m in target_mapping.list_mappings(conn, migration_id, target_connector.spec(conn))
                               if m["status"] == "PROPOSED" and m["canonical_field"]])
         last_val = conn.execute(
-            "SELECT status, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
+            "SELECT run_id, status, results_json, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
         if last_val:
             validation_status, validation_when = last_val["status"], str(last_val["executed_utc"])[:10]
+            # Findings accepted through an approved exception no longer hold the workflow back (same rule as the Validation page).
+            try:
+                checks = json.loads(last_val["results_json"]).get("checks", [])
+                excs = validation_scenarios.list_exceptions(conn, migration_id, last_val["run_id"])
+                validation_status = validation_scenarios.effective_status(checks, excs)
+                accepted = sum(1 for e in excs if e["status"] == "APPROVED")
+                if accepted and validation_status == "PASS" and last_val["status"] != "PASS":
+                    validation_when += f" · {accepted} accepted exception(s)"
+            except (ValueError, TypeError, KeyError):
+                pass
     except Exception:
         logger.exception("Could not read workflow progress counts")
     finally:
@@ -543,6 +553,7 @@ async def load_demo_migration(request: Request):
     knowledge_items = manifest.get("knowledge_files") or [
         {"path": setup.get("knowledge_schema_ref", ""), "category": "data_dictionary"},
         {"path": setup.get("knowledge_rules_ref", ""), "category": "transformation_rule"},
+        {"path": "demo_data/knowledge/corecap_business_rules.md", "category": "business_rules"},
     ]
     registered_knowledge = []
     for item in knowledge_items:
@@ -594,6 +605,24 @@ async def load_demo_migration(request: Request):
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
     return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered.{target_note} Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/relationships/review")
+async def review_relationship_candidate(request: Request, child: str = Form(...), parent: str = Form(...), decision: str = Form(...), reason: str = Form("")):
+    """Analyst/Admin confirms or rejects a detected relationship. Confirmation is evidence only: nothing is joined or merged."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            cross_file.review_relationship(conn, migration_id, child, parent, decision, reason, user["name"])
+        except ValueError as exc:
+            return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(str(exc)) + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("RELATIONSHIP_" + decision.strip().upper(), user, {"child": child, "parent": parent})
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Relationship {child} -> {parent} {decision.strip().lower()}.") + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/agent-studio", response_class=HTMLResponse)
@@ -736,6 +765,12 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             continue
     if len(loaded) >= 2:
         cross = cross_file.analyze(loaded)
+        conn = get_db_connection()
+        try:
+            cross_file.attach_reviews(conn, str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")), cross)
+            conn.commit()
+        finally:
+            conn.close()
     return render_template_with_context(
         request=request,
         template_name="entity_sample_files.html",
@@ -909,6 +944,10 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
         scenarios = validation_scenarios.list_scenarios(conn, migration_id)
         runs = execution_simulator.list_runs(conn, migration_id)
         has_package = bool(package_contract.list_packages(conn, migration_id))
+        stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
+        adf_status = _adf_status(conn, migration_id)
+        adf_deployment = adf_simulator.latest(conn, migration_id)
+        adf_trigger_blocker = adf_simulator.trigger_blocker(adf_deployment, adf_status["stale_reasons"] if adf_status else None, adf_status["latest"]["artifact_id"] if adf_status else None)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
         conn.commit()
     finally:
@@ -932,21 +971,19 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error, "notice": notice,
+            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
+            "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
-            "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES,
+            "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
         }
     )
 
 
-@app.post("/api/execution/run")
-async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
-    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""
+def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of: str = ""):
+    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Returns (run_id, telemetry, package) or (None, error, None)."""
     import time as _time
-    user = get_current_user(request)
-    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
         latest = package_contract.list_packages(conn, migration_id)
@@ -958,7 +995,7 @@ async def run_simulated_execution(request: Request, outage: str = Form(""), retr
                 execution_simulator.retry_allowed(conn, retry_of)
             package = package_contract.validate_text(pkg_row["yaml_text"]).model_dump()
         except ValueError as exc:
-            return RedirectResponse(url="/reconciliation?error=" + quote_plus(str(exc)) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+            return None, str(exc), None
         conn.commit()
     finally:
         conn.close()
@@ -973,8 +1010,93 @@ async def run_simulated_execution(request: Request, outage: str = Form(""), retr
         conn.commit()
     finally:
         conn.close()
+    return rid, telemetry, package
+
+
+@app.post("/api/execution/run")
+async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
+    """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    rid, telemetry, package = _run_simulated_execution(user, migration_id, outage, retry_of)
+    if rid is None:
+        return RedirectResponse(url="/reconciliation?error=" + quote_plus(telemetry) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
     _target_setup_audit("EXECUTION_SIMULATED_RUN", user, {"run_id": rid, "package_id": package["meta"]["package_id"], "status": telemetry["status"], "retry_of": retry_of or None})
     return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"SIMULATED run {rid}: {telemetry['status']}. No data left this platform.") + "#execution",
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _execution_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/reconciliation?{key}=" + quote_plus(message) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/adf/simulated-deploy")
+async def adf_simulated_deploy(request: Request):
+    """Deploy the latest stored ADF package into a fictitious factory. Nothing is sent to Azure."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        art = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        if not art:
+            return _execution_redirect("error", "Save an ADF package first (Target system & mapping).")
+        try:
+            data = artifact_store.read(conn, art["artifact_id"])["data"]
+        except ValueError as exc:
+            return _execution_redirect("error", str(exc))
+        dep = adf_simulator.deploy(conn, migration_id, art, data, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_SIMULATED_DEPLOY", user, {"deployment_id": dep["deployment_id"], "artifact_id": art["artifact_id"], "status": dep["status"], "errors": len(dep["errors"])})
+    if dep["status"] != "DEPLOYED_SIMULATED":
+        return _execution_redirect("error", f"Simulated deployment {dep['deployment_id']} rejected: " + " ".join(dep["errors"][:3]))
+    return _execution_redirect("notice", f"Package v{art['artifact_version']} deployed to the SIMULATED factory {dep['factory_name']} ({dep['deployment_id']}); {len(dep['resources'])} resources. Nothing reached Azure.")
+
+
+@app.post("/api/adf/simulated-trigger")
+async def adf_simulated_trigger(request: Request):
+    """Trigger the deployed pipeline in the simulated factory; it runs on the simulated data plane."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        dep = adf_simulator.latest(conn, migration_id)
+        status_info = _adf_status(conn, migration_id)
+        blocker = adf_simulator.trigger_blocker(dep, status_info["stale_reasons"] if status_info else None, status_info["latest"]["artifact_id"] if status_info else None)
+    finally:
+        conn.close()
+    if blocker:
+        return _execution_redirect("error", blocker)
+    rid, telemetry, package = _run_simulated_execution(user, migration_id)
+    if rid is None:
+        return _execution_redirect("error", telemetry)
+    conn = get_db_connection()
+    try:
+        adf_run = adf_simulator.record_trigger(conn, dep["deployment_id"], rid, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_SIMULATED_TRIGGER", user, {"deployment_id": dep["deployment_id"], "adf_run_id": adf_run, "run_id": rid, "status": telemetry["status"]})
+    return _execution_redirect("notice", f"Pipeline triggered in the SIMULATED factory ({adf_run}): {telemetry['status']}. No data left this platform.")
+
+
+@app.post("/api/execution/runs/{run_id}/failures/{idx}/review")
+async def review_execution_failure(request: Request, run_id: str, idx: int, decision: str = Form(...), reason: str = Form("")):
+    """Acknowledge or resolve a problem found by a simulated run. Analyst/Admin only; recorded with the reviewer from the session."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            res = execution_simulator.review_failure(conn, run_id, idx, decision, reason, user["name"])
+        except ValueError as exc:
+            return RedirectResponse(url="/reconciliation?error=" + quote_plus(str(exc)) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    f = res["failure"]
+    _target_setup_audit("EXECUTION_PROBLEM_" + res["status"], user, {"run_id": run_id, "entity": f["entity"], "table": f["table"], "column": f["column"], "rule": f["rule"]})
+    return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"Problem on {f['entity']}.{f['table']}.{f['column']} marked {res['status'].lower()}.") + "#execution",
                             status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1015,6 +1137,101 @@ async def create_validation_scenario(request: Request, entity_name: str = Form(.
         return _validation_redirect("error", str(exc))
     _target_setup_audit("VALIDATION_SCENARIO_DEFINED", user, {"scenario_id": created["scenario_id"], "check_type": check_type, "entity": entity_name, "stage": stage})
     return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
+
+
+def _adf_status(conn, migration_id: str):
+    """Latest stored ADF package with the reasons (if any) it is stale; None when no package was saved."""
+    stored = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
+    if not stored:
+        return None
+    spec = target_connector.spec(conn)
+    approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+    return {"latest": stored[0], "stale_reasons": artifact_store.staleness(stored[0], artifact_store.build_provenance(conn, migration_id, spec, approved))}
+
+
+MIN_STALE_REASON = 10
+
+
+def _stale_gate(conn, migration_id: str, reason: str):
+    """Sign-off evidence may not be saved while the latest ADF package is stale unless the reviewer states why.
+    Returns (error_message_or_None, override_record_or_None)."""
+    status = _adf_status(conn, migration_id)
+    if not status or not status["stale_reasons"]:
+        return None, None
+    reason = " ".join(str(reason or "").split())
+    if len(reason) < MIN_STALE_REASON:
+        return ("The latest ADF package " + status["latest"]["artifact_id"] + " is stale: " + " ".join(status["stale_reasons"]) +
+                " Generate a new package, or give a reason (at least 10 characters) for signing off against it."), None
+    return None, {"package_artifact_id": status["latest"]["artifact_id"], "package_version": status["latest"]["artifact_version"],
+                  "stale_reasons": status["stale_reasons"], "reviewer_reason": reason[:500]}
+
+
+def _adf_reference(conn, migration_id: str, run_id: str):
+    spec = target_connector.spec(conn)
+    approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+    return artifact_store.package_reference(conn, migration_id, artifact_store.build_provenance(conn, migration_id, spec, approved), run_id)
+
+
+@app.get("/api/validation/signoff-evidence")
+async def download_signoff_evidence(request: Request):
+    """Download the validation sign-off evidence for the latest validation run (counts, ids and reasons only)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
+            blocked, override = _stale_gate(conn, migration_id, request.query_params.get("stale_reason", ""))
+            if blocked:
+                return _validation_redirect("error", blocked)
+            doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
+            doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
+            if override:
+                doc["stale_package_override"] = {**override, "reviewer": user["name"]}
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SIGNOFF_EVIDENCE_EXPORTED", user, {"run_id": doc["validation_run"]["run_id"]})
+    return Response(content=json.dumps(doc, indent=2, default=str), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="signoff_evidence_{migration_id}.json"'})
+
+
+@app.post("/api/validation/scenarios/suggest")
+async def suggest_validation_scenarios(request: Request):
+    """Draft default scenarios from the confirmed target contract. They stay DRAFT until a Validation Specialist adopts each one."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        if not spec:
+            return _validation_redirect("error", "Confirm the target system first; suggestions come from the target contract.")
+        maps = target_mapping.list_mappings(conn, migration_id, spec)
+        found = validation_scenarios.suggest_defaults(spec, maps, validation_scenarios.list_scenarios(conn, migration_id))
+        count = validation_scenarios.save_suggestions(conn, migration_id, found, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_SCENARIOS_SUGGESTED", user, {"count": count})
+    return _validation_redirect("notice", f"{count} suggested scenario(s) added as drafts. Adopt the ones you want; drafts are not evaluated." if count else "No new suggestions: approved required fields and keys are already covered.")
+
+
+@app.post("/api/validation/scenarios/{scenario_id}/adopt")
+async def adopt_validation_scenario(request: Request, scenario_id: str):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            validation_scenarios.adopt_scenario(conn, scenario_id)
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_SCENARIO_ADOPTED", user, {"scenario_id": scenario_id})
+    return _validation_redirect("notice", f"Scenario {scenario_id} adopted. It runs with the next validation run.")
 
 
 @app.post("/api/validation/scenarios/{scenario_id}/retire")
@@ -1376,6 +1593,8 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         approved_src = conn.execute(
             "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
         packages = package_contract.list_packages(conn, migration_id)
+        stored_adf = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
+        adf_status = _adf_status(conn, migration_id)
         ccr = {(r["entity_name"], r["canonical_field"]): r for r in conn.execute(
             "SELECT entity_name, canonical_field, request_id, status FROM canonical_change_requests WHERE migration_id = ? "
             "AND change_type = 'ADD_FIELD' AND status != 'REJECTED' ORDER BY created_utc", (migration_id,)).fetchall()}
@@ -1396,7 +1615,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
-        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages,
+        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
@@ -1642,6 +1861,7 @@ async def download_deployment_package(request: Request, package_id: str):
 async def download_adf_package(request: Request):
     """Generate the ADF package zip from approved target mappings with simulated Azure values. Nothing is deployed."""
     user = get_current_user(request)
+    back = _validation_redirect if (await request.form()).get("return_to") == "reconciliation" else _target_redirect  # fixed allow-list, never a free URL
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
@@ -1656,14 +1876,69 @@ async def download_adf_package(request: Request):
             expr = m["transformation_expression"]
             if expr != "DIRECT_COPY" and expr not in rules:
                 rules[expr] = transformation_rules.approved_rule_for_expression(expr)
-        package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"])
+        conn = get_db_connection()
+        try:
+            provenance = artifact_store.build_provenance(conn, migration_id, spec, approved)
+        finally:
+            conn.close()
+        package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"], provenance)
     except ValueError as exc:
-        return _target_redirect("error", str(exc))
+        return back("error", str(exc))
     _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
                                                      "entities": sorted(package["manifest"]["entities"]), "warnings": len(package["manifest"]["warnings"])})
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", migration_id)
-    return Response(content=adf_package.to_zip(package), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="adf_package_{safe}_SIMULATED.zip"'})
+    conn = get_db_connection()
+    try:
+        stored = artifact_store.save(conn, migration_id, "ADF_PACKAGE", adf_package.to_zip(package), user["name"], provenance=provenance)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_PACKAGE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "sha256": stored["content_sha256"]})
+    return back("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, simulated Azure values, not deployed).")
+
+
+@app.post("/api/validation/signoff-evidence/save")
+async def save_signoff_evidence(request: Request):
+    """Save the sign-off evidence for the latest validation run with the migration's data (counts, ids and reasons only)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
+            blocked, override = _stale_gate(conn, migration_id, form.get("stale_reason", ""))
+            if blocked:
+                return _validation_redirect("error", blocked)
+            doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
+            doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
+            if override:
+                doc["stale_package_override"] = {**override, "reviewer": user["name"]}
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        stored = artifact_store.save(conn, migration_id, "SIGNOFF_EVIDENCE", json.dumps(doc, indent=2, default=str).encode("utf-8"), user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SIGNOFF_EVIDENCE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "run_id": doc["validation_run"]["run_id"],
+                                                          "stale_package_override": bool(override)})
+    return _validation_redirect("notice", f"Sign-off evidence v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}).")
+
+
+@app.get("/api/artifacts/{artifact_id}/download")
+async def download_stored_artifact(artifact_id: str, request: Request):
+    """Optional copy of a stored artifact; the stored file stays in the migration's data either way."""
+    get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rec = artifact_store.read(conn, artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+    finally:
+        conn.close()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Stored artifact not found.")
+    return Response(content=rec["data"], media_type=rec["media_type"], headers={"Content-Disposition": f'attachment; filename="{rec["filename"]}"'})
 
 
 def _canonical_rows_for_migration(migration_id: str):
@@ -1771,6 +2046,7 @@ async def transformation_rules_page(request: Request, notice: str = "", error: s
         "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
         "date_formats": list(transformation_rules.DATE_FORMATS),
         "can_author": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
+        "rule_assets": [d for d in state_store.firm_knowledge_docs if d.get("category") in ("business_rules", "transformation_rule") and d.get("full_text")],
         "notice": notice, "error": error,
     })
 
@@ -1786,15 +2062,29 @@ async def preview_transformation_rule(request: Request, rule_type: str = Form(..
     return JSONResponse({"ok": True, "rows": rows})
 
 
+def _shorten(text: str, limit: int) -> str:
+    """Cut at a word boundary and mark the cut, so notices never end mid-word."""
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:.") + "…"
+
+
 @app.post("/api/transformation-rules/infer")
-async def infer_transformation_rules(request: Request, rule_text: str = Form("")):
+async def infer_transformation_rules(request: Request, rule_text: str = Form(""), asset_id: str = Form("")):
     """Turn business-rule text into DRAFT governed rules. Each still needs Analyst/Admin approval; unmatched sentences are reported, not guessed."""
     user = get_current_user(request)
+    label = ""
+    if asset_id:
+        doc = next((d for d in state_store.firm_knowledge_docs if d.get("id") == asset_id), None)
+        if not doc or not doc.get("full_text"):
+            return _rules_redirect("error", "That knowledge asset has no readable text. Register the business rules as a Markdown or text file.")
+        rule_text, label = doc["full_text"], f"asset {doc['id']}, {doc['filename']}"
     if not rule_text.strip():
-        return _rules_redirect("error", "Paste at least one business rule.")
+        return _rules_redirect("error", "Paste at least one business rule or choose a business-rules knowledge asset.")
     conn = get_db_connection()
     try:
-        result = rule_inference.save_drafts(conn, rule_text, user["name"])
+        result = rule_inference.save_drafts(conn, rule_text, user["name"], label)
         conn.commit()
     finally:
         conn.close()
@@ -1805,7 +2095,8 @@ async def infer_transformation_rules(request: Request, rule_text: str = Form("")
     if result["skipped"]:
         parts.append(f"{len(result['skipped'])} already exist")
     if result["unrecognised"]:
-        parts.append(f"{len(result['unrecognised'])} not recognised: " + " | ".join(u["statement"][:60] for u in result["unrecognised"][:3]))
+        examples = " | ".join(_shorten(u["statement"], 60) for u in result["unrecognised"][:2])
+        parts.append(f"{len(result['unrecognised'])} line(s) not recognised, e.g. {examples}")
     return _rules_redirect("error" if not result["created"] and not result["skipped"] else "notice", "; ".join(parts) + ".")
 
 

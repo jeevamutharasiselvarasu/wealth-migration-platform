@@ -24,8 +24,38 @@ _DDL = """CREATE TABLE IF NOT EXISTS execution_runs (
     triggered_by TEXT NOT NULL, retry_of TEXT, telemetry_json TEXT NOT NULL)"""
 
 
+_REVIEW_DDL = """CREATE TABLE IF NOT EXISTS execution_failure_reviews (
+    run_id TEXT NOT NULL, failure_idx INTEGER NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL,
+    reviewer TEXT NOT NULL, reviewed_utc TEXT NOT NULL, PRIMARY KEY (run_id, failure_idx))"""
+REVIEW_DECISIONS = ("ACKNOWLEDGED", "RESOLVED")
+
+
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
+    conn.execute(_REVIEW_DDL)
+
+
+def review_failure(conn: sqlite3.Connection, run_id: str, idx: int, decision: str, reason: str, reviewer: str) -> Dict[str, Any]:
+    """Acknowledge or resolve one linked problem of a run. A reason is required; a resolved problem stays resolved."""
+    import json
+    ensure_table(conn)
+    row = conn.execute("SELECT telemetry_json FROM execution_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if not row:
+        raise ValueError("Run not found.")
+    failures = json.loads(row["telemetry_json"]).get("failures", [])
+    if idx < 0 or idx >= len(failures):
+        raise ValueError("That problem does not exist on this run.")
+    if decision not in REVIEW_DECISIONS:
+        raise ValueError("Decision must be ACKNOWLEDGED or RESOLVED.")
+    if not reason.strip():
+        raise ValueError("A reason is required.")
+    cur = conn.execute("SELECT status FROM execution_failure_reviews WHERE run_id = ? AND failure_idx = ?", (run_id, idx)).fetchone()
+    if cur and cur["status"] == "RESOLVED":
+        raise ValueError("This problem is already resolved.")
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute("INSERT OR REPLACE INTO execution_failure_reviews (run_id, failure_idx, status, reason, reviewer, reviewed_utc) VALUES (?, ?, ?, ?, ?, ?)",
+                 (run_id, idx, decision, reason.strip()[:500], reviewer, now))
+    return {"run_id": run_id, "failure_idx": idx, "status": decision, "failure": failures[idx], "reviewed_utc": now}
 
 
 def _sanitise(message: str) -> str:
@@ -96,7 +126,7 @@ def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, A
         for t in e["tables"].values():
             t["balanced"] = t["loaded"] + t["skipped"] + t["failed"] == t["read"]
     problems = totals["skipped"] + totals["failed"]
-    status = "FAILED" if totals["read"] and not totals["loaded"] else ("PARTIAL_SUCCESS" if problems else "SUCCEEDED")
+    status = "NO_DATA" if not totals["read"] else ("FAILED" if not totals["loaded"] else ("PARTIAL_SUCCESS" if problems else "SUCCEEDED"))
     return {"status": status, "error": None, "retryable": False, "entities": entities, "failures": sorted(failures.values(), key=lambda f: (-f["rows"], f["entity"], f["column"])),
             "post_checks": post, "totals": totals}
 
@@ -120,6 +150,7 @@ def list_runs(conn: sqlite3.Connection, migration_id: str, limit: int = 10) -> L
     for r in conn.execute("SELECT * FROM execution_runs WHERE migration_id = ? ORDER BY started_utc DESC LIMIT ?", (migration_id, limit)).fetchall():
         d = dict(r)
         d["telemetry"] = json.loads(d.pop("telemetry_json"))
+        d["reviews"] = {x["failure_idx"]: dict(x) for x in conn.execute("SELECT * FROM execution_failure_reviews WHERE run_id = ?", (d["run_id"],)).fetchall()}
         out.append(d)
     return out
 

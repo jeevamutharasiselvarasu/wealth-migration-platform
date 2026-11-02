@@ -232,3 +232,58 @@ def test_inferred_rules_are_drafts_deduplicated_and_unusable_until_approved(tmp_
     again = ri.save_drafts(conn, "Map SCH to SCHWAB", "Ann")
     assert again["created"] == [] and len(again["skipped"]) == 1 and len(tr.list_rules(conn)) == 1
     assert tr.list_rules(conn)[0]["status"] == "DRAFT"  # still needs a human approval
+
+
+def test_business_rules_asset_registers_from_setup_and_feeds_rule_inference(db, tmp_path, monkeypatch):
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    store.questionnaire_data["migration_id"] = "MIG-K"
+    monkeypatch.setattr(app_module, "state_store", store)
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid", {"email": "t@example.invalid", "name": "Ann", "role": "Migration Analyst"})
+
+    async def call(method, path, **kw):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
+            return await client.request(method, path, follow_redirects=False, headers={"accept": "text/html"}, **kw)
+
+    rules_md = b"# Rules\n- Map SCH to SCHWAB\n- Default to \"UNKNOWN\" if blank\n- Do something vague\n"
+    # The Business rules option on the setup page must register (it was rejected as an unsupported category before).
+    for category in ("business_rules", "target_schema", "firm_profile", "questionnaire"):
+        up = asyncio.run(call("POST", "/api/knowledge/file-upload", data={"category": category, "return_to": "/migration-setup"},
+                              files={"file": (f"{category}.md", rules_md, "text/markdown")}))
+        assert up.status_code == 303, category
+    bad = asyncio.run(call("POST", "/api/knowledge/file-upload", data={"category": "nonsense"}, files={"file": ("x.md", rules_md, "text/markdown")}))
+    assert bad.status_code == 400
+    doc = next(d for d in store.firm_knowledge_docs if d["category"] == "business_rules")
+    assert doc["full_text"].startswith("# Rules")
+    page = asyncio.run(call("GET", "/transformation-rules")).text
+    assert f"{doc['id']} · business_rules.md" in page and "Infer draft rules from asset" in page
+    none = asyncio.run(call("POST", "/api/transformation-rules/infer", data={"asset_id": "DOC-999"}))
+    assert "error=" in none.headers["location"]
+    done = asyncio.run(call("POST", "/api/transformation-rules/infer", data={"asset_id": doc["id"]})).headers["location"]
+    assert "2+draft+rule" in done and "not+recognised" in done
+    check = sqlite3.connect(db)
+    descs = [r[0] for r in check.execute("SELECT description FROM transformation_rules WHERE status = 'DRAFT'")]
+    assert len(descs) == 2 and all(f"asset {doc['id']}, business_rules.md" in d for d in descs)
+
+
+def test_demo_manifest_registers_a_business_rules_asset():
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "demo_data" / "knowledge" / "corecap_business_rules.md").read_text()
+    from control_plane.services import rule_inference as ri
+    assert sum(1 for r in ri.infer(text) if r["recognised"]) == 4
+    assert "corecap_business_rules.md" in (root / "ui" / "app.py").read_text()
+
+
+def test_notice_text_is_cut_at_a_word_boundary():
+    from ui.app import _shorten
+    long = "Synthetic demo rules for the CoreCap pilot. Each line is a business rule that becomes a draft"
+    out = _shorten(long, 60)
+    assert out.endswith("…") and len(out) <= 61 and not out.rstrip("…").endswith(("Migratio", "bus"))
+    assert _shorten("short text", 60) == "short text"
