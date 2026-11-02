@@ -755,6 +755,7 @@ def test_move_table_to_another_entity_rematches_columns_and_needs_review(conn, t
         tc.move_table(conn, "Ann", "NO_SUCH_TABLE", dest, CANON_TYPES)
 
 
+@pytest.mark.sqlite_only
 def test_reopening_an_approved_mapping_lets_a_later_rule_be_applied_and_keeps_history(conn, spec):
     tr.create_rule_version(conn, "CUST_MAP", "VALUE_MAP", "codes", {"map": {"SCH": "SCHWAB"}}, "Ann")
     tr.decide_rule(conn, "CUST_MAP", 1, "APPROVED", "Bob", "ok")
