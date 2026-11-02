@@ -18,7 +18,7 @@ XODUS / XODUS-AMP — WealthAI Labs wealth-management business migration POC. De
 - Removed modules nothing imported or tested: AI Foundry mapper, `ui/models.py`, `agents/logic/`, cutover and audit agents, compiler expressions/rulebook, registry JSONs, telemetry, sleeve engine, ReconcilerAgent and AUM ReconciliationEngine, the unused `agent_studio.html` template.
 - Removed legacy sleeve/wave knowledge, duplicate fixtures (`test_files/`, `sample_data/`, `evaluation/`), stale cutover runbook and branch inventory, stale `data_plane/connectors/`.
 - Moved `context/` to `docs/project/` and `architecture.html` to `docs/architecture.html` (rewritten to the current workflow). Firm profiles in `knowledge/firm/` rewritten. Added `platform_knowledge/wealth_management_research.md`.
-- Later removed (2026-11-02): the unused `data_plane/` and `infrastructure/` (Azure Bicep and ADF YAML) folders and `docs/architecture.html`; the ADF package and simulator in `control_plane/` stay. Azure assets will be recreated when that phase starts.
+- Later removed (2026-11-02): `infrastructure/` (Azure Bicep and ADF YAML) and `docs/architecture.html`; the ADF package and simulator in `control_plane/` stay. Azure assets will be recreated when that phase starts. `data_plane/` was removed by mistake and restored (`ui/app.py` imports `data_plane.storage_manager`).
 
 ## Implemented this cycle
 - Firm config (`config/firm_config.yaml`) stamped on setup and demo load; per-entity required-field RFIs; mapping kinds; relationship dispositions; evidence-based proposals (confidence capped, <70% needs individual review).

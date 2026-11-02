@@ -71,6 +71,7 @@ The local demo identities (email, name, personas) live in `demo_data/demo_users.
 - `platform_knowledge/` — platform-provided domain knowledge (canonical contract, mapping notes, wealth-management research). Kept separate from demo data.
 - `demo_data/` — synthetic CoreCap sample files, demo manifest and demo users. Never place real client data here.
 - `tests/` — contract, UI-boundary, role-policy, inference, mapping and workflow tests.
+- `data_plane/` — local source-file storage (`storage_manager.py`, imported by `ui/app.py`). Target loading and legacy connectors are out of P0.
 - `docs/` — P0 correctness notes (`P0_FOUNDATION_CORRECTNESS.md`) and `docs/project/` (project brief, current status, working copies of the canonical contract and mapping notes).
 
 ## Safety and scope rules
