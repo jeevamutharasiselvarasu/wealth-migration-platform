@@ -291,6 +291,7 @@
     var q = new URLSearchParams(location.search), text = q.get("notice") || q.get("error");
     if (!text) return;
     var bad = !q.get("notice");
+    if (bad && document.getElementById("workflow-error-modal")) return;  /* the page already shows this error in its own dialog */
     var d = document.createElement("div");
     d.setAttribute("role", "status");
     d.textContent = text;
