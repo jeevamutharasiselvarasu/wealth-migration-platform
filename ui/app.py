@@ -1037,6 +1037,42 @@ async def create_validation_scenario(request: Request, entity_name: str = Form(.
     return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
 
 
+@app.post("/api/validation/scenarios/suggest")
+async def suggest_validation_scenarios(request: Request):
+    """Draft default scenarios from the confirmed target contract. They stay DRAFT until a Validation Specialist adopts each one."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        if not spec:
+            return _validation_redirect("error", "Confirm the target system first; suggestions come from the target contract.")
+        maps = target_mapping.list_mappings(conn, migration_id, spec)
+        found = validation_scenarios.suggest_defaults(spec, maps, validation_scenarios.list_scenarios(conn, migration_id))
+        count = validation_scenarios.save_suggestions(conn, migration_id, found, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_SCENARIOS_SUGGESTED", user, {"count": count})
+    return _validation_redirect("notice", f"{count} suggested scenario(s) added as drafts. Adopt the ones you want; drafts are not evaluated." if count else "No new suggestions: approved required fields and keys are already covered.")
+
+
+@app.post("/api/validation/scenarios/{scenario_id}/adopt")
+async def adopt_validation_scenario(request: Request, scenario_id: str):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            validation_scenarios.adopt_scenario(conn, scenario_id)
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_SCENARIO_ADOPTED", user, {"scenario_id": scenario_id})
+    return _validation_redirect("notice", f"Scenario {scenario_id} adopted. It runs with the next validation run.")
+
+
 @app.post("/api/validation/scenarios/{scenario_id}/retire")
 async def retire_validation_scenario(request: Request, scenario_id: str):
     user = get_current_user(request)

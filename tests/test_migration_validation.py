@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import sqlite3
 
@@ -197,3 +198,37 @@ def test_exception_proposed_by_validator_approved_by_analyst_never_the_proposer(
     assert "Validation scenarios" in page and "SCENARIO SCN-" in page and f"Exception {eid} APPROVED" in page and "decided by Ann" in page
     row = conn.execute("SELECT status, decided_by FROM validation_exceptions").fetchone()
     assert row == ("APPROVED", "Ann")
+
+
+def _spec():
+    return {"entities": {"Account": {"fields": [{"name": "T.ACCT_NO", "required": True}, {"name": "T.NOTE", "required": False}, {"name": "T.OWNER", "required": True}]},
+                         "Client": {"fields": []}}}
+
+
+def test_default_scenarios_come_from_required_approved_fields_and_keys_and_stay_draft_until_adopted(tmp_path):
+    from control_plane.services import validation_scenarios as vs
+    maps = [{"entity_name": "Account", "target_field": "T.ACCT_NO", "canonical_field": "ACCT_NUM", "status": "APPROVED"},
+            {"entity_name": "Account", "target_field": "T.NOTE", "canonical_field": "NOTES", "status": "APPROVED"},      # not required
+            {"entity_name": "Account", "target_field": "T.OWNER", "canonical_field": "OWNER_ID", "status": "PROPOSED"}]  # not approved
+    conn = sqlite3.connect(tmp_path / "v.db")
+    conn.row_factory = sqlite3.Row
+    found = vs.suggest_defaults(_spec(), maps, [])
+    assert {(f["entity"], f["check_type"], f["field"]) for f in found} == {("Account", "NOT_BLANK", "ACCT_NUM"), ("Account", "UNIQUE", "ACCT_NUM"), ("Client", "UNIQUE", "CLIENT_ID")}
+    assert vs.suggest_defaults(None, maps, []) == []
+    assert vs.save_suggestions(conn, "M", found, "Val") == 3
+    assert vs.list_scenarios(conn, "M", active_only=True) == []          # drafts are not evaluated
+    assert vs.suggest_defaults(_spec(), maps, vs.list_scenarios(conn, "M")) == []   # no duplicates once drafted
+    sid = vs.list_scenarios(conn, "M")[0]["scenario_id"]
+    vs.adopt_scenario(conn, sid)
+    assert [s["scenario_id"] for s in vs.list_scenarios(conn, "M", active_only=True)] == [sid]
+    with pytest.raises(ValueError):
+        vs.adopt_scenario(conn, sid)
+    dismissed = vs.list_scenarios(conn, "M")[1]["scenario_id"]
+    vs.retire_scenario(conn, dismissed)
+    assert vs.suggest_defaults(_spec(), maps, vs.list_scenarios(conn, "M")) != []  # a dismissed suggestion may be suggested again
+
+
+def test_suggest_and_adopt_routes_are_validator_or_admin_only():
+    from ui.role_policy import allowed_roles_for
+    for path in ("/api/validation/scenarios/suggest", "/api/validation/scenarios/SCN-1/adopt"):
+        assert allowed_roles_for("POST", path) == {"Platform Admin", "Validation Specialist"}
