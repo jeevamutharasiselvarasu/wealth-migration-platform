@@ -52,6 +52,7 @@ def test_target_service_api_is_read_only_and_exposes_schema_without_row_data(tmp
 def _confirm_target(conn):
     tc.configure(conn, "Admin One", "Simplicity", "http://127.0.0.1:8100", [], True, "Sam")
     tc.infer_model(conn, CANON_TYPES)
+    tc.review_all(conn, "Admin One")
     tc.confirm(conn, "Admin One")
     conn.commit()
     return tc.spec(conn)
@@ -177,6 +178,8 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/infer")).headers["location"]
     page = asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert "Inferred target model" in page and "Confirm target model" in page and "SIMP_ACCT_MASTER.ACCT_NO" in page
+    assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]  # fields not reviewed yet
+    assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-all")).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]
     locked = asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", cfg_form)).headers["location"]
     assert "error=" in locked and "locked" in locked.replace("+", " ")
@@ -187,7 +190,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": "Owner changed the code lists"})).headers["location"]
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-mapping/propose")).headers["location"]  # mapping paused
     assert "Save &amp; test connection" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
-    for step, form in (("configure", cfg_form), ("infer", None), ("confirm", None)):
+    for step, form in (("configure", cfg_form), ("infer", None), ("review-all", None), ("confirm", None)):
         assert "notice=" in asyncio.run(call("Platform Admin", "POST", f"/api/target-system/{step}", form)).headers["location"]
     assert "Confirm target model" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert asyncio.run(call("Migration Analyst", "GET", "/target-setup")).headers["location"] == "/target-mapping#target-system"
@@ -313,6 +316,7 @@ def test_target_setup_is_one_time_and_target_is_separate_and_different_from_cano
     with pytest.raises(ValueError, match="Infer the target model"):
         tc.confirm(conn, "Ann")
     tc.infer_model(conn, CANON_TYPES)
+    tc.review_all(conn, "Ann")
     tc.confirm(conn, "Ann")
     conn.commit()
     with pytest.raises(ValueError, match="locked"):
@@ -380,6 +384,7 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
 
     asyncio.run(call("Platform Admin", "/api/target-system/configure", {"target_name": "Simplicity", "endpoint": "http://127.0.0.1:8100", "include_code_lists": "on"}))
     asyncio.run(call("Platform Admin", "/api/target-system/infer"))
+    asyncio.run(call("Platform Admin", "/api/target-system/review-all"))
     asyncio.run(call("Platform Admin", "/api/target-system/confirm"))
     spec = tc.spec(conn)
     assert spec is not None
@@ -656,3 +661,55 @@ def test_trigger_blocker_requires_a_current_deployed_package():
     assert "newer package" in sim.trigger_blocker(dep, [], "ART-2")
     assert "stale" in sim.trigger_blocker(dep, ["The validation run moved on."], "ART-1")
     assert sim.trigger_blocker(dep, [], "ART-1") is None
+
+
+def test_target_model_review_correct_change_reject_and_move_before_confirm(conn, target_service):
+    tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", [], True, "")
+    model = tc.infer_model(conn, CANON_TYPES)["model"]
+    total = sum(len(b["fields"]) for b in model["entities"].values())
+    assert tc.pending_reviews(model) == total
+    with pytest.raises(ValueError, match="Review every inferred target field"):
+        tc.confirm(conn, "Ann")
+    ent, field = next((e, f) for e, b in model["entities"].items() for f in b["fields"] if f["canonical_hint"])
+    original = field["canonical_hint"]
+    # change to another canonical field of the same entity; an unknown one is refused
+    other = next(n for n in CANON_TYPES[ent] if n != original)
+    with pytest.raises(ValueError, match="not a canonical"):
+        tc.review_field(conn, "Ann", field["table"], field["column"], "change", "NOPE", CANON_TYPES)
+    m = tc.review_field(conn, "Ann", field["table"], field["column"], "change", other, CANON_TYPES)["model"]
+    got = next(f for f in m["entities"][ent]["fields"] if f["name"] == field["name"])
+    assert got["canonical_hint"] == other and got["review"]["status"] == "CORRECTED" and got["review"]["by"] == "Ann"
+    assert got["review"]["inferred_hint"] == original  # the inference stays on record
+    # correct puts it back on the original inference; reject drops it from the spec
+    m = tc.review_field(conn, "Ann", field["table"], field["column"], "correct", "", CANON_TYPES)["model"]
+    assert next(f for f in m["entities"][ent]["fields"] if f["name"] == field["name"])["canonical_hint"] == original
+    tc.review_field(conn, "Ann", field["table"], field["column"], "reject", "", CANON_TYPES)
+    cfg = tc.get_config(conn)
+    from control_plane.services import target_inference as ti
+    spec = ti.to_spec(cfg["model"], "X")
+    assert field["name"] not in {f["name"] for f in spec["entities"][ent]["fields"]}
+    # a table can be excluded; its fields leave the model and it is listed as unmatched
+    table = field["table"]
+    moved = tc.move_table(conn, "Ann", table, None, CANON_TYPES)["model"]
+    assert table in moved["unassigned_tables"] and all(f["table"] != table for b in moved["entities"].values() for f in b["fields"])
+    assert moved["table_decisions"][table]["by"] == "Ann"
+    tc.review_all(conn, "Ann")
+    assert tc.pending_reviews(tc.get_config(conn)["model"]) == 0
+    assert tc.confirm(conn, "Ann")["status"] == "CONFIRMED"
+    with pytest.raises(ValueError, match="Infer the target model"):
+        tc.review_all(conn, "Ann")  # locked once confirmed
+
+
+def test_move_table_to_another_entity_rematches_columns_and_needs_review(conn, target_service):
+    tc.configure(conn, "Ann", "Simplicity", "http://127.0.0.1:8100", [], True, "")
+    model = tc.infer_model(conn, CANON_TYPES)["model"]
+    tc.review_all(conn, "Ann")
+    ent = next(iter(model["entities"]))
+    table = model["entities"][ent]["target_table"].split(", ")[0]
+    dest = next(e for e in CANON_TYPES if e != ent)
+    moved = tc.move_table(conn, "Ann", table, dest, CANON_TYPES)["model"]
+    assert table in moved["entities"][dest]["target_table"]
+    assert all(not f.get("review") for f in moved["entities"][dest]["fields"] if f["table"] == table)  # decisions do not carry across
+    assert tc.pending_reviews(moved) > 0
+    with pytest.raises(ValueError, match="Unknown target table"):
+        tc.move_table(conn, "Ann", "NO_SUCH_TABLE", dest, CANON_TYPES)

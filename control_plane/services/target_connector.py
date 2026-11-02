@@ -161,10 +161,85 @@ def infer_model(conn: sqlite3.Connection, canonical: Dict[str, Dict[str, str]]) 
     return get_config(conn)
 
 
+def pending_reviews(model: Dict[str, Any]) -> int:
+    """Inferred target fields no reviewer has decided on yet."""
+    return sum(1 for b in model["entities"].values() for f in b["fields"] if not f.get("review"))
+
+
+def _inferred_for_review(conn: sqlite3.Connection) -> Dict[str, Any]:
+    cfg = get_config(conn)
+    if not cfg or cfg["status"] != "INFERRED" or not cfg["model"]:
+        raise ValueError("Infer the target model before reviewing it. A confirmed setup must be reopened first.")
+    return cfg
+
+
+def _save_model(conn: sqlite3.Connection, model: Dict[str, Any]) -> Dict[str, Any]:
+    conn.execute("UPDATE target_system_config SET inferred_model = ? WHERE config_id = 1", (json.dumps(model),))
+    return get_config(conn)
+
+
+def _find_field(model: Dict[str, Any], table: str, column: str) -> Dict[str, Any]:
+    for ename, body in model["entities"].items():
+        for f in body["fields"]:
+            if f["table"] == table and f["column"] == column:
+                return ename, f
+    raise ValueError(f"Unknown target field {table}.{column}.")
+
+
+def review_field(conn: sqlite3.Connection, actor: str, table: str, column: str, decision: str, canonical_field: str,
+                 canonical: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
+    """Reviewer decision on one inferred target field: CORRECT (as inferred), CHANGE (another canonical field, or none
+    when canonical_field is blank) or REJECT (the field is not part of the target model). The inference is kept alongside."""
+    cfg = _inferred_for_review(conn)
+    model = cfg["model"]
+    entity, f = _find_field(model, table, column)
+    decision = str(decision or "").upper()
+    if decision not in {"CORRECT", "CHANGE", "REJECT"}:
+        raise ValueError("Decision must be correct, change or reject.")
+    first = f.get("review") or {"inferred_hint": f["canonical_hint"], "inferred_confidence": f["confidence"]}
+    prior, prior_conf = first["inferred_hint"], first.get("inferred_confidence", f["confidence"])
+    if decision == "CHANGE":
+        name = str(canonical_field or "").strip().upper()
+        if name and name not in canonical.get(entity, {}):
+            raise ValueError(f"{name} is not a canonical {entity} field.")
+        f["canonical_hint"], f["confidence"] = (name or None), (1.0 if name else 0.0)
+        status = "CORRECTED"
+    else:
+        f["canonical_hint"], f["confidence"] = prior, prior_conf  # a correct/reject decision stands on the original inference
+        status = "CONFIRMED" if decision == "CORRECT" else "REJECTED"
+    f["review"] = {"status": status, "by": actor, "utc": _now(), "inferred_hint": prior, "inferred_confidence": prior_conf}
+    return _save_model(conn, model)
+
+
+def review_all(conn: sqlite3.Connection, actor: str) -> Dict[str, Any]:
+    """Accept every still-undecided field exactly as inferred (fields already decided are left alone)."""
+    cfg = _inferred_for_review(conn)
+    model = cfg["model"]
+    for body in model["entities"].values():
+        for f in body["fields"]:
+            if not f.get("review"):
+                f["review"] = {"status": "CONFIRMED", "by": actor, "utc": _now(), "inferred_hint": f["canonical_hint"],
+                               "inferred_confidence": f["confidence"]}
+    return _save_model(conn, model)
+
+
+def move_table(conn: sqlite3.Connection, actor: str, table: str, entity: Optional[str],
+               canonical: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
+    """Reviewer correction of a table's entity (or exclusion). Its fields are re-matched and need review again."""
+    cfg = _inferred_for_review(conn)
+    model = cfg["model"]
+    target_inference.move_table(model, table, entity or None, canonical)
+    model.setdefault("table_decisions", {})[table] = {"entity": entity or "EXCLUDED", "by": actor, "utc": _now()}
+    return _save_model(conn, model)
+
+
 def confirm(conn: sqlite3.Connection, actor: str) -> Dict[str, Any]:
     cfg = get_config(conn)
     if not cfg or cfg["status"] != "INFERRED":
         raise ValueError("Infer the target model before confirming it.")
+    left = pending_reviews(cfg["model"])
+    if left:
+        raise ValueError(f"Review every inferred target field before confirming: {left} still need a decision (correct, change or reject).")
     conn.execute("UPDATE target_system_config SET status = 'CONFIRMED', confirmed_by = ?, confirmed_utc = ? WHERE config_id = 1", (actor, _now()))
     return get_config(conn)
 

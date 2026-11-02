@@ -175,7 +175,52 @@ def suggest_canonical_name(entity: str, column: str, known_fields: List[str]) ->
     return name
 
 
+def move_table(model: Dict[str, Any], table: str, entity: Optional[str], canonical: Dict[str, Dict[str, str]]) -> None:
+    """Reviewer correction: put a target table under another entity (re-matching its columns) or exclude it (entity None).
+    Edits the model in place; the moved table's fields come back unreviewed."""
+    cols: List[Dict[str, Any]] = []
+    all_cols: List[str] = []
+    for ename in list(model["entities"]):
+        body = model["entities"][ename]
+        names = [t.strip() for t in body["target_table"].split(",") if t.strip()]
+        if table not in names:
+            continue
+        cols = [{"name": f["column"], "type": f["type"], "description": f.get("description", ""), "required": f["required"],
+                 "code_list": f.get("code_list"), "codes": f.get("codes", [])} for f in body["fields"] if f["table"] == table]
+        all_cols = body["table_columns"].pop(table, [])
+        body["fields"] = [f for f in body["fields"] if f["table"] != table]
+        names.remove(table)
+        body["target_table"] = ", ".join(names)
+        if not names:
+            del model["entities"][ename]
+    if not all_cols and table not in model.get("unassigned_tables", []):
+        raise ValueError(f"Unknown target table {table}.")
+    unassigned = [t for t in model.get("unassigned_tables", []) if t != table]
+    if entity is None:
+        model["unassigned_tables"] = unassigned + [table]
+        return
+    if entity not in ENTITIES or entity not in canonical:
+        raise ValueError("Entity must be Account, Client or Household.")
+    if not cols:  # table was unassigned: its columns are not in the model yet, so it must be re-inferred
+        raise ValueError("This table was not matched at inference; re-read the target to include it.")
+    model["unassigned_tables"] = unassigned
+    assigned = _assign({"columns": cols}, entity, canonical)
+    body = model["entities"].setdefault(entity, {"target_table": "", "fields": [], "table_columns": {}})
+    body["target_table"] = ", ".join([t for t in body["target_table"].split(", ") if t] + [table])
+    body["table_columns"][table] = all_cols
+    for col in cols:
+        m = assigned.get(col["name"])
+        body["fields"].append({
+            "name": f"{table}.{col['name']}", "table": table, "column": col["name"], "type": col["type"], "required": col["required"],
+            "description": col["description"], "canonical_hint": m["canonical"] if m else None,
+            "suggested_canonical_field": None if m else suggest_canonical_name(entity, col["name"], list(canonical.get(entity, {}))),
+            "confidence": m["score"] if m else 0.0, "evidence": m["evidence"] if m else [],
+            "code_list": col.get("code_list"), "codes": col.get("codes", [])})
+
+
 def to_spec(model: Dict[str, Any], status: str) -> Dict[str, Any]:
-    """Mapping-view spec used by gap report, proposals and preview."""
+    """Mapping-view spec used by gap report, proposals and preview. Fields a reviewer rejected are left out."""
+    entities = {e: {**b, "fields": [f for f in b["fields"] if (f.get("review") or {}).get("status") != "REJECTED"]}
+                for e, b in model["entities"].items()}
     return {"spec_id": f"INFERRED-{model['schema_hash']}", "spec_version": model["schema_hash"], "status": status,
-            "target_system": model["target_system"], "entities": model["entities"]}
+            "target_system": model["target_system"], "entities": entities}

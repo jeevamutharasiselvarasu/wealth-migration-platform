@@ -1763,6 +1763,8 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
+        "canonical_fields": {e: sorted(fs) for e, fs in _canonical_types().items()},
+        "pending_reviews": target_connector.pending_reviews(cfg["model"]) if cfg and cfg.get("model") else 0,
     }
 
 
@@ -1842,6 +1844,58 @@ async def confirm_target_system(request: Request):
         conn.close()
     _target_setup_audit("TARGET_SYSTEM_CONFIRMED", user, {"schema_hash": cfg["schema_hash"]})
     return _target_redirect("notice", "Target system confirmed. Setup is complete and locked; mapping can start.")
+
+
+@app.post("/api/target-system/review-field")
+async def review_target_field(request: Request, table: str = Form(...), column: str = Form(...), decision: str = Form(...),
+                              canonical_field: str = Form("")):
+    """Setup review: mark one inferred target field correct, change its canonical field, or reject it."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            target_connector.review_field(conn, user["name"], table, column, decision, canonical_field, _canonical_types())
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_FIELD_REVIEWED", user, {"field": f"{table}.{column}", "decision": decision.upper(), "canonical_field": canonical_field.strip().upper()})
+    return _target_redirect("notice", f"{table}.{column}: decision recorded.")
+
+
+@app.post("/api/target-system/review-all")
+async def review_all_target_fields(request: Request):
+    """Setup review: accept every still-undecided inferred field as inferred."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            target_connector.review_all(conn, user["name"])
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_FIELDS_ACCEPTED", user, {})
+    return _target_redirect("notice", "Remaining inferred fields accepted as inferred.")
+
+
+@app.post("/api/target-system/move-table")
+async def move_target_table(request: Request, table: str = Form(...), entity: str = Form("")):
+    """Setup review: put a target table under another entity, or exclude it (blank entity)."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            target_connector.move_table(conn, user["name"], table, entity.strip() or None, _canonical_types())
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_TABLE_REASSIGNED", user, {"table": table, "entity": entity.strip() or "EXCLUDED"})
+    return _target_redirect("notice", f"{table}: moved to {entity.strip() or 'excluded'}. Review its fields again.")
 
 
 @app.post("/api/target-system/reopen")
