@@ -255,6 +255,13 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     stale = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "adf-stale" in stale and "approved target mappings changed" in stale and "adf-current" not in stale
     assert "STALE" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    assert "regen-package" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
+    other = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "http://evil.example/"}))
+    assert other.headers["location"].startswith("/target-mapping")  # only the fixed allow-list is honoured
+    asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
+    fixed = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
+    assert fixed.headers["location"].startswith("/reconciliation?notice=ADF+package+v") and "adf-stale" not in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "regen-package" not in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
     zipped = asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[0]['artifact_id']}/download"))
     assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "_v2.zip" in zipped.headers["content-disposition"]
     assert asyncio.run(call("Validation Specialist", "GET", "/api/artifacts/ART-NOPE/download")).status_code == 404

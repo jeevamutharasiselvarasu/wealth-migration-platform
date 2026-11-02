@@ -1796,6 +1796,7 @@ async def download_deployment_package(request: Request, package_id: str):
 async def download_adf_package(request: Request):
     """Generate the ADF package zip from approved target mappings with simulated Azure values. Nothing is deployed."""
     user = get_current_user(request)
+    back = _validation_redirect if (await request.form()).get("return_to") == "reconciliation" else _target_redirect  # fixed allow-list, never a free URL
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
@@ -1817,7 +1818,7 @@ async def download_adf_package(request: Request):
             conn.close()
         package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"], provenance)
     except ValueError as exc:
-        return _target_redirect("error", str(exc))
+        return back("error", str(exc))
     _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
                                                      "entities": sorted(package["manifest"]["entities"]), "warnings": len(package["manifest"]["warnings"])})
     conn = get_db_connection()
@@ -1827,7 +1828,7 @@ async def download_adf_package(request: Request):
     finally:
         conn.close()
     _target_setup_audit("ADF_PACKAGE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "sha256": stored["content_sha256"]})
-    return _target_redirect("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, simulated Azure values, not deployed).")
+    return back("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, simulated Azure values, not deployed).")
 
 
 @app.post("/api/validation/signoff-evidence/save")
