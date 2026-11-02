@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -944,6 +944,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
         scenarios = validation_scenarios.list_scenarios(conn, migration_id)
         runs = execution_simulator.list_runs(conn, migration_id)
         has_package = bool(package_contract.list_packages(conn, migration_id))
+        stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
         conn.commit()
     finally:
@@ -967,7 +968,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error, "notice": notice,
+            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
@@ -1487,6 +1488,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         approved_src = conn.execute(
             "SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()[0]
         packages = package_contract.list_packages(conn, migration_id)
+        stored_adf = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
         ccr = {(r["entity_name"], r["canonical_field"]): r for r in conn.execute(
             "SELECT entity_name, canonical_field, request_id, status FROM canonical_change_requests WHERE migration_id = ? "
             "AND change_type = 'ADD_FIELD' AND status != 'REJECTED' ORDER BY created_utc", (migration_id,)).fetchall()}
@@ -1507,7 +1509,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
-        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages,
+        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
@@ -1772,9 +1774,51 @@ async def download_adf_package(request: Request):
         return _target_redirect("error", str(exc))
     _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
                                                      "entities": sorted(package["manifest"]["entities"]), "warnings": len(package["manifest"]["warnings"])})
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", migration_id)
-    return Response(content=adf_package.to_zip(package), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="adf_package_{safe}_SIMULATED.zip"'})
+    conn = get_db_connection()
+    try:
+        stored = artifact_store.save(conn, migration_id, "ADF_PACKAGE", adf_package.to_zip(package), user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_PACKAGE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "sha256": stored["content_sha256"]})
+    return _target_redirect("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, simulated Azure values, not deployed).")
+
+
+@app.post("/api/validation/signoff-evidence/save")
+async def save_signoff_evidence(request: Request):
+    """Save the sign-off evidence for the latest validation run with the migration's data (counts, ids and reasons only)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
+            doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        stored = artifact_store.save(conn, migration_id, "SIGNOFF_EVIDENCE", json.dumps(doc, indent=2, default=str).encode("utf-8"), user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SIGNOFF_EVIDENCE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "run_id": doc["validation_run"]["run_id"]})
+    return _validation_redirect("notice", f"Sign-off evidence v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}).")
+
+
+@app.get("/api/artifacts/{artifact_id}/download")
+async def download_stored_artifact(artifact_id: str, request: Request):
+    """Optional copy of a stored artifact; the stored file stays in the migration's data either way."""
+    get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rec = artifact_store.read(conn, artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+    finally:
+        conn.close()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Stored artifact not found.")
+    return Response(content=rec["data"], media_type=rec["media_type"], headers={"Content-Disposition": f'attachment; filename="{rec["filename"]}"'})
 
 
 def _canonical_rows_for_migration(migration_id: str):

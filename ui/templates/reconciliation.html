@@ -83,7 +83,8 @@
                 <h2 class="text-sm font-bold text-[#152C6B]">Validation results</h2>
                 <p class="mt-1 text-xs text-[#5A6A88]">Runs checks on approved mappings and confirmed source files. Values are checked as supplied, before transformations. No target load is verified.</p>
             </div>
-            {% if validation_run %}<a href="/api/validation/signoff-evidence" class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">Download sign-off evidence (JSON)</a>{% endif %}
+            {% if validation_run %}<form action="/api/validation/signoff-evidence/save" method="post" class="inline"><button class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">Save sign-off evidence with this migration</button></form>{% endif %}
+            {% if stored_signoff %}<div class="mt-2 text-[11px] text-[#5A6A88]">Saved: {% for a in stored_signoff[:3] %}<span class="mr-3"><span class="font-mono">{{ a.artifact_id }}</span> v{{ a.artifact_version }} · {{ a.generated_by }} · {{ a.generated_utc[:19] }} · <a href="/api/artifacts/{{ a.artifact_id }}/download" class="font-bold text-blue-700">Export copy</a></span>{% endfor %}</div>{% endif %}
             {% if can_run_validation %}
             <form action="/api/validation/run" method="post"><button type="submit" class="rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">{{ 'Run validation again' if validation_run else 'Run validation checks' }}</button></form>
             {% else %}

@@ -245,3 +245,19 @@ def test_suggest_and_adopt_routes_are_validator_or_admin_only():
     from ui.role_policy import allowed_roles_for
     for path in ("/api/validation/scenarios/suggest", "/api/validation/scenarios/SCN-1/adopt"):
         assert allowed_roles_for("POST", path) == {"Platform Admin", "Validation Specialist"}
+
+
+def test_signoff_evidence_is_saved_with_the_migration_and_hash_checked(tmp_path):
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    a = store.save(conn, "MIG-X", "SIGNOFF_EVIDENCE", b'{"k": 1}', "Reviewer", root=tmp_path)
+    b = store.save(conn, "MIG-X", "SIGNOFF_EVIDENCE", b'{"k": 2}', "Reviewer", root=tmp_path)
+    assert (a["artifact_version"], b["artifact_version"]) == (1, 2) and (tmp_path / a["rel_path"]).read_bytes() == b'{"k": 1}'
+    assert [r["artifact_version"] for r in store.list_artifacts(conn, "MIG-X")] == [2, 1] and store.list_artifacts(conn, "MIG-OTHER") == []
+    assert store.read(conn, a["artifact_id"], root=tmp_path)["data"] == b'{"k": 1}'
+    (tmp_path / a["rel_path"]).write_bytes(b"x")
+    with pytest.raises(ValueError):
+        store.read(conn, a["artifact_id"], root=tmp_path)
+    with pytest.raises(ValueError):
+        store.save(conn, "MIG-X", "UNKNOWN", b"", "Reviewer", root=tmp_path)

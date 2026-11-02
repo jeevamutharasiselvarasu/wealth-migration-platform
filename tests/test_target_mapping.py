@@ -140,6 +140,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     store = WorkspaceStateStore()
     store.questionnaire_data["migration_id"] = "MIG-R"
     monkeypatch.setattr(app_module, "state_store", store)
+    monkeypatch.setattr(app_module.artifact_store, "STORAGE_ROOT", tmp_path / "storage")
     monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
                         {"email": "t@example.invalid", "name": "Analyst One", "role": "Migration Analyst"})
     src = tmp_path / "accounts.csv"
@@ -202,7 +203,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
-    assert "Generate ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Generate and save ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/packages/generate")).headers["location"]
     gen = asyncio.run(call("Validation Specialist", "POST", "/api/packages/generate")).headers["location"]
     assert "notice=" in gen and "generated+against+the+DRAFT+contract" in gen
@@ -241,13 +242,22 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]
-    zipped = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
-    assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "SIMULATED" in zipped.headers["content-disposition"]
+    saved = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
+    assert saved.status_code == 303 and "saved+with+this+migration" in saved.headers["location"]
+    asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # second save is v2; nothing is overwritten
+    rows = app_module.artifact_store.list_artifacts(conn, conn.execute("SELECT migration_id FROM stored_artifacts LIMIT 1").fetchone()[0], "ADF_PACKAGE")
+    assert [r["artifact_version"] for r in rows] == [2, 1] and all((tmp_path / "storage" / r["rel_path"]).is_file() for r in rows)
+    assert "Saved package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    zipped = asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[0]['artifact_id']}/download"))
+    assert zipped.status_code == 200 and zipped.headers["content-type"] == "application/zip" and "_v2.zip" in zipped.headers["content-disposition"]
+    assert asyncio.run(call("Validation Specialist", "GET", "/api/artifacts/ART-NOPE/download")).status_code == 404
+    (tmp_path / "storage" / rows[1]["rel_path"]).write_bytes(b"tampered")
+    assert asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[1]['artifact_id']}/download")).status_code == 409
     import io, json, zipfile
     names = zipfile.ZipFile(io.BytesIO(zipped.content))
     mf = json.loads(names.read("manifest.json"))
     assert mf["simulated"] is True and mf["entities"]["Account"]["approvedMappings"] == 2 and mf["generatedBy"] == "Analyst One"
-    assert any(e.get("event") == "ADF_PACKAGE_GENERATED" for e in app_module.state_store.audit_log.read_all()) if hasattr(app_module.state_store.audit_log, "read_all") else True
+    assert any(e.get("event") == "ADF_PACKAGE_STORED" for e in app_module.state_store.audit_log.read_all()) if hasattr(app_module.state_store.audit_log, "read_all") else True
 
 
 def test_merge_by_key_joins_files_without_inventing_blanks_and_counts_conflicts():
