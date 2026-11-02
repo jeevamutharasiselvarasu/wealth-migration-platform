@@ -82,5 +82,15 @@ Local commits after `8c23442`: browser-walk fixes (`3308b19`), execution problem
 - Limitations, reset procedure and a rehearsal script: `docs/project/XODUS_LIMITATIONS_AND_RESET.md`.
 Still open: real package template, Azure/ADF and identity integrations, firm-level contract versions, joins beyond CONCAT, wave and delta, styled-browser rehearsal, pushing and CI for the local commits.
 
+## 2026-11-02 (later) update: stored artifacts and provenance (verify against the repository before relying on it)
+Local commits `4492990`, `a9ed835`, `a4968b9`, `0f2d165`, `81636d2`, `f9ea0f0`, all unpushed with CI not run. Full local suite 265 passed on a clean export.
+- Generated artifacts are saved with the migration instead of downloaded: the simulated ADF zip and the sign-off evidence JSON go to `App_Data/Storage/<migration>/ARTIFACTS/` (versioned, SHA-256, author) and are registered in the control plane (`stored_artifacts`, `control_plane/services/artifact_store.py`). Download is an optional "Export copy" of the stored file, hash-checked on read.
+- Each stored ADF package records its provenance (also in `manifest.json`): approved target mapping ids, confirmed source-to-canonical mapping ids with set hashes, target model version, latest validation run and the deployment contract package (id, version, hash).
+- The target mapping and validation pages show that provenance and a CURRENT or STALE marker (stale reasons: mappings added or removed, target model, validation run, deployment contract). Packages saved before provenance existed read "not recorded".
+- Saving sign-off evidence is refused while the latest package is stale unless the reviewer gives a reason (at least 10 characters); the reason, the stale causes and the reviewer are written into the evidence and the audit log. The sign-off page offers a one-click "Regenerate package" instead.
+- Verified in the desktop browser pane against the user's own running app, as my own demo accounts: save, stale and regenerate flows, refusal without a reason. The override save and the exception decision were done once with the user's approval; the override path is otherwise covered by tests only.
+- Demo accounts for walkthroughs: `walk.demo` (Platform Admin) and `walk.analyst.demo` (Migration Analyst) in `demo_data/demo_users.json`; their password hashes are only in the git-ignored local file. The users file change is uncommitted.
+Still open: real ADF connection (the stored package is the hand-off point), automatic sign-off save after regeneration (deliberately not built; sign-offs stay a human decision), pushing and CI.
+
 ## Honesty rule
 Do not present this status as current without rechecking the repository and CI. Do not claim browser testing succeeded unless it was actually run.
