@@ -774,5 +774,9 @@ def test_reopening_an_approved_mapping_lets_a_later_rule_be_applied_and_keeps_hi
     assert done["status"] == "APPROVED" and done["transformation_expression"] == "RULE:CUST_MAP@1"
     row = {x["target_mapping_id"]: x for x in tm.list_mappings(conn, "MIG-T", spec)}[tid]
     assert row["revision"]["count"] == 1 and row["revision"]["was"] == "APPROVED" and row["revision"]["by"] == "Ann"
+    again = tm.revise(conn, tid, "Ann", "back to a plain copy")  # reopening resets the rule to the proposal default; history keeps the old one
+    assert again["transformation_expression"] == "DIRECT_COPY"
+    assert conn.execute("SELECT prior_expression FROM target_mapping_history WHERE revision_reason = 'back to a plain copy'").fetchone()[0] == "RULE:CUST_MAP@1"
+    conn.execute("DELETE FROM target_mapping_history WHERE revision_reason = 'back to a plain copy'")
     hist = conn.execute("SELECT prior_status, prior_expression, prior_reviewer, prior_comments, revision_reason FROM target_mapping_history").fetchall()
     assert [tuple(h) for h in hist] == [("APPROVED", "DIRECT_COPY", "Ann", "ok", "custodian codes need the value map")]

@@ -173,7 +173,8 @@ def revise(conn: sqlite3.Connection, target_mapping_id: str, reviewer: str, reas
         ("THI-" + uuid.uuid4().hex[:12].upper(), target_mapping_id, row["status"], row["transformation_expression"], row["reviewer"],
          row["review_comments"], row["reviewed_utc"], reviewer, reason.strip(), now))
     conn.execute(
-        "UPDATE target_mappings SET status = 'PROPOSED', reviewer = NULL, review_comments = NULL, reviewed_utc = NULL "
+        "UPDATE target_mappings SET status = 'PROPOSED', transformation_expression = 'DIRECT_COPY', reviewer = NULL, "
+        "review_comments = NULL, reviewed_utc = NULL "
         "WHERE target_mapping_id = ? AND status IN ('APPROVED', 'REJECTED')", (target_mapping_id,))
     return dict(conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = ?", (target_mapping_id,)).fetchone())
 
