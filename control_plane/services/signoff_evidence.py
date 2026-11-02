@@ -13,7 +13,7 @@ from control_plane.services import execution_simulator, package_contract, valida
 SCHEMA = "xodus.signoff-evidence/v1"
 
 
-def build(conn: sqlite3.Connection, migration_id: str, generated_by: str, drift: Optional[list] = None) -> Dict[str, Any]:
+def build(conn: sqlite3.Connection, migration_id: str, generated_by: str, drift: Optional[list] = None, adf_package: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     run = conn.execute("SELECT run_id, status, results_json, executed_by, executed_utc FROM validation_runs WHERE migration_id = ? "
                        "ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
     if not run:
@@ -35,6 +35,7 @@ def build(conn: sqlite3.Connection, migration_id: str, generated_by: str, drift:
         "source_drift": drift or [],
         "package": ({"package_id": packages[0]["package_id"], "version": packages[0]["package_version"], "content_sha256": packages[0]["content_sha256"],
                      "schema_version": packages[0]["schema_version"]} if packages else None),
+        "adf_package": adf_package,
         "latest_simulated_execution": None,
         "notes": ["Counts, identifiers and reasons only; no source record values are included.",
                   "Execution evidence is SIMULATED; nothing was loaded to a target system."],

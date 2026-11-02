@@ -257,6 +257,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     names = zipfile.ZipFile(io.BytesIO(zipped.content))
     mf = json.loads(names.read("manifest.json"))
     assert mf["simulated"] is True and mf["entities"]["Account"]["approvedMappings"] == 2 and mf["generatedBy"] == "Analyst One"
+    assert len(mf["provenance"]["approved_target_mapping_ids"]) >= 2 and rows[0]["provenance"]["approved_mapping_set_sha256"] == mf["provenance"]["approved_mapping_set_sha256"]
     assert any(e.get("event") == "ADF_PACKAGE_STORED" for e in app_module.state_store.audit_log.read_all()) if hasattr(app_module.state_store.audit_log, "read_all") else True
 
 

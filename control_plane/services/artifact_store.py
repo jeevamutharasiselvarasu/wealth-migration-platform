@@ -4,6 +4,7 @@ Files live under App_Data/Storage/<migration>/ARTIFACTS/<kind>/ and each save is
 content hash, size and author. Download is a separate, optional step from the stored copy. Nothing is deployed anywhere.
 """
 import hashlib
+import json
 import re
 import sqlite3
 import uuid
@@ -22,13 +23,16 @@ _DDL = """CREATE TABLE IF NOT EXISTS stored_artifacts (
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
+    if "provenance_json" not in {r[1] for r in conn.execute("PRAGMA table_info(stored_artifacts)").fetchall()}:
+        conn.execute("ALTER TABLE stored_artifacts ADD COLUMN provenance_json TEXT NOT NULL DEFAULT '{}'")
 
 
 def _safe(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", text)
 
 
-def save(conn: sqlite3.Connection, migration_id: str, kind: str, data: bytes, actor: str, root: Optional[Path] = None) -> Dict[str, Any]:
+def save(conn: sqlite3.Connection, migration_id: str, kind: str, data: bytes, actor: str, root: Optional[Path] = None,
+         provenance: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if kind not in KINDS:
         raise ValueError(f"Unsupported artifact kind: {kind}")
     ensure_table(conn)
@@ -42,10 +46,23 @@ def save(conn: sqlite3.Connection, migration_id: str, kind: str, data: bytes, ac
     path.write_bytes(data)
     row = {"artifact_id": "ART-" + uuid.uuid4().hex[:8].upper(), "migration_id": migration_id, "kind": kind, "artifact_version": version,
            "filename": filename, "rel_path": rel, "size_bytes": len(data), "content_sha256": hashlib.sha256(data).hexdigest(),
-           "generated_by": actor, "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    conn.execute("INSERT INTO stored_artifacts (artifact_id, migration_id, kind, artifact_version, filename, rel_path, size_bytes, content_sha256, generated_by, generated_utc) "
-                 "VALUES (:artifact_id, :migration_id, :kind, :artifact_version, :filename, :rel_path, :size_bytes, :content_sha256, :generated_by, :generated_utc)", row)
+           "generated_by": actor, "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           "provenance_json": json.dumps(provenance or {}, sort_keys=True)}
+    conn.execute("INSERT INTO stored_artifacts (artifact_id, migration_id, kind, artifact_version, filename, rel_path, size_bytes, content_sha256, generated_by, generated_utc, provenance_json) "
+                 "VALUES (:artifact_id, :migration_id, :kind, :artifact_version, :filename, :rel_path, :size_bytes, :content_sha256, :generated_by, :generated_utc, :provenance_json)", row)
+    row["provenance"] = provenance or {}
     return row
+
+
+def _rec(cols, r) -> Dict[str, Any]:
+    d = dict(zip(cols, r))
+    d["provenance"] = json.loads(d.pop("provenance_json", "{}") or "{}")
+    return d
+
+
+def latest(conn: sqlite3.Connection, migration_id: str, kind: str) -> Optional[Dict[str, Any]]:
+    found = list_artifacts(conn, migration_id, kind)
+    return found[0] if found else None
 
 
 def list_artifacts(conn: sqlite3.Connection, migration_id: str, kind: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -55,7 +72,7 @@ def list_artifacts(conn: sqlite3.Connection, migration_id: str, kind: Optional[s
         sql, args = sql + " AND kind = ?", args + [kind]
     cur = conn.execute(sql + " ORDER BY kind, artifact_version DESC", args)
     cols = [c[0] for c in cur.description]
-    return [dict(zip(cols, r)) for r in cur.fetchall()]
+    return [_rec(cols, r) for r in cur.fetchall()]
 
 
 def read(conn: sqlite3.Connection, artifact_id: str, root: Optional[Path] = None) -> Optional[Dict[str, Any]]:
@@ -65,7 +82,7 @@ def read(conn: sqlite3.Connection, artifact_id: str, root: Optional[Path] = None
     r = cur.fetchone()
     if not r:
         return None
-    rec = dict(zip([c[0] for c in cur.description], r))
+    rec = _rec([c[0] for c in cur.description], r)
     path = (root or STORAGE_ROOT) / rec["rel_path"]
     if not path.is_file():
         raise ValueError("The stored file is missing from storage.")
@@ -74,3 +91,36 @@ def read(conn: sqlite3.Connection, artifact_id: str, root: Optional[Path] = None
         raise ValueError("The stored file no longer matches its recorded hash.")
     rec["data"], rec["media_type"] = data, KINDS[rec["kind"]][2]
     return rec
+
+
+def build_provenance(conn: sqlite3.Connection, migration_id: str, spec: Optional[Dict[str, Any]], approved: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Exactly what a generated package is built from: approved target mapping ids, the target model version, the latest validation run
+    and the latest deployment contract package. Identifiers and hashes only."""
+    def one(sql: str):
+        try:
+            r = conn.execute(sql, (migration_id,)).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        return r
+    run = one("SELECT run_id, status FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1")
+    contract = one("SELECT package_id, package_version, content_sha256 FROM deployment_packages WHERE migration_id = ? ORDER BY package_version DESC LIMIT 1")
+    ids = sorted(m["target_mapping_id"] for m in approved if m.get("status") == "APPROVED")
+    return {"approved_target_mapping_ids": ids, "approved_mapping_set_sha256": hashlib.sha256("\n".join(ids).encode()).hexdigest(),
+            "target_model_version": (spec or {}).get("spec_version"),
+            "validation_run_id": run[0] if run else None, "validation_run_status": run[1] if run else None,
+            "contract_package": ({"package_id": contract[0], "version": contract[1], "content_sha256": contract[2]} if contract else None)}
+
+
+def package_reference(conn: sqlite3.Connection, migration_id: str, current: Dict[str, Any], evidence_run_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """What a sign-off cites: the latest stored ADF package and whether it still matches the current approved mappings
+    and the validation run being signed off. Identifiers and booleans only."""
+    art = latest(conn, migration_id, "ADF_PACKAGE")
+    if not art:
+        return None
+    prov = art["provenance"]
+    return {"artifact_id": art["artifact_id"], "version": art["artifact_version"], "content_sha256": art["content_sha256"],
+            "generated_by": art["generated_by"], "generated_utc": art["generated_utc"],
+            "built_from": {k: prov.get(k) for k in ("approved_mapping_set_sha256", "target_model_version", "validation_run_id", "validation_run_status", "contract_package")},
+            "approved_target_mapping_count": len(prov.get("approved_target_mapping_ids", [])),
+            "mapping_set_matches_current": prov.get("approved_mapping_set_sha256") == current.get("approved_mapping_set_sha256"),
+            "built_from_signed_off_validation_run": bool(evidence_run_id) and prov.get("validation_run_id") == evidence_run_id}

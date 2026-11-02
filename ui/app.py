@@ -1073,6 +1073,12 @@ async def create_validation_scenario(request: Request, entity_name: str = Form(.
     return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
 
 
+def _adf_reference(conn, migration_id: str, run_id: str):
+    spec = target_connector.spec(conn)
+    approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+    return artifact_store.package_reference(conn, migration_id, artifact_store.build_provenance(conn, migration_id, spec, approved), run_id)
+
+
 @app.get("/api/validation/signoff-evidence")
 async def download_signoff_evidence(request: Request):
     """Download the validation sign-off evidence for the latest validation run (counts, ids and reasons only)."""
@@ -1083,6 +1089,7 @@ async def download_signoff_evidence(request: Request):
         try:
             approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
             doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
+            doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
         except ValueError as exc:
             return _validation_redirect("error", str(exc))
         conn.commit()
@@ -1769,14 +1776,19 @@ async def download_adf_package(request: Request):
             expr = m["transformation_expression"]
             if expr != "DIRECT_COPY" and expr not in rules:
                 rules[expr] = transformation_rules.approved_rule_for_expression(expr)
-        package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"])
+        conn = get_db_connection()
+        try:
+            provenance = artifact_store.build_provenance(conn, migration_id, spec, approved)
+        finally:
+            conn.close()
+        package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"], provenance)
     except ValueError as exc:
         return _target_redirect("error", str(exc))
     _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
                                                      "entities": sorted(package["manifest"]["entities"]), "warnings": len(package["manifest"]["warnings"])})
     conn = get_db_connection()
     try:
-        stored = artifact_store.save(conn, migration_id, "ADF_PACKAGE", adf_package.to_zip(package), user["name"])
+        stored = artifact_store.save(conn, migration_id, "ADF_PACKAGE", adf_package.to_zip(package), user["name"], provenance=provenance)
         conn.commit()
     finally:
         conn.close()
@@ -1794,6 +1806,7 @@ async def save_signoff_evidence(request: Request):
         try:
             approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
             doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
+            doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
         except ValueError as exc:
             return _validation_redirect("error", str(exc))
         stored = artifact_store.save(conn, migration_id, "SIGNOFF_EVIDENCE", json.dumps(doc, indent=2, default=str).encode("utf-8"), user["name"])

@@ -261,3 +261,22 @@ def test_signoff_evidence_is_saved_with_the_migration_and_hash_checked(tmp_path)
         store.read(conn, a["artifact_id"], root=tmp_path)
     with pytest.raises(ValueError):
         store.save(conn, "MIG-X", "UNKNOWN", b"", "Reviewer", root=tmp_path)
+
+
+def test_stored_package_records_provenance_and_signoff_cites_it(tmp_path):
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    approved = [{"target_mapping_id": "TM-2", "status": "APPROVED"}, {"target_mapping_id": "TM-1", "status": "APPROVED"}, {"target_mapping_id": "TM-9", "status": "PROPOSED"}]
+    conn.execute("CREATE TABLE validation_runs (run_id TEXT, migration_id TEXT, status TEXT, executed_utc TEXT)")
+    conn.execute("INSERT INTO validation_runs VALUES ('VAL-1', 'MIG-X', 'FAIL', '2026-11-02T10:00:00')")
+    prov = store.build_provenance(conn, "MIG-X", {"spec_version": "abc"}, approved)
+    assert prov["approved_target_mapping_ids"] == ["TM-1", "TM-2"] and prov["validation_run_id"] == "VAL-1" and prov["target_model_version"] == "abc" and prov["contract_package"] is None
+    art = store.save(conn, "MIG-X", "ADF_PACKAGE", b"zip", "Reviewer", root=tmp_path, provenance=prov)
+    assert store.latest(conn, "MIG-X", "ADF_PACKAGE")["provenance"]["approved_target_mapping_ids"] == ["TM-1", "TM-2"] and art["provenance"] == prov
+    ref = store.package_reference(conn, "MIG-X", prov, "VAL-1")
+    assert ref["artifact_id"] == art["artifact_id"] and ref["mapping_set_matches_current"] and ref["built_from_signed_off_validation_run"] and ref["approved_target_mapping_count"] == 2
+    changed = store.build_provenance(conn, "MIG-X", {"spec_version": "abc"}, approved[:1])  # a mapping was un-approved after the package was built
+    assert store.package_reference(conn, "MIG-X", changed, "VAL-1")["mapping_set_matches_current"] is False
+    assert store.package_reference(conn, "MIG-X", prov, "VAL-2")["built_from_signed_off_validation_run"] is False
+    assert store.package_reference(conn, "MIG-NONE", prov, "VAL-1") is None
