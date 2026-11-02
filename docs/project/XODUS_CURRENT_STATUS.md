@@ -92,5 +92,13 @@ Local commits `4492990`, `a9ed835`, `a4968b9`, `0f2d165`, `81636d2`, `f9ea0f0`, 
 - Demo accounts for walkthroughs: `walk.demo` (Platform Admin) and `walk.analyst.demo` (Migration Analyst) in `demo_data/demo_users.json`; their password hashes are only in the git-ignored local file. The users file change is uncommitted.
 Still open: real ADF connection (the stored package is the hand-off point), automatic sign-off save after regeneration (deliberately not built; sign-offs stay a human decision), pushing and CI.
 
+## 2026-11-02 (rehearsal pass) update: simulated approvals and simulated ADF (verify against the repository before relying on it)
+Local commits `594ba5e` and `d976390` (unpushed, CI not run). Full local suite 268 passed on a clean export.
+- Rehearsal accounts moved to the git-ignored `demo_data/demo_users.local.json` (extra users only; cannot override tracked users; never demo-load). The tracked users file is unchanged.
+- `household_accounts.csv` and `account_relationships.csv` were confirmed as deferred relationship files (rehearsal decision by the user).
+- SIMULATED approvals, recorded under my demo session with a "SIMULATED rehearsal approval" comment, NOT business-owner decisions: the 9 pending Account source mappings and 7 of the 9 pending target mappings. Not approved on purpose: `SIMP_CUSTOMER.ONBOARD_DT` (no source column) and `SIMP_CUSTOMER_TAX.TAX_COUNTRY` (required, no source column): real gaps. Validation then passed 21 of 21; Account target coverage 6 of 6 required, Client 4 of 5 required.
+- Simulated ADF (`control_plane/services/adf_simulator.py`): deploys the latest stored package into a fictitious factory after checking references, clear-text secrets and the simulated marker, then triggers its pipeline on the simulated data plane. A trigger is refused unless the deployed package is the latest and current. A real ADF client would replace this step; no Azure call is made.
+Still open: real ADF connection and a real package template, the two target gaps above, business-owner re-confirmation of the simulated approvals, pushing and CI.
+
 ## Honesty rule
 Do not present this status as current without rechecking the repository and CI. Do not claim browser testing succeeded unless it was actually run.
