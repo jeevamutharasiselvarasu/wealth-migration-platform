@@ -310,6 +310,22 @@ def test_staleness_names_each_way_a_stored_package_can_fall_behind():
     assert store.staleness(art, dict(base)) == []
     joined = " ".join(store.staleness(art, {**base, "approved_target_mapping_ids": ["T1"], "approved_mapping_set_sha256": "m2", "validation_run_id": "VAL-2",
                                            "target_model_version": "v2", "contract_package": {"version": 4, "content_sha256": "c4"}}))
-    for needle in ("approved target mappings changed (2 when built, 1 now)", "target model changed", "VAL-1", "VAL-2", "v3 when built, v4 now"):
+    for needle in ("approved target mappings changed (2 when built, 1 now; 0 added, 1 removed)", "target model changed", "VAL-1", "VAL-2", "v3 when built, v4 now"):
         assert needle in joined
     assert "regenerate" in store.staleness({"provenance": {}}, base)[0]
+
+
+def test_provenance_covers_confirmed_source_mappings_and_flags_changes():
+    import sqlite3
+    from control_plane.services import artifact_store as store
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE canonical_mappings (mapping_id TEXT, migration_id TEXT, entity_name TEXT, source_field TEXT, canonical_field TEXT, is_confirmed INTEGER)")
+    conn.execute("INSERT INTO canonical_mappings VALUES ('CM-1', 'MIG-X', 'Account', 'A', 'ACCT_NUM', 1), (NULL, 'MIG-X', 'Client', 'C', 'CLIENT_ID', 1), ('CM-3', 'MIG-X', 'Client', 'D', 'X', 0)")
+    prov = store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, [])
+    assert prov["approved_source_mapping_ids"] == ["CM-1", "Client.C>CLIENT_ID"]  # unconfirmed excluded; id-less rows get a stable key
+    art = {"provenance": prov}
+    assert store.staleness(art, prov) == []
+    conn.execute("UPDATE canonical_mappings SET is_confirmed = 0 WHERE mapping_id = 'CM-1'")
+    conn.execute("INSERT INTO canonical_mappings VALUES ('CM-4', 'MIG-X', 'Household', 'H', 'HH_ID', 1)")
+    reasons = store.staleness(art, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, []))
+    assert reasons == ["The approved source-to-canonical mappings changed (1 added, 1 removed since the package was built)."]

@@ -105,7 +105,14 @@ def build_provenance(conn: sqlite3.Connection, migration_id: str, spec: Optional
     run = one("SELECT run_id, status FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1")
     contract = one("SELECT package_id, package_version, content_sha256 FROM deployment_packages WHERE migration_id = ? ORDER BY package_version DESC LIMIT 1")
     ids = sorted(m["target_mapping_id"] for m in approved if m.get("status") == "APPROVED")
+    try:
+        src_ids = sorted(r[0] for r in conn.execute(
+            "SELECT COALESCE(mapping_id, entity_name || '.' || source_field || '>' || canonical_field) FROM canonical_mappings "
+            "WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall())
+    except sqlite3.OperationalError:
+        src_ids = []
     return {"approved_target_mapping_ids": ids, "approved_mapping_set_sha256": hashlib.sha256("\n".join(ids).encode()).hexdigest(),
+            "approved_source_mapping_ids": src_ids, "approved_source_mapping_set_sha256": hashlib.sha256("\n".join(src_ids).encode()).hexdigest(),
             "target_model_version": (spec or {}).get("spec_version"),
             "validation_run_id": run[0] if run else None, "validation_run_status": run[1] if run else None,
             "contract_package": ({"package_id": contract[0], "version": contract[1], "content_sha256": contract[2]} if contract else None)}
@@ -120,9 +127,10 @@ def package_reference(conn: sqlite3.Connection, migration_id: str, current: Dict
     prov = art["provenance"]
     return {"artifact_id": art["artifact_id"], "version": art["artifact_version"], "content_sha256": art["content_sha256"],
             "generated_by": art["generated_by"], "generated_utc": art["generated_utc"],
-            "built_from": {k: prov.get(k) for k in ("approved_mapping_set_sha256", "target_model_version", "validation_run_id", "validation_run_status", "contract_package")},
+            "built_from": {k: prov.get(k) for k in ("approved_mapping_set_sha256", "approved_source_mapping_set_sha256", "target_model_version", "validation_run_id", "validation_run_status", "contract_package")},
             "approved_target_mapping_count": len(prov.get("approved_target_mapping_ids", [])),
-            "mapping_set_matches_current": prov.get("approved_mapping_set_sha256") == current.get("approved_mapping_set_sha256"),
+            "mapping_set_matches_current": prov.get("approved_mapping_set_sha256") == current.get("approved_mapping_set_sha256")
+            and prov.get("approved_source_mapping_set_sha256", current.get("approved_source_mapping_set_sha256")) == current.get("approved_source_mapping_set_sha256"),
             "built_from_signed_off_validation_run": bool(evidence_run_id) and prov.get("validation_run_id") == evidence_run_id}
 
 
@@ -133,7 +141,10 @@ def staleness(art: Dict[str, Any], current: Dict[str, Any]) -> List[str]:
         return ["No provenance was recorded for this package (saved before provenance existed); regenerate it."]
     then, now = prov.get("approved_target_mapping_ids", []), current.get("approved_target_mapping_ids", [])
     if prov.get("approved_mapping_set_sha256") != current.get("approved_mapping_set_sha256"):
-        reasons.append(f"The approved target mappings changed ({len(then)} when built, {len(now)} now).")
+        reasons.append(f"The approved target mappings changed ({len(then)} when built, {len(now)} now; {len(set(now) - set(then))} added, {len(set(then) - set(now))} removed).")
+    if "approved_source_mapping_set_sha256" in prov and prov["approved_source_mapping_set_sha256"] != current.get("approved_source_mapping_set_sha256"):
+        a, b = set(prov.get("approved_source_mapping_ids", [])), set(current.get("approved_source_mapping_ids", []))
+        reasons.append(f"The approved source-to-canonical mappings changed ({len(b - a)} added, {len(a - b)} removed since the package was built).")
     if prov.get("target_model_version") != current.get("target_model_version"):
         reasons.append("The confirmed target model changed.")
     if prov.get("validation_run_id") != current.get("validation_run_id"):
