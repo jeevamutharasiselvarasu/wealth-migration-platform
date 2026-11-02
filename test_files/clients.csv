@@ -1,5 +1,0 @@
-LEGACY_CLIENT_ID,CLIENT_FIRST_NAME,CLIENT_LAST_NAME,FULL_LEGAL_NAME,TAX_IDENTIFIER,CLIENT_TYPE_RAW,EMAIL_ADDR,PHONE_NUM,HOUSEHOLD_LINK_ID,ADVISOR_REP_NUM
-CL-99811A,Robert,Miller,Robert Miller,***-**-1122,INDV,robert.miller@example.com,555-0101,HH-99811,9981
-CL-99811B,Eleanor,Miller,Eleanor Miller,***-**-1123,INDV,eleanor.miller@example.com,555-0102,HH-99811,9981
-CL-99812A,Arthur,Johnson,Arthur Johnson Revocable Trust,**-***4455,TRUST,arthur.j@example.com,555-0203,HH-99812,9981
-CL-10010A,Sarah,Davis,Sarah Davis,***-**-8899,INDV,sarah.davis@example.com,555-0304,HH-10010,1001

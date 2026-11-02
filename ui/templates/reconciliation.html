@@ -1,61 +1,196 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="space-y-6 max-w-6xl">
-    <!-- Header Banner -->
-    <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-[#d9e3f5] shadow-sm">
-        <div class="flex items-center space-x-3">
-            <span class="h-9 w-9 rounded-xl bg-teal-600 text-white font-bold flex items-center justify-center text-sm font-mono shadow-sm">07</span>
-            <div>
-                <h1 class="text-lg font-bold text-[#152c6b]">Reconciliation & AUM Drift Gate</h1>
-                <p class="text-xs text-[#5a6a88]">Post-load market value reconciliation audit against the gate tolerance ({{ drift_gate }}).</p>
+<div class="space-y-5 max-w-6xl">
+    <nav aria-label="Validation workflow navigation" class="flex flex-wrap gap-2">
+        <a href="/agent-pipeline" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">← Mapping & approvals</a>
+        <a href="/entity-sample-files" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">Source inventory</a>
+        <a href="/hitl" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">Open review queue</a>
+    </nav>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div class="flex items-start gap-3">
+                <div>
+                    <h1 class="text-xl font-bold text-[#152C6B]">Mapping Validation Review</h1>
+                    <p class="mt-1 max-w-2xl text-xs leading-5 text-[#5A6A88]">Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
+                </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="bg-white rounded-2xl border border-[#d9e3f5] p-6 shadow-sm">
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-[#1c2a4a]">
-                <thead class="bg-[#f8fafc] text-[#5a6a88] text-xs uppercase font-mono border-b border-[#e2e8f0]">
-                    <tr>
-                        <th class="p-3">Advisor Code</th>
-                        <th class="p-3">Source AUM ($)</th>
-                        <th class="p-3">Orion Staged AUM ($)</th>
-                        <th class="p-3">Variance %</th>
-                        <th class="p-3">Gate Status</th>
-                    </tr>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+            <div><h2 class="text-sm font-bold text-[#152C6B]">Approved source-to-canonical mappings</h2>
+            <p class="mt-1 text-xs leading-5 text-[#5A6A88]">Persisted mapping catalogue for this migration. Approved rules can be reused for later files belonging to the same entity.</p></div>
+            <div class="flex gap-2"><span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 font-mono text-[10px] font-bold text-teal-800">{{ approved_mappings|length }} APPROVED</span>
+            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[10px] font-bold text-amber-800">{{ pending_count }} PENDING</span></div>
+        </div>
+        {% if approved_mappings %}
+        <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[760px] text-left">
+            <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Transformation</th><th class="p-3">Confidence</th><th class="p-3">Reviewer</th><th class="p-3">Approved at</th></tr></thead>
+            <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
+            {% for mapping in approved_mappings %}
+            <tr><td class="p-3 font-bold text-[#152C6B]">{{ mapping.entity_name }}</td><td class="p-3 font-mono">{{ mapping.source_field }}</td><td class="p-3 font-mono font-bold text-teal-700">{{ mapping.canonical_field|default('—', true) }}</td><td class="p-3 font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td class="p-3">{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="p-3">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="p-3 text-[#5A6A88]">{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
+            {% endfor %}
+            </tbody></table></div>
+        {% else %}
+        <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center"><div class="font-bold text-[#152C6B]">No approved mappings recorded for this migration yet</div>
+        <p class="mt-1 text-xs text-[#5A6A88]">Approve a proposal in Mapping Studio. It should appear here once approval is saved.</p>
+        <a href="/agent-pipeline#pending-mappings" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Open Mapping Studio →</a></div>
+        {% endif %}
+    </section>
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="border-b border-[#E9EFF9] pb-3"><h2 class="text-sm font-bold text-[#152C6B]">Mapping lineage & run evidence</h2>
+        <p class="mt-1 text-xs leading-5 text-[#5A6A88]">Field-level lineage from profiling and mapping runs, including unmapped fields and proposed rules.</p></div>
+        {% if mapping_lineage %}
+        <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[720px] text-left">
+        <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Rule</th><th class="p-3">Status</th><th class="p-3">Run</th></tr></thead>
+        <tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for item in mapping_lineage %}
+        <tr><td class="p-3 font-bold text-[#152C6B]">{{ item.entity_name }}</td><td class="p-3 font-mono">{{ item.source_column }}</td><td class="p-3 font-mono text-teal-700">{{ item.canonical_column|default('UNMAPPED', true) }}</td><td class="p-3">{{ item.applied_rule|default('No rule recorded', true) }}</td><td class="p-3">{{ item.validation_status }}</td><td class="p-3 font-mono text-[10px]">{{ item.run_id }}</td></tr>
+        {% endfor %}</tbody></table></div>
+        {% else %}<p class="mt-3 rounded-xl bg-[#F8FAFD] p-4 text-xs text-[#5A6A88]">No mapping lineage recorded for this migration yet. Generate proposals from approved source files first.</p>{% endif %}
+        {% if mapping_runs %}<div class="mt-4"><h3 class="mb-2 text-xs font-bold text-[#152C6B]">Recent mapping runs</h3><div class="space-y-2">{% for run in mapping_runs %}
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E9EFF9] p-3 text-[10px]"><span class="font-bold text-[#152C6B]">{{ run.entity_name }} · {{ run.run_id }}</span><span class="text-[#5A6A88]">{{ run.source_record_count }} records · {{ ((run.confidence_score|float)*100)|round(1) }}% confidence</span><span class="font-mono text-[#5A6A88]">{{ run.status }} · {{ run.executed_utc }}</span></div>
+        {% endfor %}</div></div>{% endif %}
+    </section>
+
+    <section class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
+            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Entity scope</div>
+            <div class="mt-2 text-base font-bold text-[#152C6B]">3 entities</div>
+            <div class="mt-1 text-[10px] text-[#5A6A88]">Account · Household · Client</div>
+        </article>
+        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
+            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Validation focus</div>
+            <div class="mt-2 text-base font-bold text-[#152C6B]">Keys & required fields</div>
+            <div class="mt-1 text-[10px] text-[#5A6A88]">Completeness, uniqueness and documented relationships</div>
+        </article>
+        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
+            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Release control</div>
+            <div class="mt-2 text-base font-bold text-amber-700">Human review</div>
+            <div class="mt-1 text-[10px] text-[#5A6A88]">Unresolved issues must be reviewed before approval</div>
+        </article>
+    </section>
+
+    {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">{{ error }}</div>{% endif %}
+    {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800" role="status">{{ notice }}</div>{% endif %}
+    <section id="validation-results" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+            <div>
+                <h2 class="text-sm font-bold text-[#152C6B]">Validation results</h2>
+                <p class="mt-1 text-xs text-[#5A6A88]">Runs checks on approved mappings and confirmed source files. Values are checked as supplied, before transformations. No target load is verified.</p>
+            </div>
+            {% if can_run_validation %}
+            <form action="/api/validation/run" method="post"><button type="submit" class="rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">{{ 'Run validation again' if validation_run else 'Run validation checks' }}</button></form>
+            {% else %}
+            <span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs these checks.</span>
+            {% endif %}
+        </div>
+        {% if validation_run %}
+        <p class="mt-3 text-[11px] text-[#5A6A88]">Run {{ validation_run.run_id }} · {{ validation_run.executed_by }} · {{ validation_run.executed_utc[:19] }}</p>
+        <div class="mt-2 flex flex-wrap gap-2 text-[10px] font-bold">
+            <span class="rounded-full border px-3 py-1 {% if validation_run.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif validation_run.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">Overall: {{ validation_run.status }}</span>
+            <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">{{ validation_run.summary.PASS }} passed</span>
+            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800">{{ validation_run.summary.WARN + validation_run.summary.NOT_EVALUATED }} warnings / not evaluated</span>
+            <span class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">{{ validation_run.summary.FAIL }} failed</span>
+            {% if validation_run.effective_status != validation_run.status %}<span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">After approved exceptions: {{ validation_run.effective_status }}</span>{% endif %}
+        </div>
+        <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[640px] text-left">
+            <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Status</th><th class="p-3">Check</th><th class="p-3">Entity</th><th class="p-3">Scope</th><th class="p-3">Finding</th></tr></thead>
+            <tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for c in validation_run.checks|sort(attribute='status', reverse=True) %}
+            <tr><td class="p-3"><span class="rounded border px-2 py-0.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span></td><td class="p-3 font-mono">{{ c.check }}</td><td class="p-3 font-bold text-[#152C6B]">{{ c.entity }}</td><td class="p-3 text-[#5A6A88]">{{ c.file|default('') }}{% if c.field %} {{ c.field }}{% endif %}</td><td class="p-3 text-[#41506B]">{{ c.detail }}{% if c.orphans %} <span class="font-mono text-[10px] text-rose-700">e.g. {{ c.orphans|join(', ') }}</span>{% endif %}
+              {% if c.status != 'PASS' %}{% set ex = exceptions.get(c.ref) %}
+                {% if ex %}<div class="mt-1 text-[10px]"><span class="rounded border px-1.5 py-0.5 font-mono font-bold {% if ex.status == 'APPROVED' %}border-teal-200 bg-teal-50 text-teal-800{% elif ex.status == 'REJECTED' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">Exception {{ ex.exception_id }} {{ ex.status }}</span> proposed by {{ ex.proposed_by }}: {{ ex.reason }}{% if ex.decided_by %} · decided by {{ ex.decided_by }}{% endif %}</div>
+                  {% if ex.status == 'PROPOSED' and can_decide_exception and ex.proposed_by != current_user_name %}<form action="/api/validation/exceptions/{{ ex.exception_id }}/decision" method="post" class="mt-1 flex flex-wrap gap-1"><input name="comments" placeholder="Comment (required to reject)" aria-label="Decision comment" class="rounded border border-[#C3D2EC] p-1 text-[10px]"><button name="decision" value="APPROVED" class="rounded bg-teal-700 px-2 py-1 text-[10px] font-bold text-white">Approve exception</button><button name="decision" value="REJECTED" class="rounded border border-rose-300 px-2 py-1 text-[10px] font-bold text-rose-700">Reject</button></form>{% endif %}
+                {% elif can_run_validation %}<form action="/api/validation/exceptions" method="post" class="mt-1 flex flex-wrap gap-1"><input type="hidden" name="run_id" value="{{ validation_run.run_id }}"><input type="hidden" name="check_ref" value="{{ c.ref }}"><input name="reason" required placeholder="Reason to accept" aria-label="Reason to accept this finding" class="rounded border border-[#C3D2EC] p-1 text-[10px]"><button class="rounded border border-blue-200 px-2 py-1 text-[10px] font-bold text-blue-700">Propose exception</button></form>{% endif %}
+              {% endif %}</td></tr>
+            {% endfor %}</tbody></table></div>
+        {% else %}
+        <p class="mt-3 rounded-xl bg-[#F8FAFD] p-4 text-xs text-[#5A6A88]">No validation run recorded for this migration yet.</p>
+        {% endif %}
+    </section>
+
+    <section id="execution" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-sm font-bold text-[#152C6B]">Execution <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED data plane</span></h2>
+                <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">Runs the latest deployment package against canonical rows in memory and records telemetry: counts, duration, and the mapping or rule behind each problem. Nothing is sent to Azure or loaded anywhere, and no record values are stored. Replace with the real ADF trigger when that integration is in scope.</p>
+            </div>
+            {% if can_run_validation %}
+            {% if has_package %}<form action="/api/execution/run" method="post" class="flex items-center gap-3"><label class="flex items-center gap-1 text-[11px] text-[#41506B]"><input type="checkbox" name="outage"> Simulate an infrastructure outage</label><button class="rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white">Run simulated execution</button></form>
+            {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Target system &amp; mapping first.</span>{% endif %}
+            {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
+        </div>
+        {% for r in exec_runs %}{% set t = r.telemetry %}
+        <article class="mt-4 rounded-xl border border-[#D9E3F5] p-4">
+            <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                <span class="font-mono font-bold text-[#152C6B]">{{ r.run_id }}</span>
+                <span class="rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold {% if r.status == 'SUCCEEDED' %}border-teal-200 bg-teal-50 text-teal-800{% elif r.status == 'FAILED' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ r.status }}</span>
+                <span class="rounded border border-amber-200 bg-amber-50 px-1.5 font-mono text-[9px] text-amber-800">{{ r.mode }}</span>
+                <span class="text-[#5A6A88]">package v{{ r.package_version }} · {{ r.triggered_by }} · {{ r.started_utc[:19] }} · {{ r.duration_ms }} ms{% if r.retry_of %} · retry of {{ r.retry_of }}{% endif %}</span>
+            </div>
+            {% if t.error %}<p class="mt-2 text-xs text-rose-800">{{ t.error }}</p>
+              {% if can_run_validation and r.status == 'FAILED' and t.retryable %}<form action="/api/execution/run" method="post" class="mt-2"><input type="hidden" name="retry_of" value="{{ r.run_id }}"><button class="rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-bold text-blue-700">Retry run</button></form>{% endif %}
+            {% else %}
+            <p class="mt-2 text-xs text-[#41506B]">{{ t.totals.read }} read · {{ t.totals.loaded }} loaded · {{ t.totals.skipped }} skipped · {{ t.totals.failed }} failed (counted per target table)</p>
+            <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Entity</th><th class="p-1">Table</th><th class="p-1">Read</th><th class="p-1">Loaded</th><th class="p-1">Skipped</th><th class="p-1">Failed</th><th class="p-1">Reconciled</th></tr></thead><tbody>
+              {% for ename, e in t.entities.items() %}{% for tname, c in e.tables.items() %}<tr class="border-t border-[#EEF2FA]"><td class="p-1">{{ ename }}</td><td class="p-1 font-mono">{{ tname }}</td><td class="p-1">{{ c.read }}</td><td class="p-1">{{ c.loaded }}</td><td class="p-1">{{ c.skipped }}</td><td class="p-1">{{ c.failed }}</td><td class="p-1">{{ 'yes' if c.balanced else 'NO' }}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
+            {% if t.failures %}<h3 class="mt-3 text-xs font-bold text-rose-800">Problems linked to mappings and rules</h3>
+            <ul class="mt-1 space-y-1 text-xs">{% for f in t.failures %}<li>{{ f.rows }} row(s) · {{ f.entity }}.{{ f.table }}.{{ f.column }} · {{ f.reason }} · {% if f.rule.startswith('RULE:') %}<a href="/transformation-rules" class="font-mono text-blue-700">{{ f.rule }}</a>{% else %}<a href="/target-mapping" class="font-mono text-blue-700">{{ f.rule }}</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
+            {% if t.post_checks %}<h3 class="mt-3 text-xs font-bold text-[#152C6B]">Post-execution validation scenarios</h3>
+            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="rounded border px-1.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul>{% endif %}
+            {% endif %}
+        </article>
+        {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No executions yet.</p>{% endfor %}
+    </section>
+
+    <section id="validation-scenarios" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <h2 class="text-sm font-bold text-[#152C6B]">Validation scenarios</h2>
+        <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst or Platform Admin approves (never the proposer).</p>
+        {% if scenarios %}<div class="mt-3 overflow-x-auto"><table class="w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Id</th><th class="p-1">Entity</th><th class="p-1">Check</th><th class="p-1">Field</th><th class="p-1">Stage</th><th class="p-1">Why</th><th class="p-1">Status</th><th class="p-1"></th></tr></thead><tbody>
+        {% for s in scenarios %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ s.scenario_id }}</td><td class="p-1">{{ s.entity_name }}</td><td class="p-1 font-mono">{{ s.check_type }}</td><td class="p-1 font-mono">{{ s.field_name or '' }}</td><td class="p-1">{{ s.stage }}</td><td class="p-1">{{ s.description }}</td><td class="p-1">{{ s.status }}</td>
+          <td class="p-1">{% if can_run_validation and s.status == 'ACTIVE' %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/retire" method="post"><button class="rounded border border-[#C3D2EC] px-2 py-1 text-[10px] font-bold text-[#41506B]">Retire</button></form>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>{% else %}<p class="mt-3 text-xs text-[#5A6A88]">No custom scenarios yet.</p>{% endif %}
+        {% if can_run_validation %}
+        <form action="/api/validation/scenarios" method="post" class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-4">
+          <label class="text-[11px] font-bold text-[#41506B]">Entity<select name="entity_name" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal"><option>Account</option><option>Client</option><option>Household</option></select></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Check<select name="check_type" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal">{% for k, v in check_types.items() %}<option value="{{ k }}">{{ k }} - {{ v }}</option>{% endfor %}</select></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Canonical field<input name="field_name" placeholder="e.g. ACCT_NUM" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-mono font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Stage<select name="stage" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal"><option value="PRE">PRE (before execution)</option><option value="POST">POST (needs data-plane results)</option></select></label>
+          <label class="text-[11px] font-bold text-[#41506B] md:col-span-2">Business reason (required)<input name="description" required class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Allowed values (comma list)<input name="values" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Date formats (comma list)<input name="formats" placeholder="MM/DD/YYYY, YYYYMMDD" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Min<input name="min_value" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <label class="text-[11px] font-bold text-[#41506B]">Max / max length<input name="max_value" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
+          <div class="flex items-end"><button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Save scenario</button></div>
+        </form>
+        {% endif %}
+    </section>
+
+    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+            <div>
+                <h2 class="text-sm font-bold text-[#152C6B]">What is checked</h2>
+                <p class="mt-1 text-[10px] text-[#5A6A88]">Checks to review during the current pilot; results must come from an executed profile or mapping run.</p>
+            </div>
+            <a href="/entity-sample-files" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700">Open source profiles →</a>
+        </div>
+        <div class="mt-3 overflow-x-auto">
+            <table class="w-full min-w-[520px] text-left">
+                <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">
+                    <tr><th class="p-3">Check</th><th class="p-3">Expected evidence</th><th class="p-3">Failure handling</th></tr>
                 </thead>
-                <tbody class="divide-y divide-[#e9eff9] text-xs">
-                    {% if pipeline_runs %}
-                        {% for run in pipeline_runs %}
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-3 font-mono font-bold text-blue-700">{{ run.rep_code }}</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">${{ "{:,.2f}".format(run.reconciliation_summary.source_aum) }}</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">${{ "{:,.2f}".format(run.reconciliation_summary.target_aum) }}</td>
-                            <td class="p-3 font-mono text-teal-700 font-bold">{{ run.reconciliation_summary.variance_pct }}%</td>
-                            <td class="p-3">
-                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold">
-                                    {{ run.reconciliation_summary.status }}
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-3 font-mono font-bold text-blue-700">REP-9981</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">$108,000.00</td>
-                            <td class="p-3 font-mono text-[#1c2a4a]">$108,000.00</td>
-                            <td class="p-3 font-mono text-teal-700 font-bold">0.0000%</td>
-                            <td class="p-3">
-                                <span class="bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold">
-                                    PASS
-                                </span>
-                            </td>
-                        </tr>
-                    {% endif %}
+                <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Required canonical fields</td><td class="p-3 text-[#5A6A88]">Required fields have approved source mappings or documented rule-based derivations.</td><td class="p-3 text-[#5A6A88]">Flag missing mapping; keep output unapproved.</td></tr>
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Key integrity</td><td class="p-3 text-[#5A6A88]">Candidate/business keys are present and duplicates are reported.</td><td class="p-3 text-[#5A6A88]">Record validation exception for review.</td></tr>
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Relationship integrity</td><td class="p-3 text-[#5A6A88]">Only relationships defined in the canonical contract are checked.</td><td class="p-3 text-[#5A6A88]">Flag unresolved or orphan references; do not infer joins.</td></tr>
+                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Lineage & approval</td><td class="p-3 text-[#5A6A88]">Each mapping has source-field evidence and review status.</td><td class="p-3 text-[#5A6A88]">Return to mapping review and retain audit history.</td></tr>
                 </tbody>
             </table>
         </div>
-    </div>
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">
+            <b>Not part of P0:</b> target load verification, target-side AUM drift gates and wave/cohort assignment. These should not be represented as passed until the corresponding future execution path exists.
+        </div>
+    </section>
 </div>
 {% endblock %}

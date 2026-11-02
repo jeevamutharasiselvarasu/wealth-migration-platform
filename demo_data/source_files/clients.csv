@@ -1,0 +1,4 @@
+CLIENT_ID,LEGAL_NAME,CLIENT_TYPE,EMAIL,RELATIONSHIP_STATUS
+CL-5001,Jordan Example,INDIVIDUAL,jordan.example@example.test,ACTIVE
+CL-5002,Casey Sample,INDIVIDUAL,casey.sample@example.test,ACTIVE
+CL-5003,Northstar Family Trust,TRUST,,ACTIVE

@@ -1,0 +1,74 @@
+{
+  "migration_setup": {
+    "migration_name": "CoreCap to Simplicity - Wealth Migration Demo",
+    "target_system": "Simplicity",
+    "canonical_version": "Simplicity-MCL-v1",
+    "target_owner": "Demo Data Steward",
+    "azure_tenant_id": "",
+    "azure_subscription_id": "",
+    "azure_resource_group": "",
+    "azure_storage_account": "",
+    "azure_container": "",
+    "azure_access_method": "PENDING",
+    "knowledge_schema_ref": "platform_knowledge/canonical_contract.md",
+    "knowledge_rules_ref": "platform_knowledge/source_mapping_notes.md",
+    "knowledge_sme": "Demo Data Steward",
+    "relationship_notes": "CoreCap account records may reference clients and households. Household membership and account association extracts are candidate relationship evidence only; validate keys and cardinality before approval.",
+    "source_acquisition": "SAMPLE_FILES",
+    "source_details": "CoreCap synthetic sample files (demo_data/source_files/*.csv)",
+    "entities": [
+      "Account",
+      "Household",
+      "Client"
+    ],
+    "configuration_status": "DEMO_PRELOADED",
+    "source_firm": "CoreCap"
+  },
+  "source_files": [
+    {
+      "path": "demo_data/source_files/accounts.csv",
+      "context": "Legacy account master extract; contains account identity and registration details.",
+      "dictionary_notes": "LEGACY_ACCT_NO is the source account identifier. LEGACY_CLIENT_ID links to the client file. HOUSEHOLD_LINK_ID is a candidate household relationship."
+    },
+    {
+      "path": "demo_data/source_files/households.csv",
+      "context": "Household grouping extract.",
+      "dictionary_notes": "HOUSEHOLD_ID identifies the household grouping. PRIMARY_CLIENT_ID is a candidate link to the client file."
+    },
+    {
+      "path": "demo_data/source_files/clients.csv",
+      "context": "Client/person master extract.",
+      "dictionary_notes": "CLIENT_ID identifies a person or legal party. LEGAL_NAME and CLIENT_TYPE describe the party."
+    },
+    {
+      "path": "demo_data/source_files/account_registration.csv",
+      "context": "Account registration and custodian detail extract.",
+      "dictionary_notes": "Legacy account number identifies the account; registration type and open date describe the account."
+    },
+    {
+      "path": "demo_data/source_files/account_relationships.csv",
+      "context": "Account custodian relationship extract.",
+      "dictionary_notes": "Account number identifies the account; legacy client and household link identifiers are candidate relationships."
+    },
+    {
+      "path": "demo_data/source_files/household_members.csv",
+      "context": "Household member grouping extract.",
+      "dictionary_notes": "Household ID and name identify the household; primary client ID is a candidate relationship."
+    },
+    {
+      "path": "demo_data/source_files/household_accounts.csv",
+      "context": "Household association extract.",
+      "dictionary_notes": "Household ID identifies the group; account number identifies an associated account."
+    },
+    {
+      "path": "demo_data/source_files/client_contacts.csv",
+      "context": "Client contact details extract.",
+      "dictionary_notes": "Client ID and legal name identify the client; email and contact status are contact attributes."
+    },
+    {
+      "path": "demo_data/source_files/client_tax_profile.csv",
+      "context": "Client tax profile extract.",
+      "dictionary_notes": "Party source ID and party name identify the client; tax identifier is a sensitive attribute and the demo value is synthetic."
+    }
+  ]
+}

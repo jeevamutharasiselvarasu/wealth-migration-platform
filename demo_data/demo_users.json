@@ -1,0 +1,65 @@
+{
+  "demo_mode": true,
+  "users": [
+    {
+      "email": "jeeva@simplicitywealth.com",
+      "name": "Jeeva S.",
+      "default_role": "Platform Admin",
+      "can_load_demo": true,
+      "roles": [
+        "Platform Admin"
+      ]
+    },
+    {
+      "email": "analyst.demo@simplicitywealth.com",
+      "name": "Demo Analyst",
+      "default_role": "Migration Analyst",
+      "roles": [
+        "Migration Analyst"
+      ]
+    },
+    {
+      "email": "user.demo@simplicitywealth.com",
+      "name": "Demo User",
+      "default_role": "Migration Analyst",
+      "roles": [
+        "Migration Analyst",
+        "Validation Specialist"
+      ]
+    },
+    {
+      "email": "sme.demo@simplicitywealth.com",
+      "name": "Demo SME",
+      "default_role": "Domain SME",
+      "roles": [
+        "Domain SME",
+        "Migration Analyst",
+        "Validation Specialist"
+      ]
+    },
+    {
+      "email": "validator.demo@simplicitywealth.com",
+      "name": "Demo Validator",
+      "default_role": "Validation Specialist",
+      "roles": [
+        "Validation Specialist"
+      ]
+    },
+    {
+      "email": "owner.demo@simplicitywealth.com",
+      "name": "Demo Owner",
+      "default_role": "Platform Admin",
+      "roles": [
+        "Platform Admin"
+      ]
+    },
+    {
+      "email": "admin2.demo@simplicitywealth.com",
+      "name": "Demo Admin Two",
+      "default_role": "Platform Admin",
+      "roles": [
+        "Platform Admin"
+      ]
+    }
+  ]
+}

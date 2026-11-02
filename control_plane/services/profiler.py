@@ -15,7 +15,7 @@ class SourceDataProfiler:
     def profile_csv_content(cls, file_name: str, content: bytes, entity_name: str = "Account") -> Dict[str, Any]:
         """Profiles raw CSV bytes and extracts structural/semantic metadata."""
         try:
-            df = pd.read_csv(io.BytesIO(content))
+            df = pd.read_csv(io.BytesIO(content), dtype=str)
         except Exception as e:
             logger.error(f"Error parsing CSV content for {file_name}: {e}")
             return {
@@ -40,10 +40,14 @@ class SourceDataProfiler:
             unique_count = int(series.nunique(dropna=True))
 
             inferred_type = "string"
-            if pd.api.types.is_numeric_dtype(series):
-                inferred_type = "decimal" if pd.api.types.is_float_dtype(series) else "integer"
-            elif pd.api.types.is_datetime64_any_dtype(series) or "date" in col.lower() or "dt" in col.lower():
+            non_null_values = series.dropna().astype(str).str.strip()
+            column_name = col.lower()
+            if pd.api.types.is_datetime64_any_dtype(series) or "date" in column_name or column_name.endswith("_dt"):
                 inferred_type = "date"
+            elif any(token in column_name for token in ("_id", "id_", "acct", "account_no", "account_num", "_num", "number", "_no", "code", "cusip", "ticker", "tax")):
+                inferred_type = "string"
+            elif len(non_null_values) and pd.to_numeric(non_null_values, errors="coerce").notna().all():
+                inferred_type = "decimal" if non_null_values.map(lambda value: "." in value).any() else "integer"
 
             is_candidate_key = (null_count == 0 and unique_count == row_count and row_count > 0)
             if is_candidate_key:

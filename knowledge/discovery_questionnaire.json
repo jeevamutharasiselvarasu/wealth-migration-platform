@@ -1,13 +1,17 @@
 {
-  "acquisition_id": "ACQ-SIMPLICITY-2026",
-  "completed_by": "Jeeva S.",
-  "submission_date": "2026-10-08",
+  "phase": "P0",
+  "purpose": "Source-to-canonical mapping discovery",
+  "canonical_entities": ["Account", "Client", "Household"],
   "responses": {
-    "rep_pm_licensing": true,
-    "advisor_count": 120,
-    "retained_custodian": "SCHWAB",
-    "has_uma_sleeves": true,
-    "historical_perf_years": 5,
-    "restricted_securities": ["MOD-RESTRICTED-01", "MOD-RESTRICTED-02"]
+    "firm_name": "Core Cap Wealth Management",
+    "source_systems": ["Amplify", "Black Diamond"],
+    "business_data_owner": "",
+    "mapping_approver": "",
+    "identifier_relationship_notes": ""
+  },
+  "governance": {
+    "mapping_approval_required": true,
+    "relationship_keys_must_be_documented": true,
+    "wave_assignment_enabled": false
   }
 }

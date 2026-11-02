@@ -95,6 +95,25 @@ def init_db() -> None:
         );
     """)
 
+    # Mapping proposals are persisted as unapproved until a reviewer explicitly approves them.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mapping_suggestions (
+            suggestion_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            migration_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            source_field TEXT NOT NULL,
+            canonical_field TEXT,
+            proposed_rule TEXT,
+            confidence_score REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            reviewer TEXT,
+            review_comments TEXT,
+            created_utc TEXT NOT NULL,
+            reviewed_utc TEXT
+        );
+    """)
+
     # 4. Field Lineage Audit Trail
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS field_lineage_audit (
@@ -122,6 +141,70 @@ def init_db() -> None:
             comments TEXT,
             created_utc TEXT NOT NULL
         );
+    """)
+
+    # MCL batch execution metadata; summaries only, never mapped source records.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mcl_execution_runs (
+            mcl_run_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            entity_summary_json TEXT NOT NULL,
+            relationship_summary_json TEXT NOT NULL,
+            execution_boundary_json TEXT NOT NULL,
+            executed_utc TEXT NOT NULL
+        );
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS validation_runs (
+            run_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            results_json TEXT NOT NULL,
+            executed_by TEXT NOT NULL,
+            executed_utc TEXT NOT NULL
+        );
+    """)
+
+    # Durable information requests; UI state is a projection of this table.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mapping_information_requests (
+            request_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            canonical_field TEXT NOT NULL,
+            source_file TEXT,
+            status TEXT NOT NULL DEFAULT 'OPEN',
+            question TEXT NOT NULL,
+            requested_by TEXT,
+            created_utc TEXT NOT NULL,
+            resolved_utc TEXT,
+            resolution TEXT,
+            response TEXT NOT NULL DEFAULT '',
+            UNIQUE (migration_id, entity_name, canonical_field)
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS canonical_change_requests (
+            request_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            canonical_field TEXT NOT NULL,
+            change_type TEXT NOT NULL,
+            proposed_change TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'OPEN',
+            requested_by TEXT NOT NULL,
+            created_utc TEXT NOT NULL,
+            decided_by TEXT,
+            decided_utc TEXT,
+            decision_note TEXT NOT NULL DEFAULT ''
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_mapping_information_requests_status
+        ON mapping_information_requests (migration_id, status, entity_name)
     """)
 
     conn.commit()

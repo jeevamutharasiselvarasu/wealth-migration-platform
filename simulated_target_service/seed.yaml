@@ -1,0 +1,48 @@
+# SIMULATED Simplicity target system: this service's own seed, used once to create its database.
+# Invented for the demo (split tables, target-assigned surrogate keys, different names/types/code lists).
+# NOT Simplicity's real schema. The platform never reads this file: it learns the target by inspecting
+# the running service. Column descriptions play the role of the target's data dictionary.
+system: Simplicity (simulated)
+version: "0.2.0"
+code_lists:
+  SIMP_REF_REGISTRATION: [IND, JNT, IRA, TRU, ORG]
+  SIMP_REF_SEGMENT: [RETAIL, HNW, UHNW, INST]
+tables:
+  SIMP_ACCT_MASTER:
+    description: Master record for each custodial account
+    columns:
+      - {name: ACCT_SK, type: integer, generated: true, description: Target-assigned surrogate key for the account}
+      - {name: ACCT_NO, type: string, required: true, description: Account number}
+      - {name: CUSTODIAN_CD, type: string, required: true, description: Custodian code}
+      - {name: OPENED_ON, type: date, required: true, description: Date the account was opened}
+      - {name: ACCT_STATUS, type: string, required: true, description: Current account status}
+  SIMP_ACCT_REGISTRATION:
+    description: Registration of each account
+    columns:
+      - {name: ACCT_SK, type: integer, generated: true, description: Surrogate key of the account this row belongs to}
+      - {name: REG_CD, type: string, required: true, description: Account registration code, code_list: SIMP_REF_REGISTRATION}
+  SIMP_ADVISOR_ASSIGNMENT:
+    description: Advisor assigned to each account
+    columns:
+      - {name: ACCT_SK, type: integer, generated: true, description: Surrogate key of the account this row belongs to}
+      - {name: ADVISOR_ID, type: string, required: true, description: Advisor representative identifier}
+  SIMP_CUSTOMER:
+    description: Customer master record
+    columns:
+      - {name: CUST_SK, type: integer, generated: true, description: Target-assigned surrogate key for the customer}
+      - {name: CUST_REF, type: string, required: true, description: Customer reference identifier}
+      - {name: DISPLAY_NAME, type: string, required: true, description: Customer display name}
+      - {name: SEGMENT_CD, type: string, required: true, description: Customer segment code, code_list: SIMP_REF_SEGMENT}
+      - {name: ONBOARD_DT, type: date, required: false, description: Date the customer was onboarded}
+  SIMP_CUSTOMER_TAX:
+    description: Tax details of each customer
+    columns:
+      - {name: CUST_SK, type: integer, generated: true, description: Surrogate key of the customer this row belongs to}
+      - {name: TAX_NO, type: string, required: true, description: Tax identification number}
+      - {name: TAX_COUNTRY, type: string, required: true, description: Country of tax residence}
+  SIMP_GROUP:
+    description: Group of related customers and accounts
+    columns:
+      - {name: GROUP_SK, type: integer, generated: true, description: Target-assigned surrogate key for the group}
+      - {name: GROUP_REF, type: string, required: true, description: Group reference identifier}
+      - {name: GROUP_NAME, type: string, required: true, description: Group name}
