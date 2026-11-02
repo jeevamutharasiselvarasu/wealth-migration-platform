@@ -27,6 +27,11 @@ class FieldContract(BaseModel):
     nullable: bool = True
     is_key: bool = False
     description: str = ""
+    # Personal data: lineage, previews and logs must never show its values.
+    sensitive: bool = False
+    # Target layouts (for example Orion MCL, SPARC) that require this field. Enforced at canonical-to-target
+    # mapping (a later phase); it does not make the field required for source-to-canonical mapping.
+    required_for_targets: List[str] = []
 
 
 class EntityContract(BaseModel):

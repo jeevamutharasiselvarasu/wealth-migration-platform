@@ -7,11 +7,18 @@
         "CUSTODIAN_CODE": 2,
         "REG_TYPE": 1,
         "OPEN_DATE": 1,
-        "REP_CODE": 1
+        "REP_CODE": 1,
+        "CUSTODIAN_NAME": 2,
+        "ACCT_NAME": 1,
+        "BALANCE": 1,
+        "TAX_STATUS": 1,
+        "CLOSED_DATE": 1,
+        "ACCOUNT_ID": 1
       },
       "signature_fields": [
         "ACCT_NUM",
-        "CUSTODIAN_CODE"
+        "CUSTODIAN_CODE",
+        "CUSTODIAN_NAME"
       ],
       "context_terms": [
         "account",
@@ -23,7 +30,11 @@
       "field_weights": {
         "HH_ID": 3,
         "HH_NAME": 3,
-        "REP_CODE": 1
+        "REP_CODE": 1,
+        "HH_DISPLAY_NAME": 2,
+        "ADVISOR_ID": 1,
+        "CREATED_DATE": 1,
+        "DELETED_DATE": 1
       },
       "signature_fields": [
         "HH_ID",
@@ -42,12 +53,20 @@
         "TAX_ID": 1,
         "FIRST_NAME": 1,
         "LAST_NAME": 1,
-        "EMAIL": 1
+        "EMAIL": 1,
+        "HH_ORDER": 2,
+        "DATE_OF_BIRTH": 1,
+        "MIDDLE_NAME": 1,
+        "PHONE": 1,
+        "ADDRESS_LINE_1": 1,
+        "POSTAL_CODE": 1,
+        "EMPLOYER_NAME": 1
       },
       "signature_fields": [
         "CLIENT_ID",
         "LEGAL_NAME",
-        "CLIENT_TYPE"
+        "CLIENT_TYPE",
+        "HH_ORDER"
       ],
       "context_terms": [
         "client",
@@ -98,7 +117,40 @@
     "SSN_TIN": "TAX_ID",
     "EMAIL": "EMAIL",
     "EMAIL_ADDR": "EMAIL",
-    "PRIMARY_EMAIL": "EMAIL"
+    "PRIMARY_EMAIL": "EMAIL",
+    "ACCOUNTNUMBER": "ACCT_NUM",
+    "ACCOUNTNAME": "ACCT_NAME",
+    "CUSTODIANNAME": "CUSTODIAN_NAME",
+    "REGISTRATIONTYPE": "REG_TYPE",
+    "REPCODE": "REP_CODE",
+    "CUSTODIALSTARTDATE": "OPEN_DATE",
+    "BALANCE": "BALANCE",
+    "REPORTEDASOFDATE": "BALANCE_AS_OF",
+    "TAXSTATUS": "TAX_STATUS",
+    "CLOSEDDATE": "CLOSED_DATE",
+    "HOUSEHOLDID": "HH_ID",
+    "HOUSEHOLDNAME": "HH_NAME",
+    "HOUSEHOLDPROPERNAME": "HH_DISPLAY_NAME",
+    "ADVISORID": "ADVISOR_ID",
+    "CREATEDDATE": "CREATED_DATE",
+    "DELETEDDATE": "DELETED_DATE",
+    "CONTACTID": "CLIENT_ID",
+    "FIRSTNAME": "FIRST_NAME",
+    "MIDDLENAME": "MIDDLE_NAME",
+    "LASTNAME": "LAST_NAME",
+    "DATEOFBIRTH": "DATE_OF_BIRTH",
+    "TAXID": "TAX_ID",
+    "ENTITYTYPE": "CLIENT_TYPE",
+    "HOUSEHOLDORDER": "HH_ORDER",
+    "HOUSEHOLDRELATIONSHIPTYPE": "HH_RELATIONSHIP",
+    "ADDRESS1": "ADDRESS_LINE_1",
+    "ADDRESS2": "ADDRESS_LINE_2",
+    "CITY": "CITY",
+    "STATE": "STATE",
+    "ZIP": "POSTAL_CODE",
+    "COUNTRY": "COUNTRY",
+    "PHONE": "PHONE",
+    "EMPLOYERNAME": "EMPLOYER_NAME"
   },
   "decision": {
     "minimum_positive_score": 0,

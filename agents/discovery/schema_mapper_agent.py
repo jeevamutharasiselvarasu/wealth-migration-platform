@@ -118,14 +118,56 @@ class SchemaMapperAgent:
         "QUANTITY": "QUANTITY",
         "market_value": "MARKET_VALUE",
 
+        # CoreCap (Amplify) extract headers, canonical model v1.1
+        "AccountNumber": "ACCT_NUM",
+        "AccountName": "ACCT_NAME",
+        "CustodianName": "CUSTODIAN_NAME",
+        "RegistrationType": "REG_TYPE",
+        "RepCode": "REP_CODE",
+        "CustodialStartDate": "OPEN_DATE",
+        "Balance": "BALANCE",
+        "ReportedAsOfDate": "BALANCE_AS_OF",
+        "TaxStatus": "TAX_STATUS",
+        "ClosedDate": "CLOSED_DATE",
+        "HouseholdId": "HH_ID",
+        "HouseholdName": "HH_NAME",
+        "HouseholdProperName": "HH_DISPLAY_NAME",
+        "AdvisorId": "ADVISOR_ID",
+        "CreatedDate": "CREATED_DATE",
+        "DeletedDate": "DELETED_DATE",
+        "ContactId": "CLIENT_ID",
+        "FirstName": "FIRST_NAME",
+        "MiddleName": "MIDDLE_NAME",
+        "LastName": "LAST_NAME",
+        "DateOfBirth": "DATE_OF_BIRTH",
+        "TaxId": "TAX_ID",
+        "EntityType": "CLIENT_TYPE",
+        "HouseholdOrder": "HH_ORDER",
+        "HouseholdRelationshipType": "HH_RELATIONSHIP",
+        "Address1": "ADDRESS_LINE_1",
+        "Address2": "ADDRESS_LINE_2",
+        "City": "CITY",
+        "State": "STATE",
+        "Zip": "POSTAL_CODE",
+        "Country": "COUNTRY",
+        "Phone": "PHONE",
+        "Email": "EMAIL",
+        "EmployerName": "EMPLOYER_NAME",
+
         # Terminated / Archival Attributes
         "TERMINATION_EFFECTIVE_DT": "CLOSE_DATE",
         "CLOSURE_CATEGORY": "ARCHIVE_REASON"
     }
 
+    # Headers that mean different things in different files (the Households key is "Id"; the Accounts system id is "AccountId").
+    ENTITY_CATALOG = {
+        "Account": {"AccountId": "ACCOUNT_ID"},
+        "Household": {"Id": "HH_ID"},
+    }
+
     MANDATORY_CANONICAL_FIELDS = {
-        "Account": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "OPEN_DATE"],
-        "Household": ["HH_ID", "HH_NAME", "REP_CODE"],
+        "Account": ["ACCT_NUM", "CUSTODIAN_CODE", "OPEN_DATE"],
+        "Household": ["HH_ID", "HH_NAME"],
         "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
         "Sleeve": ["ACCT_NUM", "SLEEVE_ID", "TARGET_PCT"],
         "Position": ["ACCT_NUM", "CUSIP", "MARKET_VALUE"],
@@ -340,7 +382,7 @@ class SchemaMapperAgent:
                         })
                         lineage_fields_seen.add(raw_key)
                     continue
-                target_key = self.catalog.get(raw_key)
+                target_key = self.ENTITY_CATALOG.get(entity_name, {}).get(raw_key) or self.catalog.get(raw_key)
                 identity_match = False
                 if not target_key:
                     target_key = self._identity_target(entity_name, raw_key)

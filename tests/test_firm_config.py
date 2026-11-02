@@ -68,7 +68,7 @@ def test_version_id_is_stable_and_changes_with_contract(tmp_path):
         tmp_path, lambda raw: raw["entities"]["Client"]["fields"][1].update({"nullable": True})))
     assert changed.config_version == base.config_version
     assert changed.version_id != base.version_id
-    assert base.version_id.startswith("1.0.0+")
+    assert base.version_id.startswith("1.1.0+")
 
 
 def _setup_client(tmp_path, monkeypatch, name):
@@ -483,7 +483,7 @@ def test_mapper_emits_evidence_proposals_with_basis_and_never_for_mapped_fields(
         assert lineage[column]["rule_applied"].startswith("DIRECT_COPY (VALUE_EVIDENCE:")
         assert SchemaMapperAgent.mapping_kind(lineage[column]["rule_applied"], target) == "DIRECT"
         assert SchemaMapperAgent.supports_transformation(lineage[column]["rule_applied"])
-    assert result["missing_required"] == ["CUSTODIAN_CODE", "REP_CODE"]
+    assert result["missing_required"] == ["CUSTODIAN_CODE"]  # REP_CODE is optional since contract 1.1.0
 
 
 def test_low_confidence_evidence_proposals_need_individual_review(tmp_path, monkeypatch):

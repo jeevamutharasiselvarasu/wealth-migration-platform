@@ -2,12 +2,17 @@
 # Defines the firm's CANONICAL contract (types, nullability, keys) and registers the
 # target system. It does NOT define canonical-to-target mapping; that lives in
 # the confirmed target model (inferred from the target service) and the target_mappings table.
-# SEED VALUES: required fields mirror the platform kernel; keys/types need business
-# owner confirmation before being treated as final.
+#
+# v1.1.0 (2026-11-02): extended from the CoreCap (Amplify) data dictionary and the Orion Master Client List and
+# SPARC target layouts. Source-to-canonical required fields are unchanged except that REP_CODE is optional on
+# Account and Household (2.6% null at source; Households carry an advisor, not a rep code). Fields the targets need
+# but the source cannot always supply are nullable here and carry `required_for_targets`, to be enforced when
+# canonical-to-target mapping starts. `sensitive` marks personal data that must never appear in lineage or previews.
+# SEED VALUES: keys/types still need business owner confirmation before being treated as final.
 schema_version: 1
 firm_id: SIMPLICITY
 firm_name: Simplicity
-config_version: "1.0.0"
+config_version: "1.1.0"
 scope_direction: source_to_canonical
 canonical_contract_ref: Simplicity-MCL-v1
 target_system:
@@ -18,21 +23,51 @@ entities:
   Account:
     grain: One legal/custodial account identity
     fields:
-      - {name: ACCT_NUM, type: string, nullable: false, is_key: true}
-      - {name: CUSTODIAN_CODE, type: string, nullable: false}
-      - {name: REP_CODE, type: string, nullable: false}
-      - {name: REG_TYPE, type: string, nullable: false}
-      - {name: OPEN_DATE, type: date, nullable: false}
+      - {name: ACCT_NUM, type: string, nullable: false, is_key: true, description: "Custodian-issued account number (source AccountNumber). Natural key is custodian plus number. Keep as text; reject name text and values over 20 characters."}
+      - {name: CUSTODIAN_CODE, type: string, nullable: false, description: "Custodian code, derived from CUSTODIAN_NAME by a versioned value map (source has 73 free-text names)."}
+      - {name: REG_TYPE, type: string, nullable: false, required_for_targets: [ORION_MCL, SPARC], description: "Registration type (source RegistrationType, about 29% null at source). Nulls are exceptions, never defaulted. Value map needed for the target lists."}
+      - {name: OPEN_DATE, type: date, nullable: false, description: "Date the account was opened at the custodian (source CustodialStartDate)."}
+      - {name: REP_CODE, type: string, nullable: true, description: "Custodian-assigned representative code (source RepCode, 2.6% null)."}
+      - {name: ACCOUNT_ID, type: string, nullable: true, description: "Source system identifier (source AccountId GUID). Kept separate from the custodian account number."}
+      - {name: ACCT_NAME, type: string, nullable: true, required_for_targets: [ORION_MCL], description: "Account display name, pattern '<client name> - <type>' (source AccountName). Registration names are derived from it."}
+      - {name: CUSTODIAN_NAME, type: string, nullable: true, required_for_targets: [ORION_MCL, SPARC], description: "Raw custodian name from the source (CustodianName); feeds the CUSTODIAN_CODE value map."}
+      - {name: HH_ID, type: string, nullable: true, description: "Household the account belongs to (source HouseholdId; 0.5% null, a few orphans)."}
+      - {name: BALANCE, type: decimal, nullable: true, required_for_targets: [SPARC], description: "Current account balance in dollars (source Balance)."}
+      - {name: BALANCE_AS_OF, type: date, nullable: true, description: "Date BALANCE is reported as of (source ReportedAsOfDate)."}
+      - {name: TAX_STATUS, type: string, nullable: true, description: "Tax treatment: Taxable, TaxDeferred or NonTaxable (source TaxStatus)."}
+      - {name: ACCT_STATUS, type: string, nullable: true, required_for_targets: [ORION_MCL], description: "Open or Closed, derived: Open when CLOSED_DATE is empty, else Closed."}
+      - {name: CLOSED_DATE, type: date, nullable: true, description: "Date the account was closed (source ClosedDate); empty means open."}
   Client:
     grain: One person, trust, or legal participant in the identity domain
     fields:
-      - {name: CLIENT_ID, type: string, nullable: false, is_key: true}
-      - {name: LEGAL_NAME, type: string, nullable: false}
-      - {name: TAX_ID, type: string, nullable: false}
-      - {name: CLIENT_TYPE, type: string, nullable: false}
+      - {name: CLIENT_ID, type: string, nullable: false, is_key: true, description: "Source contact identifier (source ContactId GUID)."}
+      - {name: LEGAL_NAME, type: string, nullable: false, sensitive: true, description: "Full legal name; derived from first, middle and last name when the source has no single name field."}
+      - {name: TAX_ID, type: string, nullable: false, sensitive: true, required_for_targets: [SPARC], description: "SSN or tax id (source TaxId). Never shown in lineage or previews."}
+      - {name: CLIENT_TYPE, type: string, nullable: false, description: "individual, trust or business. The source EntityType holds only 'individual'; trusts and businesses need a business rule."}
+      - {name: FIRST_NAME, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL, SPARC], description: "Given name (source FirstName); may be blank for companies."}
+      - {name: MIDDLE_NAME, type: string, nullable: true, sensitive: true, description: "Middle name or initial (source MiddleName)."}
+      - {name: LAST_NAME, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL, SPARC], description: "Family name (source LastName)."}
+      - {name: DATE_OF_BIRTH, type: date, nullable: true, sensitive: true, description: "Date of birth (source DateOfBirth)."}
+      - {name: HH_ID, type: string, nullable: true, required_for_targets: [ORION_MCL], description: "Household the client belongs to (source HouseholdId)."}
+      - {name: HH_ORDER, type: integer, nullable: true, required_for_targets: [ORION_MCL, SPARC], description: "Rank within the household: 1 is the primary contact (1st owner), 2 the 2nd owner (source HouseholdOrder)."}
+      - {name: HH_RELATIONSHIP, type: string, nullable: true, description: "Relationship to the household: Head, Spouse, Child and so on (source HouseholdRelationshipType; 22% null)."}
+      - {name: ADDRESS_LINE_1, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL, SPARC], description: "Primary street address (source Address1). One primary address per client."}
+      - {name: ADDRESS_LINE_2, type: string, nullable: true, sensitive: true, description: "Suite, floor or apartment (source Address2)."}
+      - {name: CITY, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL, SPARC], description: "City (source City)."}
+      - {name: STATE, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL, SPARC], description: "State or province code (source State). SPARC wants full state names."}
+      - {name: POSTAL_CODE, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL, SPARC], description: "ZIP or postal code, kept as text to preserve leading zeros (source Zip)."}
+      - {name: COUNTRY, type: string, nullable: true, sensitive: true, description: "Country code (source Country)."}
+      - {name: PHONE, type: string, nullable: true, sensitive: true, description: "Phone number (source Phone)."}
+      - {name: EMAIL, type: string, nullable: true, sensitive: true, description: "Email address (source Email)."}
+      - {name: EMPLOYER_NAME, type: string, nullable: true, description: "Employer (source EmployerName); used by SPARC only when moving between custodians."}
   Household:
     grain: One business/reporting grouping of related clients and/or accounts
     fields:
-      - {name: HH_ID, type: string, nullable: false, is_key: true}
-      - {name: HH_NAME, type: string, nullable: false}
-      - {name: REP_CODE, type: string, nullable: false}
+      - {name: HH_ID, type: string, nullable: false, is_key: true, required_for_targets: [ORION_MCL], description: "Source household identifier (source Id GUID); also the Orion HH Grouping Code."}
+      - {name: HH_NAME, type: string, nullable: false, description: "Internal sort name, 'Last, First' (source HouseholdName)."}
+      - {name: REP_CODE, type: string, nullable: true, description: "Representative code. Households have no rep code at source (they carry an advisor); optional and normally empty."}
+      - {name: HH_DISPLAY_NAME, type: string, nullable: true, required_for_targets: [SPARC], description: "Formatted display name (source HouseholdProperName)."}
+      - {name: ADVISOR_ID, type: string, nullable: true, required_for_targets: [ORION_MCL], description: "Advisor assigned to the household (source AdvisorId). The Orion Representative Name is resolved from it by a registered advisor list, not by a fourth entity."}
+      - {name: CREATED_DATE, type: date, nullable: true, description: "Date the household record was created (source CreatedDate)."}
+      - {name: HH_STATUS, type: string, nullable: true, description: "Active or Deleted, derived from DELETED_DATE. Whether deleted households migrate is a business decision."}
+      - {name: DELETED_DATE, type: date, nullable: true, description: "Date the household was deleted or archived (source DeletedDate); empty means active."}

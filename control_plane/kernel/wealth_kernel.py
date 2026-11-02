@@ -14,7 +14,7 @@ class WealthManagementKnowledgeKernel:
                 "expected_file": "accounts.csv",
                 "expected_files": ["accounts.csv", "account_name_address.csv", "account_type.csv"],
                 "source_roles": ["ACCOUNT_MASTER", "NAME_ADDRESS", "ACCOUNT_TYPE"],
-                "required_fields": ["ACCT_NUM", "CUSTODIAN_CODE", "REP_CODE", "REG_TYPE", "OPEN_DATE"],
+                "required_fields": ["ACCT_NUM", "CUSTODIAN_CODE", "REG_TYPE", "OPEN_DATE"],
                 "default_scope": "IN_SCOPE"
             },
             {
@@ -36,7 +36,7 @@ class WealthManagementKnowledgeKernel:
                 "expected_file": "households.csv",
                 "expected_files": ["households.csv", "household_mapping.csv"],
                 "source_roles": ["ENTITY_MASTER", "HOUSEHOLD_MAPPING"],
-                "required_fields": ["HH_ID", "HH_NAME", "REP_CODE"],
+                "required_fields": ["HH_ID", "HH_NAME"],
                 "default_scope": "IN_SCOPE"
             }
         ]

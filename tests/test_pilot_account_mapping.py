@@ -51,7 +51,8 @@ ACC-101,SCHW,SOMETHING"""
 
     assert res["status"] == "WARNING_INCOMPLETE"
     assert "UNKNOWN_EXTRA_FIELD" in res["unmapped_fields"]
-    assert "REP_CODE" in res["missing_required"]
+    assert "REP_CODE" not in res["missing_required"]  # optional since contract 1.1.0
+    assert "REG_TYPE" in res["missing_required"]
     assert "OPEN_DATE" in res["missing_required"]
     assert res["confidence_score"] < 0.70
     assert any("Missing required canonical fields" in w for w in res["warnings"])

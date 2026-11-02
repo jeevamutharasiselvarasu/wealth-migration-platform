@@ -388,17 +388,17 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     asyncio.run(call("Platform Admin", "/api/target-system/confirm"))
     spec = tc.spec(conn)
     assert spec is not None
-    form = {"entity_name": "Account", "target_field": "SIMP_ACCT_MASTER.ACCT_STATUS"}
+    form = {"entity_name": "Client", "target_field": "SIMP_CUSTOMER.ONBOARD_DT"}  # no canonical field covers onboarding date
     assert "may+not+perform" in asyncio.run(call("Validation Specialist", "/api/target-mapping/gaps/raise", form)).headers["location"]
     assert "notice=" in asyncio.run(call("Migration Analyst", "/api/target-mapping/gaps/raise", form)).headers["location"]
     assert "error=" in asyncio.run(call("Migration Analyst", "/api/target-mapping/gaps/raise", form)).headers["location"]  # no duplicate
     bad = asyncio.run(call("Migration Analyst", "/api/target-mapping/gaps/raise", {"entity_name": "Account", "target_field": "SIMP_ACCT_MASTER.ACCT_NO"}))
     assert "error=" in bad.headers["location"]  # not a gap: the form cannot invent requests
     row = conn.execute("SELECT * FROM canonical_change_requests WHERE migration_id = 'MIG-G'").fetchall()
-    assert len(row) == 1 and row[0]["status"] == "OPEN" and row[0]["canonical_field"] == "ACCOUNT_STATUS" and row[0]["change_type"] == "ADD_FIELD"
+    assert len(row) == 1 and row[0]["status"] == "OPEN" and row[0]["canonical_field"] == "CLIENT_ONBOARD_DATE" and row[0]["change_type"] == "ADD_FIELD"
     rid = row[0]["request_id"]
     asyncio.run(call("Migration Analyst", "/api/target-mapping/propose"))
-    pending = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G", spec)}["SIMP_ACCT_MASTER.ACCT_STATUS"]
+    pending = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G", spec)}["SIMP_CUSTOMER.ONBOARD_DT"]
     assert pending["canonical_field"] is None  # unresolved until the SME decides and applies
     assert "may+not+perform" in asyncio.run(call("Migration Analyst", f"/api/canonical-changes/{rid}/decision", {"decision": "APPROVED"})).headers["location"]
     asyncio.run(call("Domain SME", f"/api/canonical-changes/{rid}/decision", {"decision": "APPROVED", "note": "ok"}))
@@ -406,8 +406,8 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     refreshed = asyncio.run(call("Migration Analyst", "/api/target-mapping/propose")).headers["location"]
     assert "now+have+a+canonical+source" in refreshed
     assert "Nothing+to+refresh" in asyncio.run(call("Migration Analyst", "/api/target-mapping/propose")).headers["location"]
-    after = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G", spec)}["SIMP_ACCT_MASTER.ACCT_STATUS"]
-    assert after["canonical_field"] == "ACCOUNT_STATUS" and after["status"] == "PROPOSED"
+    after = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-G", spec)}["SIMP_CUSTOMER.ONBOARD_DT"]
+    assert after["canonical_field"] == "CLIENT_ONBOARD_DATE" and after["status"] == "PROPOSED"
 
 
 def test_demo_load_is_restricted_to_flagged_account_and_infers_but_does_not_confirm_target(tmp_path, monkeypatch, target_service):
