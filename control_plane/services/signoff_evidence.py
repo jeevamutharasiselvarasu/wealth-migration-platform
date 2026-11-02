@@ -13,7 +13,7 @@ from control_plane.services import execution_simulator, package_contract, valida
 SCHEMA = "xodus.signoff-evidence/v1"
 
 
-def build(conn: sqlite3.Connection, migration_id: str, generated_by: str) -> Dict[str, Any]:
+def build(conn: sqlite3.Connection, migration_id: str, generated_by: str, drift: Optional[list] = None) -> Dict[str, Any]:
     run = conn.execute("SELECT run_id, status, results_json, executed_by, executed_utc FROM validation_runs WHERE migration_id = ? "
                        "ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
     if not run:
@@ -32,6 +32,7 @@ def build(conn: sqlite3.Connection, migration_id: str, generated_by: str) -> Dic
                        "stage": s["stage"], "status": s["status"], "why": s["description"], "created_by": s["created_by"]} for s in vs.list_scenarios(conn, migration_id)],
         "exceptions": [{"exception_id": e["exception_id"], "check_ref": e["check_ref"], "reason": e["reason"], "status": e["status"], "proposed_by": e["proposed_by"],
                         "decided_by": e["decided_by"], "decision_comments": e["decision_comments"]} for e in exceptions],
+        "source_drift": drift or [],
         "package": ({"package_id": packages[0]["package_id"], "version": packages[0]["package_version"], "content_sha256": packages[0]["content_sha256"],
                      "schema_version": packages[0]["schema_version"]} if packages else None),
         "latest_simulated_execution": None,

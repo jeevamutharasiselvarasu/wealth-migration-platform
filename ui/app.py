@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -969,6 +969,7 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
             "migration_id": migration_id,
             "validation_run": validation_run, "error": error, "notice": notice,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
+            "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
@@ -1079,7 +1080,8 @@ async def download_signoff_evidence(request: Request):
     conn = get_db_connection()
     try:
         try:
-            doc = signoff_evidence.build(conn, migration_id, user["name"])
+            approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
+            doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
         except ValueError as exc:
             return _validation_redirect("error", str(exc))
         conn.commit()
