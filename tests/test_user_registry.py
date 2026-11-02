@@ -36,6 +36,16 @@ def test_registration_rules_pending_by_default_and_bootstrap_admin():
         ur.register(c, "Ann Again", "ann@example.com", PW, set())  # duplicate, case-insensitive
     with pytest.raises(ValueError):
         ur.register(c, "Demo Person", "demo@x.co", PW, {"demo@x.co"})  # reserved demo email
+    e = _conn()
+    demo = {"jeeva@simplicitywealth.com"}
+    with pytest.raises(ValueError):
+        ur.register(e, "Jeeva S", "jeeva@simplicitywealth.com", PW, demo)  # reserved when no bootstrap email names it
+    with pytest.raises(ValueError):
+        ur.register(e, "Jeeva S", "jeeva@simplicitywealth.com", PW, demo, bootstrap_admin_email="owner@example.com")  # a different bootstrap email does not unlock it
+    assert ur.register(e, "Jeeva S", "Jeeva@SimplicityWealth.com", PW, demo, bootstrap_admin_email="jeeva@simplicitywealth.com") == {"status": "ACTIVE", "bootstrap": True}
+    assert ur.verify(e, "jeeva@simplicitywealth.com", PW)["user"]["roles"] == ["Platform Admin"]
+    with pytest.raises(ValueError):
+        ur.register(e, "Other", "other-demo@simplicitywealth.com", PW, demo | {"other-demo@simplicitywealth.com"}, bootstrap_admin_email="jeeva@simplicitywealth.com")  # only that one email
     d = _conn()
     assert ur.register(d, "Someone", "someone@example.com", PW, set(), bootstrap_admin_email="owner@example.com")["status"] == "PENDING"  # env set: first user is NOT admin
     assert ur.register(d, "Owner", "owner@example.com", PW, set(), bootstrap_admin_email="owner@example.com")["status"] == "ACTIVE"
@@ -130,3 +140,25 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
     reg = __import__("control_plane.services.user_registry", fromlist=["x"])
     conn = db.get_db_connection()
     assert reg.get_user(conn, "root@example.com")["status"] == "ACTIVE" and reg.get_user(conn, "ann@example.com")["status"] == "DISABLED"
+
+
+def test_demo_email_without_a_host_hash_signs_in_through_the_registry_when_named_bootstrap_admin(tmp_path, monkeypatch):
+    from control_plane import db
+    from ui.auth import SessionManager
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "u.db")
+    monkeypatch.setenv("XODUS_BOOTSTRAP_ADMIN_EMAIL", "jeeva@simplicitywealth.com")
+    monkeypatch.delenv("XODUS_DEMO_PASSWORD_HASHES", raising=False)
+    monkeypatch.setattr(SessionManager, "DEMO_DIR", tmp_path)
+    import json, shutil
+    from pathlib import Path
+    shutil.copy(Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json", tmp_path / "demo_users.json")  # no password hashes file: nobody has a host hash
+    mgr = SessionManager()
+    assert mgr.authorized_users["jeeva@simplicitywealth.com"]["password_sha256"] == ""
+    assert mgr.authenticate("jeeva@simplicitywealth.com", PW, "Platform Admin") is None  # not registered yet
+    conn = db.get_db_connection()
+    ur.register(conn, "Jeeva S", "jeeva@simplicitywealth.com", PW, set(mgr.authorized_users), ur.bootstrap_admin_email())
+    conn.commit()
+    sid = mgr.authenticate("jeeva@simplicitywealth.com", PW, mgr.default_role_for("jeeva@simplicitywealth.com"))
+    assert sid and mgr.active_sessions[sid]["email"] == "jeeva@simplicitywealth.com"
+    assert mgr.assigned_roles("jeeva@simplicitywealth.com") == set(mgr.ALL_ROLES) and mgr.can_load_demo("jeeva@simplicitywealth.com") is True
+    assert mgr.authenticate("jeeva@simplicitywealth.com", "wrong-password-1", "Platform Admin") is None
