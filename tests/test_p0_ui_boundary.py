@@ -309,7 +309,7 @@ def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_nav
     assert "Agent assistance runs inside Source Discovery automatically." in navigation
     assert "Agent-assisted analysis · automatic" in discovery
     assert "Suggested source → canonical fields" in discovery
-    assert "Confirm classification" in discovery and "Reject file" in discovery
+    assert "Confirm selected" in discovery and "Reject selected" in discovery
 
 
 

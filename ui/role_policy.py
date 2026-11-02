@@ -50,7 +50,7 @@ POST_POLICY = [
     (r"^/api/entities/map-(uploaded-file|approved-files|mcl)$", DISCOVERY_ROLES),
     (r"^/api/pilot/(account|household|client)/(profile|map)$", DISCOVERY_ROLES),
     (r"^/api/pipeline/run$", DISCOVERY_ROLES),
-    (r"^/api/entities/confirm-(entity|inference)$", SCOPE_REVIEW_ROLES),
+    (r"^/api/entities/(confirm-(entity|inference)|review-selected)$", SCOPE_REVIEW_ROLES),
     (r"^/api/mapping-gaps/[^/]+/response$", DEFINITION_ROLES),
     (r"^/api/mapping-suggestions/(approve-entity|review-selected|[^/]+/review)$", APPROVAL_ROLES),
     (r"^/api/pipeline/override-agent$", APPROVAL_ROLES),

@@ -2282,13 +2282,15 @@ async def review_selected_target_mappings(request: Request):
     done, failed = 0, []
     conn = get_db_connection()
     try:
+        labels = {r["target_mapping_id"]: f"{r['entity_name']}.{r['target_field']}" for r in conn.execute(
+            "SELECT target_mapping_id, entity_name, target_field FROM target_mappings").fetchall()}
         for tid in ids:
             note = str(form.get("note::" + tid, "")).strip() or common
             rule = str(form.get("rule::" + tid, "")).strip()
             try:
                 row = target_mapping.review(conn, tid, decision, user["name"], note, rule if decision == "APPROVED" else "")
             except (LookupError, ValueError) as exc:
-                failed.append(f"{tid[-6:]}: {exc}")
+                failed.append(f"{labels.get(tid, tid[-6:])}: {exc}")
                 continue
             done += 1
             state_store.audit_log.append({"event": "TARGET_MAPPING_" + row["status"], "actor": user["name"],
@@ -2319,6 +2321,12 @@ async def review_selected_source_mappings(request: Request):
         return RedirectResponse(url=back.format("error") + quote_plus("Tick at least one mapping first."), status_code=status.HTTP_303_SEE_OTHER)
     common = str(form.get("common_note", "")).strip()
     done, failed = 0, []
+    conn = get_db_connection()
+    try:
+        labels = {r["suggestion_id"]: f"{r['entity_name']}.{r['source_field']}" for r in conn.execute(
+            "SELECT suggestion_id, entity_name, source_field FROM mapping_suggestions").fetchall()}
+    finally:
+        conn.close()
     for sid in ids:
         note = str(form.get("note::" + sid, "")).strip() or common
         rule = str(form.get("rule::" + sid, "")).strip()
@@ -2326,7 +2334,7 @@ async def review_selected_source_mappings(request: Request):
             await review_source_mapping_suggestion(sid, decision, user["name"], note, rule if decision == "APPROVED" else "", None)
             done += 1
         except HTTPException as exc:
-            failed.append(f"{sid[-6:]}: {exc.detail}")
+            failed.append(f"{labels.get(sid, sid[-6:])}: {exc.detail}")
     kind, msg = _bulk_summary(done, failed, decision.lower())
     return RedirectResponse(url=back.format(kind) + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
 
@@ -2794,11 +2802,53 @@ async def confirm_entity_inference(
     user = get_current_user(request) if request is not None else {"name": "Unknown reviewer"}
     form = await request.form() if request is not None else {}
     file_id = str(form.get("file_id", "")).strip()
+    return _apply_inference_review(user, file_id, entity_name, decision, comments, target_entity)
+
+
+@app.post("/api/entities/review-selected")
+async def review_selected_source_files(request: Request):
+    """Table review of discovered source files: confirm or reject every ticked file, with a note and an optional
+    reclassification per row. Each file goes through the same single-file review."""
+    user = get_current_user(request)
+    form = await request.form()
+    ids = [str(i) for i in form.getlist("files")]
+    decision = str(form.get("decision", "")).strip().upper()
+    if decision not in {"APPROVE", "REJECT"}:
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Choose confirm or reject."), status_code=status.HTTP_303_SEE_OTHER)
+    if not ids:
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Tick at least one file first."), status_code=status.HTTP_303_SEE_OTHER)
+    common = str(form.get("common_note", "")).strip()
+    done, failed = 0, []
+    for fid in ids:
+        label, current = fid, ""
+        for bucket, files in state_store.entity_source_files.items():
+            for item in files.values():
+                if item.get("file_id") == fid:
+                    label, current = str(item.get("filename") or fid), str(item.get("inferred_entity") or bucket)
+        note = str(form.get("note::" + fid, "")).strip() or common
+        entity = str(form.get("entity::" + fid, "")).strip() or current
+        target = str(form.get("change::" + fid, "")).strip() or entity
+        try:
+            res = _apply_inference_review(user, fid, entity, decision, note, target)
+        except HTTPException as exc:
+            failed.append(f"{label}: {exc.detail}")
+            continue
+        loc = res.headers.get("location", "")
+        if "error=" in loc:
+            from urllib.parse import parse_qs, urlparse
+            failed.append(f"{label}: " + parse_qs(urlparse(loc).query).get("error", ["not changed"])[0])
+        else:
+            done += 1
+    kind, msg = _bulk_summary(done, failed, "confirmed" if decision == "APPROVE" else "rejected")
+    return RedirectResponse(url=f"/entity-sample-files?{kind}=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _apply_inference_review(user: Dict[str, Any], file_id: str, entity_name: str, decision: str, comments: str, target_entity: str):
     normalized_decision = decision.strip().upper()
     if normalized_decision not in {"APPROVE", "REJECT"}:
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Choose Confirm classification or Reject file.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Choose Confirm classification or Reject file.") + "", status_code=status.HTTP_303_SEE_OTHER)
     if normalized_decision == "REJECT" and not comments.strip():
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a rejection reason before rejecting this file.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a rejection reason before rejecting this file.") + "", status_code=status.HTTP_303_SEE_OTHER)
 
     record = None
     current_entity = None
@@ -2831,7 +2881,7 @@ async def confirm_entity_inference(
         if selected_entity == "RELATIONSHIP_DEFERRED":
             # Link/bridge files are relationship artifacts; P0 has no relationship entity, so record an explicit disposition.
             if not comments.strip():
-                return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a note explaining the relationship disposition (what the link joins and why it is deferred).") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+                return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a note explaining the relationship disposition (what the link joins and why it is deferred).") + "", status_code=status.HTTP_303_SEE_OTHER)
             record["inferred_entity"] = "Relationship (deferred)"
             record["inference"]["entity"] = "Relationship (deferred)"
             record["inference"]["status"] = "RELATIONSHIP_DEFERRED"
@@ -2908,7 +2958,7 @@ async def confirm_entity_inference(
     })
     outcome = "rejected" if normalized_decision == "REJECT" else "confirmed as " + str(reviewed_entity)
     notice = quote_plus(str(record.get("filename", "File")) + " " + outcome + ".")
-    return RedirectResponse(url=f"/entity-sample-files?notice={notice}#source-file-{quote_plus(file_id)}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/entity-sample-files?notice={notice}", status_code=status.HTTP_303_SEE_OTHER)
 
 def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     """Strip row-level canonical output and raw samples from all preview API responses."""

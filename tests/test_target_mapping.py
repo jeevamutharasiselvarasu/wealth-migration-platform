@@ -218,7 +218,8 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     opened = ids[("Account", "SIMP_ACCT_MASTER.OPENED_ON")]
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "APPROVED"})).headers["location"]
     assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"decision": "APPROVED"})).headers["location"]  # nothing ticked
-    assert "error=" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "REJECTED"})).headers["location"]  # reason required
+    no_reason = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "REJECTED"})).headers["location"]
+    assert "error=" in no_reason and "SIMP_ACCT_MASTER.OPENED_ON" in no_reason  # reason required, row named by its field
     both = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "REJECTED", f"note::{opened}": "not needed for the demo"}))
     assert "notice=1+rejected" in both.headers["location"]
     again = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/review-selected", {"ids": [opened], "decision": "APPROVED"}))

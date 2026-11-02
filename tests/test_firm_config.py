@@ -709,7 +709,7 @@ def test_source_mappings_are_reviewed_as_a_table_with_one_note_per_row(tmp_path,
     assert "may+not+perform" in asyncio.run(post("Domain SME", {"ids": ["S-1"], "decision": "APPROVED"})).headers["location"]
     assert "error=" in asyncio.run(post("Migration Analyst", {"decision": "APPROVED"})).headers["location"]  # nothing ticked
     missing = asyncio.run(post("Migration Analyst", {"ids": ["S-3"], "decision": "REJECTED"}))  # a rejection needs a reason
-    assert "error=" in missing.headers["location"] and status("S-3")[0] == "PENDING"
+    assert "error=" in missing.headers["location"] and "Account.NOTE_X" in missing.headers["location"] and status("S-3")[0] == "PENDING"
     done = asyncio.run(post("Migration Analyst", {"ids": ["S-1", "S-2"], "decision": "APPROVED", "note::S-1": "key matches",
                                                   "common_note": "reviewed together"}))
     assert "notice=2+approved" in done.headers["location"]
@@ -722,3 +722,43 @@ def test_source_mappings_are_reviewed_as_a_table_with_one_note_per_row(tmp_path,
     assert "notice=1+rejected" in repeat.headers["location"] and "not+changed" in repeat.headers["location"]
     assert status("S-3")[0] == "REJECTED" and status("S-1")[0] == "APPROVED"
     conn.close()
+
+
+def test_source_files_are_confirmed_as_a_table_and_errors_name_the_file(tmp_path, monkeypatch):
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "files-table")
+    assert _post_setup(app_module, session_id).status_code == 303
+    acct = b"ACCT_NUM,CUSTODIAN_CODE,OPEN_DATE\r\nA1,SCH,2020-01-01\r\n"
+    hh = b"HH_ID,HH_NAME\r\nH1,Smith\r\n"
+    link = b"OWNER_REF,OBJECT_REF,LINK_KIND,VALID_FROM,VALID_TO\r\nC-900,G-100,PRIMARY,2020-01-01,\r\n"
+
+    async def run():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": session_id}) as client:
+            await client.post("/api/entities/upload-sample-file", follow_redirects=False,
+                              files=[("files", ("accounts.csv", acct, "text/csv")), ("files", ("households.csv", hh, "text/csv")),
+                                     ("files", ("links.csv", link, "text/csv"))])
+            ids = {r["filename"]: r["file_id"] for fs in state.entity_source_files.values() for r in fs.values()}
+            page = (await client.get("/entity-sample-files")).text
+
+            async def post(data, role="Migration Analyst"):
+                app_module.session_mgr.active_sessions[session_id]["role"] = role
+                return await client.post("/api/entities/review-selected", data=data, follow_redirects=False, headers={"accept": "text/html"})
+            return ids, page, post, await post({"files": [ids["accounts.csv"]], "decision": "APPROVE"}, "Domain SME"), \
+                await post({"decision": "APPROVE"}), await post({"files": [ids["accounts.csv"]], "decision": "REJECT"}), \
+                await post({"files": [ids["accounts.csv"], ids["households.csv"], ids["links.csv"]], "decision": "APPROVE",
+                            "note::" + ids["accounts.csv"]: "custodian extract"})
+
+    ids, page, post, sme, none, no_reason, mixed = asyncio.run(run())
+    assert 'name="files"' in page and "Confirm selected" in page and "Reject selected" in page
+    assert "may+not+perform" in sme.headers["location"] and "error=" in none.headers["location"]
+    assert "error=" in no_reason.headers["location"] and "accounts.csv" in no_reason.headers["location"]  # names the file, not an id
+    loc = mixed.headers["location"]
+    assert "notice=1+confirmed" in loc and "2+not+changed" in loc  # partial success is reported, not hidden
+    assert "households.csv" in loc and "not+selected+in+Migration+Setup" in loc  # setup scoped Account only
+    assert "links.csv" in loc  # a link file needs its own disposition
+    records = {r["filename"]: r for fs in state.entity_source_files.values() for r in fs.values()}
+    assert records["accounts.csv"]["inference_approval_status"] == "APPROVED"
+    assert records["accounts.csv"]["inference_review"]["comments"] == "custodian extract"
+    assert records["households.csv"]["inference_approval_status"] != "APPROVED"
