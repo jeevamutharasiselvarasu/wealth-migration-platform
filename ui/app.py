@@ -17,7 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
-from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -127,9 +127,19 @@ def workflow_progress() -> dict:
         target_pending = len([m for m in target_mapping.list_mappings(conn, migration_id, target_connector.spec(conn))
                               if m["status"] == "PROPOSED" and m["canonical_field"]])
         last_val = conn.execute(
-            "SELECT status, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
+            "SELECT run_id, status, results_json, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
         if last_val:
             validation_status, validation_when = last_val["status"], str(last_val["executed_utc"])[:10]
+            # Findings accepted through an approved exception no longer hold the workflow back (same rule as the Validation page).
+            try:
+                checks = json.loads(last_val["results_json"]).get("checks", [])
+                excs = validation_scenarios.list_exceptions(conn, migration_id, last_val["run_id"])
+                validation_status = validation_scenarios.effective_status(checks, excs)
+                accepted = sum(1 for e in excs if e["status"] == "APPROVED")
+                if accepted and validation_status == "PASS" and last_val["status"] != "PASS":
+                    validation_when += f" · {accepted} accepted exception(s)"
+            except (ValueError, TypeError, KeyError):
+                pass
     except Exception:
         logger.exception("Could not read workflow progress counts")
     finally:
@@ -1059,6 +1069,25 @@ async def create_validation_scenario(request: Request, entity_name: str = Form(.
         return _validation_redirect("error", str(exc))
     _target_setup_audit("VALIDATION_SCENARIO_DEFINED", user, {"scenario_id": created["scenario_id"], "check_type": check_type, "entity": entity_name, "stage": stage})
     return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
+
+
+@app.get("/api/validation/signoff-evidence")
+async def download_signoff_evidence(request: Request):
+    """Download the validation sign-off evidence for the latest validation run (counts, ids and reasons only)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            doc = signoff_evidence.build(conn, migration_id, user["name"])
+        except ValueError as exc:
+            return _validation_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SIGNOFF_EVIDENCE_EXPORTED", user, {"run_id": doc["validation_run"]["run_id"]})
+    return Response(content=json.dumps(doc, indent=2, default=str), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="signoff_evidence_{migration_id}.json"'})
 
 
 @app.post("/api/validation/scenarios/suggest")

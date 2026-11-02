@@ -198,6 +198,19 @@ def test_exception_proposed_by_validator_approved_by_analyst_never_the_proposer(
     assert "Validation scenarios" in page and "SCENARIO SCN-" in page and f"Exception {eid} APPROVED" in page and "decided by Ann" in page
     row = conn.execute("SELECT status, decided_by FROM validation_exceptions").fetchone()
     assert row == ("APPROVED", "Ann")
+    from control_plane.services import validation_scenarios as _vs
+    conn.row_factory = sqlite3.Row
+    last = conn.execute("SELECT migration_id, run_id, status, results_json FROM validation_runs ORDER BY executed_utc DESC LIMIT 1").fetchone()
+    checks = __import__("json").loads(last["results_json"])["checks"]
+    expected = _vs.effective_status(checks, _vs.list_exceptions(conn, last["migration_id"], last["run_id"]))
+    assert app_module.workflow_progress()["validation_status"] == expected  # the workflow bar uses the effective status
+    assert expected != "FAIL" or last["status"] == "FAIL"
+    ev = asyncio.run(call("sid", "Validation Specialist", "GET", "/api/validation/signoff-evidence"))
+    assert ev.status_code == 200 and "attachment" in ev.headers["content-disposition"]
+    doc = ev.json()
+    assert doc["schema"] == "xodus.signoff-evidence/v1" and doc["validation_run"]["run_id"] == last["run_id"] and doc["validation_run"]["effective_status"] == expected
+    assert any(e["status"] == "APPROVED" and e["decided_by"] == "Ann" and e["reason"] for e in doc["exceptions"])
+    assert "no source record values" in " ".join(doc["notes"])
 
 
 def _spec():
