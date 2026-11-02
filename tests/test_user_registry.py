@@ -97,7 +97,9 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             assert "Request an account" in (await go(anon, "GET", "/login")).text and (await go(anon, "GET", "/register")).status_code == 200
             f = {"name": "Root User", "email": "root@example.com", "password": PW, "confirm": PW}
             assert "error=" in (await go(anon, "POST", "/register", {**f, "confirm": "different-password"})).headers["location"]
-            assert "Administrator+account+created" in (await go(anon, "POST", "/register", f)).headers["location"]
+            created = (await go(anon, "POST", "/register", f)).headers["location"]
+            assert created.startswith("/login?notice=Administrator+account+created")
+            assert "login-notice" in (await go(anon, "GET", created)).text
             assert "do+not+match" not in (await go(anon, "POST", "/register", {**f, "email": "bot@example.com", "website": "spam"})).headers["location"]  # honeypot: silently dropped
             assert (await go(anon, "POST", "/register", {"name": "Ann Lee", "email": "ann@example.com", "password": PW, "confirm": PW})).headers["location"].startswith("/register?notice=")
             assert "waiting" in (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"]

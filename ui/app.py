@@ -254,11 +254,12 @@ def render_template_with_context(request: Request, template_name: str, extra_con
 # --- AUTHENTICATION ROUTES ---
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = None):
+async def login_page(request: Request, error: str = None, notice: str = None):
     demo_user = next(iter(session_mgr.authorized_users.values()), None) if session_mgr.demo_mode else None
     demo_email = next(iter(session_mgr.authorized_users.keys()), "") if session_mgr.demo_mode else ""
     return templates.TemplateResponse(request=request, name="login.html", context={
         "error": error,
+        "notice": notice,
         "demo_mode": bool(demo_user),
         "demo_email": demo_email,
     })
@@ -301,7 +302,7 @@ async def register_account(name: str = Form(""), email: str = Form(""), password
         conn.close()
     _target_setup_audit("USER_REGISTERED", {"email": email.strip().lower(), "name": " ".join(name.split()), "role": "self-registration"}, {"status": result["status"], "bootstrap": result["bootstrap"]})
     if result["status"] == "ACTIVE":
-        return RedirectResponse(url="/login?error=" + quote_plus("Administrator account created. Sign in with the email and password you just chose."), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/login?notice=" + quote_plus("Administrator account created. Sign in with the email and password you just chose."), status_code=status.HTTP_303_SEE_OTHER)
     return back("notice", "Registration received. A Platform Admin must approve it and assign your roles before you can sign in.")
 
 

@@ -27,3 +27,12 @@ Use the smallest reset that works.
 6. Validation: suggest default scenarios, adopt, run validation, propose and decide an exception (two different people), download sign-off evidence.
 7. Run simulated execution; acknowledge a problem and resolve it with a reason.
 Verified so far in headless Chromium against a local copy (unstyled, because the CDN stylesheet was blocked there); a rehearsal in the real browser with styling is still to be done.
+
+
+## Accounts on a hosted deployment (Render)
+- People register at `/register`. Passwords are stored only as salted scrypt hashes in the control-plane database (`app_users`). No hash variable is needed on the host.
+- New registrations are PENDING with no roles. A Platform Admin approves them on `/admin/users` and assigns roles; changing roles or disabling an account ends that user's sessions. The last active Platform Admin cannot be disabled or demoted.
+- The bootstrap administrator is the email in `XODUS_BOOTSTRAP_ADMIN_EMAIL`; when that variable is not set, the very first registration on an empty user table becomes Platform Admin (and may load the demo data set). On a public URL, register immediately after deploying, or set the variable so nobody else can claim the first account.
+- Built-in demo emails cannot be registered. `XODUS_DEMO_PASSWORD_HASHES` still works for them.
+- Persistence: users live in `App_Data/controlplane.db`. On a host with an ephemeral disk (default on Render) they are lost on every redeploy or restart; attach a persistent disk mounted at the `App_Data` folder, or move the control plane to a managed database.
+- Not built: email verification, password reset, CSRF tokens, an IP-level rate limit (only a per-account lockout of 5 failures for 15 minutes). Add these before any non-demo use.

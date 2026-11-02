@@ -34,6 +34,9 @@
 
         <!-- Login Form -->
         <form action="/login" method="POST" class="space-y-4">
+            {% if notice %}
+            <div class="bg-teal-50 border border-teal-200 text-teal-900 text-xs p-3 rounded-xl font-medium text-center" data-testid="login-notice">{{ notice }}</div>
+            {% endif %}
             {% if error %}
             <div class="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium text-center">
                 {{ error }}
