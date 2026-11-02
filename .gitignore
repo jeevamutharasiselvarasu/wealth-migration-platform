@@ -1,41 +1,17 @@
-# Python bytecode and test caches
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
 
-# Local runtime database and generated transformed packages
-App_Data/controlplane.db
-App_Data/Storage/
-dist/
-
-
-# Local source uploads and runtime-generated files
-App_Data/source_uploads/
-App_Data/Storage/
-App_Data/*.db
-App_Data/*.db-journal
-data_plane/storage/
-logs/
-*.log
-
-# Build and coverage output
-build/
-.coverage
-htmlcov/
-.coverage.*
-*.egg-info/
-
-# Local scratch outputs (may contain demo credentials)
-Claude outputs/
-
-# Local demo password hashes (never commit)
-demo_data/demo_passwords.local.json
-demo_data/demo_passwords.local.json.bak
-demo_data/demo_passwords.plaintext.local.json
-App_Data_backup_*/
+# Local runtime data (SQLite files, uploads, stored artifacts)
+App_Data/
 simulated_target_service/data/
 
-# Local rehearsal accounts (extra demo users on this machine only)
-demo_data/demo_users.local.json
-.venv/
+# Secrets and per-machine config (never commit)
 .env
+.env.*
+!.env.example
+demo_data/demo_passwords*
+demo_data/*.local.json
+demo_data/*.local.json.bak
