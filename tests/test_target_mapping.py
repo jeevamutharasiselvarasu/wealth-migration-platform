@@ -680,6 +680,10 @@ def test_target_model_review_correct_change_reject_and_move_before_confirm(conn,
     got = next(f for f in m["entities"][ent]["fields"] if f["name"] == field["name"])
     assert got["canonical_hint"] == other and got["review"]["status"] == "CORRECTED" and got["review"]["by"] == "Ann"
     assert got["review"]["inferred_hint"] == original  # the inference stays on record
+    # changing a matched field to "no canonical equivalent" makes it a gap with a usable suggested name (not None)
+    m = tc.review_field(conn, "Ann", field["table"], field["column"], "change", "", CANON_TYPES)["model"]
+    gone = next(f for f in m["entities"][ent]["fields"] if f["name"] == field["name"])
+    assert gone["canonical_hint"] is None and gone["suggested_canonical_field"]
     # correct puts it back on the original inference; reject drops it from the spec
     m = tc.review_field(conn, "Ann", field["table"], field["column"], "correct", "", CANON_TYPES)["model"]
     assert next(f for f in m["entities"][ent]["fields"] if f["name"] == field["name"])["canonical_hint"] == original

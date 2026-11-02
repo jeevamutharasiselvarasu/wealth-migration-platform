@@ -203,6 +203,8 @@ def review_field(conn: sqlite3.Connection, actor: str, table: str, column: str, 
         if name and name not in canonical.get(entity, {}):
             raise ValueError(f"{name} is not a canonical {entity} field.")
         f["canonical_hint"], f["confidence"] = (name or None), (1.0 if name else 0.0)
+        if not name and not f.get("suggested_canonical_field"):  # now a gap: give it a name a change request can use
+            f["suggested_canonical_field"] = target_inference.suggest_canonical_name(entity, f["column"], list(canonical.get(entity, {})))
         status = "CORRECTED"
     else:
         f["canonical_hint"], f["confidence"] = prior, prior_conf  # a correct/reject decision stands on the original inference
