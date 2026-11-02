@@ -1,17 +1,42 @@
+# Local or VM run with a separate PostgreSQL container. Set the values in a .env file next to this file (never commit it):
+#   POSTGRES_PASSWORD=<choose one>
+#   XODUS_BOOTSTRAP_ADMIN_EMAIL=you@example.com     (the first admin; register it at /register)
+# Start: docker compose up --build      Data lives in the `xodus_pgdata` volume and survives restarts and rebuilds.
 services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: xodus
+      POSTGRES_USER: xodus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - xodus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xodus -d xodus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   control_plane:
     build:
       context: .
       dockerfile: Dockerfile.control_plane
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8000:8000"
     environment:
       - PORT=8000
-      - CONTROL_PLANE_DB_PATH=App_Data/controlplane.db
+      - DATABASE_URL=postgresql://xodus:${POSTGRES_PASSWORD}@db:5432/xodus
+      - XODUS_SEED_DEMO=${XODUS_SEED_DEMO:-1}
+      - XODUS_BOOTSTRAP_ADMIN_EMAIL=${XODUS_BOOTSTRAP_ADMIN_EMAIL:-}
       - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-00000000-0000-0000-0000-000000000000}
       - AZURE_RESOURCE_GROUP=${AZURE_RESOURCE_GROUP:-rg-wealth-migration-dev}
       - ADF_FACTORY_NAME=${ADF_FACTORY_NAME:-adf-wealth-migration-dev}
       - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
-    volumes:
-      - ./App_Data:/app/App_Data
     restart: unless-stopped
+
+volumes:
+  xodus_pgdata:

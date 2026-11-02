@@ -39,3 +39,8 @@ Verified so far in headless Chromium against a local copy (unstyled, because the
 
 ## First-start demo seed (2026-11-02)
 Set `XODUS_SEED_DEMO=1` to load the demo template automatically when the app starts with no migration (demo mode on). It runs the same loader as "Load demo data set", acts as "System seed", and is recorded in the audit log. It never replaces an existing migration, so it is safe to leave on. Pair it with `XODUS_BOOTSTRAP_ADMIN_EMAIL` so a wiped hosted instance comes back usable after you register the admin. On Render's free tier the target connection may show "not reachable" because the simulated target is not running there.
+
+## PostgreSQL option (2026-11-02)
+Set `DATABASE_URL` (for example a free Neon or Supabase connection string, or the Compose `db` service) and the control plane, the event-sourced workspace state, registered users, source uploads and stored artifacts all use PostgreSQL. Without it the app behaves exactly as before on SQLite and local files. Uploaded files and generated artifacts are kept in the `stored_files` table in PostgreSQL mode, so nothing depends on the web host's disk. Use `/healthz` (`database` field) to confirm which backend is live.
+
+Tests: `XODUS_TEST_PG_URL=postgresql://user@host/db pytest` runs the suite against PostgreSQL with an emptied schema per test. Tests that build their own SQLite fixture (marked `sqlite_only`, or using a `db` fixture or `sqlite3.connect`) stay on SQLite in that mode. Not covered: a real Neon/Supabase connection from Render, load with many users, and `docker compose` itself (not run here). `simulated_target_service` still uses its own SQLite file. Backups of a free Postgres are your responsibility.

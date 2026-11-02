@@ -103,8 +103,8 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
             hint = _source(field)
             canonical = hint if hint in known else None  # never guess when the canonical field does not exist
             cur = conn.execute(
-                "INSERT OR IGNORE INTO target_mappings (target_mapping_id, migration_id, entity_name, target_field, canonical_field, "
-                "transformation_expression, status, spec_version, created_utc) VALUES (?, ?, ?, ?, ?, 'DIRECT_COPY', 'PROPOSED', ?, ?)",
+                "INSERT INTO target_mappings (target_mapping_id, migration_id, entity_name, target_field, canonical_field, "
+                "transformation_expression, status, spec_version, created_utc) VALUES (?, ?, ?, ?, ?, 'DIRECT_COPY', 'PROPOSED', ?, ?) ON CONFLICT DO NOTHING",
                 ("TGT-" + uuid.uuid4().hex[:12].upper(), migration_id, entity, field["name"], canonical, str(spec["spec_version"]), now))
             created += cur.rowcount
             if not cur.rowcount and not conn.execute(

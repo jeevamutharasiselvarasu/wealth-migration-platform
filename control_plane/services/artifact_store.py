@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from control_plane import file_store
+from control_plane.db import table_columns, table_exists, using_postgres
+
 KINDS = {"ADF_PACKAGE": ("adf_package", "zip", "application/zip"), "SIGNOFF_EVIDENCE": ("signoff_evidence", "json", "application/json")}
 STORAGE_ROOT = Path("App_Data/Storage")
 
@@ -23,7 +26,7 @@ _DDL = """CREATE TABLE IF NOT EXISTS stored_artifacts (
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
-    if "provenance_json" not in {r[1] for r in conn.execute("PRAGMA table_info(stored_artifacts)").fetchall()}:
+    if "provenance_json" not in table_columns(conn, "stored_artifacts"):
         conn.execute("ALTER TABLE stored_artifacts ADD COLUMN provenance_json TEXT NOT NULL DEFAULT '{}'")
 
 
@@ -41,9 +44,12 @@ def save(conn: sqlite3.Connection, migration_id: str, kind: str, data: bytes, ac
     version = last + 1
     filename = f"{prefix}_{_safe(migration_id)}_v{version}.{ext}"
     rel = f"{_safe(migration_id)}/ARTIFACTS/{prefix}/{filename}"
-    path = (root or STORAGE_ROOT) / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    if root is None and using_postgres():  # PostgreSQL mode: the bytes are saved in the same transaction as the registry row
+        file_store.put_db(conn, file_store.DB_PREFIX + "artifacts/" + rel, data)
+    else:
+        path = (root or STORAGE_ROOT) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
     row = {"artifact_id": "ART-" + uuid.uuid4().hex[:8].upper(), "migration_id": migration_id, "kind": kind, "artifact_version": version,
            "filename": filename, "rel_path": rel, "size_bytes": len(data), "content_sha256": hashlib.sha256(data).hexdigest(),
            "generated_by": actor, "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -83,10 +89,15 @@ def read(conn: sqlite3.Connection, artifact_id: str, root: Optional[Path] = None
     if not r:
         return None
     rec = _rec([c[0] for c in cur.description], r)
-    path = (root or STORAGE_ROOT) / rec["rel_path"]
-    if not path.is_file():
-        raise ValueError("The stored file is missing from storage.")
-    data = path.read_bytes()
+    if root is None and using_postgres():
+        data = file_store.get_db(conn, file_store.DB_PREFIX + "artifacts/" + rec["rel_path"])
+        if data is None:
+            raise ValueError("The stored file is missing from storage.")
+    else:
+        path = (root or STORAGE_ROOT) / rec["rel_path"]
+        if not path.is_file():
+            raise ValueError("The stored file is missing from storage.")
+        data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != rec["content_sha256"]:
         raise ValueError("The stored file no longer matches its recorded hash.")
     rec["data"], rec["media_type"] = data, KINDS[rec["kind"]][2]
@@ -97,20 +108,14 @@ def build_provenance(conn: sqlite3.Connection, migration_id: str, spec: Optional
     """Exactly what a generated package is built from: approved target mapping ids, the target model version, the latest validation run
     and the latest deployment contract package. Identifiers and hashes only."""
     def one(sql: str):
-        try:
-            r = conn.execute(sql, (migration_id,)).fetchone()
-        except sqlite3.OperationalError:
-            return None
-        return r
+        table = sql.split(" FROM ", 1)[1].split()[0]
+        return conn.execute(sql, (migration_id,)).fetchone() if table_exists(conn, table) else None
     run = one("SELECT run_id, status FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1")
     contract = one("SELECT package_id, package_version, content_sha256 FROM deployment_packages WHERE migration_id = ? ORDER BY package_version DESC LIMIT 1")
     ids = sorted(m["target_mapping_id"] for m in approved if m.get("status") == "APPROVED")
-    try:
-        src_ids = sorted(r[0] for r in conn.execute(
-            "SELECT COALESCE(mapping_id, entity_name || '.' || source_field || '>' || canonical_field) FROM canonical_mappings "
-            "WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall())
-    except sqlite3.OperationalError:
-        src_ids = []
+    src_ids = sorted(r[0] for r in conn.execute(
+        "SELECT COALESCE(mapping_id, entity_name || '.' || source_field || '>' || canonical_field) FROM canonical_mappings "
+        "WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()) if table_exists(conn, "canonical_mappings") else []
     return {"approved_target_mapping_ids": ids, "approved_mapping_set_sha256": hashlib.sha256("\n".join(ids).encode()).hexdigest(),
             "approved_source_mapping_ids": src_ids, "approved_source_mapping_set_sha256": hashlib.sha256("\n".join(src_ids).encode()).hexdigest(),
             "target_model_version": (spec or {}).get("spec_version"),

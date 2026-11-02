@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from control_plane.db import IntegrityError
 from control_plane.services import transformation_rules as tr
 
 CHECK_TYPES: Dict[str, str] = {
@@ -223,7 +224,7 @@ def propose_exception(conn: sqlite3.Connection, migration_id: str, run_id: str, 
     try:
         conn.execute("INSERT INTO validation_exceptions (exception_id, migration_id, run_id, check_ref, reason, proposed_by, proposed_utc) "
                      "VALUES (?, ?, ?, ?, ?, ?, ?)", (eid, migration_id, run_id, check_ref, reason.strip(), actor, _now()))
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         raise ValueError("An exception already exists for that check in this run.")
     return eid
 

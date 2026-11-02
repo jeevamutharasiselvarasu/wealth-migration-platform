@@ -109,6 +109,7 @@ def test_review_requires_reason_and_rejects_unapproved_rules_and_repeat_decision
         tm.review(conn, m["target_mapping_id"], "REJECTED", "Ann", "again")
 
 
+@pytest.mark.sqlite_only
 def test_preview_applies_rules_reports_findings_and_contains_no_values(conn, spec):
     tr.create_rule_version(conn, "CUST_MAP", "VALUE_MAP", "codes", {"map": {"SCH": "SCHWAB"}}, "Ann")
     tr.decide_rule(conn, "CUST_MAP", 1, "APPROVED", "Bob", "ok")
@@ -131,6 +132,7 @@ def test_preview_applies_rules_reports_findings_and_contains_no_values(conn, spe
     assert "SCHWAB" not in repr(result) and "A1" not in repr(result)  # counts and findings only
 
 
+@pytest.mark.sqlite_only
 def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path, monkeypatch, target_service):
     import ui.app as app_module
     import ui.state as state_module
@@ -358,6 +360,7 @@ def test_gap_report_lists_missing_unused_and_code_lists(spec):
     assert {c["target_field"] for c in report["code_lists"]} == {"SIMP_ACCT_REGISTRATION.REG_CD", "SIMP_CUSTOMER.SEGMENT_CD"}
 
 
+@pytest.mark.sqlite_only
 def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn, tmp_path, monkeypatch, target_service):
     import ui.app as app_module
     import ui.state as state_module

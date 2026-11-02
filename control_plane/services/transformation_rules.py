@@ -236,7 +236,7 @@ def create_rule_version(conn: sqlite3.Connection, rule_id: str, rule_type: str, 
     if not _text(description).strip():
         raise ValueError("A description of the business reason is required.")
     normalized = validate_params(rule_type, params)
-    existing = conn.execute("SELECT rule_type, MAX(version) AS v FROM transformation_rules WHERE rule_id = ?", (rule_id,)).fetchone()
+    existing = conn.execute("SELECT rule_type, version AS v FROM transformation_rules WHERE rule_id = ? ORDER BY version DESC LIMIT 1", (rule_id,)).fetchone()
     version = 1
     if existing and existing["v"]:
         if existing["rule_type"] != rule_type:

@@ -106,7 +106,7 @@ def deploy(conn: sqlite3.Connection, migration_id: str, artifact: Dict[str, Any]
     row = {"deployment_id": "ADFDEP-" + uuid.uuid4().hex[:8].upper(), "migration_id": migration_id, "artifact_id": artifact["artifact_id"],
            "artifact_version": artifact["artifact_version"], "factory_name": result["factory"] or "unknown-simulated-factory", "status": status,
            "resources_json": json.dumps(result["resources"]), "errors_json": json.dumps(result["errors"]), "deployed_by": actor,
-           "deployed_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+           "deployed_utc": datetime.now(timezone.utc).isoformat(timespec="microseconds")}
     conn.execute("INSERT INTO adf_simulated_deployments (deployment_id, migration_id, artifact_id, artifact_version, factory_name, status, resources_json, "
                  "errors_json, deployed_by, deployed_utc) VALUES (:deployment_id, :migration_id, :artifact_id, :artifact_version, :factory_name, :status, "
                  ":resources_json, :errors_json, :deployed_by, :deployed_utc)", row)
@@ -115,7 +115,7 @@ def deploy(conn: sqlite3.Connection, migration_id: str, artifact: Dict[str, Any]
 
 def latest(conn: sqlite3.Connection, migration_id: str) -> Optional[Dict[str, Any]]:
     ensure_table(conn)
-    cur = conn.execute("SELECT * FROM adf_simulated_deployments WHERE migration_id = ? ORDER BY deployed_utc DESC, rowid DESC LIMIT 1", (migration_id,))
+    cur = conn.execute("SELECT * FROM adf_simulated_deployments WHERE migration_id = ? ORDER BY deployed_utc DESC, artifact_version DESC LIMIT 1", (migration_id,))
     r = cur.fetchone()
     if not r:
         return None

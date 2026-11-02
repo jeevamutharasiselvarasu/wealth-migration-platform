@@ -53,7 +53,9 @@ def review_failure(conn: sqlite3.Connection, run_id: str, idx: int, decision: st
     if cur and cur["status"] == "RESOLVED":
         raise ValueError("This problem is already resolved.")
     now = datetime.now(timezone.utc).isoformat()
-    conn.execute("INSERT OR REPLACE INTO execution_failure_reviews (run_id, failure_idx, status, reason, reviewer, reviewed_utc) VALUES (?, ?, ?, ?, ?, ?)",
+    conn.execute("INSERT INTO execution_failure_reviews (run_id, failure_idx, status, reason, reviewer, reviewed_utc) VALUES (?, ?, ?, ?, ?, ?) "
+                 "ON CONFLICT (run_id, failure_idx) DO UPDATE SET status = excluded.status, reason = excluded.reason, "
+                 "reviewer = excluded.reviewer, reviewed_utc = excluded.reviewed_utc",
                  (run_id, idx, decision, reason.strip()[:500], reviewer, now))
     return {"run_id": run_id, "failure_idx": idx, "status": decision, "failure": failures[idx], "reviewed_utc": now}
 

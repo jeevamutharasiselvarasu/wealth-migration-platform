@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,13 +7,47 @@ from typing import Any, Dict, List, Optional
 
 DB_PATH = Path("App_Data/controlplane.db")
 
+try:  # PostgreSQL is optional: it is used only when DATABASE_URL is set.
+    import psycopg
+    IntegrityError = (sqlite3.IntegrityError, psycopg.errors.IntegrityError)
+except ImportError:  # pragma: no cover
+    IntegrityError = (sqlite3.IntegrityError,)
 
-def get_db_connection() -> sqlite3.Connection:
-    """Provides a thread-safe connection to the Control Plane database."""
+
+def database_url() -> str:
+    return os.getenv("DATABASE_URL", "").strip()
+
+
+def using_postgres() -> bool:
+    return bool(database_url())
+
+
+def get_db_connection():
+    """Connection to the control-plane database: PostgreSQL when DATABASE_URL is set, otherwise the local SQLite file.
+    Both expose the same small API (execute, cursor, commit, rollback, close; rows readable by index or name)."""
+    if using_postgres():
+        from control_plane import pg_compat
+        return pg_compat.connect(database_url())
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _is_sqlite(conn) -> bool:
+    return isinstance(conn, sqlite3.Connection)
+
+
+def table_exists(conn, name: str) -> bool:
+    if not _is_sqlite(conn):
+        return conn.execute("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?", (name,)).fetchone() is not None
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone() is not None
+
+
+def table_columns(conn, name: str) -> set:
+    if not _is_sqlite(conn):
+        return {r[0] for r in conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?", (name,)).fetchall()}
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({name})").fetchall()}
 
 
 def init_db() -> None:

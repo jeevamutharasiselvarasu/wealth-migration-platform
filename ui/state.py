@@ -8,7 +8,8 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
-from control_plane.db import get_db_connection, init_db
+from control_plane import file_store
+from control_plane.db import get_db_connection, init_db, table_exists
 from control_plane.services.source_file_adapter import read_source_records
 
 SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
@@ -65,9 +66,7 @@ class WorkspaceStateStore:
 
         conn = get_db_connection()
         try:
-            has_events = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workflow_events'"
-            ).fetchone() is not None
+            has_events = table_exists(conn, "workflow_events")
             row = conn.execute(
                 """SELECT migration_id FROM workflow_events
                    WHERE event_type = 'MIGRATION_CONTEXT_UPDATED'
@@ -99,9 +98,9 @@ class WorkspaceStateStore:
                     if entity not in self.P0_ENTITIES and entity != "Needs clarification":
                         continue
                     stored_path = record.get("stored_path")
-                    if stored_path and Path(stored_path).is_file():
+                    if stored_path and file_store.is_file(stored_path):
                         try:
-                            records = read_source_records(record.get("filename", "source.csv"), Path(stored_path).read_bytes())
+                            records = read_source_records(record.get("filename", "source.csv"), file_store.read_bytes(stored_path))
                             record.setdefault("columns", list(records[0].keys()) if records else [])
                             record.setdefault("row_count", len(records))
                             record.setdefault("column_count", len(record.get("columns", [])))
@@ -177,9 +176,7 @@ class WorkspaceStateStore:
 
         conn = get_db_connection()
         try:
-            has_requests = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mapping_information_requests'"
-            ).fetchone() is not None
+            has_requests = table_exists(conn, "mapping_information_requests")
             request_rows = conn.execute(
                 """SELECT request_id, migration_id, entity_name, canonical_field, source_file,
                           status, question, requested_by, created_utc, resolved_utc, resolution, response
@@ -196,9 +193,7 @@ class WorkspaceStateStore:
                  "resolution": row["resolution"], "response": row["response"]}
                 for row in request_rows
             ]
-            has_mcl_runs = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mcl_execution_runs'"
-            ).fetchone() is not None
+            has_mcl_runs = table_exists(conn, "mcl_execution_runs")
             run_rows = conn.execute(
                 """SELECT mcl_run_id, status, entity_summary_json, relationship_summary_json,
                           execution_boundary_json, executed_utc
@@ -395,10 +390,7 @@ class WorkspaceStateStore:
                     and existing.get("content_sha256") == content_sha256):
                 existing["_duplicate_upload"] = True
                 return existing
-        upload_dir = SOURCE_UPLOAD_ROOT / safe_entity
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        stored_path = upload_dir / f"{uuid.uuid4().hex}_{safe_name}"
-        stored_path.write_bytes(content_bytes)
+        stored_path = file_store.write(SOURCE_UPLOAD_ROOT / safe_entity, f"{uuid.uuid4().hex}_{safe_name}", content_bytes)
 
         record = {
             "file_id": uuid.uuid4().hex,
@@ -407,7 +399,7 @@ class WorkspaceStateStore:
             "source_role": str(source_role or "ENTITY_MASTER").strip().upper(),
             "entity_name": entity_name,
             "migration_id": migration_id,
-            "stored_path": str(stored_path.resolve()),
+            "stored_path": str(stored_path.resolve()) if isinstance(stored_path, Path) else str(stored_path),
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(content_bytes),
             "row_count": len(records),

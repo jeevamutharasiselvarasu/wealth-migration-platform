@@ -132,7 +132,9 @@ def review_relationship(conn: sqlite3.Connection, migration_id: str, child: str,
         raise ValueError("A relationship needs two different columns.")
     if decision == "REJECTED" and not str(reason).strip():
         raise ValueError("A rejection reason is required.")
-    conn.execute("INSERT OR REPLACE INTO relationship_reviews VALUES (?, ?, ?, ?, ?, ?, ?)",
+    conn.execute("INSERT INTO relationship_reviews (migration_id, child, parent, status, reason, reviewer, reviewed_utc) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                 "ON CONFLICT (migration_id, child, parent) DO UPDATE SET status = excluded.status, reason = excluded.reason, "
+                 "reviewer = excluded.reviewer, reviewed_utc = excluded.reviewed_utc",
                  (migration_id, child, parent, decision, str(reason).strip()[:500], reviewer, datetime.now(timezone.utc).isoformat()))
 
 

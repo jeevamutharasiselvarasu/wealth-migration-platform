@@ -5,6 +5,7 @@ from pathlib import Path
 from control_plane.services.profiler import SourceDataProfiler
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane.db import init_db, get_db_connection
+from control_plane import file_store
 import ui.state as state_module
 from ui.state import WorkspaceStateStore
 
@@ -65,7 +66,7 @@ def test_uploaded_source_file_is_persisted_and_reusable(tmp_path, monkeypatch):
     assert record["status"] == "UPLOADED"
     assert record["row_count"] == 3
     assert record["column_count"] == 5
-    assert Path(stored_path).read_bytes() == SAMPLE_CSV
+    assert file_store.read_bytes(stored_path) == SAMPLE_CSV
     assert store.entity_sample_files["Account"]["stored_path"] == stored_path
 
 
@@ -84,7 +85,7 @@ def test_account_source_roles_keep_separate_files_and_lineage(tmp_path, monkeypa
     assert account_type["entity_name"] == "Account"
     assert account_type["migration_id"]
     assert account_type["filename"] == "account_type.csv"
-    assert Path(account_type["stored_path"]).read_bytes() == account_type_csv
+    assert file_store.read_bytes(account_type["stored_path"]) == account_type_csv
     assert store.entity_sample_files["Account"]["stored_path"] == master["stored_path"]
     assert store.entity_source_files["Account"]["NAME_ADDRESS"]["stored_path"] == name_address["stored_path"]
     assert store.entity_source_files["Account"]["ACCOUNT_TYPE"]["stored_path"] == account_type["stored_path"]

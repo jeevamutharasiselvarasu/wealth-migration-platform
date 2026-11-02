@@ -17,6 +17,7 @@ from ui.work_queue import build_queue
 from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+from control_plane import file_store
 from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
@@ -26,7 +27,7 @@ from control_plane.services.source_file_adapter import read_source_records
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
-from control_plane.db import get_db_connection
+from control_plane.db import get_db_connection, using_postgres
 from control_plane.services.firm_config import FirmConfigError, load_firm_config
 from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
@@ -287,7 +288,7 @@ async def healthz():
         conn.close()
     boot = user_registry.bootstrap_admin_email()
     reg = next((u for u in users if u["email"] == boot), None) if boot else None
-    return {"status": "ok", "commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7], "registration_page": True,
+    return {"status": "ok", "database": "postgresql" if using_postgres() else "sqlite", "commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7], "registration_page": True,
             "bootstrap_admin_configured": bool(boot), "bootstrap_admin_is_demo_email": bool(boot) and boot in session_mgr.authorized_users,
             "bootstrap_admin_registered": bool(reg), "bootstrap_admin_status": reg["status"] if reg else None,
             "registered_users": len(users), "active_admins": sum(1 for u in users if u["status"] == "ACTIVE" and "Platform Admin" in u["roles"])}
@@ -761,7 +762,7 @@ async def analyze_source_file_with_agents(request: Request, file_id: str):
         raise HTTPException(status_code=404, detail="Source file was not found.")
     entity, record = found
     try:
-        content = Path(record["stored_path"]).read_bytes()
+        content = file_store.read_bytes(record["stored_path"])
         records = read_source_records(record["filename"], content)
         analysis = MigrationAgentCoordinator().analyze(
             records, context=record.get("source_context", ""),
@@ -868,11 +869,11 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
     loaded = []
     for item in source_uploads:
         stored = item.get("stored_path")
-        if item.get("inference_approval_status") == "REJECTED" or not stored or not Path(stored).is_file() or len(loaded) >= 12:
+        if item.get("inference_approval_status") == "REJECTED" or not stored or not file_store.is_file(stored) or len(loaded) >= 12:
             continue
         try:
             loaded.append({"name": item.get("filename", "source"), "entity": item["inferred_entity"],
-                           "rows": read_source_records(item.get("filename", "source.csv"), Path(stored).read_bytes())})
+                           "rows": read_source_records(item.get("filename", "source.csv"), file_store.read_bytes(stored))})
         except (OSError, ValueError):
             continue
     if len(loaded) >= 2:
@@ -1431,10 +1432,10 @@ async def run_validation(request: Request):
             if rec.get("inference_approval_status") != "APPROVED" or entity not in migration_validation.ENTITIES:
                 continue
             stored = rec.get("stored_path")
-            if not stored or not Path(stored).is_file():
+            if not stored or not file_store.is_file(stored):
                 continue
             try:
-                records = read_source_records(rec.get("filename", "source.csv"), Path(stored).read_bytes())
+                records = read_source_records(rec.get("filename", "source.csv"), file_store.read_bytes(stored))
             except (OSError, ValueError):
                 continue
             files.setdefault(entity, []).append({"filename": rec.get("filename", "source"), "records": records})
@@ -2071,10 +2072,10 @@ def _canonical_rows_for_migration(migration_id: str):
             approved_transformations={s: r["transformation_expression"] for s, r in rules.items()})
         for rec in group.values():
             stored = rec.get("stored_path")
-            if rec.get("inference_approval_status") != "APPROVED" or not stored or not Path(stored).is_file():
+            if rec.get("inference_approval_status") != "APPROVED" or not stored or not file_store.is_file(stored):
                 continue
             try:
-                records = read_source_records(rec.get("filename", "source.csv"), Path(stored).read_bytes())
+                records = read_source_records(rec.get("filename", "source.csv"), file_store.read_bytes(stored))
             except (OSError, ValueError):
                 continue
             file_rows.append(mapper.map_source_to_canonical(entity, records)["mapped_records"])
@@ -2870,12 +2871,11 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         raise HTTPException(status_code=409, detail=f"Entity inference for {entity_name} must be approved before mapping.")
     if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
         raise HTTPException(status_code=409, detail=f"No valid uploaded source file is available for {entity_name}.")
-    source_path = Path(uploaded["stored_path"])
-    if not source_path.is_file():
+    if not file_store.is_file(uploaded["stored_path"]):
         raise HTTPException(status_code=409, detail=f"The uploaded source file for {entity_name} is no longer available; upload it again.")
 
     run_id = f"RUN-{uuid.uuid4().hex}"
-    content = source_path.read_bytes()
+    content = file_store.read_bytes(uploaded["stored_path"])
     try:
         source_records = read_source_records(uploaded["filename"], content)
     except ValueError as exc:
@@ -3062,7 +3062,7 @@ async def map_mcl_uploaded_files():
         uploaded = state_store.entity_sample_files.get(entity_name)
         if not uploaded or uploaded.get("status") != "UPLOADED" or not uploaded.get("stored_path"):
             raise HTTPException(status_code=409, detail=f"MCL run blocked: upload a valid {entity_name} source file first.")
-        if not Path(uploaded["stored_path"]).is_file():
+        if not file_store.is_file(uploaded["stored_path"]):
             raise HTTPException(status_code=409, detail=f"MCL run blocked: the {entity_name} source file is missing; upload it again.")
 
     entity_results = {}
