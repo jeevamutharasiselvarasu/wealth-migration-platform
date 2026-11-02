@@ -537,6 +537,13 @@ async def load_demo_migration(request: Request):
         raise HTTPException(status_code=404, detail="Demo mode is disabled.")
     if not _can_load_demo(user):
         raise HTTPException(status_code=403, detail="The one-click demo load is not enabled for this account.")
+    result = _run_demo_load(user)
+    loaded_files, registered_knowledge, target_note = result["loaded_files"], result["registered_knowledge"], result["target_note"]
+    return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered.{target_note} Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
+    """Create the demo migration from demo_data/ (shared by the one-click route and the first-start seed). Authorisation is the caller's job."""
     manifest_path = Path(root_dir) / "demo_data" / "demo_migration.json"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -688,7 +695,28 @@ async def load_demo_migration(request: Request):
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
-    return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered.{target_note} Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
+    return {"loaded_files": loaded_files, "registered_knowledge": registered_knowledge, "target_note": target_note}
+
+
+def seed_demo_if_empty() -> str:
+    """First-start seed: when XODUS_SEED_DEMO=1, demo mode is on and no migration exists yet, load the demo template once.
+    Never overwrites an existing migration. Returns a short status string."""
+    if os.getenv("XODUS_SEED_DEMO", "").strip().lower() not in {"1", "true", "yes"}:
+        return "disabled"
+    if not session_mgr.demo_mode:
+        return "skipped: demo mode is off"
+    if state_store.questionnaire_data.get("migration_setup"):
+        return "skipped: a migration already exists"
+    try:
+        result = _run_demo_load({"name": "System seed"})
+    except HTTPException as exc:
+        return f"failed: {exc.detail}"
+    return f"seeded: {len(result['loaded_files'])} source files, {len(result['registered_knowledge'])} knowledge assets"
+
+
+@app.on_event("startup")
+async def _seed_on_startup() -> None:
+    logging.getLogger("xodus.seed").info("demo seed: %s", seed_demo_if_empty())
 
 
 @app.post("/api/relationships/review")

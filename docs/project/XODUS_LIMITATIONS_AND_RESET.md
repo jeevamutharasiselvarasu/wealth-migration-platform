@@ -36,3 +36,6 @@ Verified so far in headless Chromium against a local copy (unstyled, because the
 - Built-in demo emails cannot be registered. `XODUS_DEMO_PASSWORD_HASHES` still works for them.
 - Persistence: users live in `App_Data/controlplane.db`. On a host with an ephemeral disk (default on Render) they are lost on every redeploy or restart; attach a persistent disk mounted at the `App_Data` folder, or move the control plane to a managed database.
 - Not built: email verification, password reset, CSRF tokens, an IP-level rate limit (only a per-account lockout of 5 failures for 15 minutes). Add these before any non-demo use.
+
+## First-start demo seed (2026-11-02)
+Set `XODUS_SEED_DEMO=1` to load the demo template automatically when the app starts with no migration (demo mode on). It runs the same loader as "Load demo data set", acts as "System seed", and is recorded in the audit log. It never replaces an existing migration, so it is safe to leave on. Pair it with `XODUS_BOOTSTRAP_ADMIN_EMAIL` so a wiped hosted instance comes back usable after you register the admin. On Render's free tier the target connection may show "not reachable" because the simulated target is not running there.
