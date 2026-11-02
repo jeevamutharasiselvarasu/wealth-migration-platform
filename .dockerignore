@@ -1,0 +1,13 @@
+# Keep secrets, local data and tooling out of the image
+.git
+.venv
+.env
+.env.*
+!.env.example
+App_Data
+__pycache__
+*.pyc
+.pytest_cache
+demo_data/*.local.json
+demo_data/*.local.json.bak
+demo_data/demo_passwords*

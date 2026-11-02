@@ -89,7 +89,11 @@ class PgConnection:
     def close(self) -> None:
         if self._conn is not None:
             conn, self._conn = self._conn, None
-            self._pool.putconn(conn)  # the pool rolls back an open transaction
+            try:
+                conn.rollback()  # discard anything uncommitted (reads leave a transaction open); same outcome as SQLite's close()
+            except Exception:
+                pass
+            self._pool.putconn(conn)
 
     def __del__(self):
         try:

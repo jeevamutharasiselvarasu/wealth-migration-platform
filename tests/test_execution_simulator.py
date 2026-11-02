@@ -83,7 +83,8 @@ def test_problems_can_be_acknowledged_then_resolved_with_a_reason(tmp_path):
         ex.review_failure(conn, rid, 0, "ACKNOWLEDGED", "again", "Ann")
     review = ex.list_runs(conn, "M")[0]["reviews"][0]
     assert review["status"] == "RESOLVED" and review["reviewer"] == "Ann" and "source corrected" in review["reason"]
-    assert "A2" not in str(review) and "ZZZ" not in str(review)
+    shown = str({k: v for k, v in review.items() if k != "run_id"})  # run ids are random hex and can contain "A2" by chance
+    assert "A2" not in shown and "ZZZ" not in shown
 
 
 def test_failure_review_route_is_analyst_or_admin_only():
