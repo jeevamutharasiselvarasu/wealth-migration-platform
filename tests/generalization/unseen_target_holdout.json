@@ -1,0 +1,207 @@
+{
+ "note": "HOLD-OUT target schema #2 (camelCase, different vocabulary). Written after tuning on unseen_target_schema.json; do not tune against it.",
+ "schema": {
+  "system": "Northwind WealthOS",
+  "version": "2.4",
+  "code_lists": {},
+  "tables": [
+   {
+    "name": "Mandates",
+    "columns": [
+     {
+      "name": "mandateNumber",
+      "type": "string",
+      "required": true,
+      "description": "Account number at the custodian"
+     },
+     {
+      "name": "custodianName",
+      "type": "string",
+      "required": true,
+      "description": "Name of the custodian"
+     },
+     {
+      "name": "accountRegistration",
+      "type": "string",
+      "required": true,
+      "description": "Registration type of the account"
+     },
+     {
+      "name": "openedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date the account was opened"
+     },
+     {
+      "name": "repCode",
+      "type": "string",
+      "required": false,
+      "description": "Representative code"
+     },
+     {
+      "name": "groupingId",
+      "type": "string",
+      "required": false,
+      "description": "Household grouping the account belongs to"
+     },
+     {
+      "name": "currentBalance",
+      "type": "decimal",
+      "required": false,
+      "description": "Current balance"
+     },
+     {
+      "name": "balanceAsOf",
+      "type": "date",
+      "required": false,
+      "description": "Balance reporting date"
+     },
+     {
+      "name": "taxTreatment",
+      "type": "string",
+      "required": false,
+      "description": "Taxable, tax deferred or non taxable"
+     },
+     {
+      "name": "closedOn",
+      "type": "date",
+      "required": false,
+      "description": "Date the account closed"
+     },
+     {
+      "name": "etlBatchId",
+      "type": "string",
+      "required": false,
+      "description": "Load batch identifier"
+     }
+    ]
+   },
+   {
+    "name": "Persons",
+    "columns": [
+     {
+      "name": "personId",
+      "type": "string",
+      "required": true,
+      "description": "Unique person identifier"
+     },
+     {
+      "name": "forename",
+      "type": "string",
+      "required": false,
+      "description": "First name"
+     },
+     {
+      "name": "lastName",
+      "type": "string",
+      "required": false,
+      "description": "Last name"
+     },
+     {
+      "name": "ssn",
+      "type": "string",
+      "required": true,
+      "description": "Social security number"
+     },
+     {
+      "name": "dateOfBirth",
+      "type": "date",
+      "required": false,
+      "description": "Date of birth"
+     },
+     {
+      "name": "addressLine1",
+      "type": "string",
+      "required": false,
+      "description": "Street address"
+     },
+     {
+      "name": "city",
+      "type": "string",
+      "required": false,
+      "description": "City"
+     },
+     {
+      "name": "stateCode",
+      "type": "string",
+      "required": false,
+      "description": "State"
+     },
+     {
+      "name": "zipCode",
+      "type": "string",
+      "required": false,
+      "description": "Postal code"
+     },
+     {
+      "name": "groupingId",
+      "type": "string",
+      "required": false,
+      "description": "Household grouping"
+     },
+     {
+      "name": "groupingRank",
+      "type": "integer",
+      "required": false,
+      "description": "Rank within the household, 1 is primary"
+     },
+     {
+      "name": "lastModifiedBy",
+      "type": "string",
+      "required": false,
+      "description": "User who last changed the row"
+     }
+    ]
+   },
+   {
+    "name": "Groupings",
+    "columns": [
+     {
+      "name": "groupingId",
+      "type": "string",
+      "required": true,
+      "description": "Household identifier"
+     },
+     {
+      "name": "groupingName",
+      "type": "string",
+      "required": true,
+      "description": "Household name"
+     }
+    ]
+   }
+  ]
+ },
+ "truth_tables": {
+  "Mandates": "Account",
+  "Persons": "Client",
+  "Groupings": "Household"
+ },
+ "truth_columns": {
+  "Mandates.mandateNumber": "ACCT_NUM",
+  "Mandates.custodianName": "CUSTODIAN_NAME",
+  "Mandates.accountRegistration": "REG_TYPE",
+  "Mandates.openedOn": "OPEN_DATE",
+  "Mandates.repCode": "REP_CODE",
+  "Mandates.groupingId": "HH_ID",
+  "Mandates.currentBalance": "BALANCE",
+  "Mandates.balanceAsOf": "BALANCE_AS_OF",
+  "Mandates.taxTreatment": "TAX_STATUS",
+  "Mandates.closedOn": "CLOSED_DATE",
+  "Mandates.etlBatchId": null,
+  "Persons.personId": "CLIENT_ID",
+  "Persons.forename": "FIRST_NAME",
+  "Persons.lastName": "LAST_NAME",
+  "Persons.ssn": "TAX_ID",
+  "Persons.dateOfBirth": "DATE_OF_BIRTH",
+  "Persons.addressLine1": "ADDRESS_LINE_1",
+  "Persons.city": "CITY",
+  "Persons.stateCode": "STATE",
+  "Persons.zipCode": "POSTAL_CODE",
+  "Persons.groupingId": "HH_ID",
+  "Persons.groupingRank": "HH_ORDER",
+  "Persons.lastModifiedBy": null,
+  "Groupings.groupingId": "HH_ID",
+  "Groupings.groupingName": "HH_NAME"
+ }
+}

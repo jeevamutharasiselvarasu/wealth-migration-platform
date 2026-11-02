@@ -1,0 +1,37 @@
+{
+  "note": "Synthetic target the platform has never seen (a fictional 'Meridian' wealth platform). truth: table -> entity, and column -> canonical field (null = no canonical equivalent, must stay unmapped).",
+  "schema": {"system": "Meridian", "version": "9.1", "code_lists": {}, "tables": [
+    {"name": "PORTFOLIO_HDR", "columns": [
+      {"name": "PORTFOLIO_NO", "type": "string", "required": true, "description": "Account number issued by the custodian"},
+      {"name": "HOLDING_FIRM", "type": "string", "required": true, "description": "Custodian holding the assets"},
+      {"name": "OWNERSHIP_FORM", "type": "string", "required": true, "description": "How the account is titled: individual, joint, trust, IRA"},
+      {"name": "INCEPTION_DT", "type": "date", "required": true, "description": "Date the portfolio was opened"},
+      {"name": "ADVISOR_CD", "type": "string", "required": false, "description": "Servicing advisor code"},
+      {"name": "FAMILY_UNIT_REF", "type": "string", "required": false, "description": "Family unit the portfolio belongs to"},
+      {"name": "MKT_VALUE_USD", "type": "decimal", "required": false, "description": "Current market value in dollars"},
+      {"name": "VALUED_ON", "type": "date", "required": false, "description": "Date the market value is reported as of"},
+      {"name": "ROW_HASH", "type": "string", "required": false, "description": "Internal change-detection hash"}]},
+    {"name": "INVESTOR_MSTR", "columns": [
+      {"name": "INVESTOR_KEY", "type": "string", "required": true, "description": "Unique investor identifier"},
+      {"name": "GIVEN_NM", "type": "string", "required": false, "description": "First name"},
+      {"name": "FAMILY_NM", "type": "string", "required": false, "description": "Last name"},
+      {"name": "TIN_VAL", "type": "string", "required": true, "description": "Social security or tax identification number"},
+      {"name": "BIRTH_DT", "type": "date", "required": false, "description": "Date of birth"},
+      {"name": "POSTCODE", "type": "string", "required": false, "description": "ZIP or postal code"},
+      {"name": "CELL_NO", "type": "string", "required": false, "description": "Mobile phone number"},
+      {"name": "FAMILY_UNIT_REF", "type": "string", "required": false, "description": "Family unit the investor belongs to"},
+      {"name": "AUDIT_TS", "type": "string", "required": false, "description": "Last audit timestamp"}]},
+    {"name": "FAMILY_UNIT", "columns": [
+      {"name": "FAMILY_UNIT_REF", "type": "string", "required": true, "description": "Unique family unit identifier"},
+      {"name": "FAMILY_UNIT_LABEL", "type": "string", "required": true, "description": "Display name of the family unit"}]}
+  ]},
+  "truth_tables": {"PORTFOLIO_HDR": "Account", "INVESTOR_MSTR": "Client", "FAMILY_UNIT": "Household"},
+  "truth_columns": {
+    "PORTFOLIO_HDR.PORTFOLIO_NO": "ACCT_NUM", "PORTFOLIO_HDR.HOLDING_FIRM": "CUSTODIAN_NAME", "PORTFOLIO_HDR.OWNERSHIP_FORM": "REG_TYPE",
+    "PORTFOLIO_HDR.INCEPTION_DT": "OPEN_DATE", "PORTFOLIO_HDR.ADVISOR_CD": "REP_CODE", "PORTFOLIO_HDR.FAMILY_UNIT_REF": "HH_ID",
+    "PORTFOLIO_HDR.MKT_VALUE_USD": "BALANCE", "PORTFOLIO_HDR.VALUED_ON": "BALANCE_AS_OF", "PORTFOLIO_HDR.ROW_HASH": null,
+    "INVESTOR_MSTR.INVESTOR_KEY": "CLIENT_ID", "INVESTOR_MSTR.GIVEN_NM": "FIRST_NAME", "INVESTOR_MSTR.FAMILY_NM": "LAST_NAME",
+    "INVESTOR_MSTR.TIN_VAL": "TAX_ID", "INVESTOR_MSTR.BIRTH_DT": "DATE_OF_BIRTH", "INVESTOR_MSTR.POSTCODE": "POSTAL_CODE",
+    "INVESTOR_MSTR.CELL_NO": "PHONE", "INVESTOR_MSTR.FAMILY_UNIT_REF": "HH_ID", "INVESTOR_MSTR.AUDIT_TS": null,
+    "FAMILY_UNIT.FAMILY_UNIT_REF": "HH_ID", "FAMILY_UNIT.FAMILY_UNIT_LABEL": "HH_NAME"}
+}

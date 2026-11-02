@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set
 import yaml
 
 VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "field_vocabulary.yaml"
+EXTRA_VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "source_vocabulary.yaml"
 ENTITIES = ("Account", "Client", "Household")
 _TYPE_GROUPS = {"string": "text", "date": "date", "integer": "number", "number": "number", "decimal": "number", "boolean": "bool"}
 MATCH_THRESHOLD = 0.3
@@ -23,7 +24,12 @@ _vocab_cache: Optional[Dict[str, Any]] = None
 def _vocab() -> Dict[str, Any]:
     global _vocab_cache
     if _vocab_cache is None:
-        _vocab_cache = yaml.safe_load(VOCAB_PATH.read_text(encoding="utf-8"))
+        base = yaml.safe_load(VOCAB_PATH.read_text(encoding="utf-8"))
+        extra = yaml.safe_load(EXTRA_VOCAB_PATH.read_text(encoding="utf-8"))
+        # the extra vocabulary only adds words the base one does not know, so existing behaviour is unchanged
+        base["tokens"] = {**extra["tokens"], **base["tokens"]}
+        base["stop"] = list(extra.get("stop", []))
+        _vocab_cache = base
     return _vocab_cache
 
 
@@ -31,10 +37,12 @@ def concepts(*texts: str) -> Dict[str, float]:
     """Normalise names/descriptions to weighted concept words."""
     vocab = _vocab()
     weak = set(vocab.get("weak", []))
+    stop = set(vocab.get("stop", []))
     out: Dict[str, float] = {}
     for text in texts:
-        for tok in re.split(r"[^A-Za-z0-9]+", str(text or "").lower()):
-            if not tok:
+        spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(text or ""))  # camelCase and PascalCase
+        for tok in re.split(r"[^A-Za-z0-9]+|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])", spaced.lower()):
+            if not tok or tok in stop:
                 continue
             for c in vocab["tokens"].get(tok, [tok]):
                 out[c] = 0.5 if c in weak else 1.0

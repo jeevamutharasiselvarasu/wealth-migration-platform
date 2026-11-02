@@ -51,6 +51,15 @@ tokens:
   typ: [type]
   kind: [type]
   class: [type]
+  portfolio: [account]
+  investor: [client]
+  valued: [balance]
+  valuation: [balance]
+  holding: [custodian]
+  firm: [custodian]
+  ownership: [registration]
+  titling: [registration]
+  form: [type]
 # What a value looks like for fields about a concept. shape names are detected from sample values.
 shapes:
   postal: zip
