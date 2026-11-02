@@ -210,7 +210,9 @@ def test_demo_login_is_loaded_from_configuration_and_password_is_not_plaintext()
     assert "password123" not in auth
     assert users["users"][0]["email"] == "jeeva@simplicitywealth.com"
     assert all("password" not in key for user in users["users"] for key in user), "no credential material in tracked fixtures"
-    assert "demo_passwords.local.json" in (ROOT / ".gitignore").read_text()
+    import fnmatch
+    patterns = [l.strip() for l in (ROOT / ".gitignore").read_text().splitlines() if l.strip() and not l.startswith(("#", "!"))]
+    assert any(fnmatch.fnmatch("demo_data/demo_passwords.local.json", p) for p in patterns), "local password file must stay git-ignored"
 
 
 def test_demo_migration_is_input_data_not_values_embedded_in_routes():
