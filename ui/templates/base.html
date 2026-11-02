@@ -267,5 +267,42 @@
         </div>
     </aside>
 </div>
+<script>
+/* Keep the reader's place after an action: a form post redirects back to the same page,
+   so remember the scroll position on submit and restore it on load. Redirects that carry
+   a #anchor keep their own target. A floating toast shows ?notice= / ?error= because the
+   inline banner sits at the top of the page, out of view after a restore. */
+(function () {
+  var KEY = "xodus.scroll";
+  try { if ("scrollRestoration" in history) history.scrollRestoration = "manual"; } catch (e) {}
+  document.addEventListener("submit", function (ev) {
+    var f = ev.target;
+    if (!f || (f.method || "get").toLowerCase() !== "post") return;
+    try { sessionStorage.setItem(KEY, JSON.stringify({p: location.pathname, y: window.scrollY, t: Date.now()})); } catch (e) {}
+  }, true);
+  function restore() {
+    var saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(KEY) || "null"); sessionStorage.removeItem(KEY); } catch (e) {}
+    if (saved && saved.p === location.pathname && Date.now() - saved.t < 15000 && !location.hash) {
+      window.scrollTo(0, saved.y);
+    }
+  }
+  function toast() {
+    var q = new URLSearchParams(location.search), text = q.get("notice") || q.get("error");
+    if (!text) return;
+    var bad = !q.get("notice");
+    var d = document.createElement("div");
+    d.setAttribute("role", "status");
+    d.textContent = text;
+    d.style.cssText = "position:fixed;right:16px;bottom:16px;max-width:420px;z-index:9999;padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.18);cursor:pointer;" +
+      (bad ? "background:#FEF2F2;color:#7F1D1D;border:1px solid #FECACA;" : "background:#F0FDFA;color:#134E4A;border:1px solid #99F6E4;");
+    d.onclick = function () { d.remove(); };
+    document.body.appendChild(d);
+    setTimeout(function () { d.remove(); }, 8000);
+  }
+  document.addEventListener("DOMContentLoaded", function () { restore(); toast(); });
+  window.addEventListener("load", restore);
+})();
+</script>
 </body>
 </html>

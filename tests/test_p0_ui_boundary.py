@@ -516,3 +516,14 @@ def test_git_ignored_local_users_add_rehearsal_accounts_without_replacing_tracke
     assert mgr.authorized_users["jeeva@simplicitywealth.com"]["name"] != "Impostor"  # a local file cannot override a tracked user
     (tmp_path / "demo_users.local.json").unlink()
     assert "extra@example.invalid" not in SessionManager().authorized_users  # absent file is fine
+
+
+def test_base_template_keeps_scroll_position_after_actions():
+    """Form posts redirect to the same page; the shared layout must restore the scroll position."""
+    from pathlib import Path
+
+    html = Path("ui/templates/base.html").read_text(encoding="utf-8")
+    assert "xodus.scroll" in html
+    assert "sessionStorage" in html and "scrollTo" in html
+    assert "location.hash" in html  # anchored redirects keep their own target
+    assert 'get("notice")' in html  # notice shown as a toast, since the banner is off-screen
