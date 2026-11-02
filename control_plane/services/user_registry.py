@@ -101,11 +101,13 @@ def register(conn: sqlite3.Connection, name: str, email: str, password: str, res
         raise ValueError(problem)
     email = email.strip().lower()
     name = " ".join(name.split())
-    if email in {e.lower() for e in reserved_emails} or get_user(conn, email):
+    bootstrap_email = (bootstrap_admin_email or "").strip().lower()
+    # Built-in demo emails are reserved, except the one the host owner names as the bootstrap administrator (environment variable).
+    reserved = {e.lower() for e in reserved_emails} - ({bootstrap_email} if bootstrap_email else set())
+    if email in reserved or get_user(conn, email):
         raise ValueError("That email cannot be registered. If it is yours, sign in or ask an administrator.")
     total = conn.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
     pending = conn.execute("SELECT COUNT(*) FROM app_users WHERE status = 'PENDING'").fetchone()[0]
-    bootstrap_email = (bootstrap_admin_email or "").strip().lower()
     bootstrap = (email == bootstrap_email) if bootstrap_email else total == 0
     if not bootstrap and pending >= MAX_PENDING:
         raise ValueError("Registration is full for now. Ask an administrator to clear pending requests.")
