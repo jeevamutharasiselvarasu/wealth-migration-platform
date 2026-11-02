@@ -53,3 +53,32 @@ def test_discovery_page_shows_cross_file_analysis_for_two_or_more_files(tmp_path
     page = asyncio.run(get("/entity-sample-files")).text
     assert "Cross-file analysis" in page and "Conflicting values across files" in page and "1 of 3" in page
     assert "IRA" not in page.split("Cross-file analysis")[1].split("Approve all files")[0]
+
+
+def test_relationship_decisions_are_validated_persisted_and_attached(tmp_path):
+    import sqlite3
+    import pytest
+    conn = sqlite3.connect(tmp_path / "r.db")
+    conn.row_factory = sqlite3.Row
+    with pytest.raises(ValueError, match="reason"):
+        cf.review_relationship(conn, "M", "a.csv.ID", "b.csv.ID", "REJECTED", " ", "Ann")
+    with pytest.raises(ValueError, match="Decision"):
+        cf.review_relationship(conn, "M", "a.csv.ID", "b.csv.ID", "MAYBE", "x", "Ann")
+    with pytest.raises(ValueError, match="file.column"):
+        cf.review_relationship(conn, "M", "bad", "b.csv.ID", "CONFIRMED", "", "Ann")
+    cf.review_relationship(conn, "M", "a.csv.ID", "b.csv.ID", "CONFIRMED", "", "Ann")
+    cf.review_relationship(conn, "M", "a.csv.ID", "b.csv.ID", "REJECTED", "different meaning", "Bea")  # latest decision wins
+    analysis = {"relationships": [{"child": "a.csv.ID", "parent": "b.csv.ID"}, {"child": "c.csv.ID", "parent": "b.csv.ID"}]}
+    cf.attach_reviews(conn, "M", analysis)
+    assert analysis["relationships"][0]["review"]["status"] == "REJECTED" and analysis["relationships"][0]["review"]["reviewer"] == "Bea"
+    assert analysis["relationships"][1]["review"] is None
+    from ui.role_policy import allowed_roles_for
+    assert allowed_roles_for("POST", "/api/relationships/review") == {"Platform Admin", "Migration Analyst"}
+
+
+def test_non_key_columns_that_share_values_are_not_offered_as_relationships():
+    assert cf._key_like("LEGACY_CLIENT_ID") and cf._key_like("PARTY_SRC_ID") and cf._key_like("ACCT_NUM") and cf._key_like("ClientID")
+    assert not cf._key_like("CLIENT_TYPE_SRC") and not cf._key_like("REGISTRATION_TYPE") and not cf._key_like("STATUS")
+    files = [{"name": "a.csv", "entity": "Account", "rows": [{"REG_TYPE": t} for t in ("IRA", "JNT", "TRU", "ORG")]},
+             {"name": "b.csv", "entity": "Client", "rows": [{"CLIENT_TYPE": t} for t in ("IRA", "JNT", "TRU", "ORG")]}]
+    assert cf.analyze(files)["relationships"] == []

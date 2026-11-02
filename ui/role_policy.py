@@ -44,6 +44,7 @@ POST_POLICY = [
     (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
     (r"^/api/knowledge/(submit-questionnaire|file-upload)$", DISCOVERY_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
+    (r"^/api/relationships/review$", DISCOVERY_ROLES),
     (r"^/api/entities/upload-sample-file$", DISCOVERY_ROLES),
     (r"^/api/entities/map-(uploaded-file|approved-files|mcl)$", DISCOVERY_ROLES),
     (r"^/api/pilot/(account|household|client)/(profile|map)$", DISCOVERY_ROLES),

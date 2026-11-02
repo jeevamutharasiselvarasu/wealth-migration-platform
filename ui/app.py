@@ -597,6 +597,24 @@ async def load_demo_migration(request: Request):
     return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered.{target_note} Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/api/relationships/review")
+async def review_relationship_candidate(request: Request, child: str = Form(...), parent: str = Form(...), decision: str = Form(...), reason: str = Form("")):
+    """Analyst/Admin confirms or rejects a detected relationship. Confirmation is evidence only: nothing is joined or merged."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            cross_file.review_relationship(conn, migration_id, child, parent, decision, reason, user["name"])
+        except ValueError as exc:
+            return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(str(exc)) + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("RELATIONSHIP_" + decision.strip().upper(), user, {"child": child, "parent": parent})
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Relationship {child} -> {parent} {decision.strip().lower()}.") + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/agent-studio", response_class=HTMLResponse)
 async def agent_studio(request: Request):
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
@@ -737,6 +755,12 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
             continue
     if len(loaded) >= 2:
         cross = cross_file.analyze(loaded)
+        conn = get_db_connection()
+        try:
+            cross_file.attach_reviews(conn, str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")), cross)
+            conn.commit()
+        finally:
+            conn.close()
     return render_template_with_context(
         request=request,
         template_name="entity_sample_files.html",

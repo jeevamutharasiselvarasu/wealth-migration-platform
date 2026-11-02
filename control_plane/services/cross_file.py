@@ -19,6 +19,15 @@ def _norm_col(name: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(name).upper())
 
 
+_KEY_WORDS = re.compile(r"(^|[^A-Z0-9])(ID|KEY|REF|NO|NUM|NUMBER|CODE)([^A-Z0-9]|$)|(ID|KEY)$")
+
+
+def _key_like(name: str) -> bool:
+    """Column names that look like identifiers. A relationship between two columns that are not key-like (for example two type
+    columns that merely share a few values) is not offered as a candidate."""
+    return bool(_KEY_WORDS.search(str(name).upper()))
+
+
 def _norm_val(v: Any) -> str:
     return str(v).strip().upper() if v is not None else ""
 
@@ -71,7 +80,7 @@ def analyze(files: List[Dict[str, Any]]) -> Dict[str, Any]:
                                        "overlap_pct": round(100 * overlap), "evidence": "same column name" if same_name else "value overlap"})
                     for (pk_f, pk_c, pk_s), (fk_f, fk_c, fk_s) in (((a, ca, sa), (b, cb, sb)), ((b, cb, sb), (a, ca, sa))):
                         contained = len(fk_s["distinct"] & pk_s["distinct"]) / len(fk_s["distinct"])
-                        if pk_s["unique_ratio"] >= UNIQUE_MIN and contained >= CONTAIN_MIN and (pk_f["entity"] != fk_f["entity"] or fk_s["unique_ratio"] < UNIQUE_MIN):
+                        if (same_name or _key_like(pk_c) or _key_like(fk_c)) and pk_s["unique_ratio"] >= UNIQUE_MIN and contained >= CONTAIN_MIN and (pk_f["entity"] != fk_f["entity"] or fk_s["unique_ratio"] < UNIQUE_MIN):
                             relationships.append({"child": f"{fk_f['name']}.{fk_c}", "child_entity": fk_f["entity"], "parent": f"{pk_f['name']}.{pk_c}",
                                                   "parent_entity": pk_f["entity"], "contained_pct": round(100 * contained),
                                                   "kind": "cross-entity link" if pk_f["entity"] != fk_f["entity"] else "companion file of the same entity"})
@@ -99,3 +108,38 @@ def analyze(files: List[Dict[str, Any]]) -> Dict[str, Any]:
                                                   "compared_rows": compared, "differing_rows": diff})
     conflicts = [c for c in conflicts if c["differing_rows"]]
     return {"files_analyzed": len(prof), "equivalent_columns": equivalent, "relationships": relationships, "conflicts": conflicts, "duplicate_files": duplicates}
+
+
+# --------------------------------------------------------------------------- reviewer decisions on relationship candidates
+import sqlite3
+from datetime import datetime, timezone
+
+_DDL = """CREATE TABLE IF NOT EXISTS relationship_reviews (
+    migration_id TEXT NOT NULL, child TEXT NOT NULL, parent TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL,
+    reviewer TEXT NOT NULL, reviewed_utc TEXT NOT NULL, PRIMARY KEY (migration_id, child, parent))"""
+_REF = re.compile(r"^[A-Za-z0-9_.\- ]{1,120}\.[A-Za-z0-9_]{1,80}$")
+
+
+def review_relationship(conn: sqlite3.Connection, migration_id: str, child: str, parent: str, decision: str, reason: str, reviewer: str) -> None:
+    """Record a human confirm/reject of a detected relationship candidate. A rejection needs a reason; the latest decision wins."""
+    conn.execute(_DDL)
+    decision = str(decision).strip().upper()
+    if decision not in ("CONFIRMED", "REJECTED"):
+        raise ValueError("Decision must be CONFIRMED or REJECTED.")
+    if not (_REF.match(child or "") and _REF.match(parent or "")):
+        raise ValueError("Relationship must name a file.column on each side.")
+    if child == parent:
+        raise ValueError("A relationship needs two different columns.")
+    if decision == "REJECTED" and not str(reason).strip():
+        raise ValueError("A rejection reason is required.")
+    conn.execute("INSERT OR REPLACE INTO relationship_reviews VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 (migration_id, child, parent, decision, str(reason).strip()[:500], reviewer, datetime.now(timezone.utc).isoformat()))
+
+
+def attach_reviews(conn: sqlite3.Connection, migration_id: str, analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Add the stored reviewer decision (or None) to each detected relationship."""
+    conn.execute(_DDL)
+    saved = {(r["child"], r["parent"]): dict(r) for r in conn.execute("SELECT * FROM relationship_reviews WHERE migration_id = ?", (migration_id,)).fetchall()}
+    for rel in analysis.get("relationships", []):
+        rel["review"] = saved.get((rel["child"], rel["parent"]))
+    return analysis
