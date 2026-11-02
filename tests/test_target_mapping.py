@@ -688,6 +688,11 @@ def test_target_model_review_correct_change_reject_and_move_before_confirm(conn,
     from control_plane.services import target_inference as ti
     spec = ti.to_spec(cfg["model"], "X")
     assert field["name"] not in {f["name"] for f in spec["entities"][ent]["fields"]}
+    # the review screen still lists a rejected field (with its decision) so the rejection can be changed before confirming
+    shown = ti.to_spec(cfg["model"], "X", include_rejected=True)
+    assert next(f for f in shown["entities"][ent]["fields"] if f["name"] == field["name"])["review"]["status"] == "REJECTED"
+    assert tc.review_field(conn, "Ann", field["table"], field["column"], "correct", "", CANON_TYPES)["model"]  # and it can be reversed
+    tc.review_field(conn, "Ann", field["table"], field["column"], "reject", "", CANON_TYPES)
     # a table can be excluded; its fields leave the model and it is listed as unmatched
     table = field["table"]
     moved = tc.move_table(conn, "Ann", table, None, CANON_TYPES)["model"]

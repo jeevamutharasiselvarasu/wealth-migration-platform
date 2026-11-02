@@ -218,9 +218,10 @@ def move_table(model: Dict[str, Any], table: str, entity: Optional[str], canonic
             "code_list": col.get("code_list"), "codes": col.get("codes", [])})
 
 
-def to_spec(model: Dict[str, Any], status: str) -> Dict[str, Any]:
-    """Mapping-view spec used by gap report, proposals and preview. Fields a reviewer rejected are left out."""
-    entities = {e: {**b, "fields": [f for f in b["fields"] if (f.get("review") or {}).get("status") != "REJECTED"]}
+def to_spec(model: Dict[str, Any], status: str, include_rejected: bool = False) -> Dict[str, Any]:
+    """Mapping-view spec used by gap report, proposals and preview. Fields a reviewer rejected are left out unless
+    include_rejected (the review screen keeps showing them so a rejection can be changed before confirming)."""
+    entities = {e: {**b, "fields": [f for f in b["fields"] if include_rejected or (f.get("review") or {}).get("status") != "REJECTED"]}
                 for e, b in model["entities"].items()}
     return {"spec_id": f"INFERRED-{model['schema_hash']}", "spec_version": model["schema_hash"], "status": status,
             "target_system": model["target_system"], "entities": entities}

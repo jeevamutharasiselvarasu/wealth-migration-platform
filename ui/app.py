@@ -1757,7 +1757,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         grouped.setdefault(m["entity_name"], []).append(m)
     inferred = None
     if cfg and cfg.get("model"):
-        inferred = target_inference.to_spec(cfg["model"], "INFERRED_CONFIRMED" if target_connector.is_confirmed(cfg) else "INFERRED_PENDING")
+        inferred = target_inference.to_spec(cfg["model"], "INFERRED_CONFIRMED" if target_connector.is_confirmed(cfg) else "INFERRED_PENDING", include_rejected=True)
     return {
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
