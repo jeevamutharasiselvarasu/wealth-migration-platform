@@ -962,7 +962,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
         rows = conn.execute(
             f"""
             SELECT s.suggestion_id, s.entity_name, s.source_field, s.canonical_field,
-                   s.proposed_rule, s.confidence_score
+                   s.proposed_rule, s.confidence_score, s.inference_basis
             FROM mapping_suggestions AS s
             WHERE s.migration_id = ? AND s.status = 'PENDING'
               AND s.entity_name IN ({scope_placeholders})

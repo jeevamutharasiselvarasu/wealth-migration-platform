@@ -242,5 +242,8 @@ def init_db() -> None:
         ON mapping_information_requests (migration_id, status, entity_name)
     """)
 
+    if "inference_basis" not in table_columns(conn, "mapping_suggestions"):
+        cursor.execute("ALTER TABLE mapping_suggestions ADD COLUMN inference_basis TEXT")
+
     conn.commit()
     conn.close()

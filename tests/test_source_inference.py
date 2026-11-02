@@ -51,3 +51,21 @@ def test_gate_rejects_unknown_fields_and_incompatible_shapes():
 def test_profile_keeps_shapes_not_values():
     prof = si.profile_column(["000-00-0001", "000-00-0002"])
     assert prof["top"] == "ssn" and "0001" not in json.dumps({k: v for k, v in prof.items() if k != "blob"})
+
+
+def test_mapper_proposes_inferred_columns_with_capped_confidence_and_evidence():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    rows = json.loads((DIR / "renamed_source_cases.json").read_text())["cases"][0]["rows"]
+    res = SchemaMapperAgent().map_source_to_canonical("Account", rows)
+    inferred = {l["source_field"]: l for l in res["field_lineages"] if l.get("mapping_basis") == "NAME_VALUE_INFERENCE"}
+    assert inferred["mkt_val"]["canonical_field"] == "BALANCE"
+    assert all(l["confidence"] <= SchemaMapperAgent.INFERENCE_CONFIDENCE_CAP and l["rule_applied"] == "DIRECT_COPY" for l in inferred.values())
+    assert inferred["mkt_val"]["evidence"]
+    assert not res["unmapped_fields"]
+
+
+def test_known_catalog_names_are_unchanged_by_inference():
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    rows = [{"LEGACY_ACCT_NO": "AC-1", "CUSTODIAN": "CUST-A", "REGISTRATION_TYPE": "INDIVIDUAL", "ACCOUNT_OPEN_DT": "2021-03-15"}]
+    res = SchemaMapperAgent().map_source_to_canonical("Account", rows)
+    assert not any(l.get("mapping_basis") == "NAME_VALUE_INFERENCE" for l in res["field_lineages"])

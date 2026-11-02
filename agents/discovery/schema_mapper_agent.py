@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any, List, Optional, Set
 
-from control_plane.services import transformation_rules
+from control_plane.services import source_inference, transformation_rules
 from control_plane.services.firm_config import FirmConfigError, get_firm_config
 from control_plane.services.value_evidence import propose_from_evidence
 
@@ -10,6 +10,8 @@ logger = logging.getLogger("SchemaMapperAgent")
 
 class SchemaMapperAgent:
     """Source-to-canonical schema mapping engine with telemetry scoring and validation."""
+
+    INFERENCE_CONFIDENCE_CAP = 0.85  # inferred (not catalogued) proposals never look as certain as a known mapping
 
     COMMON_CUSTODIAN_CROSSWALK = {
         "SCHW": "SCHWAB",
@@ -490,6 +492,36 @@ class SchemaMapperAgent:
                     "confidence": proposal["confidence"],
                     "mapping_basis": "VALUE_EVIDENCE",
                     "sample_value": str(raw_records[0].get(column)),
+                })
+                lineage_fields_seen.add(column)
+
+        # Semantic inference for columns whose names the catalog has never seen: proposals only, confidence
+        # capped, evidence recorded, every proposal passes the deterministic gate and is human-reviewed.
+        if unmapped_source_fields:
+            try:
+                inferred = source_inference.infer_source_mappings(
+                    entity_name, raw_records,
+                    canonical={k: v for k, v in source_inference.canonical_from_config(entity_name).items()
+                               if k not in mapped_target_fields})
+            except Exception:  # never let an inference problem break the catalog mapping
+                inferred = []
+            for proposal in inferred:
+                column, target = proposal["source_field"], proposal["canonical_field"]
+                if column not in unmapped_source_fields or target in mapped_target_fields:
+                    continue
+                unmapped_source_fields.discard(column)
+                mapped_target_fields.add(target)
+                for row_out, row_in in zip(mapped_records, raw_records):
+                    row_out[target] = row_in.get(column)
+                field_lineages.append({
+                    "source_field": column,
+                    "canonical_field": target,
+                    "rule_applied": "DIRECT_COPY",
+                    "confidence": round(min(proposal["confidence"], self.INFERENCE_CONFIDENCE_CAP), 3),
+                    "mapping_basis": "NAME_VALUE_INFERENCE",
+                    "evidence": proposal.get("evidence", []),
+                    "provider": proposal.get("provider", ""),
+                    "sample_value": "",
                 })
                 lineage_fields_seen.add(column)
 

@@ -346,8 +346,8 @@ class WorkspaceStateStore:
                 conn.execute(
                     "INSERT INTO mapping_suggestions "
                     "(suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, "
-                    "proposed_rule, confidence_score, status, created_utc) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)",
+                    "proposed_rule, confidence_score, status, created_utc, inference_basis) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)",
                     (
                         f"MAPSUG-{run_id}-{index}-{uuid.uuid4().hex[:8]}",
                         run_id,
@@ -358,6 +358,8 @@ class WorkspaceStateStore:
                         proposed_rule,
                         float(field_lineage.get("confidence", mapping_result.get("confidence_score", 0.0))),
                         now,
+                        ("Inferred from name and values: " + "; ".join(map(str, field_lineage.get("evidence") or [])))
+                        if field_lineage.get("mapping_basis") == "NAME_VALUE_INFERENCE" else None,
                     ),
                 )
             conn.commit()
