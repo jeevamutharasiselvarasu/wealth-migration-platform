@@ -1,7 +1,7 @@
 # Local or VM run with a separate PostgreSQL container. Set the values in a .env file next to this file (never commit it):
 #   POSTGRES_PASSWORD=<choose one>
 #   XODUS_BOOTSTRAP_ADMIN_EMAIL=you@example.com     (the first admin; register it at /register)
-# Start: docker compose up --build      Data lives in the `xodus_pgdata` volume and survives restarts and rebuilds.
+# Start: docker compose up --build  then open http://127.0.0.1:8080  (set XODUS_PORT in .env to change). Data lives in the `xodus_pgdata` volume.
 services:
   db:
     image: postgres:16
@@ -26,7 +26,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${XODUS_PORT:-8080}:8000"
     environment:
       - PORT=8000
       - DATABASE_URL=postgresql://xodus:${POSTGRES_PASSWORD}@db:5432/xodus
