@@ -59,7 +59,7 @@ A Platform Admin then completes the one-time setup on **Target system & mapping*
 
 On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and platform knowledge documents under `platform_knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
 
-The local demo identities (email, name, personas) live in `demo_data/demo_users.json`; password hashes are not committed. Create the git-ignored `demo_data/demo_passwords.local.json` as a JSON map of email to SHA-256 hex of the password (or set `XODUS_DEMO_PASSWORD_HASHES` to the same JSON); accounts without a hash cannot sign in. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
+The local demo identities (email, name, personas) live in `demo_data/demo_users.json`; password hashes are not committed. People normally sign up at `/register` (accounts are stored in the database, scrypt-hashed, and a Platform Admin approves them; `XODUS_BOOTSTRAP_ADMIN_EMAIL` names the first admin). Optionally, a git-ignored `demo_data/demo_passwords.local.json` (email to SHA-256 hex of the password) or `XODUS_DEMO_PASSWORD_HASHES` gives the built-in demo identities a password; demo accounts without one use the registry. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
 
 ## Repository map
 
@@ -67,13 +67,11 @@ The local demo identities (email, name, personas) live in `demo_data/demo_users.
 - `simulated_target_service/` — standalone simulated target system (own API and database; imports nothing from the platform).
 - `control_plane/` — canonical kernel, inference, profiling, validation, workflow event engine, SQLite persistence, ADF client/exporter scaffolding.
 - `agents/` — schema-mapping agent and the P0 agent suite (agents recommend; deterministic services check).
-- `data_plane/` — local source-file storage. Target loading and legacy connectors are out of P0.
 - `knowledge/` — runtime configuration assets: entity inference rules, dictionary, discovery questionnaire, firm profiles.
 - `platform_knowledge/` — platform-provided domain knowledge (canonical contract, mapping notes, wealth-management research). Kept separate from demo data.
 - `demo_data/` — synthetic CoreCap sample files, demo manifest and demo users. Never place real client data here.
 - `tests/` — contract, UI-boundary, role-policy, inference, mapping and workflow tests.
-- `docs/` — P0 correctness notes (`P0_FOUNDATION_CORRECTNESS.md`), `architecture.html`, and `docs/project/` (project brief, current status, working copies of the canonical contract and mapping notes).
-- `infrastructure/` — future Azure/Bicep and ADF assets; these do not establish that cloud resources are deployed.
+- `docs/` — P0 correctness notes (`P0_FOUNDATION_CORRECTNESS.md`) and `docs/project/` (project brief, current status, working copies of the canonical contract and mapping notes).
 
 ## Safety and scope rules
 

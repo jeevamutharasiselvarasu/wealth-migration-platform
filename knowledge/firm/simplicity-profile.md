@@ -11,7 +11,7 @@ phase: P0
 # Firm Profile: Simplicity Wealth (target)
 
 ## P0 boundary
-Simplicity's model is the target of the canonical model. P0 maps CoreCap source files to the canonical Account, Client and Household entities only. Loading into Simplicity systems, reverse mapping and wave assignment are deferred. The next phase is the Azure integration (ADLS storage and ADF orchestration; scaffolding exists under `infrastructure/` and the ADF routes).
+Simplicity's model is the target of the canonical model. P0 maps CoreCap source files to the canonical Account, Client and Household entities only. Loading into Simplicity systems, reverse mapping and wave assignment are deferred. The next phase is the Azure integration (ADLS storage and ADF orchestration; the ADF package, simulator and routes exist, and the Azure assets will be added when that phase starts).
 
 ## Operational architecture (as recorded in the previous profile; confirm with the migration team)
 - **Primary custodian:** Charles Schwab.

@@ -16,7 +16,7 @@ Use the smallest reset that works.
 1. **New migration, keep history:** Migration Setup, "Start new migration". Earlier migrations stay for audit; source files, mappings and results start empty. The confirmed target stays (it is platform-level).
 2. **Re-run the demo:** after step 1, "Load demo data set". Confirm each entity; if Account is blocked, approve its files individually.
 3. **Reset the simulated target:** stop the target service, move `simulated_target_service/data/` aside, start the service again, then re-infer and re-confirm on Target system & mapping (or use Reopen setup).
-4. **Full local reset (last resort):** stop the app, move `App_Data/` to a dated backup folder (do not delete it), restart. Demo logins keep working because hashes live in `demo_data/demo_passwords.local.json`.
+4. **Full local reset (last resort):** stop the app, move `App_Data/` to a dated backup folder (do not delete it), restart. Self-registered accounts live in the database, so a local SQLite reset also clears them: register the admin again.
 
 ## Demo rehearsal (about 10 minutes, Platform Admin)
 1. Sign in; Target system & mapping: Save & test, infer, confirm.

@@ -18,7 +18,7 @@ XODUS / XODUS-AMP — WealthAI Labs wealth-management business migration POC. De
 - Removed modules nothing imported or tested: AI Foundry mapper, `ui/models.py`, `agents/logic/`, cutover and audit agents, compiler expressions/rulebook, registry JSONs, telemetry, sleeve engine, ReconcilerAgent and AUM ReconciliationEngine, the unused `agent_studio.html` template.
 - Removed legacy sleeve/wave knowledge, duplicate fixtures (`test_files/`, `sample_data/`, `evaluation/`), stale cutover runbook and branch inventory, stale `data_plane/connectors/`.
 - Moved `context/` to `docs/project/` and `architecture.html` to `docs/architecture.html` (rewritten to the current workflow). Firm profiles in `knowledge/firm/` rewritten. Added `platform_knowledge/wealth_management_research.md`.
-- Kept on purpose: `infrastructure/` and the ADF/ADLS scaffolding (Azure is the next phase).
+- Later removed (2026-11-02): the unused `data_plane/` and `infrastructure/` (Azure Bicep and ADF YAML) folders and `docs/architecture.html`; the ADF package and simulator in `control_plane/` stay. Azure assets will be recreated when that phase starts.
 
 ## Implemented this cycle
 - Firm config (`config/firm_config.yaml`) stamped on setup and demo load; per-entity required-field RFIs; mapping kinds; relationship dispositions; evidence-based proposals (confidence capped, <70% needs individual review).
@@ -89,7 +89,7 @@ Local commits `4492990`, `a9ed835`, `a4968b9`, `0f2d165`, `81636d2`, `f9ea0f0`, 
 - The target mapping and validation pages show that provenance and a CURRENT or STALE marker (stale reasons: mappings added or removed, target model, validation run, deployment contract). Packages saved before provenance existed read "not recorded".
 - Saving sign-off evidence is refused while the latest package is stale unless the reviewer gives a reason (at least 10 characters); the reason, the stale causes and the reviewer are written into the evidence and the audit log. The sign-off page offers a one-click "Regenerate package" instead.
 - Verified in the desktop browser pane against the user's own running app, as my own demo accounts: save, stale and regenerate flows, refusal without a reason. The override save and the exception decision were done once with the user's approval; the override path is otherwise covered by tests only.
-- Demo accounts for walkthroughs: `walk.demo` (Platform Admin) and `walk.analyst.demo` (Migration Analyst) in `demo_data/demo_users.json`; their password hashes are only in the git-ignored local file. The users file change is uncommitted.
+- The `walk.demo` and `walk.analyst.demo` rehearsal accounts and their local password files were deleted on 2026-11-02; sign-in now uses self-registered accounts (`/register`).
 Still open: real ADF connection (the stored package is the hand-off point), automatic sign-off save after regeneration (deliberately not built; sign-offs stay a human decision), pushing and CI.
 
 ## 2026-11-02 (rehearsal pass) update: simulated approvals and simulated ADF (verify against the repository before relying on it)
