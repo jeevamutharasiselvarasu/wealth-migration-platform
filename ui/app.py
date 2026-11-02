@@ -677,6 +677,9 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
         {"path": setup.get("knowledge_schema_ref", ""), "category": "data_dictionary"},
         {"path": setup.get("knowledge_rules_ref", ""), "category": "transformation_rule"},
         {"path": "demo_data/knowledge/corecap_business_rules.md", "category": "business_rules"},
+        {"path": "demo_data/knowledge/corecap_source_dictionary.json", "category": "data_dictionary"},
+        {"path": "demo_data/knowledge/simplicity_target_layouts.json", "category": "target_schema"},
+        {"path": "demo_data/knowledge/corecap_migration_decisions.md", "category": "source_analysis"},
     ]
     registered_knowledge = []
     for item in knowledge_items:

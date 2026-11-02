@@ -1,0 +1,761 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "asset_type": "target_layouts",
+  "target_firm": "Simplicity",
+  "version": "1.0.0",
+  "purpose": "Two Simplicity loader layouts the canonical Account, Client and Household must be able to feed. Canonical-to-target mapping and loading are out of P0 scope; this asset records what the canonical model has to carry.",
+  "layouts": [
+    {
+      "layout_id": "ORION_MCL",
+      "name": "Orion Master Client List (ImportRecords)",
+      "system": "Orion",
+      "grain": "One row per account, repeating household and registration columns",
+      "fields": [
+        {
+          "target_header": "HH Grouping Code",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "HouseholdId",
+          "canonical_fields": [
+            "HH_ID"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Orion Household Id",
+          "requirement": "Not Required",
+          "source_table": null,
+          "source_field": null,
+          "canonical_fields": [],
+          "mapping_status": "NA",
+          "logic": null,
+          "in_p0_scope": false
+        },
+        {
+          "target_header": "Household SSN",
+          "requirement": "Can be blank",
+          "source_table": "Household_Contacts",
+          "source_field": "TaxId",
+          "canonical_fields": [
+            "TAX_ID"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 1",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Household First Name",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName",
+          "canonical_fields": [
+            "FIRST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 1",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Household Last Name",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "LastName",
+          "canonical_fields": [
+            "LAST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 1",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Household Name",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName + LastName",
+          "canonical_fields": [
+            "FIRST_NAME",
+            "LAST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 1",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Representative Name",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName",
+          "canonical_fields": [
+            "FIRST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 1",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Household DOB",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "DateOfBirth",
+          "canonical_fields": [
+            "DATE_OF_BIRTH"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": "where HouseHold Order = 1",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Address Line 1",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Address1",
+          "canonical_fields": [
+            "ADDRESS_LINE_1"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Address Line 2",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Address2",
+          "canonical_fields": [
+            "ADDRESS_LINE_2"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "City",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "City",
+          "canonical_fields": [
+            "CITY"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "State",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "State",
+          "canonical_fields": [
+            "STATE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Zip Code",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Zip",
+          "canonical_fields": [
+            "POSTAL_CODE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Email Address",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Email",
+          "canonical_fields": [
+            "EMAIL"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Phone Home",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Phone",
+          "canonical_fields": [
+            "PHONE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Phone Business",
+          "requirement": "Not Required",
+          "source_table": null,
+          "source_field": null,
+          "canonical_fields": [],
+          "mapping_status": null,
+          "logic": null,
+          "in_p0_scope": false
+        },
+        {
+          "target_header": "Registration SSN",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "TaxId",
+          "canonical_fields": [
+            "TAX_ID"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Registration DOB",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "DateOfBirth",
+          "canonical_fields": [
+            "DATE_OF_BIRTH"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Registration First Name",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName",
+          "canonical_fields": [
+            "FIRST_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Registration Last Name",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "LastName",
+          "canonical_fields": [
+            "LAST_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Registration Name",
+          "requirement": "Not Required",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName + LastName",
+          "canonical_fields": [
+            "FIRST_NAME",
+            "LAST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "FirstName + LastName",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Registration Type",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "RegistrationType",
+          "canonical_fields": [
+            "REG_TYPE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Custodian",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "CustodianName",
+          "canonical_fields": [
+            "CUSTODIAN_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": "Custodian and Fund can come from same field?",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Account Number",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "AccountNumber",
+          "canonical_fields": [
+            "ACCT_NUM"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Fund Name",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "CustodianName",
+          "canonical_fields": [
+            "CUSTODIAN_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": "Custodian and Fund can come from same field?",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Open/Closed",
+          "requirement": "Optional",
+          "source_table": "Accounts",
+          "source_field": "ClosedDate",
+          "canonical_fields": [
+            "CLOSED_DATE",
+            "ACCT_STATUS"
+          ],
+          "mapping_status": "Derived",
+          "logic": "If ClosedDate is NULL, then Open Else Closed",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Outside ID",
+          "requirement": "Not Required",
+          "source_table": null,
+          "source_field": null,
+          "canonical_fields": [],
+          "mapping_status": null,
+          "logic": null,
+          "in_p0_scope": false
+        }
+      ],
+      "notes": [
+        "Household-level SSN, name, DOB, address, phone and email come from the household's primary contact (HouseholdOrder = 1), not from the Household entity.",
+        "HH Grouping Code is the source household id. Orion Household Id is only used when loading into an existing household.",
+        "Representative Name is resolved from the household advisor through a registered advisor list.",
+        "Fund Name equals the custodian in most cases; business owner to confirm.",
+        "Custodian, Fund Name and Registration Type must come from the target's fixed lists (AvailableCustodians, AvailableFundNames, AvailableRegistrationTypes)."
+      ]
+    },
+    {
+      "layout_id": "SPARC",
+      "name": "SPARC Household and Account",
+      "system": "Salesforce SPARC",
+      "grain": "One row per account with 1st and 2nd owner columns",
+      "fields": [
+        {
+          "target_header": "Household Name",
+          "requirement": "Required",
+          "source_table": "Households",
+          "source_field": "HouseholdProperName",
+          "canonical_fields": [
+            "HH_DISPLAY_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Owner / TTEE First Name",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName",
+          "canonical_fields": [
+            "FIRST_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Owner / TTEE Last Name (complete columns L-S)",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "LastName",
+          "canonical_fields": [
+            "LAST_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Owner / TTEE First & Last Name (if applicable - then complete columns T-AA)",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "FirstName",
+          "canonical_fields": [
+            "FIRST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Business or Trust Name (if applicable)",
+          "requirement": "If applicable",
+          "source_table": "Accounts/Household_Contacts",
+          "source_field": "FirstName",
+          "canonical_fields": [
+            "FIRST_NAME"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where FirstName contains Trust",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Trust Date (if applicable)",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "DateOfBirth",
+          "canonical_fields": [
+            "DATE_OF_BIRTH"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where FirstName contains Trust",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Business or Trust EIN (if applicable)",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "TaxId",
+          "canonical_fields": [
+            "TAX_ID"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where FirstName contains Trust",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Custodian / Fund Family",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "CustodianName",
+          "canonical_fields": [
+            "CUSTODIAN_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Account Number (Delivering Firm)",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "AccountNumber",
+          "canonical_fields": [
+            "ACCT_NUM"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Registration Type",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "RegistrationType",
+          "canonical_fields": [
+            "REG_TYPE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Account Value",
+          "requirement": "Required",
+          "source_table": "Accounts",
+          "source_field": "Balance",
+          "canonical_fields": [
+            "BALANCE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client / TTEE Mobile Phone #",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Phone",
+          "canonical_fields": [
+            "PHONE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client Email Address",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Email",
+          "canonical_fields": [
+            "EMAIL"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client Street Address",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Address1",
+          "canonical_fields": [
+            "ADDRESS_LINE_1"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client Street Address2",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Address2",
+          "canonical_fields": [
+            "ADDRESS_LINE_2"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client City",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "City",
+          "canonical_fields": [
+            "CITY"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client State (no abbreviations)",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "State",
+          "canonical_fields": [
+            "STATE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client Zip Code",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "Zip",
+          "canonical_fields": [
+            "POSTAL_CODE"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client DOB",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "DateOfBirth",
+          "canonical_fields": [
+            "DATE_OF_BIRTH"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "1st Client SSN",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "TaxId",
+          "canonical_fields": [
+            "TAX_ID"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client / TTEE Mobile Phone #",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "Phone",
+          "canonical_fields": [
+            "PHONE"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client Email",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "Email",
+          "canonical_fields": [
+            "EMAIL"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client Street Address",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "Address1",
+          "canonical_fields": [
+            "ADDRESS_LINE_1"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client City",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "City",
+          "canonical_fields": [
+            "CITY"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client State (no abbreviations)",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "State",
+          "canonical_fields": [
+            "STATE"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client Zip Code",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "Zip",
+          "canonical_fields": [
+            "POSTAL_CODE"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client DOB",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "DateOfBirth",
+          "canonical_fields": [
+            "DATE_OF_BIRTH"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "2nd Client SSN",
+          "requirement": "If applicable",
+          "source_table": "Household_Contacts",
+          "source_field": "TaxId",
+          "canonical_fields": [
+            "TAX_ID"
+          ],
+          "mapping_status": "Derived",
+          "logic": "where HouseHold Order = 2",
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Total Fee",
+          "requirement": "Required",
+          "source_table": "CoreCap_Billing_Offboarding",
+          "source_field": "Market Value * Account Fee Schedule",
+          "canonical_fields": [],
+          "mapping_status": "Derived",
+          "logic": "Market Value * Account Fee Schedule",
+          "in_p0_scope": false
+        },
+        {
+          "target_header": "Employment (only for moving different custodians)",
+          "requirement": "Required",
+          "source_table": "Household_Contacts",
+          "source_field": "EmployerName",
+          "canonical_fields": [
+            "EMPLOYER_NAME"
+          ],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": true
+        },
+        {
+          "target_header": "Contributions/Distributions Info",
+          "requirement": "Required",
+          "source_table": "Account Returns",
+          "source_field": "Additions, Withdrawals",
+          "canonical_fields": [],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": false
+        },
+        {
+          "target_header": "Current Model(s) Optional",
+          "requirement": "Required",
+          "source_table": "Models",
+          "source_field": "Name",
+          "canonical_fields": [],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": false
+        },
+        {
+          "target_header": "Model Symbol Optional",
+          "requirement": "Required",
+          "source_table": "Model_Weights",
+          "source_field": "SymbolName",
+          "canonical_fields": [],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": false
+        },
+        {
+          "target_header": "Gain/Loss if Applicable Optional",
+          "requirement": "Required",
+          "source_table": "Realized Gain_Loss_Security_FIRM Key - Account Number",
+          "source_field": "Total Gain Loss",
+          "canonical_fields": [],
+          "mapping_status": "Direct Match",
+          "logic": null,
+          "in_p0_scope": false
+        }
+      ],
+      "notes": [
+        "State must be a full name, not an abbreviation.",
+        "Trust name, trust date and EIN are derived only for trust registrations; the source has no reliable trust flag.",
+        "Fee, contribution, model and gain/loss columns come from areas outside the three P0 entities and are deferred."
+      ]
+    }
+  ],
+  "governance": {
+    "contains_record_values": false,
+    "derived_from": "Data Mapping - MCLSPARC workbook",
+    "approval": "Reference only. Mappings from this asset are proposals until an authorised human approves them."
+  }
+}

@@ -1,0 +1,588 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "asset_type": "source_to_canonical_data_dictionary",
+  "source_system": "CORECAP_AMPLIFY",
+  "version": "1.0.0",
+  "scope": {
+    "phase": "P0",
+    "entities": [
+      "Account",
+      "Client",
+      "Household"
+    ],
+    "deferred_tables": [
+      "Users_Advisors",
+      "Strategies",
+      "Models",
+      "Model_Weights",
+      "Account_Targets",
+      "Account_Sleeves",
+      "Account_Sleeve_ActiveHoldings",
+      "Account_Sleeve_History",
+      "Holdings",
+      "Transactions",
+      "Performance_Account",
+      "Performance_Portfolio",
+      "Advisors",
+      "Advisor_Permissions",
+      "ModelAnalysis"
+    ]
+  },
+  "entities": [
+    {
+      "source_table": "Accounts",
+      "canonical_entity": "Account",
+      "description": "Custodial investment accounts, linked to a household (38,373 rows in the full extract).",
+      "fields": [
+        {
+          "name": "AccountId",
+          "type": "UNIQUEIDENTIFIER",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "ACCOUNT_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Unique internal identifier (GUID) for the account. Primary key."
+        },
+        {
+          "name": "AccountNumber",
+          "type": "NVARCHAR(50)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "ACCT_NUM",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Custodian-issued account number. DATA QUALITY ISSUE: a small number of rows contain full account-name text instead of a number (data appears shifted) \u2014 sized as NVARCHAR(50) to accommodate until cleaned; a clean version would fit VARCHAR(20). Mapping: Reject rows holding account-name text; clean values fit 20 characters."
+        },
+        {
+          "name": "AccountName",
+          "type": "NVARCHAR(100)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "ACCT_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Display name of the account, typically '<Client Name> - <Account Type>'. Mapping: Source of registration name by parsing '<name> - <type>' (derived at target stage)."
+        },
+        {
+          "name": "Balance",
+          "type": "DECIMAL(18,2)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "BALANCE",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Current dollar balance of the account."
+        },
+        {
+          "name": "CustodianName",
+          "type": "NVARCHAR(100)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "CUSTODIAN_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Name of the custodian holding the account (73 distinct custodians in this file). Mapping: Also feeds CUSTODIAN_CODE through the custodian value map."
+        },
+        {
+          "name": "TaxStatus",
+          "type": "NVARCHAR(20)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "TAX_STATUS",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Tax treatment of the account (Taxable, TaxDeferred, NonTaxable)."
+        },
+        {
+          "name": "RegistrationType",
+          "type": "NVARCHAR(100) NULL",
+          "required": false,
+          "null_pct": 28.9,
+          "canonical_field": "REG_TYPE",
+          "mapping_kind": "LOOKUP",
+          "sensitive": false,
+          "meaning": "Legal registration/account type (Rollover IRA, Roth IRA, Trust, etc.). Mapping: About 29% null: exception, never defaulted."
+        },
+        {
+          "name": "DefaultLiquidationMethod",
+          "type": "NVARCHAR(10)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": null,
+          "mapping_kind": "EXCLUDED",
+          "sensitive": false,
+          "meaning": "Default cost-basis method used when liquidating holdings. Only value present is 'FIFO'. Mapping: Single value (FIFO); no target uses it."
+        },
+        {
+          "name": "RepCode",
+          "type": "NVARCHAR(255) NULL",
+          "required": false,
+          "null_pct": 2.6,
+          "canonical_field": "REP_CODE",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Custodian-assigned representative/advisor code tied to the account."
+        },
+        {
+          "name": "HouseholdId",
+          "type": "UNIQUEIDENTIFIER NULL",
+          "required": false,
+          "null_pct": 0.5,
+          "canonical_field": "HH_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Foreign key to Households.Id. The household this account belongs to. Note: 7 values have no match in Households. Mapping: A few orphan values with no matching household."
+        },
+        {
+          "name": "LastDirectReconDate",
+          "type": "DATETIME2(0) NULL",
+          "required": false,
+          "null_pct": 20.1,
+          "canonical_field": null,
+          "mapping_kind": "EXCLUDED",
+          "sensitive": false,
+          "meaning": "Date the account was last directly reconciled with the custodian feed. Mapping: Operational reconciliation date; no target uses it."
+        },
+        {
+          "name": "ReportedAsOfDate",
+          "type": "DATETIME2(0)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "BALANCE_AS_OF",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Date the account data (balance, etc.) is reported as of."
+        },
+        {
+          "name": "CustodialStartDate",
+          "type": "DATETIME2(0)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "OPEN_DATE",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Date the account was opened at the custodian."
+        },
+        {
+          "name": "ClosedDate",
+          "type": "DATETIME2(0) NULL",
+          "required": false,
+          "null_pct": 72.7,
+          "canonical_field": "CLOSED_DATE",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Date the account was closed, if applicable. Null (73%) = account still open. Mapping: Also drives ACCT_STATUS: Open when empty, else Closed."
+        },
+        {
+          "name": "RiskScore",
+          "type": "NVARCHAR(20) NULL",
+          "required": false,
+          "null_pct": 19.0,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Numeric risk score assigned to the account. DATA QUALITY ISSUE: heavily mixed types \u2014 a majority of values were mis-stored as Excel dates instead of a plain number, with the remainder split across int/float/string. Staged as NVARCHAR until cleaned, then convert to INT. Mapping: Risk Score is a separate entity (later phase). Mixed types in the source."
+        },
+        {
+          "name": "RiskScoreDate",
+          "type": "DATETIME2(0) NULL",
+          "required": false,
+          "null_pct": 19.0,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Date the RiskScore was last calculated. Mapping: Risk Score entity, later phase."
+        }
+      ],
+      "relationship_rules": [
+        "Accounts.HouseholdId links to Households.Id; 7 orphan values exist in the full extract.",
+        "The source has no account-to-contact (ownership) link. Do not infer owners from name similarity; a documented rule or relationship file is needed."
+      ]
+    },
+    {
+      "source_table": "Households",
+      "canonical_entity": "Household",
+      "description": "Client households, one per family or entity grouping, linked to an advisor (25,077 rows).",
+      "fields": [
+        {
+          "name": "AdvisorId",
+          "type": "UNIQUEIDENTIFIER",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "ADVISOR_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Foreign key to Users_Advisors.Id. The advisor assigned to this household. Mapping: Resolves the Orion Representative Name through a registered advisor list."
+        },
+        {
+          "name": "Id",
+          "type": "UNIQUEIDENTIFIER",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "HH_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Unique internal identifier (GUID) for the household. Primary key. Mapping: Also the Orion HH Grouping Code."
+        },
+        {
+          "name": "HouseholdName",
+          "type": "NVARCHAR(100)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "HH_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Internal/sortable household name, typically 'Last, First' format. Mapping: 'Last, First' sort name."
+        },
+        {
+          "name": "HouseholdProperName",
+          "type": "NVARCHAR(150) NULL",
+          "required": false,
+          "null_pct": 0.6,
+          "canonical_field": "HH_DISPLAY_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Formatted display name for the household (e.g. 'Ms. Suzanne Smith'). Mapping: SPARC Household Name."
+        },
+        {
+          "name": "CreatedDate",
+          "type": "DATETIME2(0)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "CREATED_DATE",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Timestamp the household record was created."
+        },
+        {
+          "name": "RiskScore",
+          "type": "SMALLINT NULL",
+          "required": false,
+          "null_pct": 31.2,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Numeric risk score assigned to the household. Mapping: Risk Score entity, later phase."
+        },
+        {
+          "name": "RiskScoreDate",
+          "type": "DATETIME2(0) NULL",
+          "required": false,
+          "null_pct": 31.2,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Date the RiskScore was last calculated. Mapping: Risk Score entity, later phase."
+        },
+        {
+          "name": "RiskToleranceScore",
+          "type": "DECIMAL(9,4) NULL",
+          "required": false,
+          "null_pct": 55.0,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Score from the household's risk tolerance questionnaire, distinct from RiskScore. Mapping: Risk Score entity, later phase."
+        },
+        {
+          "name": "RiskToleranceScoreDate",
+          "type": "DATETIME2(0) NULL",
+          "required": false,
+          "null_pct": 55.0,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Date the RiskToleranceScore was last calculated/submitted. Mapping: Risk Score entity, later phase."
+        },
+        {
+          "name": "DeletedDate",
+          "type": "DATETIME2(0) NULL",
+          "required": false,
+          "null_pct": 78.2,
+          "canonical_field": "DELETED_DATE",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Timestamp the household was deleted/archived. Null (78%) = household is still active/live. Mapping: Also drives HH_STATUS: Active when empty, else Deleted."
+        },
+        {
+          "name": "DeletedByUserName",
+          "type": "NVARCHAR(50) NULL",
+          "required": false,
+          "null_pct": 78.2,
+          "canonical_field": null,
+          "mapping_kind": "EXCLUDED",
+          "sensitive": false,
+          "meaning": "Email/username of the user who deleted the household, populated only when DeletedDate is set. Mapping: Audit detail of the deletion; information loss to be confirmed with the business owner."
+        }
+      ],
+      "relationship_rules": [
+        "Households.AdvisorId links to Users_Advisors.Id (advisor list is reference data in this phase)."
+      ]
+    },
+    {
+      "source_table": "Household_Contacts",
+      "canonical_entity": "Client",
+      "description": "Individual people within each household (15,475 rows). This is the canonical Client.",
+      "fields": [
+        {
+          "name": "HouseholdId",
+          "type": "UNIQUEIDENTIFIER",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "HH_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Foreign key to Households.Id. The household this contact belongs to. Note: 34 values have no match in Households. Mapping: About 34 orphan values with no matching household."
+        },
+        {
+          "name": "ContactId",
+          "type": "UNIQUEIDENTIFIER",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "CLIENT_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Unique internal identifier (GUID) for this contact/person. Primary key."
+        },
+        {
+          "name": "Salutation",
+          "type": "NVARCHAR(10) NULL",
+          "required": false,
+          "null_pct": 99.2,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Formal title (Mr, Mrs, Dr, etc.). Populated for <1% of records. Mapping: No target uses it; under 1% populated."
+        },
+        {
+          "name": "FirstName",
+          "type": "NVARCHAR(100) NULL",
+          "required": false,
+          "null_pct": 0.6,
+          "canonical_field": "FIRST_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact's first name."
+        },
+        {
+          "name": "Nickname",
+          "type": "NVARCHAR(100) NULL",
+          "required": false,
+          "null_pct": 83.6,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Preferred/informal name, where different from FirstName. Mapping: No target uses it."
+        },
+        {
+          "name": "MiddleName",
+          "type": "NVARCHAR(30) NULL",
+          "required": false,
+          "null_pct": 33.7,
+          "canonical_field": "MIDDLE_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact's middle name or initial."
+        },
+        {
+          "name": "LastName",
+          "type": "NVARCHAR(50)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "LAST_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact's last name. Values shown as [REDACTED] \u2014 PII masked in this export."
+        },
+        {
+          "name": "Suffix",
+          "type": "NVARCHAR(10) NULL",
+          "required": false,
+          "null_pct": 100.0,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Name suffix (Jr., Sr., III, etc.). Empty in every row of this export. Mapping: Empty in every row of the extract."
+        },
+        {
+          "name": "Designations",
+          "type": "NVARCHAR(20) NULL",
+          "required": false,
+          "null_pct": 100.0,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Professional designations (CFA, CFP, etc.). Empty in every row of this export. Mapping: Empty in every row of the extract."
+        },
+        {
+          "name": "JobTitle",
+          "type": "NVARCHAR(50) NULL",
+          "required": false,
+          "null_pct": 96.3,
+          "canonical_field": null,
+          "mapping_kind": "DEFERRED",
+          "sensitive": false,
+          "meaning": "Contact's occupation/job title, where on file. Mapping: No target uses it."
+        },
+        {
+          "name": "EmployerName",
+          "type": "NVARCHAR(100) NULL",
+          "required": false,
+          "null_pct": 95.9,
+          "canonical_field": "EMPLOYER_NAME",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Contact's employer, where on file. Mapping: SPARC Employment, only when moving between custodians."
+        },
+        {
+          "name": "EntityType",
+          "type": "NVARCHAR(20)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "CLIENT_TYPE",
+          "mapping_kind": "LOOKUP",
+          "sensitive": false,
+          "meaning": "Type of contact record. Only value present is 'individual'. Mapping: Only 'individual' occurs; trusts and businesses need a business rule."
+        },
+        {
+          "name": "DateOfBirth",
+          "type": "DATE NULL",
+          "required": false,
+          "null_pct": 0.0,
+          "canonical_field": "DATE_OF_BIRTH",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact's date of birth. Values shown as [REDACTED] \u2014 PII masked in this export."
+        },
+        {
+          "name": "TaxId",
+          "type": "NVARCHAR(20)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "TAX_ID",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact's tax ID / SSN. Values shown as [REDACTED] \u2014 PII masked in this export."
+        },
+        {
+          "name": "HouseholdOrder",
+          "type": "TINYINT",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "HH_ORDER",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Numeric order/rank of this contact within the household (1 = primary/head, etc.). Mapping: 1 is the primary contact (1st owner), 2 the 2nd owner."
+        },
+        {
+          "name": "HouseholdRelationshipType",
+          "type": "NVARCHAR(20) NULL",
+          "required": false,
+          "null_pct": 22.2,
+          "canonical_field": "HH_RELATIONSHIP",
+          "mapping_kind": "DIRECT",
+          "sensitive": false,
+          "meaning": "Relationship of this contact to the household (Head, Spouse, Child, etc.). Mapping: 22% null."
+        },
+        {
+          "name": "Address1",
+          "type": "NVARCHAR(100) NULL",
+          "required": false,
+          "null_pct": 5.8,
+          "canonical_field": "ADDRESS_LINE_1",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Primary street address line."
+        },
+        {
+          "name": "Address2",
+          "type": "NVARCHAR(20) NULL",
+          "required": false,
+          "null_pct": 99.7,
+          "canonical_field": "ADDRESS_LINE_2",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Secondary address line (apt/suite/floor), rarely populated."
+        },
+        {
+          "name": "City",
+          "type": "NVARCHAR(50) NULL",
+          "required": false,
+          "null_pct": 5.8,
+          "canonical_field": "CITY",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "City of residence."
+        },
+        {
+          "name": "State",
+          "type": "NVARCHAR(10) NULL",
+          "required": false,
+          "null_pct": 5.8,
+          "canonical_field": "STATE",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "State/province abbreviation. Mapping: SPARC wants full state names."
+        },
+        {
+          "name": "Zip",
+          "type": "NVARCHAR(10) NULL",
+          "required": false,
+          "null_pct": 5.8,
+          "canonical_field": "POSTAL_CODE",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Postal/ZIP code. Kept as text to preserve leading zeros. Mapping: Keep as text to preserve leading zeros."
+        },
+        {
+          "name": "Country",
+          "type": "NVARCHAR(10) NULL",
+          "required": false,
+          "null_pct": 22.5,
+          "canonical_field": "COUNTRY",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Country code (US, NO, AU, etc.)."
+        },
+        {
+          "name": "Phone",
+          "type": "NVARCHAR(30) NULL",
+          "required": false,
+          "null_pct": 5.7,
+          "canonical_field": "PHONE",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact phone number."
+        },
+        {
+          "name": "Email",
+          "type": "NVARCHAR(100)",
+          "required": true,
+          "null_pct": 0.0,
+          "canonical_field": "EMAIL",
+          "mapping_kind": "DIRECT",
+          "sensitive": true,
+          "meaning": "Contact email address. Values shown as [REDACTED] \u2014 PII masked in this export."
+        }
+      ],
+      "relationship_rules": [
+        "Household_Contacts.HouseholdId links to Households.Id; 34 orphan values exist in the full extract.",
+        "HouseholdOrder 1 is the primary contact; household-level target fields come from that contact."
+      ]
+    }
+  ],
+  "data_quality": [
+    "Accounts.AccountNumber: a few rows hold full account-name text (data appears shifted).",
+    "Accounts.RiskScore: mixed types; deferred with the Risk Score entity.",
+    "Household_Contacts: LastName, DateOfBirth, TaxId and Email are redacted in the dictionary export.",
+    "The sample workbook is mostly misaligned: only 89 accounts, 20 households and 20 contacts carry a key; thousands of rows hold only ClosedDate, RiskScore, DeletedDate or RiskToleranceScore values with no id. Confirm the full extract is aligned before trusting counts.",
+    "Billing_OffB uses a different key space (11-character ids) from the Amplify GUIDs; join on custodian plus account number."
+  ],
+  "governance": {
+    "synthetic_or_masked_only": true,
+    "contains_record_values": false,
+    "derived_from": "Amplify Data Dictionary and Amplify Data Definitions workbooks",
+    "approval": "Mappings stay proposals until a Migration Analyst or Platform Admin approves them."
+  }
+}

@@ -32,3 +32,10 @@ Source-to-canonical mapping for exactly three canonical entities: **Account**, *
 - Clients that have not consented to the acquisition (negative or affirmative consent) must be flagged, not silently migrated. Consent tracking is not yet modelled in P0.
 
 See `platform_knowledge/wealth_management_research.md` for the supporting research.
+
+## Source extract (CoreCap / Amplify), canonical contract 1.1.0
+- **Systems:** the data dictionary describes the Amplify extract. Tables in P0 scope: Accounts (16 columns), Households (11) and Household_Contacts (24, the canonical Client). Billing_OffB (fees) is a separate system export with its own key space.
+- **Keys:** GUIDs (AccountId, Id, ContactId). Accounts and contacts link to households by HouseholdId; there is no account-to-contact link, so ownership is a business decision, not a join.
+- **Known quality issues:** AccountNumber rows holding name text, mixed-type RiskScore, about 29% null RegistrationType, orphan household ids, redacted last name, DOB, tax id and email in the dictionary export, and a misaligned sample workbook.
+- **Deferred tables:** advisors, strategies, models, sleeves, holdings, transactions and performance, plus the Risk Score concept.
+- Registered migration knowledge: `demo_data/knowledge/corecap_source_dictionary.json` and `corecap_migration_decisions.md`.

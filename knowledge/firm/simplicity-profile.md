@@ -26,3 +26,9 @@ Simplicity's model is the target of the canonical model. P0 maps CoreCap source 
 ## Open items
 - Target mandatory fields, allowed values and key definitions (to be supplied by the target owner).
 - Target identifier format and matching keys for accounts, clients and households.
+
+## Target layouts the canonical model must feed (contract 1.1.0)
+- **Orion Master Client List** (27 fields) and **SPARC Household and Account** (34 fields). Of these, 24 Orion and 29 SPARC fields come from the three P0 entities; the rest (fees, contributions, models, gain/loss, outside id) are deferred.
+- Both are flat, one row per account, with the household and 1st/2nd owner repeated. Household-level fields come from the primary contact (household order 1).
+- Custodian, fund and registration type come from fixed target lists, so the canonical carries a code plus a registered value map.
+- Registered migration knowledge: `demo_data/knowledge/simplicity_target_layouts.json`.
