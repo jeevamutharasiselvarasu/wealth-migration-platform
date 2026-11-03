@@ -48,3 +48,19 @@ def test_storage_status_is_admin_only_and_reports_counts_without_values(tmp_path
     assert ok.status_code == 200 and body["database"] in {"sqlite", "postgresql"}
     assert body["tables"].get("workflow_events", 0) > 0 and body["workflow_events_by_type"].get("SOURCE_FILE_UPLOADED") == 9
     assert "ACCT" not in ok.text and "LEGACY" not in ok.text  # counts only, no source values
+
+
+def test_seed_does_not_add_a_demo_when_a_new_migration_was_started_but_not_configured(tmp_path, monkeypatch):
+    from tests.test_migration_workspaces import _call
+    from ui.state import WorkspaceStateStore
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "seed-new")
+    assert _post_demo_load(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    started_id = state.questionnaire_data["migration_id"]
+    assert started_id != first_id and not state.questionnaire_data["migration_setup"]
+    # Restart: the active migration is the unconfigured one. The seed must not create a second demo migration.
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    monkeypatch.setenv("XODUS_SEED_DEMO", "1")
+    assert app_module.seed_demo_if_empty() == "skipped: an earlier migration exists"
+    assert app_module.state_store.questionnaire_data["migration_id"] == started_id
