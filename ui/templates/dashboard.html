@@ -54,6 +54,24 @@
   </section>
   {% endif %}
 
+  <section class="card" aria-label="Pipeline by plane">
+    <h3 style="margin:0">Pipeline by plane</h3>
+    <p class="fh" style="margin:4px 0 12px">The control plane sets the migration up and publishes one artifact bundle. The data plane runs it on the real data, as many times as needed.</p>
+    {% macro prow(label, href, key) %}{% set s = st.get(key, 'todo') %}<a href="{{ href }}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;color:inherit"><span>{{ label }}</span><span class="dot {{ {'done':'approved','current':'review','todo':''}[s] }}" title="{{ {'done':'Complete','current':'Needs attention','todo':'Not started'}[s] }}"></span></a>{% endmacro %}
+    <div class="two">
+      <div class="card" style="border-top:3px solid var(--cyan,#08A6D8)"><b>Control plane · setup</b>
+        {{ prow('01 Loader & Inspector', '/entity-sample-files', 'discover') }}
+        {{ prow('02 Discovery', '/entity-sample-files#discovered-source-inventory', 'discover') }}
+        {{ prow('03 Business Rules', '/transformation-rules', 'map') }}
+        {{ prow('04 Schema Mapper', '/agent-pipeline', 'map') }}
+      </div>
+      <div class="card" style="border-top:3px solid var(--green,#27C978)"><b>Data plane · runs</b>
+        {{ prow('05 Execution', '/reconciliation#execution', 'validate') }}
+        {{ prow('06 Reconciliation', '/reconciliation', 'validate') }}
+      </div>
+    </div>
+  </section>
+
   <section class="two">
     <div class="card" aria-label="Recent activity">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h3 style="margin:0">Recent activity</h3><span class="chip mono">{{ progress.facts.migration_id }}</span></div>
