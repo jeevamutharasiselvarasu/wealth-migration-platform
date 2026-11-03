@@ -402,7 +402,7 @@ async def decide_user(email: str, request: Request, action: str = Form(...)):
 
 _TEMPLATE_ROLE = {"Platform Admin": "PA", "IMO Lead": "IL", "Migration Analyst": "MA", "Domain SME": "MA",
                   "Validation Specialist": "VS", "Compliance Reviewer": "CR"}
-_SPACE_LINKS = {"index.html": "/suite", "data-migration.html": "/continue-data-migration", "deal-room.html": "/deal-room",
+_SPACE_LINKS = {"index.html": "/suite", "data-migration.html": "/migrations", "deal-room.html": "/deal-room",
                 "governance.html": "/governance", "tenant.html": "/tenant"}
 
 

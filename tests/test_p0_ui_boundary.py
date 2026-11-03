@@ -615,7 +615,7 @@ def test_deal_room_and_governance_serve_the_template_pages_with_app_links_and_sy
             for page in (deal.text, gov.text):
                 assert 'localStorage.setItem("xodus.role","MA")' in page
                 assert ".html" not in page.replace("filename", "") or all(h not in page for h in ("index.html", "data-migration.html", "deal-room.html", "governance.html", "tenant.html"))
-                assert "/continue-data-migration" in page and "/suite" in page
+                assert "/migrations" in page and "/suite" in page
                 assert "label[for=xrole]" in page and "/persona-selection" in page  # one persona selector: the template's demo list is replaced
                 assert '"Migration Analyst"' in page
             assert 'href="/canonical-changes"' in gov.text  # the live change-control page stays reachable from Governance
