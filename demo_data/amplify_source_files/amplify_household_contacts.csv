@@ -1,0 +1,21 @@
+HouseholdId,ContactId,FirstName,LastName,EntityType,TaxId,HouseholdOrder,HouseholdRelationshipType,Address1,City,State,Zip,Country,Phone,Email
+37c3fd62-b680-a998-5e77-ef8b52c5bfac,92be53e1-cc73-76bc-d873-2134c6ae2faf,Contact1,Sample289,individual,TAX-289E09,1,Head,100 Sample St,Sampletown,MI,00000,,555-0100,contact1@example.test
+19973018-0961-86d7-6de5-fe6dad4b5b5a,fa9e9054-a458-2e4f-8e5c-17b05cb625ef,Contact2,Sample753,individual,TAX-753605,1,Head,100 Sample St,Sampletown,OH,00000,,555-0100,contact2@example.test
+5d4e433b-9835-e1bb-387e-e8ae31c1e81e,49dbecf3-4458-3114-2b03-fcae4d1689da,Contact3,SampleBA2,individual,TAX-BA279F,1,Head,100 Sample St,Sampletown,OH,00000,US,555-0100,contact3@example.test
+5d4e433b-9835-e1bb-387e-e8ae31c1e81e,e243ac97-d0b5-bfa8-aa58-349a20dcea07,Contact4,SampleC80,individual,TAX-C80514,2,,100 Sample St,Sampletown,OH,00000,US,555-0100,contact4@example.test
+635dbcfd-9bb6-5933-5cb6-27eb420a65a9,b8d97623-40f6-38dd-c01b-3cb85c8d45bc,Contact5,Sample166,individual,TAX-1667AE,1,Head,100 Sample St,Sampletown,OH,00000,US,555-0100,contact5@example.test
+5cd0c7b2-0282-6e8a-a1f1-8bc87dbb0417,7bc754ff-6ad5-77e8-673b-297daf405ccd,Contact6,Sample68D,individual,TAX-68D435,1,Head,100 Sample St,Sampletown,MI,00000,US,555-0100,contact6@example.test
+6c681cc5-12af-577d-a313-49eaf1e616c8,bf0ef5d5-d5fa-3da1-d436-c4507d3fb21b,Contact7,Sample73D,individual,TAX-73DAB4,1,Head,100 Sample St,Sampletown,MI,00000,US,555-0100,contact7@example.test
+adfad641-9fc7-cd14-4468-cdd0f8370e35,5835be18-b290-2335-bb6d-253c98c0eb8f,Contact8,SampleD43,individual,TAX-D43A37,1,Head,100 Sample St,Sampletown,OH,00000,US,555-0100,contact8@example.test
+5a7cf1e2-c459-dfd3-28ac-735bd3a0fa8c,413b7b43-9dcb-17c5-a600-dc799277596d,Contact9,Sample2F9,individual,TAX-2F92F2,1,Head,100 Sample St,Sampletown,OH,00000,US,555-0100,contact9@example.test
+5a7cf1e2-c459-dfd3-28ac-735bd3a0fa8c,0617c568-548d-c2f3-4ee8-a4f6e66ff986,Contact10,Sample04B,individual,TAX-04B134,2,,100 Sample St,Sampletown,OH,00000,US,555-0100,contact10@example.test
+fb57aa60-fd67-8000-f6a2-043b156ea4d9,e2261673-8507-5583-9562-19d631610e1b,Contact11,SampleB1B,individual,TAX-B1B373,1,Head,100 Sample St,Sampletown,MI,00000,,555-0100,contact11@example.test
+12df64f5-8479-c008-f58f-a144c0bebfec,1ea8b704-823b-a980-376a-403f70c5b4f0,Contact12,SampleDBD,individual,TAX-DBD93D,1,Head,100 Sample St,Sampletown,NJ,00000,US,555-0100,contact12@example.test
+0eb2c071-6c24-b638-12d5-096fdbc520cd,2ce41665-2906-c36b-82a4-1af87a9fcc5d,Contact13,Sample060,individual,TAX-0605C9,1,Head,100 Sample St,Sampletown,MI,00000,US,555-0100,contact13@example.test
+0eb2c071-6c24-b638-12d5-096fdbc520cd,f7e820f0-d139-5881-c400-6972c9e76119,Contact14,Sample2AD,individual,TAX-2AD0FC,2,,100 Sample St,Sampletown,MI,00000,,555-0100,contact14@example.test
+35de8a75-362c-541d-59ab-e5c349eb58f8,f7ade37b-bc92-357b-1081-fbb00363810b,Contact15,Sample5B9,individual,TAX-5B9B32,1,Head,100 Sample St,Sampletown,NJ,00000,US,555-0100,contact15@example.test
+3b81b82e-5b21-212c-fa2e-1d73a264a3af,db8e0810-0b8e-2d2e-10ab-0fabb156ffea,Contact16,Sample621,individual,TAX-62101A,1,Head,100 Sample St,Sampletown,TX,00000,US,555-0100,contact16@example.test
+075755a4-9b48-6edc-737b-c6baf5f30aa6,20ca0ec8-bdff-ebae-ae90-8659ecee135b,Contact17,Sample0B4,individual,TAX-0B4668,1,Head,100 Sample St,Sampletown,MI,00000,US,555-0100,contact17@example.test
+34d3e03b-0448-459c-367b-4e61b3cf8825,2073b524-d627-b19f-9717-5a45763b77d1,Contact18,Sample04F,individual,TAX-04F4EF,1,Head,100 Sample St,Sampletown,OH,00000,US,555-0100,contact18@example.test
+34d3e03b-0448-459c-367b-4e61b3cf8825,1e3a0ed8-77e3-7e26-7175-e8cc2179b1a9,Contact19,Sample941,individual,TAX-941EBB,2,Spouse,100 Sample St,Sampletown,OH,00000,US,555-0100,contact19@example.test
+34d3e03b-0448-459c-367b-4e61b3cf8825,7be03d58-4cf4-5f65-a966-570642784948,Contact20,SampleE85,individual,TAX-E8529D,2,Spouse,,,,,,,contact20@example.test

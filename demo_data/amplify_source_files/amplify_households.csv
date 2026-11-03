@@ -1,0 +1,21 @@
+AdvisorId,Id,HouseholdName,HouseholdProperName,CreatedDate,RiskScore,RiskScoreDate
+3d98adcb-a997-34ed-3094-562aef482f38,37c3fd62-b680-a998-5e77-ef8b52c5bfac,Sample Household 37C3F,Sample Household 37C3F,2025-08-26 14:39:00,0.0,2026-08-03 22:55:00
+80165e93-926c-4468-845d-d777e7117d10,19973018-0961-86d7-6de5-fe6dad4b5b5a,Sample Household 19973,Sample Household 19973,2026-04-29 15:34:00,48.0,2026-08-03 23:02:00
+1dec457b-9521-0d59-6a6f-6f81ec78d4f1,5d4e433b-9835-e1bb-387e-e8ae31c1e81e,Sample Household 5D4E4,Sample Household 5D4E4,2022-08-17 14:35:00,48.0,2026-08-03 22:22:00
+36f266ab-78c7-5fc3-1771-1aa7d395fa8e,635dbcfd-9bb6-5933-5cb6-27eb420a65a9,Sample Household 635DB,Sample Household 635DB,2024-11-19 17:55:00,69.0,2026-08-03 22:45:00
+e367551e-b69b-9b90-ba71-98047e84f20c,4984a33c-2ba7-f7af-913d-4cc9e27e4282,Sample Household 4984A,Sample Household 4984A,2022-07-11 13:52:00,0.0,2026-08-03 22:21:00
+395ba615-04ab-bfde-7f63-8cc896a00e99,0653d679-b755-6756-555e-69ec59467f1d,Sample Household 0653D,Sample Household 0653D,2024-05-15 13:47:00,66.0,2026-08-03 22:39:00
+89a02e3f-f198-3b26-04b7-f84de68eb3d5,a70e52f9-afd0-ae18-218e-a7ef1a1e10d3,Sample Household A70E5,Sample Household A70E5,2024-10-22 17:33:00,0.0,2026-08-03 22:44:00
+100ed0e7-7c74-404c-bc82-525b68e78639,5cd0c7b2-0282-6e8a-a1f1-8bc87dbb0417,Sample Household 5CD0C,Sample Household 5CD0C,2025-09-26 17:42:00,91.0,2026-08-03 22:56:00
+7a0268c4-b8a9-5f43-4bd4-34bda3374bbb,3cb3fb12-faa5-e8bf-816a-30ec4846782c,Sample Household 3CB3F,Sample Household 3CB3F,2024-12-09 20:19:00,0.0,2026-08-03 22:47:00
+12f86433-8252-6527-ae8a-b08be258b9f4,6c681cc5-12af-577d-a313-49eaf1e616c8,Sample Household 6C681,Sample Household 6C681,2022-04-19 16:00:00,,
+cbea57b7-b3da-da5e-5b0d-29f990f3ca93,adfad641-9fc7-cd14-4468-cdd0f8370e35,Sample Household ADFAD,Sample Household ADFAD,2024-01-18 14:58:00,0.0,2026-08-03 22:41:00
+e367551e-b69b-9b90-ba71-98047e84f20c,aa3e6853-1c45-6a64-254c-81dd334af9e0,Sample Household AA3E6,Sample Household AA3E6,2022-08-05 13:33:00,0.0,2026-08-03 22:21:00
+36f266ab-78c7-5fc3-1771-1aa7d395fa8e,5a7cf1e2-c459-dfd3-28ac-735bd3a0fa8c,Sample Household 5A7CF,Sample Household 5A7CF,2024-03-27 13:07:00,73.0,2026-08-03 22:38:00
+7d8c9095-4175-db9d-a7aa-f27f90db9385,fb57aa60-fd67-8000-f6a2-043b156ea4d9,Sample Household FB57A,Sample Household FB57A,2025-11-05 18:48:00,68.0,2026-08-03 22:57:00
+4c7a5723-910b-b6d1-1cbe-cfdb1cb126e6,f1eb77c4-2a42-1b91-51c8-645676dab772,Sample Household F1EB7,Sample Household F1EB7,2024-03-25 13:58:00,0.0,2026-08-03 22:43:00
+b739789a-a260-d11d-f764-1b3d61f50c54,ee970536-cfb3-ead7-63e2-3bb949d7ec74,Sample Household EE970,Sample Household EE970,2021-10-14 21:20:00,49.0,2026-08-03 22:18:00
+b9d51899-ec96-ee0b-b03b-f3b6091b0522,25be7248-17e6-880b-1a05-f2b2e10ff732,Sample Household 25BE7,Sample Household 25BE7,2026-01-16 21:52:00,0.0,2026-08-03 22:59:00
+b9d51899-ec96-ee0b-b03b-f3b6091b0522,d6534373-5d70-fc9f-d92e-d15eea649ecc,Sample Household D6534,Sample Household D6534,2021-10-14 21:20:00,74.0,2026-08-03 22:12:00
+b22ba983-c29e-c7ab-b4cc-e9caecb24a02,12df64f5-8479-c008-f58f-a144c0bebfec,Sample Household 12DF6,Sample Household 12DF6,2024-06-10 21:57:00,0.0,2026-03-19 23:21:00
+3d98adcb-a997-34ed-3094-562aef482f38,0eb2c071-6c24-b638-12d5-096fdbc520cd,Sample Household 0EB2C,Sample Household 0EB2C,2025-06-24 13:56:00,133.0,2026-08-03 22:52:00
