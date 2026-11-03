@@ -3451,7 +3451,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     if template_seed["seeds"]:
         for lineage in mapping.get("field_lineages", []):
             if template_seed["seeds"].get(str(lineage.get("source_field"))) == lineage.get("canonical_field") and str(lineage.get("source_field")) not in approved_rules:
-                lineage["basis_note"] = f"Same source field and canonical field were approved in {template_seed['template_name']}. Confirm that it means the same for this source firm."
+                lineage["basis_note"] = f"Matches a mapping approved in {template_seed['template_name']}. Confirm it fits this firm."
                 lineage["from_template"] = template_seed["template_id"]
     # Derive information requests from required canonical fields that remain unmapped.
     # These requests are questions for the source owner/SME, never auto-filled defaults.
