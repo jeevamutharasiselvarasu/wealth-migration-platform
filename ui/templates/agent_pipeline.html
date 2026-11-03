@@ -24,11 +24,18 @@
   </nav>
   <div class="ph">
     <div>
-      <div class="ey dm">Transformed · stage 04</div>
-      <h1>Mapping Studio & Transformation Rules</h1>
+      <div class="ey dm">Stage 04 · Control plane · Transformed</div>
+      <h1>Schema Mapper</h1>
       <p>Review source-to-canonical proposals inferred from uploaded files. Approve individual proposals or approve the complete pending set for an entity in one action. Entity-level approval validates every proposal atomically; any unresolved field, unsupported transformation or conflicting target blocks the whole action.</p>
-    </div><span class="chip ex">P0 · APPROVAL REQUIRED</span>
+    </div><div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip ex">P0 · APPROVAL REQUIRED</span></div>
   </div>
+  <div class="ins"><b>Control plane.</b> The mapping from source fields to the canonical model (Mapping Studio). It works from metadata and sample files; every decision needs a person and no production data is touched here.</div>
+  {% if progress %}<section class="kpis" aria-label="Mapping summary">
+    <div class="kpi"><small>Mappings approved</small><b>{{ progress.mappings_approved }}</b><span>source to canonical</span></div>
+    <div class="kpi"><small>Proposals waiting</small><b>{{ progress.proposals_pending }}</b><span>need a person</span></div>
+    <div class="kpi"><small>Information requests</small><b>{{ progress.rfi_open }}</b><span>open</span></div>
+    <div class="kpi"><small>Approved rules</small><b>{{ approved_rules|length }}</b><span>usable in mappings</span></div>
+  </section>{% endif %}
 
   <section id="pending-mappings" class="card">
     <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px"><div><h3 style="font-size:16px">Pending mapping proposals</h3><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><div class="flex flex-wrap gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="btn g sm">← Source discovery</a></div></div>
