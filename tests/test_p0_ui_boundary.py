@@ -562,7 +562,7 @@ def test_suite_home_is_the_post_login_landing_and_opens_data_migration_on_the_sa
     login = (ROOT / "ui" / "templates" / "login.html").read_text(encoding="utf-8")
     base = (ROOT / "ui" / "templates" / "base.html").read_text(encoding="utf-8")
     assert '@app.get("/suite"' in app and 'RedirectResponse(url="/suite"' in app  # login lands on the suite home
-    assert 'href="/continue-data-migration"' in suite and 'href="/migration-setup"' in suite  # Data Migration and its setup open from the suite home
+    assert 'href="/continue-data-migration"' in suite and 'href="/migration-setup"' in (ROOT / "ui" / "templates" / "continue_data_migration.html").read_text(encoding="utf-8")  # Data Migration and its setup open from the suite home
     assert 'href="/"' in (ROOT / "ui" / "templates" / "continue_data_migration.html").read_text(encoding="utf-8")
     assert "Planned" not in top  # Deal Room and Governance are live, served from the supplied template
     assert "Sign in to the Xodus suite" in login and "no second password" in login

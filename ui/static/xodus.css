@@ -127,3 +127,13 @@ body h1,body h2,body h3,body h4{font-weight:700}
 .app.solo{grid-template-columns:1fr;max-width:1100px}
 /* Legacy 9px captions (Source discovery) are raised to the template's smallest readable size. */
 .xa-legacy [class*="text-[9px]"],.xa-legacy [style*="font-size:9px"]{font-size:10.5px !important}
+/* Suite home: "One deal, three lenses" journey strip and assistant card, as in the template. */
+.jr{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;position:relative}
+.jn{border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--bg)}
+.jn small{font-size:10px;letter-spacing:.9px;text-transform:uppercase;font-weight:800;color:var(--muted)}
+.jn strong{display:block;color:var(--head);margin:3px 0;font-size:14px}
+.jn span{font-size:12px;color:var(--muted)}
+.jn.deal{border-top:3px solid var(--cyan)}.jn.dm{border-top:3px solid var(--blue)}.jn.gov{border-top:3px solid var(--green)}
+.gbar{margin-top:12px;border-radius:14px;padding:12px 14px;background:var(--tint-g);color:var(--ink-g);font-size:12.5px;font-weight:600;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.mab{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:1020px){.jr{grid-template-columns:1fr 1fr}}

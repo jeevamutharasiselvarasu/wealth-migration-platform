@@ -57,5 +57,6 @@ function meeting(){
 function ask(q){MT.thread.push({u:q});var a=answer(q);MT.thread.push({a:a.a,src:a.src});MT.tab='ask';mdrRender()}
 function openAssistant(tab){MT.tab=tab||'ask';mdrOpen()}
 
+window.openAssistant = openAssistant;
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", meeting); else meeting();
 })();

@@ -14,31 +14,49 @@
 <body>
 {% set suite_cur = "" %}{% include "_suite_top.html" %}
 <header class="hero"><div class="wrap hero-in">
-  <div class="eyebrow"><i></i> WealthAI Labs · for RIA acquirers</div>
+  <div class="eyebrow"><i></i> WealthTech AI Labs · for RIA acquirers</div>
   <h1>From the first deal conversation to the <em>last reconciled account</em>.</h1>
-  <p>You signed in once. Choose where to work; the same session carries into each space. Governance keeps every gate intact.</p>
+  <p>Xodus guides an RIA acquisition through research, decision, data migration and cutover. Choose where to work. Governance keeps every gate intact.</p>
 </div></header>
 <main class="wrap page">
   <div class="spaces">
     <article class="sc deal">
-      <div class="k">Deal intelligence</div><h2>Deal Room</h2>
-      <p>Research and document the target, run diligence, and reach a go / no-go decision.</p>
-      <ul><li>Target profile and diligence</li><li>Integration estimate</li><li>Prescriptive recommendation</li></ul>
-            <div class="ft"><a class="btn p" href="/deal-room">Open Deal Room</a><span class="chip g">Open to you</span></div>
+      <div class="k">Research, documents and a clear recommendation</div><h2>Deal Room</h2>
+      <p>Study the target, build the documents and get a prescriptive recommendation with the nuances spelled out. It ends with the go / no-go decision.</p>
+      <ul><li>Target research with sources</li><li>Deal documents and estimate</li><li>Recommendation with alternatives</li></ul>
+      <div class="st">Go decision signed. Migration workspace created.</div>
+      <div class="ft"><a class="btn p" href="/deal-room">Enter Deal Room</a><span class="chip g">Open to you</span></div>
     </article>
     <article class="sc dm">
       <div class="k">The real data migration work</div><h2>Data Migration</h2>
-      <p>Move the CoreCap book into the Simplicity canonical model with an agent at every stage and a human review gate before anything is approved.</p>
-      <ul><li>Migration setup and workspace configuration</li><li>Source discovery, mapping and review</li><li>Validation, lineage and reconciliation</li></ul>
+      <p>Six agents move the book through Landing, Staged and Transformed, with a person at every gate. Set up the platform and each migration workspace here.</p>
+      <ul><li>Migration workspaces, such as CoreCap</li><li>Pipeline by zone with gates</li><li>Platform and migration setup</li></ul>
       <div class="st">{{ progress.next.label }}{% if progress.status_chip %} · {{ progress.status_chip.label }}{% endif %}</div>
-      <div class="ft"><a class="btn p" href="/continue-data-migration">Enter Data Migration</a><a class="btn g" href="/migration-setup">Migration setup</a><span class="chip g">Open to you</span></div>
+      <div class="ft"><a class="btn p" href="/continue-data-migration">Enter Data Migration</a><span class="chip g">Open to you</span></div>
     </article>
     <article class="sc gov">
-      <div class="k">Gates and change control</div><h2>Governance</h2>
-      <p>Change control for the canonical model: requests to change a canonical definition are raised, reviewed and applied here, with the decision on record.</p>
-      <ul><li>Canonical change requests</li><li>Approve, defer or reject with a reason</li><li>Gate chain and audit trail are planned</li></ul>
-      <div class="ft"><a class="btn p" href="/governance">Open Governance</a><span class="chip g">Open to you</span></div>
+      <div class="k">The overall view, with every gate intact</div><h2>Governance</h2>
+      <p>See every gate from the first approval to hypercare close-out. Check that no gate was skipped and that evidence is attached.</p>
+      <ul><li>Gate chain across all spaces</li><li>Integrity checks and audit trail</li><li>Cutover and close-out gates</li></ul>
+      <div class="st">6 of 12 gates approved · 1 waiting · 6 of 6 checks pass</div>
+      <div class="ft"><a class="btn p" href="/governance">Enter Governance</a><a class="btn g" href="/canonical-changes">Canonical changes</a><span class="chip g">Open to you</span></div>
     </article>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>One deal, three lenses</h3>
+    <p class="d">The Deal Room ends in a decision. That decision opens the Data Migration workspace. Governance watches every gate from the first to the last.</p>
+    <div class="jr">
+      <div class="jn deal"><small>Deal Room</small><strong>Research and document</strong><span>Target profile, diligence, estimate</span></div>
+      <div class="jn deal"><small>Deal Room</small><strong>Recommend and decide</strong><span>Prescriptive recommendation, go / no-go</span></div>
+      <div class="jn dm"><small>Data Migration</small><strong>Migrate the book</strong><span>Land, profile, map, load, reconcile</span></div>
+      <div class="jn gov"><small>Governance</small><strong>Cut over and close</strong><span>Readiness, go-live, hypercare</span></div>
+    </div>
+    <div class="gbar"><span>Governance view: 6 of 12 gates approved, 1 waiting (template sample state)</span><a class="btn g sm" href="/governance">Open Governance</a></div>
+  </div>
+  <div class="card ma" style="margin-top:16px">
+    <h3>Meeting assistant, in every space</h3>
+    <p class="d">Ask for notes from any meeting, let the assistant join your calls, and get insights from what was said. Answers stay inside the spaces your role can see.</p>
+    <div class="mab"><button class="btn g" onclick="openAssistant('ask')" type="button">Ask about a meeting</button><button class="btn g" onclick="openAssistant('notes')" type="button">Read notes</button><button class="btn g" onclick="openAssistant('insights')" type="button">See insights</button><button class="btn g" onclick="openAssistant('connect')" type="button">Join meetings</button></div>
   </div>
 </main>
 <script>
