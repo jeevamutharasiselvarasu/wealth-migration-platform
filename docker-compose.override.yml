@@ -1,0 +1,14 @@
+# Local development only (Compose merges this file automatically). Edits to ui/, control_plane/, agents/, data_plane/ and config/
+# show up without a rebuild: templates and CSS on the next browser refresh, Python after the auto-reload (a couple of seconds).
+# For a production-like run use: docker compose -f docker-compose.yml up --build
+services:
+  control_plane:
+    environment:
+      - XODUS_RELOAD=1
+      - WATCHFILES_FORCE_POLLING=true
+    volumes:
+      - ./ui:/app/ui
+      - ./control_plane:/app/control_plane
+      - ./agents:/app/agents
+      - ./data_plane:/app/data_plane
+      - ./config:/app/config
