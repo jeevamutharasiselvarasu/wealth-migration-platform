@@ -19,7 +19,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 
-ALL_ROLES = ("Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist")
+ALL_ROLES = ("Platform Admin", "IMO Lead", "Migration Analyst", "Domain SME", "Validation Specialist", "Compliance Reviewer")
 MAX_PENDING = 50
 MAX_FAILED = 5
 LOCK_MINUTES = 15

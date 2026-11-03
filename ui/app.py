@@ -247,7 +247,13 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         "adls_container": state_store.adls_container,
         "kernel_specs": getattr(state_store, "kernel_specs", {}),
         "progress": workflow_progress(),
+        "demo_mode": session_mgr.demo_mode,
     }
+    _sess = session_mgr.get_session(request)
+    if _sess:
+        _allowed = session_mgr.assigned_roles(_sess.get("email", "")) or {_sess.get("role")}
+        base_context["persona_options"] = [r for r in session_mgr.ALL_ROLES if r in _allowed]
+        base_context["active_persona"] = _sess.get("role")
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
 
@@ -272,7 +278,7 @@ async def process_login(email: str = Form(...), password: str = Form(...)):
     session_id = session_mgr.authenticate(email, password, session_mgr.default_role_for(email))
     if not session_id:
         return RedirectResponse(url="/login?error=" + quote_plus(session_mgr.last_error), status_code=status.HTTP_303_SEE_OTHER)
-    response = RedirectResponse(url="/persona-selection", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/suite", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(key="session_id", value=session_id, httponly=True, samesite="lax")
     return response
 
@@ -399,6 +405,9 @@ async def persona_selection_page(request: Request):
         {"id":"Platform Admin","label":"Platform Admin","initials":"PA","plane":"Platform governance",
          "description":"Maintain the platform: firm configuration, canonical model, users and access, demo data. Holds every capability.",
          "stages":["Migration setup","Access & governance","Audit"]},
+        {"id":"IMO Lead","label":"IMO Lead","initials":"IL","plane":"Migration office",
+         "description":"Create and configure migration workspaces: scope, source environments and the migration setup. No access to platform configuration.",
+         "stages":["Workspaces","Scope","Configuration"]},
         {"id":"Migration Analyst","label":"Migration Analyst","initials":"MA","plane":"Control plane",
          "description":"Set up the migration, upload and confirm sample files, generate mappings, approve or reject mappings and transformation rules, and answer information requests.",
          "stages":["Discovery","Mapping","Rule design"]},
@@ -408,6 +417,9 @@ async def persona_selection_page(request: Request):
         {"id":"Validation Specialist","label":"Validation Specialist","initials":"VS","plane":"Validation",
          "description":"Review field completeness, keys, relationships, data-quality exceptions and reconciliation evidence.",
          "stages":["Validation","Exceptions","Evidence"]},
+        {"id":"Compliance Reviewer","label":"Compliance Reviewer","initials":"CR","plane":"Oversight",
+         "description":"Read evidence, lineage and the audit trail across the migration. Read-only: cannot change or approve anything.",
+         "stages":["Evidence","Lineage","Audit"]},
     ]
     allowed_roles = session_mgr.assigned_roles(user["email"]) or {user["role"]}
     personas = [persona for persona in personas if persona["id"] in allowed_roles]
@@ -421,15 +433,31 @@ async def persona_selection_page(request: Request):
     return response
 
 
+@app.get("/suite", response_class=HTMLResponse)
+async def suite_home(request: Request):
+    """Signed-in suite landing: the same session opens each space. Only Data Migration is live in this pilot."""
+    user = get_current_user(request)
+    return render_template_with_context(request, "suite_home.html", {"user_name": user["name"], "user_role": user["role"]})
+
+
+@app.get("/continue-data-migration", response_class=HTMLResponse)
+async def continue_data_migration(request: Request):
+    """Entry screen for the Data Migration space: same session, no second password."""
+    user = get_current_user(request)
+    return render_template_with_context(request, "continue_data_migration.html", {"user_name": user["name"], "user_role": user["role"]})
+
+
 @app.post("/persona-selection")
-async def select_persona(request: Request, role: str = Form(...)):
+async def select_persona(request: Request, role: str = Form(...), next: str = Form("/suite")):
     user = get_current_user(request)
     if role not in (session_mgr.assigned_roles(user["email"]) or {user["role"]}):
         raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")
     session_id = request.cookies.get("session_id")
     if not session_id or not session_mgr.select_role(session_id, role):
         raise HTTPException(status_code=403, detail="The selected persona is not available for this session.")
-    return RedirectResponse(url="/migration-setup", status_code=status.HTTP_303_SEE_OTHER)
+    # Persona switching returns to the page the user was on; only same-site paths are accepted.
+    target = next if next.startswith("/") and not next.startswith("//") and "\\" not in next else "/suite"
+    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _target_connection_status() -> Dict[str, Any]:

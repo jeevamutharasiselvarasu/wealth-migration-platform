@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Continue to Data Migration · Xodus suite</title>
+    <script>try{var t=localStorage.getItem("xodus.theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/suite.css">
+    <link rel="stylesheet" href="/static/dm.css">
+    <link rel="stylesheet" href="/static/xodus.css">
+</head>
+<body>
+{% set suite_cur = "dm" %}{% include "_suite_top.html" %}
+<div class="login">
+  <aside class="l-aside">
+    <div class="lock" style="color:#fff"><span class="mk">XA</span><span><strong>XODUS·AMP</strong><span>Agentic Migration Platform</span></span></div>
+    <div>
+      <span class="l-tag"><i></i> CoreCap → Simplicity pilot</span>
+      <h1>Move the advisory book <b>without losing the detail</b>.</h1>
+      <p>A governed Landing, Staged and Transformed migration pipeline with an agent at every stage and a human review gate before anything is approved.</p>
+      <div class="l-flow">
+        <div class="l-row"><b>◉</b><span><strong>Load and inspect</strong><span>Source files profiled and classified</span></span><span>→</span></div>
+        <div class="l-row"><b>⇄</b><span><strong>Map to the canonical model</strong><span>Account, Client and Household</span></span><span>→</span></div>
+        <div class="l-row"><b>✓</b><span><strong>Validate and record</strong><span>Lineage, reconciliation and audit</span></span><span>→</span></div>
+      </div>
+    </div>
+    <div class="l-foot"><span>Protected platform</span><span>Session-based control plane auth</span></div>
+  </aside>
+  <main class="l-main">
+    <div class="l-card">
+      <div class="ey">Data Migration</div>
+      <h2>Continue to Data Migration</h2>
+      <p class="lead">You signed in once to the suite. Data Migration uses that same session, so there is no second password.</p>
+      <div class="idc"><span class="av">{{ user_name.split()[:2]|map('first')|join|upper }}</span><span><strong>{{ user_name }}</strong><small>{{ user_role }} · WealthAI Labs</small></span></div>
+      <div class="idn"><b>Your access comes from your assigned roles.</b><span>You are acting as {{ user_role }}. Inside each migration workspace the persona controls which actions are available; it never grants extra permissions.</span></div>
+      <a class="btn p" href="/" style="width:100%;justify-content:center;padding:12px">Continue as {{ user_name }} →</a>
+      <a class="btn g" href="/migration-setup" style="width:100%;justify-content:center;margin-top:8px">Go to migration setup</a>
+      <div class="hint"><b>Switch persona</b> any time from the Persona selector in the top bar.</div>
+    </div>
+  </main>
+</div>
+<script>
+(function(){var b=document.getElementById("themeBtn");if(b)b.addEventListener("click",function(){var n=document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("xodus.theme",n)}catch(e){}})})();
+</script>
+</body>
+</html>

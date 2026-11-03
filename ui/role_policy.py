@@ -9,6 +9,8 @@ import re
 from typing import Optional, Set
 
 ADMIN = "Platform Admin"
+IMO_LEAD = "IMO Lead"                                 # creates and configures migration workspaces (suite template role IL)
+COMPLIANCE = "Compliance Reviewer"                   # read-only evidence and audit access (suite template role CR); holds no write capability
 ANALYST = "Migration Analyst"
 SME = "Domain SME"
 VALIDATOR = "Validation Specialist"
@@ -17,7 +19,7 @@ VALIDATOR = "Validation Specialist"
 # the Domain SME holds both plus the canonical-model persona) and acts under the persona chosen in
 # the session. Platform Admin holds every capability.
 PLATFORM_ROLES: Set[str] = {ADMIN}                    # demo data load, workflow replay (platform maintenance)
-SETUP_ROLES: Set[str] = {ADMIN, ANALYST}              # migration setup, scope, source environments
+SETUP_ROLES: Set[str] = {ADMIN, IMO_LEAD, ANALYST}              # migration setup, scope, source environments
 DISCOVERY_ROLES: Set[str] = {ADMIN, ANALYST}          # upload, profiling, mapping generation
 SCOPE_REVIEW_ROLES: Set[str] = {ADMIN, ANALYST}       # confirm/reject entity inference
 DEFINITION_ROLES: Set[str] = {ADMIN, ANALYST, SME}    # answer information requests (SME: canonical meaning)

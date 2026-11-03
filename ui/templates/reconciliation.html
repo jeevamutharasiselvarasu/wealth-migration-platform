@@ -1,52 +1,49 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="space-y-5 max-w-6xl">
-    <nav aria-label="Validation workflow navigation" class="flex flex-wrap gap-2">
-        <a href="/agent-pipeline" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">← Mapping & approvals</a>
-        <a href="/entity-sample-files" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">Source inventory</a>
-        <a href="/hitl" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">Open review queue</a>
+<div class="page" style="padding-block:0">
+    <nav aria-label="Validation workflow navigation" class="tabs">
+        <a href="/agent-pipeline" class="tab">← Mapping &amp; approvals</a>
+        <a href="/entity-sample-files" class="tab">Source inventory</a>
+        <a href="/hitl" class="tab">Open review queue</a>
     </nav>
-    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div class="flex items-start gap-3">
-                <div>
-                    <h1 class="text-xl font-bold text-[#152C6B]">Mapping Validation Review</h1>
-                    <p class="mt-1 max-w-2xl text-xs leading-5 text-[#5A6A88]">Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
-                </div>
-            </div>
+    <div class="ph">
+        <div>
+            <div class="ey dm">Transformed · stages 05 and 06</div>
+            <h1>Mapping Validation Review</h1>
+            <p>Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
         </div>
-    </section>
+    </div>
 
-    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3">
-            <div><h2 class="text-sm font-bold text-[#152C6B]">Approved source-to-canonical mappings</h2>
+    <section class="card">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px">
+            <div><h3 style="font-size:16px">Approved source-to-canonical mappings</h3>
             <p class="mt-1 text-xs leading-5 text-[#5A6A88]">Persisted mapping catalogue for this migration. Approved rules can be reused for later files belonging to the same entity.</p></div>
-            <div class="flex gap-2"><span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 font-mono text-[10px] font-bold text-teal-800">{{ approved_mappings|length }} APPROVED</span>
-            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[10px] font-bold text-amber-800">{{ pending_count }} PENDING</span></div>
+            <div class="flex gap-2"><span class="pill border-teal-200 bg-teal-50 text-teal-800">{{ approved_mappings|length }} APPROVED</span>
+            <span class="pill border-amber-200 bg-amber-50 text-amber-800">{{ pending_count }} PENDING</span></div>
         </div>
         {% if approved_mappings %}
         <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[760px] text-left">
-            <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Transformation</th><th class="p-3">Confidence</th><th class="p-3">Reviewer</th><th class="p-3">Approved at</th></tr></thead>
-            <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
+            <thead><tr><th>Entity</th><th>Source field</th><th>Canonical field</th><th>Transformation</th><th>Confidence</th><th>Reviewer</th><th>Approved at</th></tr></thead>
+            <tbody>
             {% for mapping in approved_mappings %}
-            <tr><td class="p-3 font-bold text-[#152C6B]">{{ mapping.entity_name }}</td><td class="p-3 font-mono">{{ mapping.source_field }}</td><td class="p-3 font-mono font-bold text-teal-700">{{ mapping.canonical_field|default('—', true) }}</td><td class="p-3 font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td class="p-3">{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="p-3">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="p-3 text-[#5A6A88]">{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
+            <tr><td class="font-bold">{{ mapping.entity_name }}</td><td class="font-mono">{{ mapping.source_field }}</td><td class="font-mono font-bold">{{ mapping.canonical_field|default('—', true) }}</td><td class="font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td>{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td>{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td>{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
             {% endfor %}
             </tbody></table></div>
         {% else %}
         <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center"><div class="font-bold text-[#152C6B]">No approved mappings recorded for this migration yet</div>
         <p class="mt-1 text-xs text-[#5A6A88]">Approve a proposal in Mapping Studio. It should appear here once approval is saved.</p>
-        <a href="/agent-pipeline#pending-mappings" class="mt-3 inline-block rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Open Mapping Studio →</a></div>
+        <a href="/agent-pipeline#pending-mappings" class="btn p sm">Open Mapping Studio →</a></div>
         {% endif %}
     </section>
-    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <div class="border-b border-[#E9EFF9] pb-3"><h2 class="text-sm font-bold text-[#152C6B]">Mapping lineage & run evidence</h2>
+    <section class="card">
+        <div style="padding-bottom:12px"><h3 style="font-size:16px">Mapping lineage & run evidence</h3>
         <p class="mt-1 text-xs leading-5 text-[#5A6A88]">Field-level lineage from profiling and mapping runs, including unmapped fields and proposed rules.</p></div>
         {% if mapping_lineage %}
         <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[720px] text-left">
-        <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Entity</th><th class="p-3">Source field</th><th class="p-3">Canonical field</th><th class="p-3">Rule</th><th class="p-3">Status</th><th class="p-3">Run</th></tr></thead>
-        <tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for item in mapping_lineage %}
-        <tr><td class="p-3 font-bold text-[#152C6B]">{{ item.entity_name }}</td><td class="p-3 font-mono">{{ item.source_column }}</td><td class="p-3 font-mono text-teal-700">{{ item.canonical_column|default('UNMAPPED', true) }}</td><td class="p-3">{{ item.applied_rule|default('No rule recorded', true) }}</td><td class="p-3">{{ item.validation_status }}</td><td class="p-3 font-mono text-[10px]">{{ item.run_id }}</td></tr>
+        <thead><tr><th>Entity</th><th>Source field</th><th>Canonical field</th><th>Rule</th><th>Status</th><th>Run</th></tr></thead>
+        <tbody>{% for item in mapping_lineage %}
+        <tr><td class="font-bold">{{ item.entity_name }}</td><td class="font-mono">{{ item.source_column }}</td><td class="font-mono">{{ item.canonical_column|default('UNMAPPED', true) }}</td><td>{{ item.applied_rule|default('No rule recorded', true) }}</td><td>{{ item.validation_status }}</td><td class="font-mono">{{ item.run_id }}</td></tr>
         {% endfor %}</tbody></table></div>
         {% else %}<p class="mt-3 rounded-xl bg-[#F8FAFD] p-4 text-xs text-[#5A6A88]">No mapping lineage recorded for this migration yet. Generate proposals from approved source files first.</p>{% endif %}
         {% if mapping_runs %}<div class="mt-4"><h3 class="mb-2 text-xs font-bold text-[#152C6B]">Recent mapping runs</h3><div class="space-y-2">{% for run in mapping_runs %}
@@ -54,22 +51,10 @@
         {% endfor %}</div></div>{% endif %}
     </section>
 
-    <section class="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
-            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Entity scope</div>
-            <div class="mt-2 text-base font-bold text-[#152C6B]">3 entities</div>
-            <div class="mt-1 text-[10px] text-[#5A6A88]">Account · Household · Client</div>
-        </article>
-        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
-            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Validation focus</div>
-            <div class="mt-2 text-base font-bold text-[#152C6B]">Keys & required fields</div>
-            <div class="mt-1 text-[10px] text-[#5A6A88]">Completeness, uniqueness and documented relationships</div>
-        </article>
-        <article class="rounded-xl border border-[#D9E3F5] bg-white p-4 shadow-sm">
-            <div class="font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">Release control</div>
-            <div class="mt-2 text-base font-bold text-amber-700">Human review</div>
-            <div class="mt-1 text-[10px] text-[#5A6A88]">Unresolved issues must be reviewed before approval</div>
-        </article>
+    <section class="kpis" style="grid-template-columns:repeat(3,1fr)">
+        <article class="kpi"><small>Entity scope</small><b style="font-size:18px">3 entities</b><span>Account · Household · Client</span></article>
+        <article class="kpi"><small>Validation focus</small><b style="font-size:18px">Keys &amp; required fields</b><span>Completeness, uniqueness and documented relationships</span></article>
+        <article class="kpi"><small>Release control</small><b style="font-size:18px;color:var(--warn)">Human review</b><span>Unresolved issues must be reviewed before approval</span></article>
     </section>
 
     {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">{{ error }}</div>{% endif %}
@@ -77,17 +62,17 @@
     {% if drift %}<section id="source-drift" class="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-xs text-amber-900"><h2 class="text-sm font-bold">Source drift: {{ drift|length }} approved mapping(s) no longer match the source files</h2>
         <p class="mt-1">A source file was replaced or changed after these mappings were approved. Re-confirm the files or revisit the mappings before validating; nothing was changed automatically.</p>
         <ul class="mt-2 list-disc pl-5">{% for d in drift %}<li><span class="font-mono">{{ d.entity }}.{{ d.source_field }}</span> → <span class="font-mono">{{ d.canonical_field }}</span>: {{ d.detail }}</li>{% endfor %}</ul></section>{% endif %}
-    <section id="validation-results" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+    <section id="validation-results" class="card">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px">
             <div>
-                <h2 class="text-sm font-bold text-[#152C6B]">Validation results</h2>
+                <h3 style="font-size:16px">Validation results</h3>
                 <p class="mt-1 text-xs text-[#5A6A88]">Runs checks on approved mappings and confirmed source files. Values are checked as supplied, before transformations. No target load is verified.</p>
             </div>
-            {% if validation_run %}<form action="/api/validation/signoff-evidence/save" method="post" class="inline">{% if adf_status and adf_status.stale_reasons %}<input name="stale_reason" minlength="10" placeholder="Package is stale: why sign off anyway? (or generate a new package)" class="mr-2 w-80 rounded-lg border border-amber-300 px-2 py-2 text-xs" data-testid="stale-reason">{% endif %}<button class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">Save sign-off evidence with this migration</button></form>{% endif %}
-            {% if adf_status %}<div class="mt-2 rounded-lg border {{ 'border-amber-300 bg-amber-50 text-amber-900' if adf_status.stale_reasons else 'border-emerald-300 bg-emerald-50 text-emerald-900' }} p-2 text-[11px]" data-testid="signoff-adf">ADF package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}: <b>{{ 'STALE' if adf_status.stale_reasons else 'CURRENT' }}</b>{% if adf_status.stale_reasons %} &mdash; {{ adf_status.stale_reasons|join(' ') }}{% endif %}{% if adf_status.stale_reasons %}<form action="/api/target-mapping/adf-package" method="post" class="mt-1"><input type="hidden" name="return_to" value="reconciliation"><button class="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-[11px] font-bold text-amber-900" data-testid="regen-package">Regenerate package from the current approved state</button></form>{% endif %}</div>{% endif %}
+            {% if validation_run %}<form action="/api/validation/signoff-evidence/save" method="post" class="inline">{% if adf_status and adf_status.stale_reasons %}<input name="stale_reason" minlength="10" placeholder="Package is stale: why sign off anyway? (or generate a new package)" class="input w-80" data-testid="stale-reason">{% endif %}<button class="btn g sm">Save sign-off evidence with this migration</button></form>{% endif %}
+            {% if adf_status %}<div class="mt-2 rounded-lg border {{ 'border-amber-300 bg-amber-50 text-amber-900' if adf_status.stale_reasons else 'border-emerald-300 bg-emerald-50 text-emerald-900' }} p-2 text-[11px]" data-testid="signoff-adf">ADF package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}: <b>{{ 'STALE' if adf_status.stale_reasons else 'CURRENT' }}</b>{% if adf_status.stale_reasons %} &mdash; {{ adf_status.stale_reasons|join(' ') }}{% endif %}{% if adf_status.stale_reasons %}<form action="/api/target-mapping/adf-package" method="post" class="mt-1"><input type="hidden" name="return_to" value="reconciliation"><button class="btn g sm" data-testid="regen-package">Regenerate package from the current approved state</button></form>{% endif %}</div>{% endif %}
             {% if stored_signoff %}<div class="mt-2 text-[11px] text-[#5A6A88]">Saved: {% for a in stored_signoff[:3] %}<span class="mr-3"><span class="font-mono">{{ a.artifact_id }}</span> v{{ a.artifact_version }} · {{ a.generated_by }} · {{ a.generated_utc[:19] }} · <a href="/api/artifacts/{{ a.artifact_id }}/download" class="font-bold text-blue-700">Export copy</a></span>{% endfor %}</div>{% endif %}
             {% if can_run_validation %}
-            <form action="/api/validation/run" method="post"><button type="submit" class="rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">{{ 'Run validation again' if validation_run else 'Run validation checks' }}</button></form>
+            <form action="/api/validation/run" method="post"><button type="submit" class="btn p sm">{{ 'Run validation again' if validation_run else 'Run validation checks' }}</button></form>
             {% else %}
             <span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs these checks.</span>
             {% endif %}
@@ -95,20 +80,20 @@
         {% if validation_run %}
         <p class="mt-3 text-[11px] text-[#5A6A88]">Run {{ validation_run.run_id }} · {{ validation_run.executed_by }} · {{ validation_run.executed_utc[:19] }}</p>
         <div class="mt-2 flex flex-wrap gap-2 text-[10px] font-bold">
-            <span class="rounded-full border px-3 py-1 {% if validation_run.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif validation_run.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">Overall: {{ validation_run.status }}</span>
-            <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">{{ validation_run.summary.PASS }} passed</span>
-            <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800">{{ validation_run.summary.WARN + validation_run.summary.NOT_EVALUATED }} warnings / not evaluated</span>
-            <span class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">{{ validation_run.summary.FAIL }} failed</span>
-            {% if validation_run.effective_status != validation_run.status %}<span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">After approved exceptions: {{ validation_run.effective_status }}</span>{% endif %}
+            <span class="pill {% if validation_run.status == 'PASS' %}approved{% elif validation_run.status == 'FAIL' %}failed{% else %}review{% endif %}">Overall: {{ validation_run.status }}</span>
+            <span class="pill border-teal-200 bg-teal-50 text-teal-800">{{ validation_run.summary.PASS }} passed</span>
+            <span class="pill border-amber-200 bg-amber-50 text-amber-800">{{ validation_run.summary.WARN + validation_run.summary.NOT_EVALUATED }} warnings / not evaluated</span>
+            <span class="pill border-rose-200 bg-rose-50 text-rose-800">{{ validation_run.summary.FAIL }} failed</span>
+            {% if validation_run.effective_status != validation_run.status %}<span class="pill border-teal-200 bg-teal-50 text-teal-800">After approved exceptions: {{ validation_run.effective_status }}</span>{% endif %}
         </div>
         <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[640px] text-left">
-            <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]"><tr><th class="p-3">Status</th><th class="p-3">Check</th><th class="p-3">Entity</th><th class="p-3">Scope</th><th class="p-3">Finding</th></tr></thead>
-            <tbody class="divide-y divide-[#E9EFF9] text-[11px]">{% for c in validation_run.checks|sort(attribute='status', reverse=True) %}
-            <tr><td class="p-3"><span class="rounded border px-2 py-0.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span></td><td class="p-3 font-mono">{{ c.check }}</td><td class="p-3 font-bold text-[#152C6B]">{{ c.entity }}</td><td class="p-3 text-[#5A6A88]">{{ c.file|default('') }}{% if c.field %} {{ c.field }}{% endif %}</td><td class="p-3 text-[#41506B]">{{ c.detail }}{% if c.orphans %} <span class="font-mono text-[10px] text-rose-700">e.g. {{ c.orphans|join(', ') }}</span>{% endif %}
+            <thead><tr><th>Status</th><th>Check</th><th>Entity</th><th>Scope</th><th>Finding</th></tr></thead>
+            <tbody>{% for c in validation_run.checks|sort(attribute='status', reverse=True) %}
+            <tr><td><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span></td><td class="font-mono">{{ c.check }}</td><td class="font-bold">{{ c.entity }}</td><td>{{ c.file|default('') }}{% if c.field %} {{ c.field }}{% endif %}</td><td>{{ c.detail }}{% if c.orphans %} <span class="font-mono text-[10px] text-rose-700">e.g. {{ c.orphans|join(', ') }}</span>{% endif %}
               {% if c.status != 'PASS' %}{% set ex = exceptions.get(c.ref) %}
-                {% if ex %}<div class="mt-1 text-[10px]"><span class="rounded border px-1.5 py-0.5 font-mono font-bold {% if ex.status == 'APPROVED' %}border-teal-200 bg-teal-50 text-teal-800{% elif ex.status == 'REJECTED' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">Exception {{ ex.exception_id }} {{ ex.status }}</span> proposed by {{ ex.proposed_by }}: {{ ex.reason }}{% if ex.decided_by %} · decided by {{ ex.decided_by }}{% endif %}</div>
-                  {% if ex.status == 'PROPOSED' and can_decide_exception and ex.proposed_by != current_user_name %}<form action="/api/validation/exceptions/{{ ex.exception_id }}/decision" method="post" class="mt-1 flex flex-wrap gap-1"><input name="comments" placeholder="Comment (required to reject)" aria-label="Decision comment" class="rounded border border-[#C3D2EC] p-1 text-[10px]"><button name="decision" value="APPROVED" class="rounded bg-teal-700 px-2 py-1 text-[10px] font-bold text-white">Approve exception</button><button name="decision" value="REJECTED" class="rounded border border-rose-300 px-2 py-1 text-[10px] font-bold text-rose-700">Reject</button></form>{% endif %}
-                {% elif can_run_validation %}<form action="/api/validation/exceptions" method="post" class="mt-1 flex flex-wrap gap-1"><input type="hidden" name="run_id" value="{{ validation_run.run_id }}"><input type="hidden" name="check_ref" value="{{ c.ref }}"><input name="reason" required placeholder="Reason to accept" aria-label="Reason to accept this finding" class="rounded border border-[#C3D2EC] p-1 text-[10px]"><button class="rounded border border-blue-200 px-2 py-1 text-[10px] font-bold text-blue-700">Propose exception</button></form>{% endif %}
+                {% if ex %}<div class="mt-1 text-[10px]"><span class="pill {% if ex.status == 'APPROVED' %}approved{% elif ex.status == 'REJECTED' %}failed{% else %}review{% endif %}">Exception {{ ex.exception_id }} {{ ex.status }}</span> proposed by {{ ex.proposed_by }}: {{ ex.reason }}{% if ex.decided_by %} · decided by {{ ex.decided_by }}{% endif %}</div>
+                  {% if ex.status == 'PROPOSED' and can_decide_exception and ex.proposed_by != current_user_name %}<form action="/api/validation/exceptions/{{ ex.exception_id }}/decision" method="post" class="mt-1 flex flex-wrap gap-1"><input name="comments" placeholder="Comment (required to reject)" aria-label="Decision comment" class="input"><button name="decision" value="APPROVED" class="btn ok sm">Approve exception</button><button name="decision" value="REJECTED" class="btn g sm">Reject</button></form>{% endif %}
+                {% elif can_run_validation %}<form action="/api/validation/exceptions" method="post" class="mt-1 flex flex-wrap gap-1"><input type="hidden" name="run_id" value="{{ validation_run.run_id }}"><input type="hidden" name="check_ref" value="{{ c.ref }}"><input name="reason" required placeholder="Reason to accept" aria-label="Reason to accept this finding" class="input"><button class="btn g sm">Propose exception</button></form>{% endif %}
               {% endif %}</td></tr>
             {% endfor %}</tbody></table></div>
         {% else %}
@@ -116,23 +101,23 @@
         {% endif %}
     </section>
 
-    <section id="execution" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
+    <section id="execution" class="card">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h2 class="text-sm font-bold text-[#152C6B]">Execution <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED data plane</span></h2>
+                <h3 style="font-size:16px">Execution <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED data plane</span></h3>
                 <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">Runs the latest deployment package against canonical rows in memory and records telemetry: counts, duration, and the mapping or rule behind each problem. Nothing is sent to Azure or loaded anywhere, and no record values are stored. Replace with the real ADF trigger when that integration is in scope.</p>
             </div>
             {% if can_run_validation %}
-            {% if has_package %}<form action="/api/execution/run" method="post" class="flex items-center gap-3"><label class="flex items-center gap-1 text-[11px] text-[#41506B]"><input type="checkbox" name="outage"> Simulate an infrastructure outage</label><button class="rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-bold text-white">Run simulated execution</button></form>
+            {% if has_package %}<form action="/api/execution/run" method="post" class="flex items-center gap-3"><label class="flex items-center gap-1 text-[11px] text-[#41506B]"><input type="checkbox" name="outage"> Simulate an infrastructure outage</label><button class="btn p sm">Run simulated execution</button></form>
             {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Target system &amp; mapping first.</span>{% endif %}
             {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
         </div>
-        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="adf-sim">
+        <div class="ins" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="text-xs text-[#41506B]"><b class="text-[#152C6B]">Simulated Azure Data Factory</b> <span class="font-mono text-[10px] text-amber-800">SIMULATED, no Azure call</span><br>Deploys the latest <b>stored</b> ADF package into a fictitious factory (broken references, clear-text secrets and non-simulated packages are rejected), then triggers its pipeline on the simulated data plane. A real ADF client would replace this step.</div>
                 {% if can_run_validation and adf_status %}<div class="flex gap-2">
-                    <form action="/api/adf/simulated-deploy" method="post"><button class="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-bold text-amber-900" data-testid="adf-deploy">Deploy stored package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}</button></form>
-                    <form action="/api/adf/simulated-trigger" method="post"><button class="rounded-xl bg-[#2563EB] px-3 py-2 text-xs font-bold text-white disabled:opacity-40" data-testid="adf-trigger" {% if adf_trigger_blocker %}disabled title="{{ adf_trigger_blocker }}"{% endif %}>Trigger pipeline (simulated)</button></form>
+                    <form action="/api/adf/simulated-deploy" method="post"><button class="btn g sm" data-testid="adf-deploy">Deploy stored package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}</button></form>
+                    <form action="/api/adf/simulated-trigger" method="post"><button class="btn p sm" data-testid="adf-trigger" {% if adf_trigger_blocker %}disabled title="{{ adf_trigger_blocker }}"{% endif %}>Trigger pipeline (simulated)</button></form>
                 </div>{% elif not adf_status %}<span class="text-[10px] text-[#5A6A88]">Save an ADF package on Target system &amp; mapping first.</span>{% endif %}
             </div>
             {% if adf_deployment %}<div class="mt-3 text-[11px] text-[#41506B]" data-testid="adf-deployment">
@@ -147,70 +132,70 @@
         <article class="mt-4 rounded-xl border border-[#D9E3F5] p-4">
             <div class="flex flex-wrap items-center gap-2 text-[11px]">
                 <span class="font-mono font-bold text-[#152C6B]">{{ r.run_id }}</span>
-                <span class="rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold {% if r.status == 'SUCCEEDED' %}border-teal-200 bg-teal-50 text-teal-800{% elif r.status == 'FAILED' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ r.status }}</span>
-                <span class="rounded border border-amber-200 bg-amber-50 px-1.5 font-mono text-[9px] text-amber-800">{{ r.mode }}</span>
+                <span class="pill {% if r.status == 'SUCCEEDED' %}approved{% elif r.status == 'FAILED' %}failed{% else %}review{% endif %}">{{ r.status }}</span>
+                <span class="pill border-amber-200 bg-amber-50 text-amber-800">{{ r.mode }}</span>
                 <span class="text-[#5A6A88]">package v{{ r.package_version }} · {{ r.triggered_by }} · {{ r.started_utc[:19] }} · {{ r.duration_ms }} ms{% if r.retry_of %} · retry of {{ r.retry_of }}{% endif %}</span>
             </div>
             {% if t.error %}<p class="mt-2 text-xs text-rose-800">{{ t.error }}</p>
-              {% if can_run_validation and r.status == 'FAILED' and t.retryable %}<form action="/api/execution/run" method="post" class="mt-2"><input type="hidden" name="retry_of" value="{{ r.run_id }}"><button class="rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-bold text-blue-700">Retry run</button></form>{% endif %}
+              {% if can_run_validation and r.status == 'FAILED' and t.retryable %}<form action="/api/execution/run" method="post" class="mt-2"><input type="hidden" name="retry_of" value="{{ r.run_id }}"><button class="btn g sm">Retry run</button></form>{% endif %}
             {% else %}
             <p class="mt-2 text-xs text-[#41506B]">{{ t.totals.read }} read · {{ t.totals.loaded }} loaded · {{ t.totals.skipped }} skipped · {{ t.totals.failed }} failed (counted per target table)</p>
             {% set empty_entities = t.entities.values()|selectattr('source_rows','equalto',0)|list %}{% if empty_entities %}<p class="mt-1 text-xs text-amber-800">{{ empty_entities|length }} entity group(s) had no source rows: their mappings are in the package but nothing was exercised. Approve and map the source files for those entities first.</p>{% endif %}
-            <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Entity</th><th class="p-1">Table</th><th class="p-1">Read</th><th class="p-1">Loaded</th><th class="p-1">Skipped</th><th class="p-1">Failed</th><th class="p-1">Reconciled</th></tr></thead><tbody>
-              {% for ename, e in t.entities.items() %}{% for tname, c in e.tables.items() %}<tr class="border-t border-[#EEF2FA]"><td class="p-1">{{ ename }}</td><td class="p-1 font-mono">{{ tname }}</td><td class="p-1">{{ c.read }}</td><td class="p-1">{{ c.loaded }}</td><td class="p-1">{{ c.skipped }}</td><td class="p-1">{{ c.failed }}</td><td class="p-1">{% if c.read == 0 %}<span class="text-amber-800">no source rows</span>{% else %}{{ 'yes' if c.balanced else 'NO' }}{% endif %}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
+            <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr><th>Entity</th><th>Table</th><th>Read</th><th>Loaded</th><th>Skipped</th><th>Failed</th><th>Reconciled</th></tr></thead><tbody>
+              {% for ename, e in t.entities.items() %}{% for tname, c in e.tables.items() %}<tr><td>{{ ename }}</td><td class="font-mono">{{ tname }}</td><td>{{ c.read }}</td><td>{{ c.loaded }}</td><td>{{ c.skipped }}</td><td>{{ c.failed }}</td><td>{% if c.read == 0 %}<span class="text-amber-800">no source rows</span>{% else %}{{ 'yes' if c.balanced else 'NO' }}{% endif %}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
             {% if t.failures %}<h3 class="mt-3 text-xs font-bold text-rose-800">Problems linked to mappings and rules</h3>
             <ul class="mt-1 space-y-1 text-xs">{% for f in t.failures %}{% set rv = r.reviews.get(loop.index0) %}<li>{{ f.rows }} row(s) · {{ f.entity }}.{{ f.table }}.{{ f.column }} · {{ f.reason }} · {% if f.rule.startswith('RULE:') %}<a href="/transformation-rules" class="font-mono text-blue-700">{{ f.rule }}</a>{% else %}<a href="/target-mapping" class="font-mono text-blue-700">{{ f.rule }}</a>{% endif %}
-              {% if rv %}<span class="ml-1 rounded border px-1.5 font-mono text-[9px] font-bold {% if rv.status == 'RESOLVED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ rv.status }}</span> <span class="text-[#5A6A88]">{{ rv.reviewer }} · {{ rv.reason }}</span>{% endif %}
-              {% if can_review_failures and not (rv and rv.status == 'RESOLVED') %}<form action="/api/execution/runs/{{ r.run_id }}/failures/{{ loop.index0 }}/review" method="post" class="mt-1 flex flex-wrap gap-1"><input name="reason" required placeholder="Reason" aria-label="Reason" class="rounded border border-[#C3D2EC] p-1 text-[11px]"><button name="decision" value="ACKNOWLEDGED" class="rounded border border-amber-200 px-2 py-1 text-[11px] font-bold text-amber-800">Acknowledge</button><button name="decision" value="RESOLVED" class="rounded border border-teal-200 px-2 py-1 text-[11px] font-bold text-teal-800">Mark resolved</button></form>{% endif %}</li>{% endfor %}</ul>{% endif %}
+              {% if rv %}<span class="pill {% if rv.status == 'RESOLVED' %}approved{% else %}review{% endif %}">{{ rv.status }}</span> <span class="text-[#5A6A88]">{{ rv.reviewer }} · {{ rv.reason }}</span>{% endif %}
+              {% if can_review_failures and not (rv and rv.status == 'RESOLVED') %}<form action="/api/execution/runs/{{ r.run_id }}/failures/{{ loop.index0 }}/review" method="post" class="mt-1 flex flex-wrap gap-1"><input name="reason" required placeholder="Reason" aria-label="Reason" class="input"><button name="decision" value="ACKNOWLEDGED" class="btn g sm">Acknowledge</button><button name="decision" value="RESOLVED" class="btn g sm">Mark resolved</button></form>{% endif %}</li>{% endfor %}</ul>{% endif %}
             {% if t.post_checks %}<h3 class="mt-3 text-xs font-bold text-[#152C6B]">Post-execution validation scenarios</h3>
-            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="rounded border px-1.5 font-mono text-[9px] font-bold {% if c.status == 'PASS' %}border-teal-200 bg-teal-50 text-teal-800{% elif c.status == 'FAIL' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul>{% endif %}
+            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul>{% endif %}
             {% endif %}
         </article>
         {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No executions yet.</p>{% endfor %}
     </section>
 
-    <section id="validation-scenarios" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <h2 class="text-sm font-bold text-[#152C6B]">Validation scenarios</h2>
+    <section id="validation-scenarios" class="card">
+        <h3 style="font-size:16px">Validation scenarios</h3>
         <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst or Platform Admin approves (never the proposer).</p>
-        {% if scenarios %}<div class="mt-3 overflow-x-auto"><table class="w-full text-left text-xs"><thead class="font-mono text-[9px] uppercase text-[#8A97B2]"><tr><th class="p-1">Id</th><th class="p-1">Entity</th><th class="p-1">Check</th><th class="p-1">Field</th><th class="p-1">Stage</th><th class="p-1">Why</th><th class="p-1">Status</th><th class="p-1"></th></tr></thead><tbody>
-        {% for s in scenarios %}<tr class="border-t border-[#EEF2FA]"><td class="p-1 font-mono">{{ s.scenario_id }}</td><td class="p-1">{{ s.entity_name }}</td><td class="p-1 font-mono">{{ s.check_type }}</td><td class="p-1 font-mono">{{ s.field_name or '' }}</td><td class="p-1">{{ s.stage }}</td><td class="p-1">{{ s.description }}</td><td class="p-1">{{ s.status }}</td>
-          <td class="p-1">{% if can_run_validation and s.status == 'DRAFT' %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/adopt" method="post" class="inline"><button class="rounded border border-teal-200 px-2 py-1 text-[10px] font-bold text-teal-800">Adopt</button></form> {% endif %}{% if can_run_validation and s.status in ('ACTIVE', 'DRAFT') %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/retire" method="post" class="inline"><button class="rounded border border-[#C3D2EC] px-2 py-1 text-[10px] font-bold text-[#41506B]">{{ 'Dismiss' if s.status == 'DRAFT' else 'Retire' }}</button></form>{% endif %}</td></tr>{% endfor %}
+        {% if scenarios %}<div class="mt-3 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr><th>Id</th><th>Entity</th><th>Check</th><th>Field</th><th>Stage</th><th>Why</th><th>Status</th><th></th></tr></thead><tbody>
+        {% for s in scenarios %}<tr><td class="font-mono">{{ s.scenario_id }}</td><td>{{ s.entity_name }}</td><td class="font-mono">{{ s.check_type }}</td><td class="font-mono">{{ s.field_name or '' }}</td><td>{{ s.stage }}</td><td>{{ s.description }}</td><td>{{ s.status }}</td>
+          <td>{% if can_run_validation and s.status == 'DRAFT' %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/adopt" method="post" class="inline"><button class="btn g sm">Adopt</button></form> {% endif %}{% if can_run_validation and s.status in ('ACTIVE', 'DRAFT') %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/retire" method="post" class="inline"><button class="btn g sm">{{ 'Dismiss' if s.status == 'DRAFT' else 'Retire' }}</button></form>{% endif %}</td></tr>{% endfor %}
         </tbody></table></div>{% else %}<p class="mt-3 text-xs text-[#5A6A88]">No custom scenarios yet.</p>{% endif %}
         {% if can_run_validation %}
-        <form action="/api/validation/scenarios/suggest" method="post" class="mt-3"><button class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">Suggest default scenarios from the target contract</button> <span class="text-[11px] text-[#5A6A88]">Required target fields and entity keys; added as drafts until you adopt them.</span></form>
-        <form action="/api/validation/scenarios" method="post" class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-4">
-          <label class="text-[11px] font-bold text-[#41506B]">Entity<select name="entity_name" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal"><option>Account</option><option>Client</option><option>Household</option></select></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Check<select name="check_type" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal">{% for k, v in check_types.items() %}<option value="{{ k }}">{{ k }} - {{ v }}</option>{% endfor %}</select></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Canonical field<input name="field_name" placeholder="e.g. ACCT_NUM" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-mono font-normal"></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Stage<select name="stage" class="mt-1 w-full rounded border border-[#C3D2EC] bg-white p-2 font-normal"><option value="PRE">PRE (before execution)</option><option value="POST">POST (needs data-plane results)</option></select></label>
-          <label class="text-[11px] font-bold text-[#41506B] md:col-span-2">Business reason (required)<input name="description" required class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Allowed values (comma list)<input name="values" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Date formats (comma list)<input name="formats" placeholder="MM/DD/YYYY, YYYYMMDD" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Min<input name="min_value" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
-          <label class="text-[11px] font-bold text-[#41506B]">Max / max length<input name="max_value" class="mt-1 w-full rounded border border-[#C3D2EC] p-2 font-normal"></label>
-          <div class="flex items-end"><button type="submit" class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Save scenario</button></div>
+        <form action="/api/validation/scenarios/suggest" method="post" class="mt-3"><button class="btn g sm">Suggest default scenarios from the target contract</button> <span class="text-[11px] text-[#5A6A88]">Required target fields and entity keys; added as drafts until you adopt them.</span></form>
+        <form action="/api/validation/scenarios" method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px;margin-top:16px">
+          <label class="field fl">Entity<select name="entity_name" class="input w-full"><option>Account</option><option>Client</option><option>Household</option></select></label>
+          <label class="field fl">Check<select name="check_type" class="input w-full">{% for k, v in check_types.items() %}<option value="{{ k }}">{{ k }} - {{ v }}</option>{% endfor %}</select></label>
+          <label class="field fl">Canonical field<input name="field_name" placeholder="e.g. ACCT_NUM" class="input w-full font-mono"></label>
+          <label class="field fl">Stage<select name="stage" class="input w-full"><option value="PRE">PRE (before execution)</option><option value="POST">POST (needs data-plane results)</option></select></label>
+          <label class="field fl" style="grid-column:span 2">Business reason (required)<input name="description" required class="input w-full"></label>
+          <label class="field fl">Allowed values (comma list)<input name="values" class="input w-full"></label>
+          <label class="field fl">Date formats (comma list)<input name="formats" placeholder="MM/DD/YYYY, YYYYMMDD" class="input w-full"></label>
+          <label class="field fl">Min<input name="min_value" class="input w-full"></label>
+          <label class="field fl">Max / max length<input name="max_value" class="input w-full"></label>
+          <div style="display:flex;align-items:flex-end;margin-bottom:12px"><button type="submit" class="btn p sm">Save scenario</button></div>
         </form>
         {% endif %}
     </section>
 
-    <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-        <div class="flex items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3">
+    <section class="card">
+        <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding-bottom:12px">
             <div>
-                <h2 class="text-sm font-bold text-[#152C6B]">What is checked</h2>
+                <h3 style="font-size:16px">What is checked</h3>
                 <p class="mt-1 text-[10px] text-[#5A6A88]">Checks to review during the current pilot; results must come from an executed profile or mapping run.</p>
             </div>
-            <a href="/entity-sample-files" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700">Open source profiles →</a>
+            <a href="/entity-sample-files" class="btn g sm">Open source profiles →</a>
         </div>
         <div class="mt-3 overflow-x-auto">
             <table class="w-full min-w-[520px] text-left">
-                <thead class="border-b border-[#E9EFF9] bg-[#F8FAFD] font-mono text-[9px] uppercase tracking-wider text-[#8A97B2]">
-                    <tr><th class="p-3">Check</th><th class="p-3">Expected evidence</th><th class="p-3">Failure handling</th></tr>
+                <thead>
+                    <tr><th>Check</th><th>Expected evidence</th><th>Failure handling</th></tr>
                 </thead>
-                <tbody class="divide-y divide-[#E9EFF9] text-[11px]">
-                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Required canonical fields</td><td class="p-3 text-[#5A6A88]">Required fields have approved source mappings or documented rule-based derivations.</td><td class="p-3 text-[#5A6A88]">Flag missing mapping; keep output unapproved.</td></tr>
-                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Key integrity</td><td class="p-3 text-[#5A6A88]">Candidate/business keys are present and duplicates are reported.</td><td class="p-3 text-[#5A6A88]">Record validation exception for review.</td></tr>
-                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Relationship integrity</td><td class="p-3 text-[#5A6A88]">Only relationships defined in the canonical contract are checked.</td><td class="p-3 text-[#5A6A88]">Flag unresolved or orphan references; do not infer joins.</td></tr>
-                    <tr><td class="p-3 font-bold text-[#1C2A4A]">Lineage & approval</td><td class="p-3 text-[#5A6A88]">Each mapping has source-field evidence and review status.</td><td class="p-3 text-[#5A6A88]">Return to mapping review and retain audit history.</td></tr>
+                <tbody>
+                    <tr><td class="font-bold">Required canonical fields</td><td>Required fields have approved source mappings or documented rule-based derivations.</td><td>Flag missing mapping; keep output unapproved.</td></tr>
+                    <tr><td class="font-bold">Key integrity</td><td>Candidate/business keys are present and duplicates are reported.</td><td>Record validation exception for review.</td></tr>
+                    <tr><td class="font-bold">Relationship integrity</td><td>Only relationships defined in the canonical contract are checked.</td><td>Flag unresolved or orphan references; do not infer joins.</td></tr>
+                    <tr><td class="font-bold">Lineage & approval</td><td>Each mapping has source-field evidence and review status.</td><td>Return to mapping review and retain audit history.</td></tr>
                 </tbody>
             </table>
         </div>

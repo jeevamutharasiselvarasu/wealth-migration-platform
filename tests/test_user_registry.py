@@ -116,7 +116,7 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             assert "Invalid" in (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": "wrong-password-9"})).headers["location"]
             assert "Invalid" in (await go(anon, "POST", "/login", {"email": "bot@example.com", "password": PW})).headers["location"]  # honeypot account was never created
             login = await go(admin, "POST", "/login", {"email": "root@example.com", "password": PW})
-            assert login.headers["location"] == "/persona-selection"
+            assert login.headers["location"] == "/suite"
             assert set(app_module.session_mgr.assigned_roles("root@example.com")) == set(app_module.session_mgr.ALL_ROLES)
             assert app_module.session_mgr.can_load_demo("root@example.com") is True  # bootstrap admin can load the demo data set
             page = await go(admin, "GET", "/admin/users")
@@ -125,7 +125,7 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             assert (await go(ann, "POST", "/api/users/ann@example.com/decision", {"action": "APPROVE", "roles": "Platform Admin"})).headers["location"] == "/login"  # not signed in
             r = await go(admin, "POST", "/api/users/ann@example.com/decision", {"action": "APPROVE", "roles": "Migration Analyst"})
             assert "notice=" in r.headers["location"] and "ACTIVE" in r.headers["location"]
-            assert (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"] == "/persona-selection"
+            assert (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"] == "/suite"
             assert app_module.session_mgr.assigned_roles("ann@example.com") == {"Migration Analyst"}
             assert app_module.session_mgr.can_load_demo("ann@example.com") is False
             await go(ann, "POST", "/persona-selection", {"role": "Migration Analyst"})

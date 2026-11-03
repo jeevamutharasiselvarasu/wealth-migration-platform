@@ -117,7 +117,7 @@ class SessionManager:
         self.active_sessions[session_id] = {"email": email, "name": name, "role": role}
         return session_id
 
-    ALL_ROLES = ("Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist")
+    ALL_ROLES = ("Platform Admin", "IMO Lead", "Migration Analyst", "Domain SME", "Validation Specialist", "Compliance Reviewer")
 
     def can_load_demo(self, email: str) -> bool:
         """One-click demo load is granted per account in demo_data/demo_users.json (never by role alone)."""
@@ -137,8 +137,7 @@ class SessionManager:
         return roles & set(self.ALL_ROLES)
 
     def select_role(self, session_id: str, role: str) -> bool:
-        allowed_roles = {"Platform Admin", "Migration Analyst", "Domain SME", "Validation Specialist"}
-        if role not in allowed_roles or session_id not in self.active_sessions:
+        if role not in self.ALL_ROLES or session_id not in self.active_sessions:
             return False
         self.active_sessions[session_id]["role"] = role
         return True

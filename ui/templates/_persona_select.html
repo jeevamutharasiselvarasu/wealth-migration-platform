@@ -1,0 +1,10 @@
+{% if persona_options and persona_options|length > 0 %}
+<form class="xwho" action="/persona-selection" method="post" aria-label="Persona">
+  <input type="hidden" name="next" value="{{ request.url.path }}">
+  <label class="chip" for="xrole" style="background:transparent;padding:0" title="Your persona scopes the workspace; it does not grant extra permissions.">Persona</label>
+  <select id="xrole" name="role" class="sel" aria-label="Persona" onchange="this.form.submit()">
+    {% for r in persona_options %}<option value="{{ r }}"{% if r == active_persona %} selected{% endif %}>{{ r }}</option>{% endfor %}
+  </select>
+  <noscript><button class="tbtn" type="submit">Switch</button></noscript>
+</form>
+{% endif %}

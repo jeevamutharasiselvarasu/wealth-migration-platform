@@ -1,36 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
 {% macro rfi_card(request) %}
-      <article class="rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-4">
+      <article class="ins" style="border-left-color:var(--line)">
         <div class="flex flex-wrap items-start justify-between gap-2"><div><div class="font-mono text-[9px] text-[#8A97B2]">{{ request.request_id }} · {{ request.entity }}</div><h3 class="mt-1 text-xs font-bold text-[#152C6B]">{{ request.canonical_field }}</h3><p class="mt-1 text-xs leading-5 text-[#5A6A88]">{{ request.question }}</p><p class="mt-1 text-[10px] text-[#8A97B2]">Source file: {{ request.source_file|default('Not identified') }}</p></div><span class="rounded-md border px-2 py-1 text-[9px] font-mono {% if request.status == 'ANSWERED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-amber-200 bg-amber-50 text-amber-800{% endif %}">{{ request.status }}</span></div>
-        {% if request.status == 'OPEN' and not can_answer_rfi %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Domain SME, Migration Analyst or Platform Admin records the response.</p>{% elif request.status == 'OPEN' %}<form action="/api/mapping-gaps/{{ request.request_id }}/response" method="post" class="mt-3 flex flex-col gap-2 md:flex-row"><input name="response_text" aria-label="SME response" required placeholder="SME response: field definition, source column or approved derivation reference" class="min-w-0 flex-1 rounded-lg border border-[#C3D2EC] bg-white p-2.5 text-xs"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Record response</button></form>{% elif request.status == 'RESOLVED' %}<p class="mt-2 rounded-lg border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900"><b>Resolved dynamically:</b> an approved source-to-canonical mapping now supplies this required field. <span class="text-teal-700">{{ request.resolution|default('Approved mapping found') }}</span></p>{% else %}<p class="mt-2 rounded-lg bg-white p-3 text-xs text-[#41506B]"><b>Response:</b> {{ request.response }} <span class="text-[#8A97B2]">· {{ request.responded_by|default('') }}</span></p>{% endif %}
+        {% if request.status == 'OPEN' and not can_answer_rfi %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Domain SME, Migration Analyst or Platform Admin records the response.</p>{% elif request.status == 'OPEN' %}<form action="/api/mapping-gaps/{{ request.request_id }}/response" method="post" class="mt-3 flex flex-col gap-2 md:flex-row"><input name="response_text" aria-label="SME response" required placeholder="SME response: field definition, source column or approved derivation reference" class="input min-w-0 flex-1"><button class="btn p sm">Record response</button></form>{% elif request.status == 'RESOLVED' %}<p class="mt-2 rounded-lg border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900"><b>Resolved dynamically:</b> an approved source-to-canonical mapping now supplies this required field. <span class="text-teal-700">{{ request.resolution|default('Approved mapping found') }}</span></p>{% else %}<p class="mt-2 rounded-lg bg-white p-3 text-xs text-[#41506B]"><b>Response:</b> {{ request.response }} <span class="text-[#8A97B2]">· {{ request.responded_by|default('') }}</span></p>{% endif %}
       </article>
 {% endmacro %}
 
-<div class="mx-auto max-w-6xl space-y-5">
+<div class="page" style="padding-block:0">
   {% if error %}<div id="workflow-error-modal" role="alertdialog" aria-modal="true" aria-labelledby="workflow-error-title" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
   <section class="w-full max-w-xl rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl">
     <div class="flex items-start gap-3"><div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-lg font-bold text-rose-700">!</div><div class="min-w-0 flex-1"><h2 id="workflow-error-title" class="text-base font-bold text-slate-900">Action needs attention</h2><p class="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{{ error }}</p></div></div>
-    <div class="mt-5 flex justify-end"><button type="button" onclick="document.getElementById('workflow-error-modal').remove()" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white">Review and fix</button></div>
+    <div class="mt-5 flex justify-end"><button type="button" onclick="document.getElementById('workflow-error-modal').remove()" class="btn p">Review and fix</button></div>
   </section>
 </div>{% endif %}
-  {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs text-teal-900">{{ notice }}</div>{% endif %}
-  {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">{{ error }}</div>{% endif %}
-  <nav aria-label="Mapping workflow navigation" class="flex flex-wrap gap-2">
-    <a href="/entity-sample-files" class="rounded-lg border border-[#D9E3F5] bg-white px-3 py-2 text-xs font-bold text-[#41506B]">← Source discovery & entity confirmation</a>
-    <a href="#pending-mappings" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">Pending proposals ({{ mapping_suggestions|length }})</a>
-    <a href="#information-requests" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">Information requests ({{ information_requests|selectattr('status','equalto','OPEN')|list|length }} open)</a>
-    <a href="/reconciliation" class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-teal-800">Continue to validation →</a>
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <nav aria-label="Mapping workflow navigation" class="tabs">
+    <a href="/entity-sample-files" class="tab">← Source discovery & entity confirmation</a>
+    <a href="#pending-mappings" class="tab">Pending proposals ({{ mapping_suggestions|length }})</a>
+    <a href="#information-requests" class="tab">Information requests ({{ information_requests|selectattr('status','equalto','OPEN')|list|length }} open)</a>
+    <a href="/reconciliation" class="tab">Continue to validation →</a>
   </nav>
-  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"><div>
-      <h1 class="text-xl font-bold text-[#152C6B]">Mapping Studio & Transformation Rules</h1>
-      <p class="mt-2 max-w-3xl text-xs leading-5 text-[#5A6A88]">Review source-to-canonical proposals inferred from uploaded files. Approve individual proposals or approve the complete pending set for an entity in one action. Entity-level approval validates every proposal atomically; any unresolved field, unsupported transformation or conflicting target blocks the whole action.</p>
-    </div><span class="w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[9px] font-bold text-amber-800">P0 · APPROVAL REQUIRED</span></div>
-  </section>
+  <div class="ph">
+    <div>
+      <div class="ey dm">Transformed · stage 04</div>
+      <h1>Mapping Studio & Transformation Rules</h1>
+      <p>Review source-to-canonical proposals inferred from uploaded files. Approve individual proposals or approve the complete pending set for an entity in one action. Entity-level approval validates every proposal atomically; any unresolved field, unsupported transformation or conflicting target blocks the whole action.</p>
+    </div><span class="chip ex">P0 · APPROVAL REQUIRED</span>
+  </div>
 
-  <section id="pending-mappings" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Pending mapping proposals</h2><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><div class="flex flex-wrap gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="rounded-lg bg-[#2563EB] px-3 py-2 text-xs font-bold text-white">Generate proposals from approved files</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">← Source discovery</a></div></div>
+  <section id="pending-mappings" class="card">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px"><div><h3 style="font-size:16px">Pending mapping proposals</h3><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><div class="flex flex-wrap gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="btn g sm">← Source discovery</a></div></div>
     {% if mapping_suggestions %}
     <p class="mt-3 text-xs text-[#5A6A88]">Reviewing as <b class="text-[#152C6B]">{{ user_name }}</b> ({{ user_role }}). The reviewer on every decision is taken from your signed-in session.</p>
     <div class="mt-3 space-y-3">
@@ -38,7 +39,7 @@
       {% for suggestion in mapping_suggestions %}
       {% if ns.current_entity != suggestion.entity_name %}
       {% if ns.current_entity %}</tbody></table></div>{% endif %}
-      <div class="mt-5 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+      <div class="ins" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:18px;border-left-color:var(--blue)">
         <div><div class="font-mono text-[9px] uppercase tracking-wider text-blue-700">Entity review queue</div><h3 class="mt-1 text-sm font-bold text-[#152C6B]">{{ suggestion.entity_name }}</h3><p class="mt-1 text-[10px] text-[#5A6A88]">Bulk approval succeeds only if every pending mapping for this entity passes validation.</p></div>
         <div class="flex flex-wrap items-center gap-2">
           <span class="rounded-full border border-blue-200 bg-white px-3 py-1 font-mono text-[9px] text-blue-700">SOURCE → CANONICAL</span>
@@ -46,39 +47,39 @@
           <form action="/api/mapping-suggestions/approve-entity" method="post" class="flex flex-wrap items-center gap-2" onsubmit="return confirm('Approve every pending mapping proposal for {{ suggestion.entity_name }}? The operation will be blocked if any proposal fails validation.');">
             <input type="hidden" name="entity_name" value="{{ suggestion.entity_name }}">
             <input type="hidden" name="reviewer" value="{{ user_name }}">
-            <input name="comments" placeholder="Optional approval note" aria-label="Entity approval note" class="w-40 rounded-lg border border-[#C3D2EC] bg-white p-2 text-[10px]">
-            <button class="rounded-lg bg-teal-700 px-3 py-2 text-[10px] font-bold text-white hover:bg-teal-800">Approve all {{ suggestion.entity_name }} mappings</button>
+            <input name="comments" placeholder="Optional approval note" aria-label="Entity approval note" class="input w-40">
+            <button class="btn ok sm">Approve all {{ suggestion.entity_name }} mappings</button>
           </form>
           {% else %}<span class="text-[10px] text-[#5A6A88]">Review-only for {{ user_role }}: Migration Analyst or Platform Admin approves.</span>{% endif %}
         </div>
       </div>
       {% set ns.current_entity = suggestion.entity_name %}
-      <div class="overflow-x-auto"><table class="w-full text-left text-[11px]" data-bulk-table><thead><tr class="font-mono text-[9px] uppercase text-[#8A97B2]">{% if can_review_mappings %}<th class="p-1 w-8"><input type="checkbox" data-select-all aria-label="Select all {{ suggestion.entity_name }} proposals"></th>{% endif %}<th class="p-1">Source field</th><th class="p-1">Inferred canonical field</th>{% if can_review_mappings %}<th class="p-1">Change to (if wrong)</th>{% endif %}<th class="p-1">Confidence</th>{% if can_review_mappings %}<th class="p-1">Transformation (pick or type)</th><th class="p-1">Note</th>{% endif %}</tr></thead><tbody>
+      <div class="tw"><table data-bulk-table><thead><tr>{% if can_review_mappings %}<th><input type="checkbox" data-select-all aria-label="Select all {{ suggestion.entity_name }} proposals"></th>{% endif %}<th>Source field</th><th>Inferred canonical field</th>{% if can_review_mappings %}<th>Change to (if wrong)</th>{% endif %}<th>Confidence</th>{% if can_review_mappings %}<th>Transformation (pick or type)</th><th>Note</th>{% endif %}</tr></thead><tbody>
       {% endif %}
-      <tr class="border-t border-[#EEF2FA] align-top">
-        {% if can_review_mappings %}<td class="p-1"><input type="checkbox" form="src-review" name="ids" value="{{ suggestion.suggestion_id }}" data-row-check aria-label="Approve {{ suggestion.source_field }}"></td>{% endif %}
-        <td class="p-1 break-words font-bold text-[#152C6B]">{{ suggestion.source_field }}</td>
-        <td class="p-1"><span class="font-mono font-bold text-teal-700">{{ suggestion.canonical_field|default('UNRESOLVED') }}</span><div class="text-[10px] text-[#5A6A88]">Rule: <span class="font-mono">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span> · Kind: <span class="font-mono">{{ suggestion.proposed_rule|mapping_kind(suggestion.canonical_field) }}</span></div></td>
-        {% if can_review_mappings %}<td class="p-1"><select form="src-review" name="canonical::{{ suggestion.suggestion_id }}" data-row-input aria-label="Change canonical field for {{ suggestion.source_field }}" class="w-44 rounded border border-[#C3D2EC] bg-white p-1 text-[10px]"><option value="">{% if suggestion.canonical_field %}Correct as inferred{% else %}Choose a canonical field{% endif %}</option>{% for cf in canonical_fields.get(suggestion.entity_name, []) %}{% if cf != suggestion.canonical_field %}<option value="{{ cf }}">Change to {{ cf }}</option>{% endif %}{% endfor %}</select></td>{% endif %}
-        <td class="p-1 font-bold text-[#152C6B]">{{ ((suggestion.confidence_score|float) * 100)|round(1) }}%<div class="text-[9px] font-normal text-amber-700">Suggestion only</div>{% if suggestion.inference_basis %}<div class="text-[9px] font-normal text-[#5A6A88]" data-testid="inference-basis">{{ suggestion.inference_basis }}</div>{% endif %}</td>
-        {% if can_review_mappings %}<td class="p-1"><input form="src-review" name="rule::{{ suggestion.suggestion_id }}" list="rule-options" data-row-input autocomplete="off" placeholder="Keep {{ suggestion.proposed_rule|default('DIRECT_COPY') }}" aria-label="Transformation for {{ suggestion.source_field }}" class="w-48 rounded border border-[#C3D2EC] bg-white p-1 font-mono text-[10px]"></td>
-        <td class="p-1"><input form="src-review" name="note::{{ suggestion.suggestion_id }}" data-row-input placeholder="Comment" aria-label="Note for {{ suggestion.source_field }}" class="w-48 rounded border border-[#C3D2EC] p-1 text-[10px]"></td>{% endif %}
+      <tr>
+        {% if can_review_mappings %}<td><input type="checkbox" form="src-review" name="ids" value="{{ suggestion.suggestion_id }}" data-row-check aria-label="Approve {{ suggestion.source_field }}"></td>{% endif %}
+        <td class="break-words font-bold">{{ suggestion.source_field }}</td>
+        <td><span class="font-mono font-bold text-teal-700">{{ suggestion.canonical_field|default('UNRESOLVED') }}</span><div class="text-[10px] text-[#5A6A88]">Rule: <span class="font-mono">{{ suggestion.proposed_rule|default('DIRECT_COPY') }}</span> · Kind: <span class="font-mono">{{ suggestion.proposed_rule|mapping_kind(suggestion.canonical_field) }}</span></div></td>
+        {% if can_review_mappings %}<td><select form="src-review" name="canonical::{{ suggestion.suggestion_id }}" data-row-input aria-label="Change canonical field for {{ suggestion.source_field }}" class="input w-44"><option value="">{% if suggestion.canonical_field %}Correct as inferred{% else %}Choose a canonical field{% endif %}</option>{% for cf in canonical_fields.get(suggestion.entity_name, []) %}{% if cf != suggestion.canonical_field %}<option value="{{ cf }}">Change to {{ cf }}</option>{% endif %}{% endfor %}</select></td>{% endif %}
+        <td class="font-bold">{{ ((suggestion.confidence_score|float) * 100)|round(1) }}%<div class="text-[9px] font-normal text-amber-700">Suggestion only</div>{% if suggestion.inference_basis %}<div class="text-[9px] font-normal text-[#5A6A88]" data-testid="inference-basis">{{ suggestion.inference_basis }}</div>{% endif %}</td>
+        {% if can_review_mappings %}<td><input form="src-review" name="rule::{{ suggestion.suggestion_id }}" list="rule-options" data-row-input autocomplete="off" placeholder="Keep {{ suggestion.proposed_rule|default('DIRECT_COPY') }}" aria-label="Transformation for {{ suggestion.source_field }}" class="input w-48 font-mono"></td>
+        <td><input form="src-review" name="note::{{ suggestion.suggestion_id }}" data-row-input placeholder="Comment" aria-label="Note for {{ suggestion.source_field }}" class="input w-48"></td>{% endif %}
       </tr>
       {% endfor %}
       </tbody></table></div>
     </div>
     <datalist id="rule-options">{% for b in builtin_rules %}<option value="{{ b }}">built-in</option>{% endfor %}{% for r in approved_rules %}<option value="{{ r.expression }}">{{ r.description|default('approved rule')|truncate(60) }}</option>{% endfor %}</datalist>
-    {% if can_review_mappings %}<form id="src-review" action="/api/mapping-suggestions/review-selected" method="post" data-bulk-bar class="sticky bottom-0 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3 shadow-sm"><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="w-64 rounded-lg border border-[#C3D2EC] bg-white p-2 text-[10px]"><button name="decision" value="APPROVED" data-needs-selection class="rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Approve selected</button><button name="decision" value="REJECTED" data-needs-selection class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 disabled:opacity-40">Reject selected</button><span class="text-[10px] text-[#8A97B2]">A rejection reason is required: add it on the row or in the shared note. Tick the header box to select every pending row in an entity.</span></form>{% else %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects these proposals.</p>{% endif %}
+    {% if can_review_mappings %}<form id="src-review" action="/api/mapping-suggestions/review-selected" method="post" data-bulk-bar class="gate" style="margin-top:12px"><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="input w-64"><button name="decision" value="APPROVED" data-needs-selection class="btn ok sm">Approve selected</button><button name="decision" value="REJECTED" data-needs-selection class="btn g sm">Reject selected</button><span class="text-[10px] text-[#8A97B2]">A rejection reason is required: add it on the row or in the shared note. Tick the header box to select every pending row in an entity.</span></form>{% else %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects these proposals.</p>{% endif %}
     {% else %}
-    {% if progress and progress.mappings_approved %}<div class="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-6 text-center"><div class="font-bold text-teal-900">All proposals reviewed · {{ progress.mappings_approved }} mappings approved</div><p class="mt-1 text-xs text-teal-800">{% if progress.rfi_open %}{{ progress.rfi_open }} information request{{ '' if progress.rfi_open == 1 else 's' }} still open below.{% else %}Nothing is waiting here. Continue to validation.{% endif %}</p><a href="/reconciliation" class="mt-3 inline-block rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white no-underline">Continue to validation →</a></div>
+    {% if progress and progress.mappings_approved %}<div class="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-6 text-center"><div class="font-bold text-teal-900">All proposals reviewed · {{ progress.mappings_approved }} mappings approved</div><p class="mt-1 text-xs text-teal-800">{% if progress.rfi_open %}{{ progress.rfi_open }} information request{{ '' if progress.rfi_open == 1 else 's' }} still open below.{% else %}Nothing is waiting here. Continue to validation.{% endif %}</p><a href="/reconciliation" class="btn ok sm">Continue to validation →</a></div>
     {% else %}
-    <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center"><div class="font-bold text-[#152C6B]">No pending mapping proposals</div><p class="mt-1 text-xs text-[#5A6A88]">Confirm each inferred entity in Source Discovery, then select “Generate proposals from approved files” to profile all newly approved files and create review items.</p><div class="mt-3 flex flex-wrap justify-center gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="rounded-lg bg-[#2563EB] px-4 py-2 text-xs font-bold text-white">Generate proposals from approved files →</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="inline-block rounded-lg border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-blue-700">Open Source Discovery</a></div></div>
+    <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center"><div class="font-bold text-[#152C6B]">No pending mapping proposals</div><p class="mt-1 text-xs text-[#5A6A88]">Confirm each inferred entity in Source Discovery, then select “Generate proposals from approved files” to profile all newly approved files and create review items.</p><div class="mt-3 flex flex-wrap justify-center gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files →</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="btn g sm">Open Source Discovery</a></div></div>
     {% endif %}
     {% endif %}
   </section>
 
-  <section id="information-requests" class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#E9EFF9] pb-3"><div><h2 class="font-bold text-[#152C6B]">Information requests · Unmapped required fields</h2><p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Required canonical fields without a supported source mapping create questions for the source owner or SME. Provide field definitions, source locations or an approved derivation reference—no defaults are invented.</p></div><span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-[9px] font-bold text-amber-800">{{ information_requests|selectattr('status','equalto','OPEN')|list|length }} OPEN</span></div>
+  <section id="information-requests" class="card">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px"><div><h3 style="font-size:16px">Information requests · Unmapped required fields</h3><p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">Required canonical fields without a supported source mapping create questions for the source owner or SME. Provide field definitions, source locations or an approved derivation reference—no defaults are invented.</p></div><span class="chip ex">{{ information_requests|selectattr('status','equalto','OPEN')|list|length }} OPEN</span></div>
     {% if information_requests %}
     {% set open_rfis = information_requests|selectattr('status','equalto','OPEN')|list %}
     {% set done_rfis = information_requests|rejectattr('status','equalto','OPEN')|list %}
@@ -88,6 +89,6 @@
     {% else %}<div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] p-5 text-center text-xs text-[#5A6A88]">No information requests yet. Requests are generated when profiling and mapping identify missing required canonical fields.</div>{% endif %}
   </section>
 
-  <section class="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-900"><b>P0 boundary:</b> mapping recommendations and metadata may be reviewed here. This screen does not execute target loading, reverse mapping, wave assignment or production cutover.</section>
+  <section class="ins" style="border-left-color:var(--blue)"><b style="display:inline">P0 boundary:</b> mapping recommendations and metadata may be reviewed here. This screen does not execute target loading, reverse mapping, wave assignment or production cutover.</section>
 </div>
 {% endblock %}

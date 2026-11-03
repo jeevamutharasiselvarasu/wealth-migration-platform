@@ -17,6 +17,12 @@ def test_p0_ui_does_not_render_deferred_wealth_modules_or_assign_waves():
     assert "name=\"aum_drift_gate\"" not in knowledge
 
 
+
+def _shell_source():
+    """base.html plus the shared suite top bar and persona selector it includes."""
+    t = ROOT / "ui" / "templates"
+    return "".join((t / n).read_text(encoding="utf-8") for n in ("base.html", "_suite_top.html", "_persona_select.html"))
+
 def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
     state = (ROOT / "ui" / "state.py").read_text()
     assert "Amplify UMA Sleeve and Holding Schema Contract" not in state
@@ -24,15 +30,17 @@ def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
     assert '"program_status": "P0_SOURCE_TO_CANONICAL"' in state
 
 def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow():
-    navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
+    navigation = _shell_source()
     app_source = (ROOT / "ui" / "app.py").read_text()
-    assert 'href="/persona-selection"' in navigation
-    assert "progress.steps" in navigation and 'aria-label="Workflow steps"' in navigation
+    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text()
+    assert 'action="/persona-selection"' in persona and "persona_options" in persona  # persona is a top-bar selector, as in the template
+    assert '_suite_top.html' in navigation
+    assert "pg.steps" in navigation and 'class="runh"' in navigation and "Next: {{ pg.next.label }}" in navigation  # stage rail with run progress
     for route in ('/migration-setup', '/entity-sample-files', '/agent-pipeline', '/reconciliation'):
         assert f'"{route}"' in app_source  # stepper destinations
     assert 'href="/firm-knowledge"' in navigation  # Governance reference, not a workflow step
     assert 'href="/hitl"' not in navigation
-    assert "Switch persona" in navigation
+    assert "Persona" in navigation and "persona_options" in navigation
     assert '"discover": "Discover"' in app_source
     assert "DATA PLANE (SPECIALIST)" not in navigation
 
@@ -52,8 +60,8 @@ def test_dashboard_exposes_only_the_three_entity_p0_flow():
 
 
 def test_global_ui_shell_matches_agentic_demo_visual_language():
-    shell = (ROOT / "ui" / "templates" / "base.html").read_text()
-    for token in ("Space Grotesk", "IBM Plex Mono", "#152C6B", "xa-topbar", "xa-sidebar", "xa-right"):
+    shell = _shell_source()
+    for token in ("suite.css", "dm.css", "Inter", 'class="xtop', 'class="pbar"', 'class="side"', 'class="main'):
         assert token in shell
     for entity in ("Account", "Household", "Client"):
         assert entity in shell
@@ -69,7 +77,7 @@ def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
 
 
 
-def test_persona_selection_is_a_separate_step_after_login():
+def test_login_has_no_role_field_and_persona_is_chosen_from_the_top_bar_selector():
     login = (ROOT / "ui" / "templates" / "login.html").read_text()
     persona = (ROOT / "ui" / "templates" / "persona_selection.html").read_text()
     app = (ROOT / "ui" / "app.py").read_text()
@@ -77,7 +85,8 @@ def test_persona_selection_is_a_separate_step_after_login():
     assert 'name="role"' in persona
     assert '@app.get("/persona-selection"' in app
     assert '@app.post("/persona-selection"' in app
-    assert 'RedirectResponse(url="/persona-selection"' in app
+    assert 'RedirectResponse(url="/suite"' in app  # login goes straight to the suite home; persona switches from the top bar
+    assert 'next.startswith("/") and not next.startswith("//")' in app  # persona switch only returns to same-site paths
 
 
 def test_migration_setup_collects_target_azure_knowledge_and_source_before_discovery():
@@ -483,14 +492,14 @@ def test_ui_walk_fixes_labels_and_no_raw_none_in_templates():
 def test_setup_upload_row_grid_cannot_overflow_the_viewport():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
-    assert "minmax(0,1fr)_minmax(0,2fr)_auto" in src and "[1fr_2fr_auto]" not in src  # a file input must not widen the page
+    assert "minmax(0,1fr) minmax(0,2fr) auto" in src and "[1fr_2fr_auto]" not in src  # a file input must not widen the page
 
 
 def test_compact_workflow_bar_and_my_queue_are_in_templates():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "ui" / "templates"
     base = (root / "base.html").read_text(encoding="utf-8")
-    assert "xa-wf-compact" in base and "position:sticky" in base and "wf_path == '/'" in base
+    assert 'class="runh"' in base and 'aria-label="Data migration navigation"' in base
     assert 'aria-label="My queue"' in (root / "dashboard.html").read_text(encoding="utf-8")
     tm = (root / "target_mapping.html").read_text(encoding="utf-8")
     assert 'aria-label="On this page"' in tm and 'id="target-mappings"' in tm and "Inferred target model" in tm
@@ -499,7 +508,8 @@ def test_compact_workflow_bar_and_my_queue_are_in_templates():
 def test_target_mapping_wide_tables_scroll_inside_their_own_container():
     from pathlib import Path
     tm = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "target_mapping.html").read_text(encoding="utf-8")
-    assert tm.count('<div class="overflow-x-auto"><table') == 2  # gap report and preview must not widen the phone layout
+    assert tm.count('<div class="tw"><table') >= 2  # suite .tw wrapper scrolls inside its own container so wide tables do not widen the phone layout
+    assert '<table class="mt-3' not in tm  # no bare unwrapped tables
 
 
 def test_git_ignored_local_users_add_rehearsal_accounts_without_replacing_tracked_ones(tmp_path, monkeypatch):
@@ -527,3 +537,60 @@ def test_base_template_keeps_scroll_position_after_actions():
     assert "sessionStorage" in html and "scrollTo" in html
     assert "location.hash" in html  # anchored redirects keep their own target
     assert 'get("notice")' in html  # notice shown as a toast, since the banner is off-screen
+
+
+def test_suite_template_shell_marks_other_spaces_planned_and_groups_governance_inputs_in_the_rail():
+    """Data Migration is the only live space; Deal Room and Governance stay visible but are not links."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "ui"
+    base = _shell_source()
+    for space in ("Deal Room", "Governance"):
+        line = next(l for l in base.splitlines() if space in l and 'class="' in l and "planned" in l)
+        assert 'aria-disabled="true"' in line and "href=" not in line and "Planned" in line
+    assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/continue-data-migration"' in base
+    for href in ("/canonical-changes", "/target-mapping", "/firm-knowledge"):
+        assert f'href="{href}"' in base  # Governance inputs live in the Data Migration rail
+    for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Execution", "Reconciliation"):
+        assert stage in base
+    for asset in ("suite.css", "dm.css", "xodus.css", "legacy.css"):
+        assert (root / "static" / asset).is_file()
+    assert "cdn.tailwindcss.com" in base  # fallback kept while pages are converted
+    assert "Party" not in base
+
+
+def test_suite_home_is_the_post_login_landing_and_opens_data_migration_on_the_same_session():
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    suite = (ROOT / "ui" / "templates" / "suite_home.html").read_text(encoding="utf-8")
+    top = (ROOT / "ui" / "templates" / "_suite_top.html").read_text(encoding="utf-8")
+    login = (ROOT / "ui" / "templates" / "login.html").read_text(encoding="utf-8")
+    base = (ROOT / "ui" / "templates" / "base.html").read_text(encoding="utf-8")
+    assert '@app.get("/suite"' in app and 'RedirectResponse(url="/suite"' in app  # persona selection lands on the suite home
+    assert 'href="/continue-data-migration"' in suite and 'href="/migration-setup"' in suite  # Data Migration and its setup open from the suite home
+    assert 'href="/"' in (ROOT / "ui" / "templates" / "continue_data_migration.html").read_text(encoding="utf-8")
+    assert top.count('<span class="chip">Planned</span>') == 2  # Deal Room and Governance stay visible, marked Planned
+    assert "Sign in to the Xodus suite" in login and "no second password" in login
+    assert 'class="xbrand" href="/suite"' in _shell_source()  # the brand returns to the suite home
+
+
+def test_persona_selector_switches_in_place_and_rejects_open_redirects(tmp_path, monkeypatch):
+    import asyncio, httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "p.db"); monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    app_module.state_store = state_module.WorkspaceStateStore(); db.init_db()
+    app_module.session_mgr.active_sessions["sid-p"] = {"email": "jeeva@simplicitywealth.com", "name": "Jeeva S.", "role": "Platform Admin"}
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://t", cookies={"session_id": "sid-p"}) as c:
+            page = await c.get("/suite")
+            assert page.status_code == 200 and 'name="role"' in page.text and "Migration Analyst" in page.text
+            assert (await c.get("/continue-data-migration")).status_code == 200
+            back = await c.post("/persona-selection", data={"role": "Migration Analyst", "next": "/migration-setup"})
+            assert back.headers["location"] == "/migration-setup"
+            assert app_module.session_mgr.active_sessions["sid-p"]["role"] == "Migration Analyst"
+            evil = await c.post("/persona-selection", data={"role": "Platform Admin", "next": "//evil.example"})
+            assert evil.headers["location"] == "/suite"
+    asyncio.run(run())
+    app_module.session_mgr.active_sessions.pop("sid-p", None)

@@ -1,35 +1,37 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="space-y-5 max-w-6xl">
-  {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-xs text-teal-900">{{ notice }}</div>{% endif %}
-  {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">{{ error }}</div>{% endif %}
-  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <div class="font-mono text-[9px] font-bold uppercase tracking-[.12em] text-blue-700">Platform governance</div>
-    <h1 class="mt-1 text-lg font-bold text-[#152C6B]">Users &amp; access</h1>
-    <p class="mt-1 max-w-3xl text-xs leading-5 text-[#5A6A88]">People register themselves at <span class="font-mono">/register</span>. Nobody can act until you approve the request and assign roles. Changing roles or disabling an account ends that user's current sessions. The last active Platform Admin cannot be removed.</p>
-  </section>
-  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm" data-testid="registered-users">
-    <h2 class="text-sm font-bold text-[#152C6B]">Registered users</h2>
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Platform governance</div>
+      <h1>Users &amp; access</h1>
+      <p>People register themselves at <span class="font-mono">/register</span>. Nobody can act until you approve the request and assign roles. Changing roles or disabling an account ends that user's current sessions. The last active Platform Admin cannot be removed.</p>
+    </div>
+  </div>
+  <section class="card" data-testid="registered-users">
+    <h3 style="font-size:16px">Registered users</h3>
     {% for u in users %}
     <article class="mt-3 rounded-xl border border-[#D9E3F5] p-4 text-xs">
       <div class="flex flex-wrap items-center gap-2"><span class="font-bold text-[#152C6B]">{{ u.name }}</span><span class="font-mono text-[#5A6A88]">{{ u.email }}</span>
-        <span class="rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold {% if u.status == 'ACTIVE' %}border-teal-200 bg-teal-50 text-teal-800{% elif u.status == 'PENDING' %}border-amber-200 bg-amber-50 text-amber-800{% else %}border-rose-200 bg-rose-50 text-rose-800{% endif %}">{{ u.status }}</span>
+        <span class="pill {% if u.status == 'ACTIVE' %}approved{% elif u.status == 'PENDING' %}review{% else %}failed{% endif %}">{{ u.status }}</span>
         <span class="text-[#5A6A88]">registered {{ u.created_utc }}{% if u.approved_by %} &middot; decided by {{ u.approved_by }}{% endif %}</span></div>
       <form action="/api/users/{{ u.email }}/decision" method="post" class="mt-2 flex flex-wrap items-center gap-3">
         {% if u.status != 'DISABLED' %}{% for r in all_roles %}<label class="flex items-center gap-1"><input type="checkbox" name="roles" value="{{ r }}" {% if r in u.roles %}checked{% endif %}> {{ r }}</label>{% endfor %}{% endif %}
-        {% if u.status == 'PENDING' %}<button name="action" value="APPROVE" class="rounded-lg bg-[#2563EB] px-3 py-1.5 text-[11px] font-bold text-white">Approve with these roles</button>
-        {% elif u.status == 'ACTIVE' %}<button name="action" value="SET_ROLES" class="rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-bold text-blue-700">Save roles</button>{% endif %}
-        {% if u.status == 'DISABLED' %}<button name="action" value="ENABLE" class="rounded-lg border border-teal-300 px-3 py-1.5 text-[11px] font-bold text-teal-800">Enable</button>
-        {% else %}<button name="action" value="DISABLE" class="rounded-lg border border-rose-300 px-3 py-1.5 text-[11px] font-bold text-rose-800">Disable</button>{% endif %}
+        {% if u.status == 'PENDING' %}<button name="action" value="APPROVE" class="btn p sm">Approve with these roles</button>
+        {% elif u.status == 'ACTIVE' %}<button name="action" value="SET_ROLES" class="btn g sm">Save roles</button>{% endif %}
+        {% if u.status == 'DISABLED' %}<button name="action" value="ENABLE" class="btn g sm">Enable</button>
+        {% else %}<button name="action" value="DISABLE" class="btn g sm">Disable</button>{% endif %}
       </form>
     </article>
     {% else %}<div class="mt-3 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center text-xs text-[#5A6A88]">No self-registered users yet.</div>{% endfor %}
   </section>
-  <section class="rounded-2xl border border-[#D9E3F5] bg-white p-5 shadow-sm">
-    <h2 class="text-sm font-bold text-[#152C6B]">Built-in demo users</h2>
+  <section class="card">
+    <h3 style="font-size:16px">Built-in demo users</h3>
     <p class="mt-1 text-xs text-[#5A6A88]">From <span class="font-mono">demo_users.json</span>. They sign in only when a password hash is configured for them; their emails cannot be registered.</p>
-    <table class="mt-2 w-full text-left text-xs"><tbody>{% for d in demo_users %}<tr class="border-t border-[#E6ECF8]"><td class="py-1 font-mono">{{ d.email }}</td><td>{{ d.name }}</td><td>{{ d.roles|join(', ') }}</td><td>{{ 'can sign in' if d.has_password else 'no password set' }}</td></tr>{% endfor %}</tbody></table>
+    <table class="mt-2 w-full text-left text-xs"><tbody>{% for d in demo_users %}<tr><td class="font-mono">{{ d.email }}</td><td>{{ d.name }}</td><td>{{ d.roles|join(', ') }}</td><td>{{ 'can sign in' if d.has_password else 'no password set' }}</td></tr>{% endfor %}</tbody></table>
   </section>
 </div>
 {% endblock %}

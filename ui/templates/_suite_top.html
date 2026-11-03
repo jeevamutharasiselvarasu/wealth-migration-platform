@@ -1,0 +1,18 @@
+<header class="xtop">
+  <div class="wrap xtop-in">
+    <a class="xbrand" href="/suite" aria-label="XODUS suite home">
+      <span class="xmark" aria-hidden="true"></span>
+      <span><strong>Xodus</strong><span>M&amp;A integration co-pilot for RIAs</span></span>
+    </a>
+    <nav class="xnav" aria-label="Suite spaces">
+      <a class="deal planned" aria-disabled="true" tabindex="-1" title="Planned, not available in this pilot"><i></i>Deal Room <span class="chip">Planned</span></a>
+      <a class="dm{% if suite_cur == 'dm' %} on{% endif %}" href="/continue-data-migration"{% if suite_cur == 'dm' %} aria-current="page"{% endif %}><i></i>Data Migration</a>
+      <a class="gov planned" aria-disabled="true" tabindex="-1" title="Planned, not available in this pilot"><i></i>Governance <span class="chip">Planned</span></a>
+    </nav>
+    <span class="sp"></span>
+    {% if demo_mode %}<span class="chip ex">Demo data</span>{% endif %}
+    {% include "_persona_select.html" %}
+    {% if not hide_signout %}<a class="tbtn" href="/logout">Sign out</a>{% endif %}
+    <button class="tbtn" id="themeBtn" type="button" aria-label="Toggle light or dark theme">Theme</button>
+  </div>
+</header>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Xodus suite · Choose a space</title>
+    <script>try{var t=localStorage.getItem("xodus.theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/suite.css">
+    <link rel="stylesheet" href="/static/dm.css">
+    <link rel="stylesheet" href="/static/xodus.css">
+</head>
+<body>
+{% set suite_cur = "" %}{% include "_suite_top.html" %}
+<header class="hero"><div class="wrap hero-in">
+  <div class="eyebrow"><i></i> WealthAI Labs · for RIA acquirers</div>
+  <h1>From the first deal conversation to the <em>last reconciled account</em>.</h1>
+  <p>You signed in once. Choose where to work; the same session carries into each space. Governance keeps every gate intact.</p>
+</div></header>
+<main class="wrap page">
+  <div class="spaces">
+    <article class="sc deal">
+      <div class="k">Planned</div><h2>Deal Room</h2>
+      <p>Research and document the target, run diligence, and reach a go / no-go decision.</p>
+      <ul><li>Target profile and diligence</li><li>Integration estimate</li><li>Prescriptive recommendation</li></ul>
+      <div class="st">Not part of this pilot</div>
+      <div class="ft"><span class="btn g dis" aria-disabled="true">Planned</span><span class="chip">Not available</span></div>
+    </article>
+    <article class="sc dm">
+      <div class="k">The real data migration work</div><h2>Data Migration</h2>
+      <p>Move the CoreCap book into the Simplicity canonical model with an agent at every stage and a human review gate before anything is approved.</p>
+      <ul><li>Migration setup and workspace configuration</li><li>Source discovery, mapping and review</li><li>Validation, lineage and reconciliation</li></ul>
+      <div class="st">{{ progress.next.label }}{% if progress.status_chip %} · {{ progress.status_chip.label }}{% endif %}</div>
+      <div class="ft"><a class="btn p" href="/continue-data-migration">Enter Data Migration</a><a class="btn g" href="/migration-setup">Migration setup</a><span class="chip g">Open to you</span></div>
+    </article>
+    <article class="sc gov">
+      <div class="k">Planned</div><h2>Governance</h2>
+      <p>See every gate from the first approval to hypercare close-out, with evidence attached.</p>
+      <ul><li>Gate chain across all spaces</li><li>Integrity checks and audit trail</li><li>Cutover and close-out gates</li></ul>
+      <div class="st">Not part of this pilot</div>
+      <div class="ft"><span class="btn g dis" aria-disabled="true">Planned</span><span class="chip">Not available</span></div>
+    </article>
+  </div>
+</main>
+<script>
+(function(){var b=document.getElementById("themeBtn");if(b)b.addEventListener("click",function(){var n=document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("xodus.theme",n)}catch(e){}})})();
+</script>
+</body>
+</html>

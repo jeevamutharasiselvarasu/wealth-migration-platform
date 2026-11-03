@@ -25,7 +25,7 @@ def test_every_post_route_is_classified_by_the_role_policy():
 
 def test_policy_matrix_matches_the_documented_responsibilities():
     a = policy.allowed_roles_for
-    assert a("POST", "/api/migration/setup") == {"Platform Admin", "Migration Analyst"}
+    assert a("POST", "/api/migration/setup") == {"Platform Admin", "IMO Lead", "Migration Analyst"}
     assert a("POST", "/api/demo/load") == {"Platform Admin"}
     assert a("POST", "/api/kernel/update") == {"Platform Admin", "Domain SME"}
     assert a("POST", "/api/entities/upload-sample-file") == {"Platform Admin", "Migration Analyst"}
@@ -34,6 +34,20 @@ def test_policy_matrix_matches_the_documented_responsibilities():
     assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Platform Admin", "Migration Analyst"}
     assert a("POST", "/api/mapping-gaps/RFI-1/response") == {"Platform Admin", "Migration Analyst", "Domain SME"}
     assert a("GET", "/api/migration/setup") is None and a("POST", "/login") is None
+
+
+def test_template_roles_imo_lead_configures_and_compliance_reviewer_is_read_only():
+    """Suite template roles: the IMO Lead creates and configures workspaces but approves no mapping; the Compliance Reviewer holds no write capability."""
+    from ui.auth import SessionManager
+    from control_plane.services import user_registry
+
+    assert {"IMO Lead", "Compliance Reviewer"} <= set(SessionManager.ALL_ROLES) and set(SessionManager.ALL_ROLES) == set(user_registry.ALL_ROLES)
+    write_roles = set().union(*(roles for _, roles in policy._COMPILED))
+    assert "Compliance Reviewer" not in write_roles
+    for path in ("/api/migration/setup", "/api/migration/new", "/api/entities/save-scopes"):
+        assert "IMO Lead" in policy.allowed_roles_for("POST", path)
+    for path in ("/api/mapping-suggestions/approve-entity", "/api/entities/confirm-inference", "/api/validation/run", "/api/kernel/update", "/api/demo/load"):
+        assert "IMO Lead" not in policy.allowed_roles_for("POST", path)
 
 
 @pytest.mark.parametrize("role,setup,upload,confirm,review,answer", [
