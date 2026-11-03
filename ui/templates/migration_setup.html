@@ -8,7 +8,7 @@
       <p>Configure the CoreCap source and Simplicity target, select Account, Household and/or Client in scope, then provide knowledge and source access. File classification remains evidence-based and requires reviewer confirmation.</p>
     </div>
   </div>
-  {% set _tc = target_connection %}
+  {% set _tc = target_connection.config %}
   <section class="kpis" aria-label="Configuration summary">
     <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if _tc and _tc.status == 'CONFIRMED' else 'Needs setup' }}</b><span>{{ _tc.target_name if _tc else 'one-time Platform Admin step' }}</span></div>
     <div class="kpi"><small>Entities in scope</small><b>{{ (setup.get('entities') or [])|length }} of 3</b><span>Account, Household, Client</span></div>
