@@ -497,6 +497,7 @@ def test_compact_workflow_bar_and_my_queue_are_in_templates():
     base = (root / "base.html").read_text(encoding="utf-8")
     assert 'class="runh"' in base and 'aria-label="Data migration navigation"' in base
     assert 'aria-label="My queue"' in (root / "dashboard.html").read_text(encoding="utf-8")
+    assert "Configuration summary" in (root / "migration_setup.html").read_text(encoding="utf-8")
     assert "Validation summary" in (root / "reconciliation.html").read_text(encoding="utf-8")
     assert "Mapping summary" in (root / "agent_pipeline.html").read_text(encoding="utf-8")
     assert "Rule summary" in (root / "transformation_rules.html").read_text(encoding="utf-8")

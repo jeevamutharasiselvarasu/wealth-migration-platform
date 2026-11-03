@@ -1057,7 +1057,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
         request=request,
         template_name="agent_pipeline.html",
         extra_context={
-            "page_title": "Mapping Studio & Transformation Rules",
+            "page_title": "Schema Mapper · Mapping Studio",
             "user_name": user["name"],
             "user_role": user["role"],
             "can_review_mappings": user["role"] in MAPPING_REVIEW_ROLES,

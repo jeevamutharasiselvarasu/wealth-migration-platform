@@ -8,6 +8,13 @@
       <p>Configure the CoreCap source and Simplicity target, select Account, Household and/or Client in scope, then provide knowledge and source access. File classification remains evidence-based and requires reviewer confirmation.</p>
     </div>
   </div>
+  {% set _tc = target_connection %}
+  <section class="kpis" aria-label="Configuration summary">
+    <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if _tc and _tc.status == 'CONFIRMED' else 'Needs setup' }}</b><span>{{ _tc.target_name if _tc else 'one-time Platform Admin step' }}</span></div>
+    <div class="kpi"><small>Entities in scope</small><b>{{ (setup.get('entities') or [])|length }} of 3</b><span>Account, Household, Client</span></div>
+    <div class="kpi"><small>Knowledge assets</small><b>{{ knowledge_docs|length }}</b><span>registered</span></div>
+    <div class="kpi"><small>Your access</small><b>{{ 'You can edit' if can_configure else 'Read-only' }}</b><span>{{ user_role }}</span></div>
+  </section>
 
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   {% if not can_configure %}<div class="exc">Read-only for {{ user_role }}. Migration setup is configured by the Migration Analyst, IMO Lead (or Platform Admin); your persona can review the saved setup.</div>{% endif %}
