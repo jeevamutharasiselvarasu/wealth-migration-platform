@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Xodus Deal Room</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Xodus suite template. Colour coding follows WealthTech AI Labs: cyan = Deal Room (front), green = Governance (middle), blue = Data Migration (back). */
+:root{
+  --cyan:#08A6D8;--cyan-l:#64D8EF;--green:#27C978;--green-d:#19A861;--blue:#0878C9;--blue-d:#0B5FA5;
+  --navy-950:#071523;--navy-900:#0B1F33;--navy-800:#12304B;
+  --brand:#0878C9;--brand-2:color-mix(in srgb,var(--brand) 55%,#64D8EF);
+  --bg:#F5F9FC;--panel:#FFFFFF;--ink:#152536;--muted:#657487;--line:#DDE7EF;--head:#0B1F33;--chip:#EEF4F8;
+  --tint-c:#EAF7FC;--tint-g:#E8FAF0;--tint-b:#ECF3FB;--ink-c:#0878A8;--ink-g:#19A861;--ink-b:#0B5FA5;
+  --warn:#9A6212;--warn-bg:#FFF3D6;--bad:#B42318;--bad-bg:#FDECEA;--shadow:0 14px 40px rgba(10,42,67,.09);--nav-bg:rgba(255,255,255,.9);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#081521;--panel:#0F273B;--ink:#E4EEF5;--muted:#9DB2C3;--line:#1D384F;--head:#F2F8FC;--chip:#16324A;
+  --tint-c:#0F3347;--tint-g:#0F3A2B;--tint-b:#14304F;--ink-c:#64D8EF;--ink-g:#6EDB9D;--ink-b:#8CC4F0;
+  --warn:#F0C46A;--warn-bg:#3A2E10;--bad:#FF9C92;--bad-bg:#40191A;--shadow:0 14px 40px rgba(0,0,0,.4);--nav-bg:rgba(8,21,33,.9);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#081521;--panel:#0F273B;--ink:#E4EEF5;--muted:#9DB2C3;--line:#1D384F;--head:#F2F8FC;--chip:#16324A;
+  --tint-c:#0F3347;--tint-g:#0F3A2B;--tint-b:#14304F;--ink-c:#64D8EF;--ink-g:#6EDB9D;--ink-b:#8CC4F0;
+  --warn:#F0C46A;--warn-bg:#3A2E10;--bad:#FF9C92;--bad-bg:#40191A;--shadow:0 14px 40px rgba(0,0,0,.4);--nav-bg:rgba(8,21,33,.9);color-scheme:dark}
+*{box-sizing:border-box}
+html{overflow-x:clip;scroll-behavior:smooth}
+body{margin:0;overflow-x:clip;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;font-size:14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+[hidden]{display:none!important}
+a{color:inherit;text-decoration:none}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.wrap{width:min(1320px,100%);margin:0 auto}
+.xtop{position:relative;z-index:50;margin:0 -50vw;padding:0 50vw;background:var(--nav-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.xtop-in{min-height:64px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0}
+.xbrand{display:flex;align-items:center;gap:11px;min-width:0}
+.xmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--cyan));position:relative;flex:none}
+.xmark::after{content:"";position:absolute;width:11px;height:11px;border-radius:50%;background:var(--green);right:-4px;bottom:-3px;border:3px solid var(--panel)}
+.xbrand strong{display:block;font-size:15px;color:var(--head);line-height:1.1}
+.xbrand span{display:block;font-size:10.5px;color:var(--muted)}
+.xnav{display:flex;gap:4px;flex-wrap:wrap}
+.xnav a{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.xnav a i{width:8px;height:8px;border-radius:50%}
+.xnav a.deal i{background:var(--cyan)}.xnav a.dm i{background:var(--blue)}.xnav a.gov i{background:var(--green)}
+.xnav a:hover{background:var(--chip);color:var(--head)}
+.xnav a.on{background:var(--chip);color:var(--head)}
+.sp{flex:1}
+.xwho{display:flex;align-items:center;gap:8px}
+.xwho select,.sel{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:7px 9px;font-size:12px}
+.tbtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:7px}
+.tbtn:hover{border-color:var(--cyan)}
+.btn{border:1px solid transparent;border-radius:11px;padding:10px 15px;font-weight:700;font-size:12.5px;display:inline-flex;align-items:center;gap:8px}
+.btn.p{background:var(--brand);color:#fff}
+.btn.g{background:var(--panel);border-color:var(--line);color:var(--ink)}
+.btn.ok{background:var(--green);color:#052315}
+.btn.sm{padding:6px 10px;font-size:11.5px;border-radius:9px}
+.btn:disabled,.btn.dis{opacity:.45;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:5px 9px;border-radius:999px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.chip.ex{background:var(--warn-bg);color:var(--warn)}
+.chip.c{background:var(--tint-c);color:var(--ink-c)}.chip.g{background:var(--tint-g);color:var(--ink-g)}.chip.b{background:var(--tint-b);color:var(--ink-b)}
+.pill{display:inline-flex;align-items:center;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.pill.approved{background:var(--tint-g);color:var(--ink-g)}.pill.review{background:var(--warn-bg);color:var(--warn)}.pill.running{background:var(--tint-c);color:var(--ink-c)}.pill.queued{background:var(--chip);color:var(--muted)}.pill.failed,.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.page{padding-block:24px 64px;display:flex;flex-direction:column;gap:18px}
+.ph{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.ey{font-size:11px;letter-spacing:1px;text-transform:uppercase;font-weight:800}
+.ey.deal{color:var(--ink-c)}.ey.dm{color:var(--ink-b)}.ey.gov{color:var(--ink-g)}
+.ph h1{margin:4px 0;font-size:clamp(26px,3.2vw,36px);letter-spacing:-1px;color:var(--head);line-height:1.08;text-wrap:balance}
+.ph p{margin:0;color:var(--muted);max-width:680px;font-size:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;min-width:0}
+.card h3{margin:0 0 4px;font-size:15px;color:var(--head)}
+.card .d{margin:0 0 12px;font-size:12.5px;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;min-width:0}
+.kpi small{display:block;font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);font-weight:800}
+.kpi b{display:block;font-size:24px;letter-spacing:-.6px;color:var(--head);font-variant-numeric:tabular-nums;margin:2px 0}
+.kpi span{font-size:11.5px;color:var(--muted)}
+.two{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:12.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);padding:10px 14px;background:var(--bg);border-bottom:1px solid var(--line)}
+td{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.flag{color:var(--bad);font-weight:700}
+.exc{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 14px;background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600}
+.lockn{border:1px dashed var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);background:var(--panel)}
+.restricted{max-width:620px;margin:80px auto;text-align:center;display:grid;gap:12px;justify-items:center}
+.restricted h1{margin:0;color:var(--head);font-size:26px}
+.restricted p{margin:0;color:var(--muted)}
+.meter{height:5px;border-radius:99px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width .3s}
+.list{display:grid;gap:8px}
+.li{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:13px;background:var(--bg);text-align:left;width:100%}
+.li b{width:34px;height:34px;border-radius:10px;background:var(--tint-c);display:grid;place-items:center;font-size:11px;color:var(--ink-c)}
+.li strong{display:block;font-size:13px;color:var(--head)}
+.li span{font-size:11.5px;color:var(--muted)}
+.empty{padding:18px;border:1px dashed var(--line);border-radius:13px;font-size:12.5px;color:var(--muted);text-align:center}
+.feed{margin:0;padding:0;list-style:none;display:grid;gap:10px;font-size:12.5px}
+.feed li{display:grid;grid-template-columns:10px 1fr;gap:10px;color:var(--muted)}
+.feed li i{width:8px;height:8px;border-radius:50%;background:var(--cyan);margin-top:6px}
+.feed b{color:var(--head)}
+.gate{display:flex;gap:14px;justify-content:space-between;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:16px;padding:14px 18px;background:var(--panel);position:sticky;bottom:12px;box-shadow:var(--shadow)}
+.gate .t{font-size:12.5px;color:var(--muted);max-width:640px}
+.gate .t b{color:var(--head)}
+.gate .a{display:flex;gap:8px;flex-wrap:wrap}
+.sigs{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--navy-900);color:#fff;border-radius:12px;padding:11px 16px;font-size:12.5px;opacity:0;pointer-events:none;transition:.25s;z-index:90}
+.toast.show{opacity:1;transform:translateX(-50%)}
+/* tabs */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px}
+.tab{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--muted)}
+.tab.on{background:var(--navy-900);border-color:var(--navy-900);color:#fff}
+/* meeting assistant drawer */
+.mfab{position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));z-index:70;background:var(--navy-900);color:#fff;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:13px;box-shadow:var(--shadow);display:flex;gap:9px;align-items:center}
+.mfab i{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(39,201,120,.25)}
+.mdr{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);z-index:80;background:var(--panel);border-left:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.25);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .25s;padding-top:env(safe-area-inset-top,0px)}
+.mdr.open{transform:none}
+.mdr-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.mdr-h strong{color:var(--head);font-size:15px}
+.mdr-h small{display:block;color:var(--muted);font-size:11px}
+.mdr-b{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.mdr .tabs{padding:10px 16px;border-bottom:1px solid var(--line)}
+.msg{font-size:12.5px;padding:10px 12px;border-radius:13px;max-width:94%}
+.msg.u{align-self:flex-end;background:var(--navy-900);color:#fff}
+.msg.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.msg .src{margin-top:7px;display:flex;gap:5px;flex-wrap:wrap}
+.msg .src span{font-size:10px;font-weight:700;padding:3px 7px;border-radius:99px;background:var(--tint-c);color:var(--ink-c)}
+.mdr-f{padding:12px 16px 16px;border-top:1px solid var(--line);display:grid;gap:8px}
+.mdr-f .row{display:flex;gap:8px}
+.mdr-f input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:11px;padding:10px 12px;font-size:12.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.qchip{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:6px 10px;font-size:11px;font-weight:600;color:var(--muted)}
+.qchip:hover{border-color:var(--cyan);color:var(--ink-c)}
+.mtg{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg);display:grid;gap:6px}
+.mtg strong{color:var(--head);font-size:13px}
+.mtg small{color:var(--muted)}
+.ins{border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:12px;padding:11px 13px;background:var(--bg);font-size:12.5px}
+.ins b{display:block;color:var(--head);margin-bottom:3px}
+.conn{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);font-size:12.5px}
+@media(max-width:1020px){.kpis{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}}
+@media(max-width:620px){.kpis{grid-template-columns:1fr 1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.xmark.img{background:transparent;display:grid;place-items:center;overflow:visible}
+.xmark.img img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+.xmark.img.tile{background:#fff;border:1px solid var(--line);padding:3px}
+.xmark.img.tile img{border-radius:6px}
+.xwm{height:30px;max-width:180px;object-fit:contain}
+.tbtn.on{border-color:var(--cyan);background:var(--tint-c);color:var(--ink-c)}
+
+
+</style>
+<style>
+/* Layout: header, four tabs (Research, Documents, Recommendation, Decision). Cyan is the Deal Room colour. */
+.banner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-left:4px solid var(--cyan);border-radius:14px;padding:10px 14px;background:var(--tint-c);color:var(--ink-c);font-size:12.5px;font-weight:600}
+.nuances{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.nu{border:1px solid var(--line);border-radius:16px;padding:16px;background:var(--panel);display:flex;flex-direction:column;gap:8px;border-top:3px solid var(--cyan)}
+.nu h4{margin:0;font-size:14px;color:var(--head)}
+.nu p{margin:0;font-size:12.5px;color:var(--muted)}
+.nu .src{font-size:11px;color:var(--ink-c);font-weight:700}
+.docs{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:16px;align-items:start}
+.doc{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;text-align:left;width:100%;border:1px solid var(--line);border-radius:13px;padding:11px 13px;background:var(--bg)}
+.doc.on{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(8,166,216,.25);background:var(--panel)}
+.doc strong{display:block;color:var(--head);font-size:13px}
+.doc span{font-size:11.5px;color:var(--muted)}
+.pv h2{margin:0 0 4px;font-size:20px;color:var(--head);letter-spacing:-.4px}
+.pv p{font-size:13px;color:var(--ink);margin:8px 0}
+.pv .m{font-size:11.5px;color:var(--muted)}
+.rec{border-radius:22px;padding:24px;background:linear-gradient(120deg,var(--navy-950),var(--navy-900) 60%,#0A3450);color:#fff;display:grid;gap:10px}
+.rec small{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#74D9EC;font-weight:800}
+.rec h2{margin:0;font-size:clamp(22px,2.6vw,30px);letter-spacing:-.8px;line-height:1.12}
+.rec p{margin:0;color:#BCD0E0;font-size:13.5px;max-width:760px}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.cols ul{margin:0;padding-left:18px;font-size:12.5px;display:grid;gap:5px;color:var(--ink)}
+.gc{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:var(--panel)}
+.gc b{width:44px;height:44px;border-radius:12px;background:var(--tint-c);color:var(--ink-c);display:grid;place-items:center;font-size:13px}
+.gc strong{display:block;color:var(--head);font-size:14px}
+.gc small{color:var(--muted);font-size:11.5px}
+.gc .act{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.hand{border:1px solid var(--line);border-top:3px solid var(--blue);border-radius:18px;padding:18px;background:var(--panel)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin:12px 0}
+.kv div{background:var(--bg);border-radius:10px;padding:9px 11px;font-size:12px}
+.kv b{display:block;font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+@media(max-width:1000px){.nuances,.cols{grid-template-columns:1fr 1fr}.docs{grid-template-columns:1fr}}
+@media(max-width:620px){.nuances,.cols{grid-template-columns:1fr}.gc{grid-template-columns:44px 1fr}.gc .act{grid-column:1 / -1;justify-content:flex-start}}
+</style></head>
+<body>
+<div id="xtop"></div>
+<main class="wrap page" id="main"></main>
+<script>
+/* Xodus suite shared module: role, access, gate state, top bar, meeting assistant. All data is example data. */
+(function(){
+'use strict';
+var MEM={};
+function sget(k,s){try{var v=(s?sessionStorage:localStorage).getItem(k);return v===null?(MEM[k]===undefined?null:MEM[k]):v}catch(e){return MEM[k]===undefined?null:MEM[k]}}
+function sset(k,v,s){MEM[k]=v;try{(s?sessionStorage:localStorage).setItem(k,v)}catch(e){}}
+function esc(x){return String(x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+var ROLES={EVP:'Executive sponsor',DT:'Deal team',IL:'IMO lead',MA:'Migration Analyst',VS:'Validation Specialist',PA:'Platform Admin',CR:'Compliance reviewer'};
+var PEOPLE={EVP:'Jordan Hale',DT:'Sam Rivera',IL:'Avery Chen',MA:'Priya Nair',VS:'Marcus Webb',PA:'Platform Admin',CR:'Dana Ortiz'};
+var ACCESS={deal:['EVP','DT','IL','CR'],dm:['MA','VS','IL','PA','CR'],gov:['EVP','IL','CR','PA']};
+var ROLEINFO={EVP:'Approves the deal brief and the go / no-go. Co-signs cutover readiness.',DT:'Researches the target and reviews the recommendation.',IL:'Creates and configures migration workspaces. Owns the estimate and cutover readiness. No access to platform configuration.',MA:'Works the pipeline stages and owns gates 01 to 04. Co-signs the load.',VS:'Owns data-level validation: creates and generates validation rules. Owns reconciliation and co-signs the load.',PA:'Sets up the platform: identity, compute, zones, connectors and runtime. No access to migration workspaces.',CR:'Reads evidence and the audit trail across spaces. Read-only.'};
+var SPACES={deal:{name:'Deal Room',href:'deal-room.html',cls:'deal'},dm:{name:'Data Migration',href:'data-migration.html',cls:'dm'},gov:{name:'Governance',href:'governance.html',cls:'gov'}};
+
+/* ---------- gate chain ---------- */
+function G(id,sp,name,own,ev,extra){var g={id:id,sp:sp,name:name,own:own,ev:ev,st:'queued',by:[]};for(var k in (extra||{}))g[k]=extra[k];return g}
+function freshGates(){return [
+ G('D1','deal','Deal brief accepted',['EVP'],'Brief with cited sources'),
+ G('D2','deal','Integration estimate approved',['IL'],'Estimate and assumption log'),
+ G('D3','deal','Recommendation reviewed',['DT'],'Recommendation with alternatives considered'),
+ G('D4','deal','Go / no-go decision',['EVP'],'Signed decision memo'),
+ G('M1','dm','01 Loader & Inspector',['MA'],'File hashes and dictionary coverage',{zone:'Landing'}),
+ G('M2','dm','02 Discovery',['MA'],'Entity profiles and gap analysis',{zone:'Staged'}),
+ G('M3','dm','03 Business Rules',['MA'],'Rule IDs and skill pack versions',{zone:'Staged'}),
+ G('M4','dm','04 Schema Mapper',['MA'],'Mapping version and exception list',{zone:'Transformed'}),
+ G('M5','dm','05 Execution',['MA','VS'],'Run IDs and load logs',{zone:'Transformed',dual:true}),
+ G('M6','dm','06 Reconciliation',['VS'],'Tolerances and break report',{zone:'Transformed'}),
+ G('C1','gov','Cutover readiness',['IL','EVP'],'Readiness checklist and rollback plan',{dual:true}),
+ G('C2','gov','Hypercare close-out',['IL'],'Close-out report')]}
+var ST;
+/* Data Migration. Control plane: stages 01 to 04 set the migration up from metadata and sample files and end in one artifact bundle (SQL, ADF pipeline, Python). Data plane: stages 05 and 06 are runs of that bundle on the real data, each followed by the validation agent. */
+function isDP(g){return g.id=='M5'||g.id=='M6'}
+function ph(g){if(!(g.sp=='dm'&&isDP(g)))return g.st;if(g.ph)return g.ph;return g.st=='approved'?'done':g.st=='review'?'results':g.st=='running'?'run':'none'}
+function stateLabel(g){
+ if(g.sp!='dm')return ({approved:'Approved',review:'Needs review',queued:'Not open',running:'Agent running'})[g.st];
+ if(!isDP(g)){if(g.id=='M4'&&g.st=='approved')return 'Bundle published';return ({queued:'Not started',running:'Control plane working',review:'Needs review',approved:'Approved'})[g.st]}
+ var p=ph(g);if(g.id=='M5')return ({none:'Waits for the bundle',ready:'Ready to run',run:'Running on the data plane',results:'Run to review',done:'Approved'})[p];
+ return ({none:'Waits for the run review',results:'Validation to review',done:'Approved'})[p]}
+function setScenario(n){
+ ST={v:3,scn:n,gates:freshGates(),log:[],bundle:{v:1,pub:false},runs:[]};
+ var ap=n=='early'?['D1','D2']:n=='run'?['D1','D2','D3','D4','M1','M2','M3','M4']:['D1','D2','D3','D4','M1','M2'];
+ ST.gates.forEach(function(g){if(ap.indexOf(g.id)>-1){g.st='approved';g.by=g.own.slice();if(g.sp=='dm'&&isDP(g))g.ph='done'}});
+ var deal=[{sp:'deal',t:'Deal brief accepted',w:'Executive sponsor'},{sp:'deal',t:'Integration estimate approved',w:'IMO lead'}];
+ if(n=='early'){gate('D3').st='review';ST.log=deal}
+ else if(n=='run'){ST.bundle={v:2,pub:true};ST.runs=[{n:1,id:'RUN-0201',ver:1,st:'rejected',at:'Oct 29 · 09:14'},{n:2,id:'RUN-0202',ver:2,st:'done',at:'Oct 30 · 10:02'}];
+  var m5=gate('M5');m5.st='review';m5.ph='results';
+  ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 to 04 approved, artifact bundle v1 published',w:'Migration Analyst'},{sp:'dm',t:'RUN-0201 rejected: 14 positions had no security identifier',w:'Migration Analyst'},{sp:'dm',t:'Artifact bundle v2 published',w:'Control plane'},{sp:'dm',t:'RUN-0202 finished, validation agent complete, telemetry received',w:'Data plane'}]}
+ else{gate('M3').st='review';gate('M4').st='running';ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 Loader & Inspector approved',w:'Migration Analyst'},{sp:'dm',t:'02 Discovery approved',w:'Migration Analyst'},{sp:'dm',t:'03 Business Rules proposed',w:'Control plane'},{sp:'dm',t:'04 Schema Mapper started',w:'Control plane'}]}
+ save()}
+function gate(id){return ST.gates.filter(function(g){return g.id==id})[0]}
+function load(){var j=sget('xodus.state');if(j){try{ST=JSON.parse(j);if(ST&&ST.v===3&&ST.gates&&ST.gates.length==12)return;var keep=ST&&ST.scn}catch(e){}}setScenario(keep||'mid')}
+function save(){sset('xodus.state',JSON.stringify(ST))}
+function idx(g){return ST.gates.indexOf(g)}
+function nextOf(g){return ST.gates[idx(g)+1]}
+function blocker(g){for(var i=0;i<idx(g);i++){if(ST.gates[i].st!='approved')return ST.gates[i]}return null}
+function logit(sp,t,w){ST.log.push({sp:sp,t:t,w:w});}
+function approve(id,role){
+ var g=gate(id);if(!g)return{ok:false,msg:'Unknown gate'};
+ var b=blocker(g);if(b)return{ok:false,msg:'Blocked. '+b.id+' '+b.name+' is not approved yet.'};
+ if(g.st!='review')return{ok:false,msg:'This gate is not open for approval.'};
+ if(g.own.indexOf(role)<0)return{ok:false,msg:'Only '+g.own.map(function(r){return ROLES[r]}).join(' and ')+' can approve this gate.'};
+ if(g.by.indexOf(role)>-1)return{ok:false,msg:'You have already signed this gate.'};
+ g.by.push(role);
+ if(g.own.every(function(r){return g.by.indexOf(r)>-1})){
+  g.st='approved';if(g.sp=='dm'&&isDP(g))g.ph='done';
+  if(g.id=='M4'){ST.bundle.pub=true;logit('dm','04 Schema Mapper approved. Artifact bundle v'+ST.bundle.v+' published to the data plane',ROLES[role]);var m5=gate('M5');m5.st='running';m5.ph='ready';save();return{ok:true,msg:'Bundle v'+ST.bundle.v+' published to the data plane.'}}
+  logit(g.sp,g.name+' approved',ROLES[role]);
+  if(g.id=='M5'){var m6=gate('M6');m6.st='review';m6.ph='results'}
+  else if(g.id=='M6'){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='accepted'}
+  else{var n=nextOf(g);if(n&&n.st=='queued'){n.st=(n.sp=='dm')?'running':'review';if(g.id=='D4')logit('dm','Data Migration workspace created from the decision','Xodus')}}
+  save();return{ok:true,msg:g.name+' approved.'}}
+ logit(g.sp,g.name+' signed by '+ROLES[role],'Waiting for the other approver');save();
+ return{ok:true,msg:'Signed. Waiting for the other approver.'}}
+function finish(id){var g=gate(id);if(!g||g.st!='running')return;
+ if(g.id=='M5'){if(ph(g)!='run')return;g.st='review';g.ph='results';var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='done';logit('dm',(lr?lr.id:'Run')+' finished. Validation agent complete. Telemetry received','Data plane');save();return}
+ g.st='review';logit(g.sp,g.name+(g.sp=='dm'?': control plane output ready for review':' finished, waiting for review'),g.sp=='dm'?'Control plane':'Agent run');save()}
+function changes(id,role){var g=gate(id);if(!g||g.st!='review')return;
+ if(g.sp=='dm'&&isDP(g)){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='rejected';var m5=gate('M5'),m6=gate('M6');m5.st='running';m5.ph='ready';m5.by=[];m6.st='queued';m6.ph='none';m6.by=[];logit('dm',(lr?lr.id:'Run')+' rejected at '+g.name,ROLES[role]);save();return}
+ g.st=g.sp=='dm'?'running':'review';g.by=[];logit(g.sp,'Changes requested on '+g.name,ROLES[role]);save()}
+function startRun(role){var m5=gate('M5'),m6=gate('M6');
+ if(role!='MA')return{ok:false,msg:'Only the Migration Analyst starts a run.'};
+ if(!ST.bundle.pub)return{ok:false,msg:'There is no published artifact bundle yet.'};
+ if(m5.st=='running'&&m5.ph=='run')return{ok:false,msg:'A run is already in progress.'};
+ var last=ST.runs[ST.runs.length-1];if(last&&last.st=='done')last.st='superseded';
+ var n=ST.runs.length+1,t=new Date();
+ ST.runs.push({n:n,id:'RUN-'+('0000'+(200+n)).slice(-4),ver:ST.bundle.v,st:'running',at:'Today · '+t.toTimeString().slice(0,5)});
+ m5.st='running';m5.ph='run';m5.by=[];m6.st='queued';m6.ph='none';m6.by=[];
+ logit('dm','RUN-'+('0000'+(200+n)).slice(-4)+' started on the data plane with bundle v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Run started on the data plane.'}}
+function reviseBundle(role){var m4=gate('M4'),m5=gate('M5'),m6=gate('M6');
+ if(role!='MA')return{ok:false,msg:'Only the Migration Analyst revises the bundle.'};
+ if(!ST.bundle.pub)return{ok:false,msg:'The bundle is not published yet.'};
+ if(m5.st=='running'&&m5.ph=='run')return{ok:false,msg:'Wait for the current run to finish.'};
+ var lr=ST.runs[ST.runs.length-1];if(lr&&lr.st=='done')lr.st='rejected';
+ ST.bundle={v:ST.bundle.v+1,pub:false};
+ m4.st='running';m4.by=[];[m5,m6].forEach(function(x){x.st='queued';x.ph='none';x.by=[]});
+ logit('dm','Back to the control plane. Revising the artifact bundle to v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Control plane reopened for bundle v'+ST.bundle.v+'.'}}
+function bypass(id){var g=gate(id),b=blocker(g);if(b)return{ok:false,msg:'Blocked. '+b.id+' '+b.name+' is not approved, so '+g.id+' cannot be opened.'};if(g.st=='approved')return{ok:true,msg:g.id+' is already approved, and every gate before it is approved.'};return{ok:true,msg:g.id+' is open. Every gate before it is approved, so its owner can approve it.'}}
+function hitl(){try{var c=JSON.parse(sget('xodus.dm.cfg2')||'null');return c&&c.platform&&c.platform.ai?c.platform.ai.hitlPolicy:'all-gates'}catch(e){return 'all-gates'}}
+function checks(){
+ var out=[],i,bad;
+ bad=[];for(i=0;i<ST.gates.length;i++){if(ST.gates[i].st=='approved'&&ST.gates.slice(0,i).some(function(x){return x.st!='approved'}))bad.push(ST.gates[i].id)}
+ out.push({n:'Gate order is intact',d:'No gate is approved while an earlier gate is open.',ok:!bad.length,x:bad.join(', ')});
+ bad=ST.gates.filter(function(g){return g.st=='approved'&&!g.own.every(function(r){return g.by.indexOf(r)>-1})}).map(function(g){return g.id});
+ out.push({n:'Every approval has all required signatures',d:'Dual sign-off gates carry both approvers.',ok:!bad.length,x:bad.join(', ')});
+ bad=ST.gates.filter(function(g){return g.st=='approved'&&!g.ev}).map(function(g){return g.id});
+ out.push({n:'Every approval has evidence attached',d:'Evidence is stored with the run.',ok:!bad.length,x:bad.join(', ')});
+ bad=ST.gates.filter(function(g){return !g.own.length}).map(function(g){return g.id});
+ out.push({n:'Every gate has an owner role',d:'No gate is left without an approver.',ok:!bad.length,x:bad.join(', ')});
+ bad=[];if(ST.bundle.pub!=(gate('M4').st=='approved'))bad.push('M4');if((ST.runs.length||['run','results','done'].indexOf(ph(gate('M5')))>-1)&&!ST.bundle.pub)bad.push('M5');
+ out.push({n:'Nothing runs on the data plane without a published bundle',d:'The bundle is published only when the Schema Mapper gate is approved, and every run uses it.',ok:!bad.length,x:bad.join(', ')});
+ var h=hitl();
+ out.push({n:'Human-in-the-loop policy meets the platform floor',d:'The floor is every stage gated.',ok:h=='all-gates',x:h=='all-gates'?'':'Policy is set to '+h+' in Data Migration setup'});
+ return out}
+
+/* ---------- tenant brand: set at deployment, shown across every space, editable by the Platform Admin ---------- */
+var TENANT_DEFAULT={suiteName:'Xodus',suiteTagline:'M&A integration co-pilot for RIAs',deployedFor:'Simplicity Group',hostname:'migrate.simplicitygroup.com',supportEmail:'migration-support@simplicitygroup.com',footerNote:'Secured via Simplicity UMP identity',productName:'XODUS·AMP',tagline:'Agentic Migration Platform',logoMark:null,logoMarkName:'',wordmark:null,wordmarkName:'',logoBackdrop:'tile',logoInitials:'XA',primary:'#0878C9',accent:'#27C978',shell:'#0B1F33',poweredByVisible:true,vendor:'LatentView Analytics',roleGroups:{EVP:'SG-XODUS-Executives',DT:'SG-XODUS-DealTeam',IL:'SG-XODUS-IMO',MA:'SG-XODUS-MigrationAnalysts',VS:'SG-XODUS-Validators',PA:'SG-XODUS-PlatformAdmins',CR:'SG-XODUS-Compliance'}};
+function tenant(){var o={},k,s={};try{s=JSON.parse(sget('xodus.tenant')||'{}')||{}}catch(e){}
+ for(k in TENANT_DEFAULT)o[k]=(s[k]===undefined?TENANT_DEFAULT[k]:s[k]);
+ var g={};for(k in TENANT_DEFAULT.roleGroups)g[k]=(o.roleGroups&&o.roleGroups[k])||TENANT_DEFAULT.roleGroups[k];o.roleGroups=g;return o}
+function groupFor(r){return tenant().roleGroups[r]||''}
+function saveTenant(t){sset('xodus.tenant',JSON.stringify(t))}
+function resetTenant(){sset('xodus.tenant','{}')}
+function tenantMark(t){var tile=t.logoBackdrop=='tile';
+ if(t.logoMark)return '<span class="xmark img'+(tile?' tile':'')+'"><img alt="" src="'+t.logoMark+'"></span>';
+ return '<span class="xmark" style="background:linear-gradient(135deg,'+esc(t.primary)+','+esc(t.accent)+')"></span>'}
+
+/* ---------- role, access, theme ---------- */
+function role(){var r=sget('xodus.role');return ROLES[r]?r:'IL'}
+function setRole(r){sset('xodus.role',r)}
+function can(sp,r){return ACCESS[sp].indexOf(r||role())>-1}
+function theme(){var r=document.documentElement,t=sget('xodus.theme');if(t)r.setAttribute('data-theme',t)}
+function toggleTheme(){var r=document.documentElement,d=r.getAttribute('data-theme')=='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);var n=d?'light':'dark';r.setAttribute('data-theme',n);sset('xodus.theme',n)}
+function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(function(){t.classList.remove('show')},2400)}
+function restricted(sp){var s=SPACES[sp];
+ return '<div class="restricted"><span class="chip">Restricted</span><h1>'+s.name+' is not open to your role</h1><p>You are viewing as '+ROLES[role()]+'. '+s.name+' is available to '+ACCESS[sp].map(function(r){return ROLES[r]}).join(', ')+'. Change the demo role in the top bar to see it. In a real deployment your role comes from your directory groups.</p><a class="btn g" href="index.html">Back to the suite</a></div>'}
+
+/* ---------- top bar ---------- */
+function top(cur,opts){
+ opts=opts||{};
+ var t=tenant();
+ var brand=t.wordmark?'<img class="xwm" alt="'+esc(t.suiteName)+'" src="'+t.wordmark+'">':tenantMark(t)+'<span><strong>'+esc(t.suiteName)+'</strong><span>'+esc(t.suiteTagline)+'</span></span>';
+ var h='<div class="xtop"><div class="wrap xtop-in"><a class="xbrand" href="index.html">'+brand+'</a>'
+ +'<nav class="xnav" aria-label="Suite">'+['deal','dm','gov'].map(function(k){var s=SPACES[k];return '<a class="'+s.cls+(cur==k?' on':'')+'" href="'+s.href+'"><i></i>'+s.name+'</a>'}).join('')+'</nav><span class="sp"></span>'
+ +'<span class="chip ex">Example data</span>'
+ +(role()=='PA'||cur=='tenant'?'<a class="tbtn'+(cur=='tenant'?' on':'')+'" href="tenant.html">Tenant settings</a>':'')
+ +'<div class="xwho"><label class="chip" for="xrole" style="background:transparent;padding:0" title="Demo only. In a real deployment your role comes from your directory groups.">Demo: view as</label><select id="xrole" class="sel" aria-label="Demo role">'+Object.keys(ROLES).map(function(r){return '<option value="'+r+'"'+(r==role()?' selected':'')+'>'+ROLES[r]+'</option>'}).join('')+'</select></div>'
+ +'<button class="tbtn" id="xtheme" type="button">Theme</button></div></div>';
+ var el=document.getElementById('xtop');if(el)el.innerHTML=h;
+ document.getElementById('xrole').addEventListener('change',function(e){setRole(e.target.value);if(opts.onrole)opts.onrole();else location.reload()});
+ document.getElementById('xtheme').addEventListener('click',toggleTheme)}
+
+/* ---------- meeting assistant ---------- */
+var MEET=[
+ {id:'m1',sp:'deal',t:'CoreCap leadership call',w:'Mon 26 Oct',who:'Jordan Hale, Sam Rivera, Avery Chen',dec:['Keep Orion as the target platform.','Advisor retention is the main risk to watch.'],act:['Sam to request the household count by advisor.','Avery to draft the integration estimate.'],keys:['retention','advisor','orion','target','estimate','leadership']},
+ {id:'m2',sp:'deal',t:'Diligence data review',w:'Thu 29 Oct',who:'Sam Rivera, Avery Chen, Priya Nair',dec:['Cost basis completeness varies by custodian.','Treat advisor-as-portfolio-manager accounts as a separate scope item.'],act:['Priya to profile cost basis gaps once files land.'],keys:['cost basis','diligence','custodian','portfolio manager','scope']},
+ {id:'m3',sp:'dm',t:'Migration stand-up',w:'Fri 30 Oct',who:'Priya Nair, Marcus Webb, Vivek Sarathy',dec:['Approve the undefined columns in the returns file.','Hold promotion until unmapped security identifiers are resolved.'],act:['Priya to review the five proposed business rules.','Marcus to prepare reconciliation tolerances.'],keys:['stand-up','identifier','cusip','unmapped','rules','coverage','blocker','returns','tolerance']},
+ {id:'m4',sp:'gov',t:'Gate review',w:'Fri 30 Oct',who:'Avery Chen, Dana Ortiz, Vivek Sarathy',dec:['Keep every stage gated for this migration.','Dual sign-off stays on for the target load.'],act:['Dana to confirm the audit retention setting.'],keys:['gate','policy','sign-off','audit','retention','governance']}];
+var INS=[
+ {sp:'deal',t:'Advisor retention came up in both deal calls',d:'It is the most repeated risk. Consider adding it to the decision memo.'},
+ {sp:'dm',t:'The unmapped identifier blocker was raised in three stand-ups',d:'It has been open longer than any other item and halts promotion.'},
+ {sp:'gov',t:'Two actions are older than a week',d:'Both belong to the audit retention review.'},
+ {sp:'dm',t:'Reconciliation tolerances have no owner yet',d:'Marcus has the action but nothing is scheduled.'}];
+var CHIPS=['What did we decide about the target platform?','What actions are open?','Why is the mapping blocked?','What did we decide on gates?'];
+var MT={tab:'ask',thread:[],conn:{teams:true,zoom:false}};
+function vis(x){return can(x.sp)}
+function answer(q){
+ var s=q.toLowerCase(),best=null,sc=0;
+ MEET.filter(vis).forEach(function(m){var n=0;m.keys.forEach(function(k){if(s.indexOf(k)>-1)n++});if(s.indexOf('action')>-1||s.indexOf('open')>-1)n+=m.act.length?1:0;if(n>sc){sc=n;best=m}});
+ var hidden=MEET.filter(function(m){return !vis(m)&&m.keys.some(function(k){return s.indexOf(k)>-1})});
+ if(!best){return hidden.length?{a:'That topic is discussed in a space your role cannot see ('+hidden.map(function(m){return SPACES[m.sp].name}).filter(function(v,i,a){return a.indexOf(v)==i}).join(', ')+'), so I cannot answer it here.',src:[]}:{a:'I could not find that in the meetings you can see. Try asking about a decision, an action or a blocker.',src:[]}}
+ var act=(s.indexOf('action')>-1||s.indexOf('open')>-1);
+ return{a:act?'Open actions from '+best.t+': '+best.act.join(' '):'From '+best.t+' ('+best.w+'): '+best.dec.join(' '),src:[best.t,SPACES[best.sp].name]}}
+function mdrOpen(){var d=document.getElementById('mdr');if(d){d.classList.add('open');mdrRender()}}
+function mdrClose(){var d=document.getElementById('mdr');if(d)d.classList.remove('open')}
+function mdrRender(){
+ var b=document.getElementById('mdrBody'),f=document.getElementById('mdrFoot'),h='';
+ document.querySelectorAll('#mdr .tab').forEach(function(t){t.classList.toggle('on',t.dataset.t==MT.tab)});
+ if(MT.tab=='ask'){
+  h=MT.thread.length?MT.thread.map(function(m){return m.u?'<div class="msg u">'+esc(m.u)+'</div>':'<div class="msg a">'+esc(m.a)+(m.src.length?'<div class="src">'+m.src.map(function(x){return '<span>'+esc(x)+'</span>'}).join('')+'</div>':'')+'</div>'}).join(''):'<div class="empty">Ask about decisions, actions and blockers from your meetings. You only get answers from spaces your role can see.</div>';
+  f.hidden=false;f.innerHTML='<div class="chips">'+CHIPS.map(function(c){return '<button class="qchip" type="button" data-q="'+esc(c)+'">'+esc(c)+'</button>'}).join('')+'</div><form class="row" id="mdrForm"><input id="mdrIn" type="text" placeholder="Ask about a meeting" aria-label="Ask about a meeting"><button class="btn p" type="submit">Ask</button></form>'}
+ else if(MT.tab=='notes'){
+  f.hidden=true;var ms=MEET.filter(vis);h=ms.length?ms.map(function(m){return '<div class="mtg"><strong>'+esc(m.t)+'</strong><small>'+m.w+' · '+SPACES[m.sp].name+' · '+esc(m.who)+'</small><div><b>Decisions</b><ul style="margin:4px 0 0;padding-left:18px">'+m.dec.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div><div><b>Actions</b><ul style="margin:4px 0 0;padding-left:18px">'+m.act.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div></div>'}).join(''):'<div class="empty">No meetings are visible to your role.</div>'}
+ else if(MT.tab=='insights'){
+  f.hidden=true;var is=INS.filter(vis);h=is.length?is.map(function(i){return '<div class="ins"><b>'+esc(i.t)+'</b>'+esc(i.d)+'<div style="margin-top:6px"><span class="chip '+({deal:'c',dm:'b',gov:'g'}[i.sp])+'">'+SPACES[i.sp].name+'</span></div></div>'}).join(''):'<div class="empty">No insights are visible to your role.</div>'}
+ else{
+  f.hidden=true;h='<div class="lockn">In the real build the assistant joins through the calendar invite. Here you can see how that is switched on.</div>'
+  +[['teams','Microsoft Teams'],['zoom','Zoom']].map(function(c){return '<div class="conn"><span><b>'+c[1]+'</b><br><small style="color:var(--muted)">'+(MT.conn[c[0]]?'Joins invited meetings and writes notes':'Not connected')+'</small></span><button class="btn g sm" type="button" data-c="'+c[0]+'">'+(MT.conn[c[0]]?'Disconnect':'Connect')+'</button></div>'}).join('')
+  +'<div class="conn"><span><b>Next meeting</b><br><small style="color:var(--muted)">Migration stand-up · Mon 2 Nov</small></span><span class="pill '+(MT.conn.teams?'approved':'queued')+'">'+(MT.conn.teams?'Will join':'Will not join')+'</span></div>'}
+ b.innerHTML=h;b.scrollTop=b.scrollHeight}
+function meeting(){
+ var d=document.createElement('aside');d.id='mdr';d.className='mdr';d.setAttribute('aria-label','Meeting assistant');
+ d.innerHTML='<div class="mdr-h"><div><strong>Meeting assistant</strong><small>Notes, questions and insights across your spaces</small></div><button class="tbtn" id="mdrX" type="button" aria-label="Close">Close</button></div><div class="tabs"><button class="tab on" data-t="ask" type="button">Ask</button><button class="tab" data-t="notes" type="button">Notes</button><button class="tab" data-t="insights" type="button">Insights</button><button class="tab" data-t="connect" type="button">Meetings</button></div><div class="mdr-b" id="mdrBody"></div><div class="mdr-f" id="mdrFoot"></div>';
+ document.body.appendChild(d);
+ var f=document.createElement('button');f.className='mfab';f.type='button';f.innerHTML='<i></i>Meeting assistant';f.addEventListener('click',mdrOpen);document.body.appendChild(f);
+ d.addEventListener('click',function(e){
+  var t=e.target.closest('.tab');if(t){MT.tab=t.dataset.t;mdrRender();return}
+  var q=e.target.closest('[data-q]');if(q){ask(q.dataset.q);return}
+  var c=e.target.closest('[data-c]');if(c){MT.conn[c.dataset.c]=!MT.conn[c.dataset.c];mdrRender();return}
+  if(e.target.id=='mdrX')mdrClose()});
+ d.addEventListener('submit',function(e){e.preventDefault();var i=document.getElementById('mdrIn');if(i&&i.value.trim()){ask(i.value.trim())}});
+ document.addEventListener('keydown',function(e){if(e.key=='Escape')mdrClose()})}
+function ask(q){MT.thread.push({u:q});var a=answer(q);MT.thread.push({a:a.a,src:a.src});MT.tab='ask';mdrRender()}
+function openAssistant(tab){MT.tab=tab||'ask';mdrOpen()}
+
+function init(){theme();load();meeting()}
+window.XS={esc:esc,ROLES:ROLES,PEOPLE:PEOPLE,ACCESS:ACCESS,SPACES:SPACES,role:role,setRole:setRole,can:can,restricted:restricted,top:top,toast:toast,
+ state:function(){return ST},gate:gate,approve:approve,finish:finish,changes:changes,bypass:bypass,checks:checks,hitl:hitl,reset:function(n){setScenario(n)},blocker:blocker,
+ ph:ph,stateLabel:stateLabel,startRun:startRun,reviseBundle:reviseBundle,isDP:isDP,get:sget,set:sset,tenant:tenant,groupFor:groupFor,ROLEINFO:ROLEINFO,saveTenant:saveTenant,resetTenant:resetTenant,tenantDefault:function(){return JSON.parse(JSON.stringify(TENANT_DEFAULT))},tenantMark:tenantMark,init:init,openAssistant:openAssistant,reload:load,save:save,log:logit};
+})();
+
+</script>
+<script>
+XS.init();
+var tab='research',doc=0;
+var NU=[
+ ['Advisor-as-portfolio-manager accounts','Some advisors trade their own models. The target needs model mapping and confirmed trading authority before these accounts can move.','Data room · 3.4 Advisory model inventory','Scope'],
+ ['Cost basis completeness varies by custodian','Lots from one custodian are missing acquisition dates. Defaults will be needed and must be flagged for advisors.','Data room · 5.1 Custodian extracts','Effort'],
+ ['Fee schedules live outside the core','Billing schedules are kept in spreadsheets, not in the legacy core. They need a separate load path.','Data room · 6.2 Billing practices','Scope'],
+ ['Returns history comes from one source','Performance series is only available from the returns file. Gaps before the history window cannot be rebuilt.','Data room · 4.3 Performance reporting','Risk'],
+ ['Cutover overlaps quarter-end billing','A cutover close to quarter-end puts billing accuracy and advisor retention at risk at the same time.','Leadership call · Mon 26 Oct','Risk'],
+ ['Four systems feed the book','Legacy core, two custodians and a reporting platform each send files in a different shape.','Data room · 3.2 Platform inventory','Effort']];
+var DOCS=[
+ {n:'Deal brief',s:'approved',o:'Deal brief builder',v:'v2',g:'D1',body:['CoreCap Advisors is a registered investment adviser with a book of about 18,000 households and 42,000 accounts. The buyer plans to move the book onto Orion.','Primary reasons to proceed: scale in the existing advisor base, a common custodian, and a clear path to a single operating platform.','Open questions: advisor retention through cutover, fee schedule handling, and the history available for performance reporting.']},
+ {n:'Target research summary',s:'approved',o:'Target profiler',v:'v3',g:'',body:['The book sits across four systems. Custody is split across two custodians. Performance history comes from a separate reporting platform.','Six nuances were found in diligence. Two affect scope and two affect effort. See the Research tab for each with its source.']},
+ {n:'Diligence checklist',s:'approved',o:'Data room reader',v:'v1',g:'',body:['Thirty-two checklist items. Twenty-eight are confirmed from the data room, three need an answer from the target, and one is out of scope.']},
+ {n:'Integration estimate',s:'approved',o:'Effort estimator',v:'v2',g:'D2',body:['The estimate covers the data migration, advisor onboarding and cutover. The data migration is the longest path and carries the most uncertainty.','Range is shown with assumptions so leadership can see what would move it. See the Recommendation tab.']},
+ {n:'Recommendation',s:'review',o:'Recommendation builder',v:'v1',g:'D3',body:['Proceed with a 30-day parallel run and bring advisors across in two groups. This keeps the legacy book available for reconciliation while advisors learn the new platform.','Alternatives considered: a single cutover is faster but exposes every advisor to a billing error at once. A segment-by-segment migration lowers risk further but adds months.']},
+ {n:'Decision memo',s:'queued',o:'Decision memo writer',v:'—',g:'D4',body:['The decision memo is drafted once the recommendation is reviewed. It carries the estimate, the risks and the signed go / no-go decision.']},
+ {n:'Integration plan draft',s:'queued',o:'Plan generator',v:'—',g:'',body:['The plan is generated after the go decision. It becomes the starting point for the Data Migration workspace.']}];
+function pill(s){return '<span class="pill '+s+'">'+({approved:'Approved',review:'In review',queued:'Not started',running:'Running'}[s])+'</span>'}
+function head(){return '<div class="ph"><div><div class="ey deal">Deal Room</div><h1>CoreCap Advisors acquisition</h1><p>Research the target, build the documents, get a prescriptive recommendation and make the decision. Approval of the go decision opens Data Migration.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip c">Restricted space</span><button class="btn g" type="button" data-ma="ask">Ask the meeting assistant</button></div></div>'
+ +'<div class="banner">This space holds sensitive deal analysis. It is open to executives and the deal team only. People in Data Migration cannot see it.</div>'}
+function tabs(){return '<div class="tabs">'+[['research','Research'],['docs','Documents'],['rec','Recommendation'],['decide','Decision and handoff']].map(function(t){return '<button class="tab'+(tab==t[0]?' on':'')+'" data-t="'+t[0]+'" type="button">'+t[1]+'</button>'}).join('')+'</div>'}
+function vResearch(){
+ return '<div class="kpis"><div class="kpi"><small>Households</small><b>18,420</b><span>Across four systems</span></div><div class="kpi"><small>Accounts</small><b>41,877</b><span>Two custodians</span></div><div class="kpi"><small>Advisors</small><b>38</b><span>Four are portfolio managers</span></div><div class="kpi"><small>Diligence items</small><b>28 / 32</b><span>Confirmed from the data room</span></div></div>'
+ +'<div class="card"><h3>Nuances that change the plan</h3><p class="d">Each finding cites its source so the deal team can check it. Example data.</p><div class="nuances">'+NU.map(function(n){return '<div class="nu"><span class="chip c" style="width:max-content">'+n[3]+'</span><h4>'+n[0]+'</h4><p>'+n[1]+'</p><span class="src">'+n[2]+'</span></div>'}).join('')+'</div></div>'}
+function vDocs(){var d=DOCS[doc];
+ return '<div class="docs"><div class="card"><h3>Deal documents</h3><p class="d">Each document is drafted by a skill and reviewed by a person.</p><div class="list">'+DOCS.map(function(x,i){return '<button class="doc'+(i==doc?' on':'')+'" data-d="'+i+'" type="button"><span><strong>'+x.n+'</strong><span>'+x.o+' · '+x.v+'</span></span>'+pill(x.g?XS.gate(x.g).st:x.s)+'</button>'}).join('')+'</div></div>'
+ +'<div class="card pv"><h2>'+d.n+'</h2><div class="m">Drafted by '+d.o+' · '+d.v+(d.g?' · Linked to gate '+d.g:'')+'</div>'+d.body.map(function(p){return '<p>'+p+'</p>'}).join('')+'</div></div>'}
+function vRec(){
+ return '<div class="rec"><small>Recommendation · example</small><h2>Proceed, with a 30-day parallel run and two advisor groups.</h2><p>This keeps the legacy book live for reconciliation and limits any billing error to half the advisors at a time. Confidence is medium to high, based on the diligence completed so far.</p><div><span class="chip" style="background:rgba(255,255,255,.1);color:#CFE6F2">Confidence: medium to high</span></div></div>'
+ +'<div class="cols"><div class="card"><h3>What must be true</h3><ul><li>Fee schedules are loaded through a separate path.</li><li>Advisor-as-portfolio-manager accounts are confirmed in scope.</li><li>Cutover avoids quarter-end billing.</li></ul></div><div class="card"><h3>Alternatives considered</h3><ul><li>Single cutover: fastest, but one error reaches every advisor.</li><li>Segment by segment: lowest risk, adds months.</li><li>Delay until fee data is cleaned: safe, but misses the target window.</li></ul></div><div class="card"><h3>Main risks</h3><ul><li>Advisor retention through the move.</li><li>Missing acquisition dates on cost basis lots.</li><li>Returns history gaps.</li></ul></div></div>'
+ +'<div class="card"><h3>Integration estimate</h3><p class="d">Effort ranges in person-weeks, with the assumption that drives each. Example data.</p><div class="tw"><table><thead><tr><th>Workstream</th><th class="r">Low</th><th class="r">High</th><th>Key assumption</th></tr></thead><tbody>'
+ +[['Data migration','22','30','Four sources, six entities, one target'],['Advisor onboarding','8','12','Two advisor groups'],['Billing and fees','6','10','Schedules loaded from spreadsheets'],['Parallel run and reconciliation','8','10','30 days, daily reconciliation'],['Cutover and hypercare','4','6','Outside quarter-end']].map(function(r){return '<tr><td><b>'+r[0]+'</b></td><td class="r">'+r[1]+'</td><td class="r">'+r[2]+'</td><td>'+r[3]+'</td></tr>'}).join('')+'</tbody></table></div></div>'}
+function vDecide(){var ids=['D1','D2','D3','D4'],r=XS.role();
+ var rows=ids.map(function(id){var g=XS.gate(id),can=g.st=='review'&&g.own.indexOf(r)>-1&&g.by.indexOf(r)<0&&!XS.blocker(g);
+  return '<div class="gc"><b>'+g.id+'</b><div><strong>'+g.name+'</strong><small>Owner: '+g.own.map(function(x){return XS.ROLES[x]}).join(', ')+' · Evidence: '+g.ev+'</small></div><div class="act"><span class="pill '+g.st+'">'+({approved:'Approved',review:'Needs review',queued:'Not open',running:'Running'}[g.st])+'</span>'+(g.st=='review'?'<button class="btn ok sm" data-ap="'+g.id+'" type="button"'+(can?'':' disabled')+'>Approve</button>':'')+'</div></div>'}).join('');
+ var go=XS.gate('D4').st=='approved';
+ return '<div class="card"><h3>Gates in the Deal Room</h3><p class="d">Each gate needs the named role. The next gate opens only after the one before it is approved. You are viewing as '+XS.ROLES[r]+'.</p><div class="list">'+rows+'</div></div>'
+ +'<div class="hand"><h3 style="margin:0 0 4px;color:var(--head)">Handoff to Data Migration</h3><p class="d" style="margin:0">'+(go?'The go decision is signed. A draft migration workspace has been created for the IMO lead to configure, with the values below.':'Locked until the go / no-go decision is approved. When it is, Xodus creates the migration workspace with the values below.')+'</p>'
+ +'<div class="kv"><div><b>Workspace</b>CoreCap Book Migration</div><div><b>Programme code</b>CORECAP-W1</div><div><b>Strategy</b>Parallel run, 30 days</div><div><b>Sources</b>Legacy core, two custodians, reporting platform</div><div><b>Target</b>Orion</div><div><b>Entities in scope</b>Six, including cost basis lots</div></div>'
+ +'<a class="btn '+(go?'p':'g dis')+'" href="'+(go?'data-migration.html':'#')+'" style="'+(go?'background:var(--blue);color:#fff':'')+'">Open Data Migration</a></div>'}
+function render(){
+ XS.top('deal',{onrole:render});
+ var m=document.getElementById('main');
+ if(!XS.can('deal')){m.innerHTML=XS.restricted('deal');return}
+ m.innerHTML=head()+tabs()+({research:vResearch,docs:vDocs,rec:vRec,decide:vDecide})[tab]()}
+document.addEventListener('click',function(e){
+ var t=e.target.closest('.tab[data-t]');if(t&&t.closest('main')){tab=t.dataset.t;render();return}
+ var d=e.target.closest('[data-d]');if(d){doc=+d.dataset.d;render();return}
+ var a=e.target.closest('[data-ap]');if(a){var r=XS.approve(a.dataset.ap,XS.role());XS.toast(r.msg);render();return}
+ var m=e.target.closest('[data-ma]');if(m)XS.openAssistant(m.dataset.ma)});
+render();
+</script></body></html>

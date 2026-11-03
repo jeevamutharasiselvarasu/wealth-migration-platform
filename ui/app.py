@@ -399,6 +399,37 @@ async def decide_user(email: str, request: Request, action: str = Form(...)):
     return RedirectResponse(url="/admin/users?notice=" + quote_plus(f"{updated['email']}: {updated['status']}, roles {', '.join(updated['roles']) or 'none'}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
+_TEMPLATE_ROLE = {"Platform Admin": "PA", "IMO Lead": "IL", "Migration Analyst": "MA", "Domain SME": "MA",
+                  "Validation Specialist": "VS", "Compliance Reviewer": "CR"}
+_SPACE_LINKS = {"index.html": "/suite", "data-migration.html": "/continue-data-migration", "deal-room.html": "/deal-room",
+                "governance.html": "/governance", "tenant.html": "/admin/users"}
+
+
+def _space_page(request: Request, filename: str, live_note: str = "") -> HTMLResponse:
+    """Serve a supplied suite-template space (Deal Room, Governance) behind the same sign-in, with links pointed at this app."""
+    user = get_current_user(request)
+    html = (Path(__file__).parent / "space_pages" / filename).read_text(encoding="utf-8")
+    html = re.sub(r"(?<![\w/.-])(index|data-migration|deal-room|governance|tenant)\.html", lambda m: _SPACE_LINKS[m.group(0)], html)
+    role = _TEMPLATE_ROLE.get(user.get("role"), "IL")
+    html = html.replace("<head>", f'<head><script>try{{localStorage.setItem("xodus.role","{role}")}}catch(e){{}}</script>', 1)
+    if live_note:
+        html = re.sub(r"<body[^>]*>", lambda m: m.group(0) + live_note, html, count=1)
+    return HTMLResponse(html)
+
+
+@app.get("/deal-room", response_class=HTMLResponse)
+async def deal_room_page(request: Request):
+    return _space_page(request, "deal-room.html")
+
+
+@app.get("/governance", response_class=HTMLResponse)
+async def governance_page(request: Request):
+    note = ('<div style="background:#0B1F33;color:#fff;font:600 12.5px Inter,system-ui,sans-serif;padding:9px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
+            '<span style="opacity:.8">Live in this build:</span><a href="/canonical-changes" style="color:#64D8EF">Canonical change requests &rarr;</a>'
+            '<span style="opacity:.6">The gate chain, integrity checks and audit trail below are the template preview.</span></div>')
+    return _space_page(request, "governance.html", note)
+
+
 @app.get("/suite", response_class=HTMLResponse)
 async def suite_home(request: Request):
     """Signed-in suite landing: the same session opens each space. Only Data Migration is live in this pilot."""

@@ -534,15 +534,14 @@ def test_base_template_keeps_scroll_position_after_actions():
     assert "data-full-reload" in html  # a form can opt out of in-place handling
 
 
-def test_suite_template_shell_marks_other_spaces_planned_and_groups_governance_inputs_in_the_rail():
+def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_of_the_rail():
     """Data Migration is the only live space; Deal Room and Governance stay visible but are not links."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "ui"
     base = _shell_source()
-    line = next(l for l in base.splitlines() if "Deal Room" in l and 'class="' in l and "planned" in l)
-    assert 'aria-disabled="true"' in line and "href=" not in line and "Planned" in line
-    assert 'href="/canonical-changes"' in base and 'href="/admin/users">Tenant settings' in base  # Governance and Tenant settings are their own spaces
+    assert 'href="/deal-room"' in base and 'href="/governance"' in base and "planned" not in base.lower().split("suite spaces")[1][:900]  # all three spaces are live
+    assert 'href="/admin/users">Tenant settings' in base  # Governance and Tenant settings are their own spaces
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/continue-data-migration"' in base
     for href in ("/target-mapping", "/firm-knowledge"):
         assert f'href="{href}"' in base  # setup inputs stay in the Data Migration rail
@@ -565,7 +564,7 @@ def test_suite_home_is_the_post_login_landing_and_opens_data_migration_on_the_sa
     assert '@app.get("/suite"' in app and 'RedirectResponse(url="/suite"' in app  # login lands on the suite home
     assert 'href="/continue-data-migration"' in suite and 'href="/migration-setup"' in suite  # Data Migration and its setup open from the suite home
     assert 'href="/"' in (ROOT / "ui" / "templates" / "continue_data_migration.html").read_text(encoding="utf-8")
-    assert top.count('<span class="chip">Planned</span>') == 1  # Deal Room stays visible, marked Planned
+    assert "Planned" not in top  # Deal Room and Governance are live, served from the supplied template
     assert "Sign in to the Xodus suite" in login and "no second password" in login
     assert 'class="xbrand" href="/suite"' in _shell_source()  # the brand returns to the suite home
 
@@ -591,3 +590,27 @@ def test_persona_selector_switches_in_place_and_rejects_open_redirects(tmp_path,
             assert evil.headers["location"] == "/suite"
     asyncio.run(run())
     app_module.session_mgr.active_sessions.pop("sid-p", None)
+
+
+def test_deal_room_and_governance_serve_the_template_pages_with_app_links_and_synced_role(tmp_path, monkeypatch):
+    import asyncio, httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "s.db"); monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    app_module.state_store = state_module.WorkspaceStateStore(); db.init_db()
+    app_module.session_mgr.active_sessions["sid-s"] = {"email": "t@example.invalid", "name": "Ann", "role": "Migration Analyst"}
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://t", cookies={"session_id": "sid-s"}) as c:
+            deal = await c.get("/deal-room"); gov = await c.get("/governance")
+            assert deal.status_code == 200 and gov.status_code == 200
+            for page in (deal.text, gov.text):
+                assert 'localStorage.setItem("xodus.role","MA")' in page
+                assert ".html" not in page.replace("filename", "") or all(h not in page for h in ("index.html", "data-migration.html", "deal-room.html", "governance.html", "tenant.html"))
+                assert "/continue-data-migration" in page and "/suite" in page
+            assert 'href="/canonical-changes"' in gov.text  # the live change-control page stays reachable from Governance
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://t") as anon:
+            assert (await anon.get("/governance", follow_redirects=False)).status_code in (302, 303, 307, 401)
+    asyncio.run(run())
+    app_module.session_mgr.active_sessions.pop("sid-s", None)
