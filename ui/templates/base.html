@@ -228,7 +228,7 @@
         }
         return resp.text().then(function (html) {
           var doc = new DOMParser().parseFromString(html, "text/html");
-          if (doc.getElementById("main-content")) return swap(doc, resp.url);
+          if (doc.getElementById("main-content")) return swap(doc, resp.redirected ? resp.url : location.href);  /* a direct 200 (e.g. a preview) must not leave an /api/ address in the bar */
           if (resp.redirected) { location.assign(resp.url); return; }
           document.open(); document.write(html); document.close();
         });

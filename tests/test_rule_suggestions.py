@@ -116,7 +116,7 @@ def test_compliance_reviewer_cannot_use_the_suggestion_endpoints(db, tmp_path, m
 
 def test_actions_update_in_place_and_tables_freeze_header_and_first_column():
     base = (ROOT / "ui" / "templates" / "base.html").read_text()
-    assert 'fetch(url.href, {method: "POST"' in base and "data-full-reload" in base and "replaceWith" in base
+    assert "resp.redirected ? resp.url : location.href" in base and 'fetch(url.href, {method: "POST"' in base and "data-full-reload" in base and "replaceWith" in base
     css = (ROOT / "ui" / "static" / "xodus.css").read_text()
     assert ".tw thead th{position:sticky;top:0" in css and "position:sticky;left:0" in css
 

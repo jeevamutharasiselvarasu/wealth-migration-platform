@@ -412,8 +412,19 @@ def _space_page(request: Request, filename: str, live_note: str = "") -> HTMLRes
     html = re.sub(r"(?<![\w/.-])(index|data-migration|deal-room|governance|tenant)\.html", lambda m: _SPACE_LINKS[m.group(0)], html)
     role = _TEMPLATE_ROLE.get(user.get("role"), "IL")
     html = html.replace("<head>", f'<head><script>try{{localStorage.setItem("xodus.role","{role}")}}catch(e){{}}</script>', 1)
-    if live_note:
-        html = re.sub(r"<body[^>]*>", lambda m: m.group(0) + live_note, html, count=1)
+    sess = session_mgr.get_session(request) or {}
+    allowed = session_mgr.assigned_roles(sess.get("email", "")) or {user.get("role")}
+    options = [r for r in session_mgr.ALL_ROLES if r in allowed]
+    # The template's own "Demo: view as" list is replaced by this app's persona selector so there is one source of truth.
+    persona_js = ("<script>(function(){var OPTS=" + json.dumps(options) + ",CUR=" + json.dumps(user.get("role")) + ";"
+                  "function fix(){var s=document.getElementById('xrole');if(!s||s.dataset.xp)return;s.dataset.xp='1';"
+                  "s.innerHTML=OPTS.map(function(r){return '<option'+(r==CUR?' selected':'')+'>'+r+'</option>'}).join('');"
+                  "var l=document.querySelector('label[for=xrole]');if(l){l.textContent='Persona';l.title='Your persona scopes the workspace; it does not grant extra permissions.'}"
+                  "var c=s.cloneNode(true);s.replaceWith(c);c.addEventListener('change',function(){"
+                  "fetch('/persona-selection',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+                  "body:'role='+encodeURIComponent(c.value)+'&next='+encodeURIComponent(location.pathname)}).then(function(){location.reload()})})}"
+                  "new MutationObserver(fix).observe(document.documentElement,{childList:true,subtree:true});fix()})()</script>")
+    html = re.sub(r"<body[^>]*>", lambda m: m.group(0) + persona_js + live_note, html, count=1)
     return HTMLResponse(html)
 
 
