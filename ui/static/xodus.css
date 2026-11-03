@@ -98,3 +98,13 @@ a.kpi:hover{border-color:var(--brand)}
 body h1,body h2,body h3,body h4{font-weight:700}
 .xwho{gap:8px}
 .xtop .xwho .chip{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase}
+
+/* Narrow screens: the rail becomes a horizontal strip so page content is not pushed below the fold. */
+@media(max-width:1020px){
+  .side{display:flex;flex-wrap:nowrap;align-items:stretch;gap:6px;overflow-x:auto;overflow-y:hidden;padding:10px;border-radius:16px;-webkit-overflow-scrolling:touch}
+  .side>*{flex:none}
+  .side .sh,.side .runh,.side .scope,.side .fh{display:none}
+  .side .nv,.side a.stg{white-space:nowrap;width:auto}
+  .side .nv{padding:9px 12px}
+  .side a.stg{min-width:210px}
+}
