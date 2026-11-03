@@ -529,7 +529,7 @@ async def setup_hub(request: Request):
         "page_title": "Setup", "user_name": user["name"], "user_role": user["role"],
         "configured": bool(setup), "setup_entities": setup.get("entities") or [],
         "target_confirmed": cfg.get("status") == "CONFIRMED", "target_system": setup.get("target_system", ""),
-        "knowledge_saved": state_store.questionnaire_data.get("last_updated") or "Not yet",
+        "knowledge_saved": str(state_store.questionnaire_data.get("last_updated") or "Not yet")[:10],
     })
 
 
