@@ -13,7 +13,7 @@
     {% if demo_mode %}<span class="chip ex">Demo data</span>{% endif %}
     {% include "_persona_select.html" %}
     {% if not hide_signout %}<a class="tbtn" href="/logout">Sign out</a>{% endif %}
-    {% if user_role|default('') == 'Platform Admin' %}<a class="tbtn{% if suite_cur == 'tenant' %} on{% endif %}" href="/admin/users">Tenant settings</a>{% endif %}
+    {% if user_role|default('') == 'Platform Admin' %}<a class="tbtn{% if suite_cur == 'tenant' %} on{% endif %}" href="/tenant">Tenant settings</a>{% endif %}
     <button class="tbtn" id="themeBtn" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </div>
 </header>

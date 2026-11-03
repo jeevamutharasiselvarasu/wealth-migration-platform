@@ -125,3 +125,7 @@ def test_pinned_bars_do_not_reserve_space_for_the_scrolling_suite_top_bar():
     css = (ROOT / "ui" / "static" / "xodus.css").read_text()
     base = (ROOT / "ui" / "templates" / "base.html").read_text()
     assert ":root{--xh:0px}" in css and '"--xh"' not in base
+
+
+def test_legacy_captions_are_not_smaller_than_the_template_minimum():
+    assert 'text-[9px]' in (ROOT / "ui" / "static" / "xodus.css").read_text() and "10.5px" in (ROOT / "ui" / "static" / "xodus.css").read_text()

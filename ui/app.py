@@ -254,6 +254,7 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         _allowed = session_mgr.assigned_roles(_sess.get("email", "")) or {_sess.get("role")}
         base_context["persona_options"] = [r for r in session_mgr.ALL_ROLES if r in _allowed]
         base_context["active_persona"] = _sess.get("role")
+        base_context["trole"] = _TEMPLATE_ROLE.get(_sess.get("role"), "IL")
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
 
@@ -402,14 +403,16 @@ async def decide_user(email: str, request: Request, action: str = Form(...)):
 _TEMPLATE_ROLE = {"Platform Admin": "PA", "IMO Lead": "IL", "Migration Analyst": "MA", "Domain SME": "MA",
                   "Validation Specialist": "VS", "Compliance Reviewer": "CR"}
 _SPACE_LINKS = {"index.html": "/suite", "data-migration.html": "/continue-data-migration", "deal-room.html": "/deal-room",
-                "governance.html": "/governance", "tenant.html": "/admin/users"}
+                "governance.html": "/governance", "tenant.html": "/tenant"}
 
 
-def _space_page(request: Request, filename: str, live_note: str = "") -> HTMLResponse:
+def _space_page(request: Request, filename: str, live_note: str = "", patches=()) -> HTMLResponse:
     """Serve a supplied suite-template space (Deal Room, Governance) behind the same sign-in, with links pointed at this app."""
     user = get_current_user(request)
     html = (Path(__file__).parent / "space_pages" / filename).read_text(encoding="utf-8")
     html = re.sub(r"(?<![\w/.-])(index|data-migration|deal-room|governance|tenant)\.html", lambda m: _SPACE_LINKS[m.group(0)], html)
+    for old, new in patches:
+        html = html.replace(old, new, 1)
     role = _TEMPLATE_ROLE.get(user.get("role"), "IL")
     html = html.replace("<head>", f'<head><script>try{{localStorage.setItem("xodus.role","{role}")}}catch(e){{}}</script>', 1)
     sess = session_mgr.get_session(request) or {}
@@ -431,6 +434,29 @@ def _space_page(request: Request, filename: str, live_note: str = "") -> HTMLRes
 @app.get("/deal-room", response_class=HTMLResponse)
 async def deal_room_page(request: Request):
     return _space_page(request, "deal-room.html")
+
+
+def _preview_note(text: str, href: str, link: str) -> str:
+    return ('<div style="background:#0B1F33;color:#fff;font:600 12.5px Inter,system-ui,sans-serif;padding:9px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
+            f'<span style="opacity:.8">Live in this build:</span><a href="{href}" style="color:#64D8EF">{link}</a><span style="opacity:.6">{text}</span></div>')
+
+
+@app.get("/tenant", response_class=HTMLResponse)
+async def tenant_settings_page(request: Request):
+    note = _preview_note("Brand, identity, roles and deployment defaults below are the template preview and are kept in this browser only.", "/admin/users", "Users &amp; access &rarr;")
+    return _space_page(request, "tenant.html", note)
+
+
+@app.get("/migration-workspaces", response_class=HTMLResponse)
+async def migration_workspaces_page(request: Request, view: str = "workspaces"):
+    """Template views the live pipeline does not have yet (workspaces list, command center, validation rules, team). Sample data."""
+    view = view if view in {"workspaces", "command", "validation", "team"} else "workspaces"
+    ws = "null" if view == "workspaces" else "'ws-corecap'"
+    note = _preview_note("These workspace views show the template's sample data. The live CoreCap pipeline is in the Data Migration rail.", "/", "Open the live overview &rarr;")
+    return _space_page(request, "data-migration.html", note, patches=(("function session(){try{return JSON.parse(XS.get('xodus.dm.session',true)||'null')}catch(e){return null}}",
+                                                                       "function session(){return {id: SEEDED[XS.role()] || 'avery.chen', method: 'sso'}}"),  # already signed in to the suite: skip the template's own continue screen
+                                                                      ("var V={view:'workspaces',stage:'M3',level:'migration',sec:'profile',ws:null,",
+                                                                      f"var V={{view:'{view}',stage:'M3',level:'migration',sec:'profile',ws:{ws},"),))
 
 
 @app.get("/governance", response_class=HTMLResponse)

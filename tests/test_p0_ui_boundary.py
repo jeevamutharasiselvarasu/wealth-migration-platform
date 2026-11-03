@@ -541,7 +541,7 @@ def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_
     root = Path(__file__).resolve().parents[1] / "ui"
     base = _shell_source()
     assert 'href="/deal-room"' in base and 'href="/governance"' in base and "planned" not in base.lower().split("suite spaces")[1][:900]  # all three spaces are live
-    assert 'href="/admin/users">Tenant settings' in base  # Governance and Tenant settings are their own spaces
+    assert 'href="/tenant">Tenant settings' in base  # Governance and Tenant settings are their own spaces
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/continue-data-migration"' in base
     for href in ("/target-mapping", "/firm-knowledge"):
         assert f'href="{href}"' in base  # setup inputs stay in the Data Migration rail
@@ -616,3 +616,29 @@ def test_deal_room_and_governance_serve_the_template_pages_with_app_links_and_sy
             assert (await anon.get("/governance", follow_redirects=False)).status_code in (302, 303, 307, 401)
     asyncio.run(run())
     app_module.session_mgr.active_sessions.pop("sid-s", None)
+
+
+def test_assistant_tenant_and_workspace_views_follow_the_template(tmp_path, monkeypatch):
+    import asyncio, httpx
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "v.db"); monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    app_module.state_store = state_module.WorkspaceStateStore(); db.init_db()
+    app_module.session_mgr.active_sessions["sid-v"] = {"email": "jeeva@simplicitywealth.com", "name": "Jeeva S.", "role": "Platform Admin"}
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://t", cookies={"session_id": "sid-v"}) as c:
+            for path in ("/", "/suite", "/continue-data-migration", "/agent-pipeline"):
+                page = (await c.get(path)).text
+                assert 'data-trole="PA"' in page and "/static/assistant.js" in page and "/static/assistant.css" in page, path
+            tenant = await c.get("/tenant")
+            assert tenant.status_code == 200 and "Users &amp; access" in tenant.text and 'href="/admin/users"' in tenant.text
+            for view in ("workspaces", "command", "validation", "team", "bogus"):
+                page = await c.get(f"/migration-workspaces?view={view}")
+                want = view if view != "bogus" else "workspaces"
+                assert page.status_code == 200 and f"var V={{view:'{want}'" in page.text
+            rail = (await c.get("/")).text
+            assert "/migration-workspaces?view=command" in rail and "/migration-workspaces?view=validation" in rail
+    asyncio.run(run())
+    app_module.session_mgr.active_sessions.pop("sid-v", None)

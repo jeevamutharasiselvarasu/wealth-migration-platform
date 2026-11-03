@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Xodus Data Migration</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Xodus suite template. Colour coding follows WealthTech AI Labs: cyan = Deal Room (front), green = Governance (middle), blue = Data Migration (back). */
+:root{
+  --cyan:#08A6D8;--cyan-l:#64D8EF;--green:#27C978;--green-d:#19A861;--blue:#0878C9;--blue-d:#0B5FA5;
+  --navy-950:#071523;--navy-900:#0B1F33;--navy-800:#12304B;
+  --brand:#0878C9;--brand-2:color-mix(in srgb,var(--brand) 55%,#64D8EF);
+  --bg:#F5F9FC;--panel:#FFFFFF;--ink:#152536;--muted:#657487;--line:#DDE7EF;--head:#0B1F33;--chip:#EEF4F8;
+  --tint-c:#EAF7FC;--tint-g:#E8FAF0;--tint-b:#ECF3FB;--ink-c:#0878A8;--ink-g:#19A861;--ink-b:#0B5FA5;
+  --warn:#9A6212;--warn-bg:#FFF3D6;--bad:#B42318;--bad-bg:#FDECEA;--shadow:0 14px 40px rgba(10,42,67,.09);--nav-bg:rgba(255,255,255,.9);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#081521;--panel:#0F273B;--ink:#E4EEF5;--muted:#9DB2C3;--line:#1D384F;--head:#F2F8FC;--chip:#16324A;
+  --tint-c:#0F3347;--tint-g:#0F3A2B;--tint-b:#14304F;--ink-c:#64D8EF;--ink-g:#6EDB9D;--ink-b:#8CC4F0;
+  --warn:#F0C46A;--warn-bg:#3A2E10;--bad:#FF9C92;--bad-bg:#40191A;--shadow:0 14px 40px rgba(0,0,0,.4);--nav-bg:rgba(8,21,33,.9);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#081521;--panel:#0F273B;--ink:#E4EEF5;--muted:#9DB2C3;--line:#1D384F;--head:#F2F8FC;--chip:#16324A;
+  --tint-c:#0F3347;--tint-g:#0F3A2B;--tint-b:#14304F;--ink-c:#64D8EF;--ink-g:#6EDB9D;--ink-b:#8CC4F0;
+  --warn:#F0C46A;--warn-bg:#3A2E10;--bad:#FF9C92;--bad-bg:#40191A;--shadow:0 14px 40px rgba(0,0,0,.4);--nav-bg:rgba(8,21,33,.9);color-scheme:dark}
+*{box-sizing:border-box}
+html{overflow-x:clip;scroll-behavior:smooth}
+body{margin:0;overflow-x:clip;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;font-size:14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+[hidden]{display:none!important}
+a{color:inherit;text-decoration:none}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.wrap{width:min(1320px,100%);margin:0 auto}
+.xtop{position:relative;z-index:50;margin:0 -50vw;padding:0 50vw;background:var(--nav-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.xtop-in{min-height:64px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0}
+.xbrand{display:flex;align-items:center;gap:11px;min-width:0}
+.xmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--cyan));position:relative;flex:none}
+.xmark::after{content:"";position:absolute;width:11px;height:11px;border-radius:50%;background:var(--green);right:-4px;bottom:-3px;border:3px solid var(--panel)}
+.xbrand strong{display:block;font-size:15px;color:var(--head);line-height:1.1}
+.xbrand span{display:block;font-size:10.5px;color:var(--muted)}
+.xnav{display:flex;gap:4px;flex-wrap:wrap}
+.xnav a{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.xnav a i{width:8px;height:8px;border-radius:50%}
+.xnav a.deal i{background:var(--cyan)}.xnav a.dm i{background:var(--blue)}.xnav a.gov i{background:var(--green)}
+.xnav a:hover{background:var(--chip);color:var(--head)}
+.xnav a.on{background:var(--chip);color:var(--head)}
+.sp{flex:1}
+.xwho{display:flex;align-items:center;gap:8px}
+.xwho select,.sel{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:7px 9px;font-size:12px}
+.tbtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:7px}
+.tbtn:hover{border-color:var(--cyan)}
+.btn{border:1px solid transparent;border-radius:11px;padding:10px 15px;font-weight:700;font-size:12.5px;display:inline-flex;align-items:center;gap:8px}
+.btn.p{background:var(--brand);color:#fff}
+.btn.g{background:var(--panel);border-color:var(--line);color:var(--ink)}
+.btn.ok{background:var(--green);color:#052315}
+.btn.sm{padding:6px 10px;font-size:11.5px;border-radius:9px}
+.btn:disabled,.btn.dis{opacity:.45;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:5px 9px;border-radius:999px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.chip.ex{background:var(--warn-bg);color:var(--warn)}
+.chip.c{background:var(--tint-c);color:var(--ink-c)}.chip.g{background:var(--tint-g);color:var(--ink-g)}.chip.b{background:var(--tint-b);color:var(--ink-b)}
+.pill{display:inline-flex;align-items:center;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.pill.approved{background:var(--tint-g);color:var(--ink-g)}.pill.review{background:var(--warn-bg);color:var(--warn)}.pill.running{background:var(--tint-c);color:var(--ink-c)}.pill.queued{background:var(--chip);color:var(--muted)}.pill.failed,.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.page{padding-block:24px 64px;display:flex;flex-direction:column;gap:18px}
+.ph{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.ey{font-size:11px;letter-spacing:1px;text-transform:uppercase;font-weight:800}
+.ey.deal{color:var(--ink-c)}.ey.dm{color:var(--ink-b)}.ey.gov{color:var(--ink-g)}
+.ph h1{margin:4px 0;font-size:clamp(26px,3.2vw,36px);letter-spacing:-1px;color:var(--head);line-height:1.08;text-wrap:balance}
+.ph p{margin:0;color:var(--muted);max-width:680px;font-size:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;min-width:0}
+.card h3{margin:0 0 4px;font-size:15px;color:var(--head)}
+.card .d{margin:0 0 12px;font-size:12.5px;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;min-width:0}
+.kpi small{display:block;font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);font-weight:800}
+.kpi b{display:block;font-size:24px;letter-spacing:-.6px;color:var(--head);font-variant-numeric:tabular-nums;margin:2px 0}
+.kpi span{font-size:11.5px;color:var(--muted)}
+.two{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:12.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);padding:10px 14px;background:var(--bg);border-bottom:1px solid var(--line)}
+td{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.flag{color:var(--bad);font-weight:700}
+.exc{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 14px;background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600}
+.lockn{border:1px dashed var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);background:var(--panel)}
+.restricted{max-width:620px;margin:80px auto;text-align:center;display:grid;gap:12px;justify-items:center}
+.restricted h1{margin:0;color:var(--head);font-size:26px}
+.restricted p{margin:0;color:var(--muted)}
+.meter{height:5px;border-radius:99px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width .3s}
+.list{display:grid;gap:8px}
+.li{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:13px;background:var(--bg);text-align:left;width:100%}
+.li b{width:34px;height:34px;border-radius:10px;background:var(--tint-c);display:grid;place-items:center;font-size:11px;color:var(--ink-c)}
+.li strong{display:block;font-size:13px;color:var(--head)}
+.li span{font-size:11.5px;color:var(--muted)}
+.empty{padding:18px;border:1px dashed var(--line);border-radius:13px;font-size:12.5px;color:var(--muted);text-align:center}
+.feed{margin:0;padding:0;list-style:none;display:grid;gap:10px;font-size:12.5px}
+.feed li{display:grid;grid-template-columns:10px 1fr;gap:10px;color:var(--muted)}
+.feed li i{width:8px;height:8px;border-radius:50%;background:var(--cyan);margin-top:6px}
+.feed b{color:var(--head)}
+.gate{display:flex;gap:14px;justify-content:space-between;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:16px;padding:14px 18px;background:var(--panel);position:sticky;bottom:12px;box-shadow:var(--shadow)}
+.gate .t{font-size:12.5px;color:var(--muted);max-width:640px}
+.gate .t b{color:var(--head)}
+.gate .a{display:flex;gap:8px;flex-wrap:wrap}
+.sigs{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--navy-900);color:#fff;border-radius:12px;padding:11px 16px;font-size:12.5px;opacity:0;pointer-events:none;transition:.25s;z-index:90}
+.toast.show{opacity:1;transform:translateX(-50%)}
+/* tabs */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px}
+.tab{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--muted)}
+.tab.on{background:var(--navy-900);border-color:var(--navy-900);color:#fff}
+/* meeting assistant drawer */
+.mfab{position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));z-index:70;background:var(--navy-900);color:#fff;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:13px;box-shadow:var(--shadow);display:flex;gap:9px;align-items:center}
+.mfab i{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(39,201,120,.25)}
+.mdr{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);z-index:80;background:var(--panel);border-left:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.25);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .25s;padding-top:env(safe-area-inset-top,0px)}
+.mdr.open{transform:none}
+.mdr-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.mdr-h strong{color:var(--head);font-size:15px}
+.mdr-h small{display:block;color:var(--muted);font-size:11px}
+.mdr-b{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.mdr .tabs{padding:10px 16px;border-bottom:1px solid var(--line)}
+.msg{font-size:12.5px;padding:10px 12px;border-radius:13px;max-width:94%}
+.msg.u{align-self:flex-end;background:var(--navy-900);color:#fff}
+.msg.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.msg .src{margin-top:7px;display:flex;gap:5px;flex-wrap:wrap}
+.msg .src span{font-size:10px;font-weight:700;padding:3px 7px;border-radius:99px;background:var(--tint-c);color:var(--ink-c)}
+.mdr-f{padding:12px 16px 16px;border-top:1px solid var(--line);display:grid;gap:8px}
+.mdr-f .row{display:flex;gap:8px}
+.mdr-f input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:11px;padding:10px 12px;font-size:12.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.qchip{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:6px 10px;font-size:11px;font-weight:600;color:var(--muted)}
+.qchip:hover{border-color:var(--cyan);color:var(--ink-c)}
+.mtg{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg);display:grid;gap:6px}
+.mtg strong{color:var(--head);font-size:13px}
+.mtg small{color:var(--muted)}
+.ins{border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:12px;padding:11px 13px;background:var(--bg);font-size:12.5px}
+.ins b{display:block;color:var(--head);margin-bottom:3px}
+.conn{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);font-size:12.5px}
+@media(max-width:1020px){.kpis{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}}
+@media(max-width:620px){.kpis{grid-template-columns:1fr 1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.xmark.img{background:transparent;display:grid;place-items:center;overflow:visible}
+.xmark.img img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+.xmark.img.tile{background:#fff;border:1px solid var(--line);padding:3px}
+.xmark.img.tile img{border-radius:6px}
+.xwm{height:30px;max-width:180px;object-fit:contain}
+.tbtn.on{border-color:var(--cyan);background:var(--tint-c);color:var(--ink-c)}
+
+
+</style>
+<style>
+/* Layout: suite bar, then a white-labelled product bar, then a pipeline rail beside the work area. Blue is the Data Migration colour; the client brand colour recolours the product itself. */
+:root{--shell:#0B1F33;--acc:#27C978}
+.btn.ok{background:var(--acc)}
+.pbar{margin:0 -50vw;padding:0 50vw;background:var(--shell);color:#fff;position:sticky;top:var(--xh,65px);z-index:40}
+@media(max-width:720px){.pbar{position:static}}
+.pb-in{min-height:58px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0}
+.lock{display:flex;align-items:center;gap:11px;min-width:0}
+.lock .mk{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;font-size:12px;font-weight:800;flex:none;overflow:hidden;color:#fff}
+.lock .mk.tile{background:#fff}
+.lock .mk img{width:100%;height:100%;object-fit:contain}
+.lock img.wm{max-height:30px;max-width:180px}
+.lock strong{display:block;font-size:14px;line-height:1.1}
+.lock span{display:block;font-size:10.5px;color:#9FB7C8}
+.pb-ctx{display:flex;gap:8px;align-items:center;font-size:12px;color:#BCD0E0;flex-wrap:wrap}
+.pb-ctx b{color:#fff}
+.pbchip{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.1);color:#CFE6F2;white-space:nowrap}
+.uc{display:flex;align-items:center;gap:9px;font-size:12px}
+.uc .av{width:30px;height:30px;border-radius:50%;background:var(--brand);display:grid;place-items:center;font-size:11px;font-weight:800}
+.uc small{display:block;color:#9FB7C8;font-size:10.5px}
+.pbtn{border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600}
+.app{display:grid;grid-template-columns:268px minmax(0,1fr);gap:20px;padding-block:20px 80px;align-items:start}
+.side{background:var(--navy-950);color:#C7D8E5;border-radius:20px;padding:14px;position:sticky;top:calc(var(--xh,65px) + var(--ph,58px) + 16px);max-height:calc(100vh - var(--xh,65px) - var(--ph,58px) - 32px);overflow:auto}
+.sh{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:#7F98AC;font-weight:800;margin:10px 8px 8px}
+.nv{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:0;border-radius:11px;padding:9px 10px;color:#C7D8E5;font-size:12.5px;font-weight:600}
+.nv:hover{background:rgba(255,255,255,.06)}.nv.on{background:rgba(255,255,255,.11);color:#fff}
+.runh{padding:12px;border-radius:14px;background:rgba(255,255,255,.06);margin-bottom:6px}
+.runh small{display:block;font-size:9.5px;letter-spacing:.9px;text-transform:uppercase;color:#7F98AC;font-weight:800}
+.runh strong{display:block;color:#fff;font-size:13px;margin:3px 0 8px}
+.runh .meter{background:rgba(255,255,255,.12)}
+.runh .sub{display:flex;justify-content:space-between;font-size:10.5px;color:#7F98AC;margin-top:7px}
+.zg{display:flex;align-items:center;gap:8px;margin:12px 8px 5px;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;font-weight:800;color:#7F98AC}
+.zg i{width:16px;height:3px;border-radius:9px}
+.zg.landing i{background:var(--cyan)}.zg.staged i{background:var(--green)}.zg.transformed i{background:#4DA3E8}
+.stg{display:grid;grid-template-columns:26px 1fr auto auto;gap:8px;align-items:center;width:100%;text-align:left;background:transparent;border:0;border-radius:11px;padding:8px 9px;color:#C7D8E5}
+.stg:hover{background:rgba(255,255,255,.06)}.stg.on{background:rgba(255,255,255,.11)}
+.stg .ix{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:10px;font-weight:800;background:rgba(255,255,255,.08)}
+.stg strong{display:block;font-size:12px;color:#fff;line-height:1.2}
+.stg small{font-size:10px;color:#7F98AC}
+.stg .own{font-size:9px;font-weight:800;border-radius:6px;padding:2px 5px;background:rgba(255,255,255,.1);color:#CFE6F2}
+.dot{width:9px;height:9px;border-radius:50%;background:#5D7487}
+.dot.approved{background:var(--green)}.dot.review{background:#F0C46A}.dot.running{background:var(--cyan);animation:pl 1.4s infinite}
+@keyframes pl{50%{box-shadow:0 0 0 5px rgba(8,166,216,.25)}}
+.main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.zonestrip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.zs{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg)}
+.zs.landing{border-top:3px solid var(--cyan)}.zs.staged{border-top:3px solid var(--green)}.zs.transformed{border-top:3px solid #4DA3E8}
+.zs h4{margin:0 0 8px;font-size:12px;color:var(--head)}
+.zs .row{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;padding:4px 0}
+.wcard{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;border:1px solid var(--line);border-top:3px solid var(--blue);border-radius:18px;background:var(--panel);padding:20px}
+.wcard h3{margin:0;font-size:19px;color:var(--head)}
+.wcard .m{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
+.wnew{border:1px dashed var(--line);border-radius:18px;padding:20px;color:var(--muted);background:transparent;text-align:left;width:100%}
+.wnew b{color:var(--head);display:block;margin-bottom:3px}
+.steps{margin:10px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted);display:grid;gap:4px}
+/* sign-in */
+.login{display:grid;grid-template-columns:1.05fr .95fr;min-height:calc(100vh - 80px);width:100vw;margin-left:calc(50% - 50vw);padding:0}
+.l-aside{background:linear-gradient(135deg,var(--navy-950),var(--navy-900) 60%,#0A3450);color:#fff;padding:40px max(24px,calc(50vw - 660px)) 32px max(24px,calc(50vw - 660px));display:flex;flex-direction:column;gap:28px;justify-content:space-between}
+.l-tag{display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13);font-size:12px;font-weight:600;color:#DDF6FF}
+.l-tag i{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.l-aside h1{font-size:clamp(30px,3.6vw,46px);line-height:1.06;letter-spacing:-1.5px;margin:16px 0}
+.l-aside h1 b{color:var(--cyan-l)}
+.l-aside p{color:#BCD0E0;max-width:520px;margin:0 0 18px}
+.l-flow{display:grid;gap:8px;max-width:520px}
+.l-row{display:grid;grid-template-columns:38px 1fr auto;gap:12px;align-items:center;padding:11px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
+.l-row b{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:rgba(8,166,216,.16);color:#8BE8F8}
+.l-row strong{display:block;font-size:13px}.l-row span{font-size:11px;color:#9FB7C8}
+.l-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11px;color:#7F98AC;font-family:ui-monospace,Menlo,monospace}
+.l-main{display:grid;place-items:center;padding:32px max(16px,calc(50vw - 660px)) 32px 24px;background:var(--bg)}
+.l-card{width:min(520px,100%);background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px;box-shadow:var(--shadow)}
+.l-card .ey{color:var(--brand)}
+.l-card h2{margin:6px 0 6px;font-size:26px;color:var(--head);letter-spacing:-.6px}
+.l-card .lead{margin:0 0 18px;color:var(--muted);font-size:13px}
+.sso{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid var(--line);border-radius:13px;padding:12px 14px;background:var(--bg)}
+.sso strong{display:block;font-size:13.5px;color:var(--head)}.sso span{font-size:11.5px;color:var(--muted)}
+.div{display:flex;align-items:center;gap:10px;margin:16px 0;font-size:11px;color:var(--muted)}
+.div::before,.div::after{content:"";height:1px;background:var(--line);flex:1}
+.rolepick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ro{text-align:left;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--panel)}
+.ro.on{border-color:var(--brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 25%,transparent)}
+.ro b{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--tint-b);color:var(--ink-b);font-size:10.5px;margin-bottom:6px}
+.ro strong{display:block;font-size:11.5px;color:var(--head);line-height:1.2}.ro span{font-size:10px;color:var(--muted)}
+.hint{margin-top:16px;border-radius:12px;padding:11px 13px;background:var(--warn-bg);color:var(--warn);font-size:11.5px}
+.idc{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:6px 0 12px;background:var(--bg)}
+.idc .av{width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none}
+.idc strong{display:block;color:var(--head);font-size:14px}.idc small{color:var(--muted);font-size:12px}
+.idn{border-radius:12px;padding:10px 13px;background:var(--tint-b);color:var(--ink-b);font-size:12.5px;margin-bottom:14px;display:grid;gap:2px}
+.tmh{display:grid;grid-template-columns:44px minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.tmh:last-child{border-bottom:0}
+.tmh .ic{width:38px;height:38px;border-radius:50%;background:var(--tint-b);color:var(--ink-b);display:grid;place-items:center;font-weight:800;font-size:12px}
+.tmh strong{display:block;color:var(--head)}.tmh small{color:var(--muted);font-size:11.5px}
+.tmh.me{background:var(--tint-b)}
+.tmf{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:12px}
+@media(max-width:800px){.tmh{grid-template-columns:44px 1fr}.tmh>:nth-child(n+3){grid-column:2}.tmf{grid-template-columns:1fr}}
+.tw td.mono{white-space:nowrap}
+@media(max-width:900px){.login{grid-template-columns:1fr}.l-aside{padding:28px 16px}.l-main{padding:24px 16px}.rolepick{grid-template-columns:1fr 1fr}}
+/* configuration */
+.lvt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lt{display:flex;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--panel)}
+.lt.on{border-color:var(--brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 22%,transparent)}
+.lt b{width:34px;height:34px;border-radius:10px;background:var(--tint-b);color:var(--ink-b);display:grid;place-items:center;font-size:12px}
+.lt strong{display:block;color:var(--head);font-size:13.5px}.lt span{font-size:11.5px;color:var(--muted)}
+.cfg{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:start}
+.cr{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px;position:sticky;top:calc(var(--xh,65px) + var(--ph,58px) + 16px);max-height:calc(100vh - var(--xh,65px) - var(--ph,58px) - 32px);overflow:auto}
+.cr h5{margin:6px 8px 8px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.ri{display:grid;grid-template-columns:30px 1fr;gap:6px;align-items:center;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:8px;font-size:12.5px;font-weight:600;color:var(--ink)}
+.ri:hover{background:var(--bg)}.ri.on{background:var(--tint-b);color:var(--ink-b)}
+.ri i{font-style:normal;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--muted)}
+.cb{display:flex;flex-direction:column;gap:14px;min-width:0}
+/* sub-sections inside a section can collapse; the section list on the left stays */
+.sech{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+.sech .num{font-family:ui-monospace,Menlo,monospace;font-size:11px;font-weight:700;color:var(--ink-b);background:var(--tint-b);border-radius:8px;padding:3px 8px}
+.sech h2{margin:6px 0 2px;font-size:22px;letter-spacing:-.5px;color:var(--head)}
+.sech p{margin:0;font-size:12.5px;color:var(--muted);max-width:620px}
+.sech .sbtn{display:flex;gap:6px}
+.pn-h[data-pn]{cursor:pointer}
+.pn-h[data-pn]:hover{background:var(--bg)}
+.pn-h .pcv{margin-left:10px;align-self:center;color:var(--muted);font-size:14px;transition:transform .15s}
+.pn-h .rt+.pcv{margin-left:10px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.tl{display:grid;gap:7px;align-content:start;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:16px;min-height:148px;transition:border-color .12s,box-shadow .12s,transform .12s}
+.tl:hover{border-color:var(--brand);box-shadow:var(--shadow);transform:translateY(-1px)}
+.tl.attn{border-left:3px solid var(--warn)}
+.tl .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tl i{font-style:normal;font-family:ui-monospace,Menlo,monospace;font-size:11px;font-weight:700;color:var(--ink-b);background:var(--tint-b);border-radius:8px;padding:3px 8px}
+.tl strong{font-size:15px;color:var(--head)}
+.tl .st{font-size:12.5px;color:var(--ink);font-weight:600}
+.tl .ds{font-size:11.5px;color:var(--muted)}
+.tl .go{margin-top:auto;font-size:11.5px;font-weight:700;color:var(--ink-b)}
+.ri.home{border-bottom:1px solid var(--line);border-radius:10px 10px 0 0;margin-bottom:4px}
+.pn.editing{border-color:var(--brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 18%,transparent)}
+.pn-b.rdo .input:disabled,.pn-b.rdo select:disabled,.pn-b.rdo textarea:disabled{background:transparent;border-color:transparent;padding-left:0;opacity:1;color:var(--head);-webkit-text-fill-color:var(--head);appearance:none;-webkit-appearance:none;background-image:none;resize:none}
+.pn-b.rdo [data-opt],.pn-b.rdo [data-skill],.pn-b.rdo .sw,.pn-b.rdo .colorf input[type=color]{pointer-events:none}
+.pn-b.rdo [data-md]{pointer-events:auto}
+.pn.shut .pn-h{border-bottom:0}.pn.shut .pn-h .pcv{transform:rotate(-90deg)}
+.pn{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.pn-h{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid var(--line)}
+.pn-h.acc{border-left:3px solid var(--brand)}
+.pn-h .ic{width:34px;height:34px;border-radius:10px;background:var(--tint-b);color:var(--ink-b);display:grid;place-items:center;flex:none}
+.pn-h h3{margin:0;font-size:15px;color:var(--head)}.pn-h p{margin:3px 0 0;font-size:12.5px;color:var(--muted)}
+.pn-h .rt{margin-left:auto}
+.pn-b{padding:16px 18px}
+.field{display:grid;gap:5px;margin-bottom:12px;min-width:0}
+.field label,.fl{font-size:11px;font-weight:700;color:var(--muted)}
+.fh{font-size:11px;color:var(--muted)}
+.input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px;width:100%;min-width:0}
+.input:disabled{opacity:.6;cursor:not-allowed}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.r3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sub{margin:16px 0 10px;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:800}
+.opts{display:grid;gap:10px}.opts.c2{grid-template-columns:1fr 1fr}.opts.c3{grid-template-columns:repeat(3,1fr)}
+.opt{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--bg);cursor:pointer;text-align:left}
+.opt.on{border-color:var(--brand);background:var(--tint-b)}
+.opt strong{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--head)}
+.opt strong i{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);flex:none}
+.opt.on strong i{border-color:var(--brand);background:var(--brand)}
+.opt p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.opt em{display:block;font-style:normal;font-size:10.5px;color:var(--ink-b);font-weight:700;margin-top:5px}
+.tr{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.tr:last-child{border-bottom:0}
+.tr strong{display:block;font-size:13px;color:var(--head)}.tr span.d{font-size:12px;color:var(--muted)}
+.sw{position:relative;width:38px;height:22px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;cursor:pointer;margin:0}
+.sw .tk{position:absolute;inset:0;border-radius:99px;background:var(--line);transition:.2s}
+.sw .tk::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.sw input:checked+.tk{background:var(--brand)}.sw input:checked+.tk::after{left:19px}
+.sw input:disabled{cursor:not-allowed}.sw input:disabled+.tk{opacity:.5}
+.sw input:focus-visible+.tk{outline:2px solid var(--cyan);outline-offset:2px}
+.kvs{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px}
+.kc{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
+.kc .k{font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);font-weight:800}
+.kc .v{font-size:13px;color:var(--head);font-weight:600;margin-top:2px;overflow-wrap:anywhere}
+.zf{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:8px;align-items:stretch;margin-bottom:12px}
+.zf .ar{align-self:center;color:var(--muted)}
+.zc{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg)}
+.zc.landing{border-top:3px solid var(--cyan)}.zc.staged{border-top:3px solid var(--green)}.zc.transformed{border-top:3px solid #4DA3E8}
+.zc h4{margin:0 0 4px;font-size:13px;color:var(--head)}.zc p{margin:0 0 8px;font-size:11.5px;color:var(--muted)}
+.zc .path{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--ink-g);overflow-wrap:anywhere}
+.tree{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.7;background:var(--navy-950);color:#9FB7C8;border-radius:12px;padding:12px 14px;overflow-x:auto;white-space:pre}
+.tree b{color:#7CE0AA;font-weight:600}.tree u{text-decoration:none;color:#fff}
+.lr{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:10px 12px;margin-bottom:8px;background:var(--bg)}
+.lr .ic{width:36px;height:36px;border-radius:10px;background:var(--tint-b);color:var(--ink-b);display:grid;place-items:center;font-size:11px;font-weight:800}
+.lr strong{display:block;font-size:13px;color:var(--head)}.lr span.s{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.lr .rt{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.cc{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:13px;padding:12px;background:var(--bg);cursor:pointer}
+.cc.on{border-color:var(--brand);background:var(--tint-b)}
+.cc .bx{width:20px;height:20px;border-radius:6px;border:2px solid var(--line);display:grid;place-items:center;font-size:12px;color:#fff}
+.cc.on .bx{background:var(--brand);border-color:var(--brand)}
+.cc strong{display:block;font-size:13px;color:var(--head)}.cc p{margin:2px 0 0;font-size:11.5px;color:var(--muted)}
+.cc button{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700}
+.stagestrip{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}
+.sc{border:1px solid var(--line);border-radius:12px;padding:9px;background:var(--bg);min-width:0}
+.sc.landing{border-top:3px solid var(--cyan)}.sc.staged{border-top:3px solid var(--green)}.sc.transformed{border-top:3px solid #4DA3E8}
+.sc .n{font-size:9.5px;color:var(--muted);font-weight:700}.sc .t{font-size:11.5px;font-weight:700;color:var(--head);margin:2px 0 6px}
+.zp{display:inline-flex;font-size:10px;font-weight:800;padding:3px 8px;border-radius:99px}
+.zp.landing{background:var(--tint-c);color:var(--ink-c)}.zp.staged{background:var(--tint-g);color:var(--ink-g)}.zp.transformed{background:var(--tint-b);color:var(--ink-b)}
+.logos{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:var(--bg)}
+.lt2{display:flex;gap:8px}
+.tile{width:84px;height:64px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:800;background-size:contain;background-repeat:no-repeat;background-position:center;position:relative;color:var(--muted)}
+.tile.light{background-color:#fff}.tile.dark{background-color:var(--shell);color:#fff}
+.tile.wide{width:130px}
+.tile em{position:absolute;left:5px;bottom:2px;font-size:8px;font-style:normal;letter-spacing:.6px;text-transform:uppercase;opacity:.6}
+.pvw{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.pvw .a{background:var(--shell);color:#fff;padding:11px 14px;display:flex;align-items:center;gap:10px}
+.pvw .b{padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--bg);font-size:12px}
+.sw2{display:inline-flex;gap:6px;align-items:center;font-size:11px;color:var(--muted)}.sw2 i{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid var(--line)}
+.colorf{display:grid;grid-template-columns:44px 1fr;gap:8px}
+.colorf input[type=color]{width:44px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.savebar{position:fixed;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom,0px));z-index:75;background:var(--navy-900);color:#fff;border-radius:14px;padding:10px 14px;display:none;align-items:center;gap:14px;box-shadow:var(--shadow);font-size:12.5px;flex-wrap:wrap;max-width:calc(100% - 32px)}
+.savebar.show{display:flex}
+.modal-bg{position:fixed;inset:0;background:rgba(4,15,26,.6);z-index:85;display:grid;place-items:center;padding:20px}
+.modal{width:min(640px,100%);max-height:80vh;overflow:auto;background:var(--panel);border-radius:18px;border:1px solid var(--line)}
+.modal-h{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700;color:var(--head)}
+.modal-b{padding:16px 18px;font-size:13px}
+.modal-b h3{margin:0 0 8px;font-size:16px;color:var(--head)}.modal-b h4{margin:14px 0 6px;font-size:13px;color:var(--head)}.modal-b ul{padding-left:18px;margin:6px 0}
+.modal-b pre{background:var(--navy-950);color:#BFEAD3;border-radius:10px;padding:12px;overflow:auto;font-size:11px}
+.fi{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 8px;font-size:12px;width:100%;min-width:140px}
+@media(max-width:1020px){.app{grid-template-columns:1fr}.side{position:static;max-height:none}.cfg{grid-template-columns:1fr}.cr{position:static}.stagestrip{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.r2,.r3,.opts.c2,.opts.c3,.lvt{grid-template-columns:1fr}.zf{grid-template-columns:1fr}.zf .ar{display:none}.zonestrip{grid-template-columns:1fr}.wcard{grid-template-columns:1fr}.logos{grid-template-columns:1fr}.stagestrip{grid-template-columns:1fr 1fr}}
+
+.lanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+.lane{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.lane.ctl{border-top:3px solid var(--blue)}.lane.dat{border-top:3px solid var(--green)}
+.lane-h{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--line)}
+.lane-h h3{margin:0;font-size:15px}.lane-h small{color:var(--muted);font-size:12px}
+.lane-b{padding:14px 16px;display:grid;gap:12px}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.stp{display:grid;grid-template-columns:22px 1fr;gap:10px;font-size:12px;color:var(--muted)}
+.stp i{font-style:normal;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;background:var(--chip);color:var(--muted)}
+.stp b{display:block;color:var(--ink);font-size:13px}
+.stp.done i{background:var(--tint-g);color:var(--ink-g)}.stp.active i{background:var(--tint-c);color:var(--ink-c)}.stp.active b{color:var(--ink)}
+.art{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:6px}
+.art .r1{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.art .nm{font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;word-break:break-all}
+.art .mt{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:11px;color:var(--muted)}
+.art .ds{font-size:12px;color:var(--muted)}
+.art pre{margin:0;max-height:240px;overflow:auto;background:var(--chip);border-radius:8px;padding:10px;font-size:11px;line-height:1.5}
+.evs{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:12px}
+.evs li{display:grid;grid-template-columns:48px 1fr;gap:8px}.evs time{font-family:ui-monospace,Menlo,monospace;color:var(--muted)}.evs .w{color:var(--warn)}
+.hl{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line)}.hl:last-child{border:0}
+@media(max-width:900px){.lanes{grid-template-columns:1fr}}
+</style></head>
+<body>
+<div id="xtop"></div>
+<div id="root"></div>
+<div id="saveHost"></div>
+<div id="modalHost"></div>
+<script>
+/* Xodus suite shared module: role, access, gate state, top bar, meeting assistant. All data is example data. */
+(function(){
+'use strict';
+var MEM={};
+function sget(k,s){try{var v=(s?sessionStorage:localStorage).getItem(k);return v===null?(MEM[k]===undefined?null:MEM[k]):v}catch(e){return MEM[k]===undefined?null:MEM[k]}}
+function sset(k,v,s){MEM[k]=v;try{(s?sessionStorage:localStorage).setItem(k,v)}catch(e){}}
+function esc(x){return String(x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+var ROLES={EVP:'Executive sponsor',DT:'Deal team',IL:'IMO lead',MA:'Migration Analyst',VS:'Validation Specialist',PA:'Platform Admin',CR:'Compliance reviewer'};
+var PEOPLE={EVP:'Jordan Hale',DT:'Sam Rivera',IL:'Avery Chen',MA:'Priya Nair',VS:'Marcus Webb',PA:'Platform Admin',CR:'Dana Ortiz'};
+var ACCESS={deal:['EVP','DT','IL','CR'],dm:['MA','VS','IL','PA','CR'],gov:['EVP','IL','CR','PA']};
+var ROLEINFO={EVP:'Approves the deal brief and the go / no-go. Co-signs cutover readiness.',DT:'Researches the target and reviews the recommendation.',IL:'Creates and configures migration workspaces. Owns the estimate and cutover readiness. No access to platform configuration.',MA:'Works the pipeline stages and owns gates 01 to 04. Co-signs the load.',VS:'Owns data-level validation: creates and generates validation rules. Owns reconciliation and co-signs the load.',PA:'Sets up the platform: identity, compute, zones, connectors and runtime. No access to migration workspaces.',CR:'Reads evidence and the audit trail across spaces. Read-only.'};
+var SPACES={deal:{name:'Deal Room',href:'deal-room.html',cls:'deal'},dm:{name:'Data Migration',href:'data-migration.html',cls:'dm'},gov:{name:'Governance',href:'governance.html',cls:'gov'}};
+
+/* ---------- gate chain ---------- */
+function G(id,sp,name,own,ev,extra){var g={id:id,sp:sp,name:name,own:own,ev:ev,st:'queued',by:[]};for(var k in (extra||{}))g[k]=extra[k];return g}
+function freshGates(){return [
+ G('D1','deal','Deal brief accepted',['EVP'],'Brief with cited sources'),
+ G('D2','deal','Integration estimate approved',['IL'],'Estimate and assumption log'),
+ G('D3','deal','Recommendation reviewed',['DT'],'Recommendation with alternatives considered'),
+ G('D4','deal','Go / no-go decision',['EVP'],'Signed decision memo'),
+ G('M1','dm','01 Loader & Inspector',['MA'],'File hashes and dictionary coverage',{zone:'Landing'}),
+ G('M2','dm','02 Discovery',['MA'],'Entity profiles and gap analysis',{zone:'Staged'}),
+ G('M3','dm','03 Business Rules',['MA'],'Rule IDs and skill pack versions',{zone:'Staged'}),
+ G('M4','dm','04 Schema Mapper',['MA'],'Mapping version and exception list',{zone:'Transformed'}),
+ G('M5','dm','05 Execution',['MA','VS'],'Run IDs and load logs',{zone:'Transformed',dual:true}),
+ G('M6','dm','06 Reconciliation',['VS'],'Tolerances and break report',{zone:'Transformed'}),
+ G('C1','gov','Cutover readiness',['IL','EVP'],'Readiness checklist and rollback plan',{dual:true}),
+ G('C2','gov','Hypercare close-out',['IL'],'Close-out report')]}
+var ST;
+/* Data Migration. Control plane: stages 01 to 04 set the migration up from metadata and sample files and end in one artifact bundle (SQL, ADF pipeline, Python). Data plane: stages 05 and 06 are runs of that bundle on the real data, each followed by the validation agent. */
+function isDP(g){return g.id=='M5'||g.id=='M6'}
+function ph(g){if(!(g.sp=='dm'&&isDP(g)))return g.st;if(g.ph)return g.ph;return g.st=='approved'?'done':g.st=='review'?'results':g.st=='running'?'run':'none'}
+function stateLabel(g){
+ if(g.sp!='dm')return ({approved:'Approved',review:'Needs review',queued:'Not open',running:'Agent running'})[g.st];
+ if(!isDP(g)){if(g.id=='M4'&&g.st=='approved')return 'Bundle published';return ({queued:'Not started',running:'Control plane working',review:'Needs review',approved:'Approved'})[g.st]}
+ var p=ph(g);if(g.id=='M5')return ({none:'Waits for the bundle',ready:'Ready to run',run:'Running on the data plane',results:'Run to review',done:'Approved'})[p];
+ return ({none:'Waits for the run review',results:'Validation to review',done:'Approved'})[p]}
+function setScenario(n){
+ ST={v:3,scn:n,gates:freshGates(),log:[],bundle:{v:1,pub:false},runs:[]};
+ var ap=n=='early'?['D1','D2']:n=='run'?['D1','D2','D3','D4','M1','M2','M3','M4']:['D1','D2','D3','D4','M1','M2'];
+ ST.gates.forEach(function(g){if(ap.indexOf(g.id)>-1){g.st='approved';g.by=g.own.slice();if(g.sp=='dm'&&isDP(g))g.ph='done'}});
+ var deal=[{sp:'deal',t:'Deal brief accepted',w:'Executive sponsor'},{sp:'deal',t:'Integration estimate approved',w:'IMO lead'}];
+ if(n=='early'){gate('D3').st='review';ST.log=deal}
+ else if(n=='run'){ST.bundle={v:2,pub:true};ST.runs=[{n:1,id:'RUN-0201',ver:1,st:'rejected',at:'Oct 29 · 09:14'},{n:2,id:'RUN-0202',ver:2,st:'done',at:'Oct 30 · 10:02'}];
+  var m5=gate('M5');m5.st='review';m5.ph='results';
+  ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 to 04 approved, artifact bundle v1 published',w:'Migration Analyst'},{sp:'dm',t:'RUN-0201 rejected: 14 positions had no security identifier',w:'Migration Analyst'},{sp:'dm',t:'Artifact bundle v2 published',w:'Control plane'},{sp:'dm',t:'RUN-0202 finished, validation agent complete, telemetry received',w:'Data plane'}]}
+ else{gate('M3').st='review';gate('M4').st='running';ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 Loader & Inspector approved',w:'Migration Analyst'},{sp:'dm',t:'02 Discovery approved',w:'Migration Analyst'},{sp:'dm',t:'03 Business Rules proposed',w:'Control plane'},{sp:'dm',t:'04 Schema Mapper started',w:'Control plane'}]}
+ save()}
+function gate(id){return ST.gates.filter(function(g){return g.id==id})[0]}
+function load(){var j=sget('xodus.state');if(j){try{ST=JSON.parse(j);if(ST&&ST.v===3&&ST.gates&&ST.gates.length==12)return;var keep=ST&&ST.scn}catch(e){}}setScenario(keep||'mid')}
+function save(){sset('xodus.state',JSON.stringify(ST))}
+function idx(g){return ST.gates.indexOf(g)}
+function nextOf(g){return ST.gates[idx(g)+1]}
+function blocker(g){for(var i=0;i<idx(g);i++){if(ST.gates[i].st!='approved')return ST.gates[i]}return null}
+function logit(sp,t,w){ST.log.push({sp:sp,t:t,w:w});}
+function approve(id,role){
+ var g=gate(id);if(!g)return{ok:false,msg:'Unknown gate'};
+ var b=blocker(g);if(b)return{ok:false,msg:'Blocked. '+b.id+' '+b.name+' is not approved yet.'};
+ if(g.st!='review')return{ok:false,msg:'This gate is not open for approval.'};
+ if(g.own.indexOf(role)<0)return{ok:false,msg:'Only '+g.own.map(function(r){return ROLES[r]}).join(' and ')+' can approve this gate.'};
+ if(g.by.indexOf(role)>-1)return{ok:false,msg:'You have already signed this gate.'};
+ g.by.push(role);
+ if(g.own.every(function(r){return g.by.indexOf(r)>-1})){
+  g.st='approved';if(g.sp=='dm'&&isDP(g))g.ph='done';
+  if(g.id=='M4'){ST.bundle.pub=true;logit('dm','04 Schema Mapper approved. Artifact bundle v'+ST.bundle.v+' published to the data plane',ROLES[role]);var m5=gate('M5');m5.st='running';m5.ph='ready';save();return{ok:true,msg:'Bundle v'+ST.bundle.v+' published to the data plane.'}}
+  logit(g.sp,g.name+' approved',ROLES[role]);
+  if(g.id=='M5'){var m6=gate('M6');m6.st='review';m6.ph='results'}
+  else if(g.id=='M6'){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='accepted'}
+  else{var n=nextOf(g);if(n&&n.st=='queued'){n.st=(n.sp=='dm')?'running':'review';if(g.id=='D4')logit('dm','Data Migration workspace created from the decision','Xodus')}}
+  save();return{ok:true,msg:g.name+' approved.'}}
+ logit(g.sp,g.name+' signed by '+ROLES[role],'Waiting for the other approver');save();
+ return{ok:true,msg:'Signed. Waiting for the other approver.'}}
+function finish(id){var g=gate(id);if(!g||g.st!='running')return;
+ if(g.id=='M5'){if(ph(g)!='run')return;g.st='review';g.ph='results';var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='done';logit('dm',(lr?lr.id:'Run')+' finished. Validation agent complete. Telemetry received','Data plane');save();return}
+ g.st='review';logit(g.sp,g.name+(g.sp=='dm'?': control plane output ready for review':' finished, waiting for review'),g.sp=='dm'?'Control plane':'Agent run');save()}
+function changes(id,role){var g=gate(id);if(!g||g.st!='review')return;
+ if(g.sp=='dm'&&isDP(g)){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='rejected';var m5=gate('M5'),m6=gate('M6');m5.st='running';m5.ph='ready';m5.by=[];m6.st='queued';m6.ph='none';m6.by=[];logit('dm',(lr?lr.id:'Run')+' rejected at '+g.name,ROLES[role]);save();return}
+ g.st=g.sp=='dm'?'running':'review';g.by=[];logit(g.sp,'Changes requested on '+g.name,ROLES[role]);save()}
+function startRun(role){var m5=gate('M5'),m6=gate('M6');
+ if(role!='MA')return{ok:false,msg:'Only the Migration Analyst starts a run.'};
+ if(!ST.bundle.pub)return{ok:false,msg:'There is no published artifact bundle yet.'};
+ if(m5.st=='running'&&m5.ph=='run')return{ok:false,msg:'A run is already in progress.'};
+ var last=ST.runs[ST.runs.length-1];if(last&&last.st=='done')last.st='superseded';
+ var n=ST.runs.length+1,t=new Date();
+ ST.runs.push({n:n,id:'RUN-'+('0000'+(200+n)).slice(-4),ver:ST.bundle.v,st:'running',at:'Today · '+t.toTimeString().slice(0,5)});
+ m5.st='running';m5.ph='run';m5.by=[];m6.st='queued';m6.ph='none';m6.by=[];
+ logit('dm','RUN-'+('0000'+(200+n)).slice(-4)+' started on the data plane with bundle v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Run started on the data plane.'}}
+function reviseBundle(role){var m4=gate('M4'),m5=gate('M5'),m6=gate('M6');
+ if(role!='MA')return{ok:false,msg:'Only the Migration Analyst revises the bundle.'};
+ if(!ST.bundle.pub)return{ok:false,msg:'The bundle is not published yet.'};
+ if(m5.st=='running'&&m5.ph=='run')return{ok:false,msg:'Wait for the current run to finish.'};
+ var lr=ST.runs[ST.runs.length-1];if(lr&&lr.st=='done')lr.st='rejected';
+ ST.bundle={v:ST.bundle.v+1,pub:false};
+ m4.st='running';m4.by=[];[m5,m6].forEach(function(x){x.st='queued';x.ph='none';x.by=[]});
+ logit('dm','Back to the control plane. Revising the artifact bundle to v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Control plane reopened for bundle v'+ST.bundle.v+'.'}}
+function bypass(id){var g=gate(id),b=blocker(g);if(b)return{ok:false,msg:'Blocked. '+b.id+' '+b.name+' is not approved, so '+g.id+' cannot be opened.'};if(g.st=='approved')return{ok:true,msg:g.id+' is already approved, and every gate before it is approved.'};return{ok:true,msg:g.id+' is open. Every gate before it is approved, so its owner can approve it.'}}
+function hitl(){try{var c=JSON.parse(sget('xodus.dm.cfg2')||'null');return c&&c.platform&&c.platform.ai?c.platform.ai.hitlPolicy:'all-gates'}catch(e){return 'all-gates'}}
+function checks(){
+ var out=[],i,bad;
+ bad=[];for(i=0;i<ST.gates.length;i++){if(ST.gates[i].st=='approved'&&ST.gates.slice(0,i).some(function(x){return x.st!='approved'}))bad.push(ST.gates[i].id)}
+ out.push({n:'Gate order is intact',d:'No gate is approved while an earlier gate is open.',ok:!bad.length,x:bad.join(', ')});
+ bad=ST.gates.filter(function(g){return g.st=='approved'&&!g.own.every(function(r){return g.by.indexOf(r)>-1})}).map(function(g){return g.id});
+ out.push({n:'Every approval has all required signatures',d:'Dual sign-off gates carry both approvers.',ok:!bad.length,x:bad.join(', ')});
+ bad=ST.gates.filter(function(g){return g.st=='approved'&&!g.ev}).map(function(g){return g.id});
+ out.push({n:'Every approval has evidence attached',d:'Evidence is stored with the run.',ok:!bad.length,x:bad.join(', ')});
+ bad=ST.gates.filter(function(g){return !g.own.length}).map(function(g){return g.id});
+ out.push({n:'Every gate has an owner role',d:'No gate is left without an approver.',ok:!bad.length,x:bad.join(', ')});
+ bad=[];if(ST.bundle.pub!=(gate('M4').st=='approved'))bad.push('M4');if((ST.runs.length||['run','results','done'].indexOf(ph(gate('M5')))>-1)&&!ST.bundle.pub)bad.push('M5');
+ out.push({n:'Nothing runs on the data plane without a published bundle',d:'The bundle is published only when the Schema Mapper gate is approved, and every run uses it.',ok:!bad.length,x:bad.join(', ')});
+ var h=hitl();
+ out.push({n:'Human-in-the-loop policy meets the platform floor',d:'The floor is every stage gated.',ok:h=='all-gates',x:h=='all-gates'?'':'Policy is set to '+h+' in Data Migration setup'});
+ return out}
+
+/* ---------- tenant brand: set at deployment, shown across every space, editable by the Platform Admin ---------- */
+var TENANT_DEFAULT={suiteName:'Xodus',suiteTagline:'M&A integration co-pilot for RIAs',deployedFor:'Simplicity Group',hostname:'migrate.simplicitygroup.com',supportEmail:'migration-support@simplicitygroup.com',footerNote:'Secured via Simplicity UMP identity',productName:'XODUS·AMP',tagline:'Agentic Migration Platform',logoMark:null,logoMarkName:'',wordmark:null,wordmarkName:'',logoBackdrop:'tile',logoInitials:'XA',primary:'#0878C9',accent:'#27C978',shell:'#0B1F33',poweredByVisible:true,vendor:'LatentView Analytics',roleGroups:{EVP:'SG-XODUS-Executives',DT:'SG-XODUS-DealTeam',IL:'SG-XODUS-IMO',MA:'SG-XODUS-MigrationAnalysts',VS:'SG-XODUS-Validators',PA:'SG-XODUS-PlatformAdmins',CR:'SG-XODUS-Compliance'}};
+function tenant(){var o={},k,s={};try{s=JSON.parse(sget('xodus.tenant')||'{}')||{}}catch(e){}
+ for(k in TENANT_DEFAULT)o[k]=(s[k]===undefined?TENANT_DEFAULT[k]:s[k]);
+ var g={};for(k in TENANT_DEFAULT.roleGroups)g[k]=(o.roleGroups&&o.roleGroups[k])||TENANT_DEFAULT.roleGroups[k];o.roleGroups=g;return o}
+function groupFor(r){return tenant().roleGroups[r]||''}
+function saveTenant(t){sset('xodus.tenant',JSON.stringify(t))}
+function resetTenant(){sset('xodus.tenant','{}')}
+function tenantMark(t){var tile=t.logoBackdrop=='tile';
+ if(t.logoMark)return '<span class="xmark img'+(tile?' tile':'')+'"><img alt="" src="'+t.logoMark+'"></span>';
+ return '<span class="xmark" style="background:linear-gradient(135deg,'+esc(t.primary)+','+esc(t.accent)+')"></span>'}
+
+/* ---------- role, access, theme ---------- */
+function role(){var r=sget('xodus.role');return ROLES[r]?r:'IL'}
+function setRole(r){sset('xodus.role',r)}
+function can(sp,r){return ACCESS[sp].indexOf(r||role())>-1}
+function theme(){var r=document.documentElement,t=sget('xodus.theme');if(t)r.setAttribute('data-theme',t)}
+function toggleTheme(){var r=document.documentElement,d=r.getAttribute('data-theme')=='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);var n=d?'light':'dark';r.setAttribute('data-theme',n);sset('xodus.theme',n)}
+function toast(m){var t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(function(){t.classList.remove('show')},2400)}
+function restricted(sp){var s=SPACES[sp];
+ return '<div class="restricted"><span class="chip">Restricted</span><h1>'+s.name+' is not open to your role</h1><p>You are viewing as '+ROLES[role()]+'. '+s.name+' is available to '+ACCESS[sp].map(function(r){return ROLES[r]}).join(', ')+'. Change the demo role in the top bar to see it. In a real deployment your role comes from your directory groups.</p><a class="btn g" href="index.html">Back to the suite</a></div>'}
+
+/* ---------- top bar ---------- */
+function top(cur,opts){
+ opts=opts||{};
+ var t=tenant();
+ var brand=t.wordmark?'<img class="xwm" alt="'+esc(t.suiteName)+'" src="'+t.wordmark+'">':tenantMark(t)+'<span><strong>'+esc(t.suiteName)+'</strong><span>'+esc(t.suiteTagline)+'</span></span>';
+ var h='<div class="xtop"><div class="wrap xtop-in"><a class="xbrand" href="index.html">'+brand+'</a>'
+ +'<nav class="xnav" aria-label="Suite">'+['deal','dm','gov'].map(function(k){var s=SPACES[k];return '<a class="'+s.cls+(cur==k?' on':'')+'" href="'+s.href+'"><i></i>'+s.name+'</a>'}).join('')+'</nav><span class="sp"></span>'
+ +'<span class="chip ex">Example data</span>'
+ +(role()=='PA'||cur=='tenant'?'<a class="tbtn'+(cur=='tenant'?' on':'')+'" href="tenant.html">Tenant settings</a>':'')
+ +'<div class="xwho"><label class="chip" for="xrole" style="background:transparent;padding:0" title="Demo only. In a real deployment your role comes from your directory groups.">Demo: view as</label><select id="xrole" class="sel" aria-label="Demo role">'+Object.keys(ROLES).map(function(r){return '<option value="'+r+'"'+(r==role()?' selected':'')+'>'+ROLES[r]+'</option>'}).join('')+'</select></div>'
+ +'<button class="tbtn" id="xtheme" type="button">Theme</button></div></div>';
+ var el=document.getElementById('xtop');if(el)el.innerHTML=h;
+ document.getElementById('xrole').addEventListener('change',function(e){setRole(e.target.value);if(opts.onrole)opts.onrole();else location.reload()});
+ document.getElementById('xtheme').addEventListener('click',toggleTheme)}
+
+/* ---------- meeting assistant ---------- */
+var MEET=[
+ {id:'m1',sp:'deal',t:'CoreCap leadership call',w:'Mon 26 Oct',who:'Jordan Hale, Sam Rivera, Avery Chen',dec:['Keep Orion as the target platform.','Advisor retention is the main risk to watch.'],act:['Sam to request the household count by advisor.','Avery to draft the integration estimate.'],keys:['retention','advisor','orion','target','estimate','leadership']},
+ {id:'m2',sp:'deal',t:'Diligence data review',w:'Thu 29 Oct',who:'Sam Rivera, Avery Chen, Priya Nair',dec:['Cost basis completeness varies by custodian.','Treat advisor-as-portfolio-manager accounts as a separate scope item.'],act:['Priya to profile cost basis gaps once files land.'],keys:['cost basis','diligence','custodian','portfolio manager','scope']},
+ {id:'m3',sp:'dm',t:'Migration stand-up',w:'Fri 30 Oct',who:'Priya Nair, Marcus Webb, Vivek Sarathy',dec:['Approve the undefined columns in the returns file.','Hold promotion until unmapped security identifiers are resolved.'],act:['Priya to review the five proposed business rules.','Marcus to prepare reconciliation tolerances.'],keys:['stand-up','identifier','cusip','unmapped','rules','coverage','blocker','returns','tolerance']},
+ {id:'m4',sp:'gov',t:'Gate review',w:'Fri 30 Oct',who:'Avery Chen, Dana Ortiz, Vivek Sarathy',dec:['Keep every stage gated for this migration.','Dual sign-off stays on for the target load.'],act:['Dana to confirm the audit retention setting.'],keys:['gate','policy','sign-off','audit','retention','governance']}];
+var INS=[
+ {sp:'deal',t:'Advisor retention came up in both deal calls',d:'It is the most repeated risk. Consider adding it to the decision memo.'},
+ {sp:'dm',t:'The unmapped identifier blocker was raised in three stand-ups',d:'It has been open longer than any other item and halts promotion.'},
+ {sp:'gov',t:'Two actions are older than a week',d:'Both belong to the audit retention review.'},
+ {sp:'dm',t:'Reconciliation tolerances have no owner yet',d:'Marcus has the action but nothing is scheduled.'}];
+var CHIPS=['What did we decide about the target platform?','What actions are open?','Why is the mapping blocked?','What did we decide on gates?'];
+var MT={tab:'ask',thread:[],conn:{teams:true,zoom:false}};
+function vis(x){return can(x.sp)}
+function answer(q){
+ var s=q.toLowerCase(),best=null,sc=0;
+ MEET.filter(vis).forEach(function(m){var n=0;m.keys.forEach(function(k){if(s.indexOf(k)>-1)n++});if(s.indexOf('action')>-1||s.indexOf('open')>-1)n+=m.act.length?1:0;if(n>sc){sc=n;best=m}});
+ var hidden=MEET.filter(function(m){return !vis(m)&&m.keys.some(function(k){return s.indexOf(k)>-1})});
+ if(!best){return hidden.length?{a:'That topic is discussed in a space your role cannot see ('+hidden.map(function(m){return SPACES[m.sp].name}).filter(function(v,i,a){return a.indexOf(v)==i}).join(', ')+'), so I cannot answer it here.',src:[]}:{a:'I could not find that in the meetings you can see. Try asking about a decision, an action or a blocker.',src:[]}}
+ var act=(s.indexOf('action')>-1||s.indexOf('open')>-1);
+ return{a:act?'Open actions from '+best.t+': '+best.act.join(' '):'From '+best.t+' ('+best.w+'): '+best.dec.join(' '),src:[best.t,SPACES[best.sp].name]}}
+function mdrOpen(){var d=document.getElementById('mdr');if(d){d.classList.add('open');mdrRender()}}
+function mdrClose(){var d=document.getElementById('mdr');if(d)d.classList.remove('open')}
+function mdrRender(){
+ var b=document.getElementById('mdrBody'),f=document.getElementById('mdrFoot'),h='';
+ document.querySelectorAll('#mdr .tab').forEach(function(t){t.classList.toggle('on',t.dataset.t==MT.tab)});
+ if(MT.tab=='ask'){
+  h=MT.thread.length?MT.thread.map(function(m){return m.u?'<div class="msg u">'+esc(m.u)+'</div>':'<div class="msg a">'+esc(m.a)+(m.src.length?'<div class="src">'+m.src.map(function(x){return '<span>'+esc(x)+'</span>'}).join('')+'</div>':'')+'</div>'}).join(''):'<div class="empty">Ask about decisions, actions and blockers from your meetings. You only get answers from spaces your role can see.</div>';
+  f.hidden=false;f.innerHTML='<div class="chips">'+CHIPS.map(function(c){return '<button class="qchip" type="button" data-q="'+esc(c)+'">'+esc(c)+'</button>'}).join('')+'</div><form class="row" id="mdrForm"><input id="mdrIn" type="text" placeholder="Ask about a meeting" aria-label="Ask about a meeting"><button class="btn p" type="submit">Ask</button></form>'}
+ else if(MT.tab=='notes'){
+  f.hidden=true;var ms=MEET.filter(vis);h=ms.length?ms.map(function(m){return '<div class="mtg"><strong>'+esc(m.t)+'</strong><small>'+m.w+' · '+SPACES[m.sp].name+' · '+esc(m.who)+'</small><div><b>Decisions</b><ul style="margin:4px 0 0;padding-left:18px">'+m.dec.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div><div><b>Actions</b><ul style="margin:4px 0 0;padding-left:18px">'+m.act.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div></div>'}).join(''):'<div class="empty">No meetings are visible to your role.</div>'}
+ else if(MT.tab=='insights'){
+  f.hidden=true;var is=INS.filter(vis);h=is.length?is.map(function(i){return '<div class="ins"><b>'+esc(i.t)+'</b>'+esc(i.d)+'<div style="margin-top:6px"><span class="chip '+({deal:'c',dm:'b',gov:'g'}[i.sp])+'">'+SPACES[i.sp].name+'</span></div></div>'}).join(''):'<div class="empty">No insights are visible to your role.</div>'}
+ else{
+  f.hidden=true;h='<div class="lockn">In the real build the assistant joins through the calendar invite. Here you can see how that is switched on.</div>'
+  +[['teams','Microsoft Teams'],['zoom','Zoom']].map(function(c){return '<div class="conn"><span><b>'+c[1]+'</b><br><small style="color:var(--muted)">'+(MT.conn[c[0]]?'Joins invited meetings and writes notes':'Not connected')+'</small></span><button class="btn g sm" type="button" data-c="'+c[0]+'">'+(MT.conn[c[0]]?'Disconnect':'Connect')+'</button></div>'}).join('')
+  +'<div class="conn"><span><b>Next meeting</b><br><small style="color:var(--muted)">Migration stand-up · Mon 2 Nov</small></span><span class="pill '+(MT.conn.teams?'approved':'queued')+'">'+(MT.conn.teams?'Will join':'Will not join')+'</span></div>'}
+ b.innerHTML=h;b.scrollTop=b.scrollHeight}
+function meeting(){
+ var d=document.createElement('aside');d.id='mdr';d.className='mdr';d.setAttribute('aria-label','Meeting assistant');
+ d.innerHTML='<div class="mdr-h"><div><strong>Meeting assistant</strong><small>Notes, questions and insights across your spaces</small></div><button class="tbtn" id="mdrX" type="button" aria-label="Close">Close</button></div><div class="tabs"><button class="tab on" data-t="ask" type="button">Ask</button><button class="tab" data-t="notes" type="button">Notes</button><button class="tab" data-t="insights" type="button">Insights</button><button class="tab" data-t="connect" type="button">Meetings</button></div><div class="mdr-b" id="mdrBody"></div><div class="mdr-f" id="mdrFoot"></div>';
+ document.body.appendChild(d);
+ var f=document.createElement('button');f.className='mfab';f.type='button';f.innerHTML='<i></i>Meeting assistant';f.addEventListener('click',mdrOpen);document.body.appendChild(f);
+ d.addEventListener('click',function(e){
+  var t=e.target.closest('.tab');if(t){MT.tab=t.dataset.t;mdrRender();return}
+  var q=e.target.closest('[data-q]');if(q){ask(q.dataset.q);return}
+  var c=e.target.closest('[data-c]');if(c){MT.conn[c.dataset.c]=!MT.conn[c.dataset.c];mdrRender();return}
+  if(e.target.id=='mdrX')mdrClose()});
+ d.addEventListener('submit',function(e){e.preventDefault();var i=document.getElementById('mdrIn');if(i&&i.value.trim()){ask(i.value.trim())}});
+ document.addEventListener('keydown',function(e){if(e.key=='Escape')mdrClose()})}
+function ask(q){MT.thread.push({u:q});var a=answer(q);MT.thread.push({a:a.a,src:a.src});MT.tab='ask';mdrRender()}
+function openAssistant(tab){MT.tab=tab||'ask';mdrOpen()}
+
+function init(){theme();load();meeting()}
+window.XS={esc:esc,ROLES:ROLES,PEOPLE:PEOPLE,ACCESS:ACCESS,SPACES:SPACES,role:role,setRole:setRole,can:can,restricted:restricted,top:top,toast:toast,
+ state:function(){return ST},gate:gate,approve:approve,finish:finish,changes:changes,bypass:bypass,checks:checks,hitl:hitl,reset:function(n){setScenario(n)},blocker:blocker,
+ ph:ph,stateLabel:stateLabel,startRun:startRun,reviseBundle:reviseBundle,isDP:isDP,get:sget,set:sset,tenant:tenant,groupFor:groupFor,ROLEINFO:ROLEINFO,saveTenant:saveTenant,resetTenant:resetTenant,tenantDefault:function(){return JSON.parse(JSON.stringify(TENANT_DEFAULT))},tenantMark:tenantMark,init:init,openAssistant:openAssistant,reload:load,save:save,log:logit};
+})();
+
+</script>
+<script>
+XS.init();
+var esc=XS.esc;
+function clone(o){return JSON.parse(JSON.stringify(o))}
+/* ================= default configuration (example data) ================= */
+var DEF={
+ platform:{
+  identity:{provider:'entra',tenantId:'00000000-0000-0000-0000-000000000000',clientId:'00000000-0000-0000-0000-000000000001',redirectUri:'https://migrate.simplicitygroup.com/auth/callback',mfa:true,scim:true,jitProvisioning:false,sessionTimeoutMins:60},
+  deployment:{model:'dedicated',provider:'azure',region:'East US 2',platformVersion:'1.0.0',installedOn:'2026-09-14',subscription:'sub-simplicity-migration',resourceGroup:'rg-dmp-uat',keyVault:'kv-dmp-simplicity',managedIdentity:'mi-dmp-orchestrator',changeRequest:'CHG-DMP-0000'},
+  compute:{orchestrator:'adf',integrationRuntime:'shir-simplicity-01',tier:'standard',maxParallelActivities:8,activityTimeoutMins:120,autoScale:true,retryOnTransient:true},
+  storage:{primaryAccount:'simplicitydl',network:'private-endpoint',retentionDays:2555,landingTemplate:'{migration}/{source}/{yyyy}-{MM}-{dd}/',filePattern:'*.csv',autoCreateFolders:true,archiveAfterIngest:true,requireChecksum:true,rejectOnSchemaDrift:false,
+   containers:[{id:'landing',zone:'Landing',container:'landing',account:'simplicitydl',status:'ready'},{id:'staged',zone:'Staged',container:'staged',account:'simplicitydl',status:'ready'},{id:'transformed',zone:'Transformed',container:'transformed',account:'simplicitydl',status:'ready'},{id:'archive',zone:'Archive',container:'archive',account:'simplicitydl',status:'ready'}]},
+  security:{encryption:'cmk',cmkUri:'https://kv-dmp-simplicity.vault.azure.net/keys/dmp-cmk',residency:'us-only',piiPolicy:'mask',maskTaxId:true,redactBeforeModel:true,auditSink:'log-analytics',auditRetentionDays:2555,frameworks:{soc2:true,glba:true,finra:true,gdpr:false}},
+  sourceConnectors:[{id:'sftp',name:'Flat file, SFTP drop',transport:'SFTP to a Landing folder',auth:'ssh key',status:'connected',note:'Default for vendor extracts'},{id:'direct',name:'Flat file, direct to Landing',transport:'Direct upload to the Landing container',auth:'managed identity',status:'connected'},{id:'db',name:'Database extract',transport:'Self-hosted integration runtime',auth:'service account',status:'connected',note:'Legacy core'},{id:'rest',name:'REST API pull',transport:'HTTPS',auth:'oauth client',status:'disconnected'}],
+  targetConnectors:[{id:'orion-api',name:'Orion APIs',transport:'Orion REST endpoints',auth:'oauth client',status:'connected'},{id:'amplify',name:'Amplify',transport:'Amplify import service',auth:'service account',status:'disconnected'},{id:'sql',name:'SQL (Custom)',transport:'Direct INSERT or MERGE',auth:'managed identity',status:'connected'},{id:'file',name:'Flat file export',transport:'Export to a destination path',auth:'managed identity',status:'disconnected'}],
+  ai:{provider:'azure-openai',model:'dmp-agent-primary',endpoint:'https://aoai-simplicity.openai.azure.com',maxConcurrentAgents:4,monthlyTokenBudget:50,groundingOnly:true,logPrompts:true,hitlPolicy:'all-gates'},
+  ops:{email:true,teams:true,slack:false,webhook:'https://example.webhook.office.com/webhookb2/placeholder',alertOnFailure:true,alertOnGate:true,digest:'daily',logWorkspace:'law-dmp-simplicity'}},
+ workspaces:[{id:'ws-corecap',status:'running',migration:{
+  profile:{name:'CoreCap Book Migration',code:'CORECAP-W1',firm:'CoreCap Advisors',wave:'Wave 1',owner:'Avery Chen',environment:'uat',cutover:'2026-11-20',description:'Migrate the CoreCap Advisors book of business onto Orion, with a parallel run before the legacy core is retired.',type:'parallel-run'},
+  sources:[{system:'CoreCap',role:'Legacy core',connector:'sftp',filePattern:'corecap_*_{yyyyMMdd}.csv',freq:'Daily',enabled:true,slug:'corecap'},{system:'Amplify',role:'Returns source',connector:'sftp',filePattern:'*-PortfolioReturns.dat',freq:'Weekly',enabled:true,slug:'amplify'},{system:'Schwab',role:'Custodian',connector:'sftp',filePattern:'schwab_{positions|transactions}_{yyyyMMdd}.csv',freq:'Daily',enabled:true,slug:'schwab'},{system:'Black Diamond',role:'Reporting platform',connector:'rest',filePattern:'API pull',freq:'On demand',enabled:false,slug:'blackdiamond'}],
+  target:{system:'Orion',connector:'orion-api',tenant:'simplicity-uat',env:'UAT',endpoint:'orion-uat-alias',dictionary:'corecap_dictionary_v3.xlsx',loadMode:'staged-bulk',validateBeforeLoad:true},
+  scope:[{entity:'Households',grain:'One row per household',volume:'18,420',note:'Includes relationships',inScope:true},{entity:'Accounts',grain:'One row per account',volume:'41,877',note:'',inScope:true},{entity:'Positions',grain:'Account by security',volume:'212,604',note:'Security identifier required',inScope:true},{entity:'Transactions',grain:'One row per transaction',volume:'1,204,311',note:'',inScope:true},{entity:'Cost basis lots',grain:'One row per tax lot',volume:'96,880',note:'Some acquisition dates missing',inScope:true},{entity:'Performance series',grain:'Account by period',volume:'96,530',note:'Returns file only',inScope:true},{entity:'Billing schedules',grain:'One row per schedule',volume:'Not sized',note:'Held in spreadsheets. Separate load path.',inScope:false}],
+  skills:[{id:'wm',label:'Wealth management domain',desc:'Account types, custodial relationships and advisor and household structures.',file:'wealth-management.md',on:true},{id:'sg',label:'Simplicity firm rules',desc:'Firm conventions that override the generic domain rules where they conflict.',file:'simplicity-rules.md',on:true},{id:'cb',label:'Cost basis and tax lots',desc:'Lot methods, acquisition dates and how to flag defaults.',file:'cost-basis.md',on:true},{id:'pf',label:'Performance and returns',desc:'Return series, periods and drift tolerances.',file:'performance.md',on:false},{id:'or',label:'Orion target contract',desc:'Target entities, required fields and load order.',file:'orion-contract.md',on:true}],
+  zones:{landing:'landing',staged:'staged',transformed:'transformed',prefix:'corecap-w1'},
+  stages:[{id:'M1',n:'01',name:'Loader & Inspector',zone:'landing',owner:'Migration Analyst',gate:true,enabled:true},{id:'M2',n:'02',name:'Discovery',zone:'staged',owner:'Migration Analyst',gate:true,enabled:true},{id:'M3',n:'03',name:'Business Rules',zone:'staged',owner:'Migration Analyst',gate:true,enabled:true},{id:'M4',n:'04',name:'Schema Mapper',zone:'transformed',owner:'Migration Analyst',gate:true,enabled:true},{id:'M5',n:'05',name:'Execution',zone:'transformed',owner:'Validation Specialist',gate:true,enabled:true},{id:'M6',n:'06',name:'Reconciliation',zone:'transformed',owner:'Validation Specialist',gate:true,enabled:true}],
+  thresholds:{matchTolerancePct:0.01,varianceAbsUsd:1,perfDriftBps:2,dictionaryCoveragePct:97,autoApproveClean:false,dualSignoffOnGold:true,blockOnUnmappedCusip:true},
+  team:[{initials:'PN',name:'Priya Nair',email:'priya.nair@simplicitygroup.com',role:'Migration Analyst',scope:'Stages 01 to 04'},{initials:'MW',name:'Marcus Webb',email:'marcus.webb@simplicitygroup.com',role:'Validation Specialist',scope:'Stages 05 and 06'},{initials:'AC',name:'Avery Chen',email:'avery.chen@simplicitygroup.com',role:'IMO lead',scope:'Workspace owner'}],
+   validation:{rules:[{id:'VR-001',name:'Household count matches the source',entity:'Households',measure:'Count match',tol:'exact',sev:'Blocker',source:'Authored',status:'Active'},{id:'VR-002',name:'Account market value within tolerance',entity:'Accounts',measure:'Market value match',tol:'0.01% or $1.00',sev:'Blocker',source:'Authored',status:'Active'},{id:'VR-003',name:'Position quantity matches the source',entity:'Positions',measure:'Quantity match',tol:'exact to target precision',sev:'Blocker',source:'Authored',status:'Active'},{id:'VR-004',name:'Return series drift within tolerance',entity:'Performance series',measure:'Return drift (bps)',tol:'2 bps',sev:'Warning',source:'Authored',status:'Active'},{id:'VR-005',name:'Cost basis lots missing an acquisition date',entity:'Cost basis lots',measure:'Null rate',tol:'at most 1%',sev:'Warning',source:'Generated',status:'Proposed'}]},
+  schedule:{window:'22:00 to 06:00 ET',startDate:'2026-11-20',retries:2,parallelRunDays:30,parallelRun:true,freezeWindow:true,notifyOnComplete:true}}}]};
+var SKILLMD={
+ wm:'# Wealth management domain\n\nHow the agents read an advisory book.\n\n- Households group related people and accounts.\n- Accounts belong to one custodian and one advisor.\n- Positions are account by security and need a valid identifier.\n- Escalate any account whose type cannot be mapped.',
+ sg:'# Simplicity firm rules\n\nFirm conventions. These override the generic domain rules.\n\n- Keep original trade dates on transferred transactions.\n- Carry household relationships as primary and related.\n- Flag, never silently default, any value the source does not hold.',
+ cb:'# Cost basis and tax lots\n\n- Keep the source lot method.\n- When an acquisition date is missing, use the transfer date and flag the lot.\n- Report flagged lots to the advisor before cutover.',
+ pf:'# Performance and returns\n\n- Returns come from the returns file only.\n- Compare series period by period.\n- Flag drift above the configured tolerance in basis points.',
+ or:'# Orion target contract\n\n- Load households before accounts, accounts before positions.\n- Every position needs a security identifier.\n- Validate each payload against the connector before loading.'};
+var STC={
+ M1:{sum:'Four sources landed untouched and checked against the data dictionary.',kp:[['Files landed','14'],['Sources','4'],['Dictionary coverage','98.2%'],['Minimum','97%']],cols:['File','Source','Rows','Coverage'],num:[2,3],rows:[['corecap_households_20261015.csv','CoreCap','18,420','100.0%'],['corecap_accounts_20261015.csv','CoreCap','41,877','99.1%'],['schwab_positions_20261015.csv','Schwab','212,604','98.7%'],['schwab_transactions_20261015.csv','Schwab','1,204,311','97.9%'],['amplify_PortfolioReturns.dat','Amplify','96,530','<span class="flag">96.4%</span>']],exc:'PortfolioReturns.dat is under the 97% coverage minimum. Three undefined columns were approved explicitly by the Migration Analyst.'},
+ M2:{sum:'Each entity is parsed, typed and profiled. Gaps are listed for the rules stage.',kp:[['Entities profiled','6'],['Records','1.57M'],['Open gaps','13'],['Highest null rate','6.1%']],cols:['Entity','Records','Null rate','Gaps'],num:[1,2,3],rows:[['Households','18,420','0.8%','2'],['Accounts','41,877','1.4%','4'],['Positions','212,604','0.3%','1'],['Transactions','1,204,311','0.2%','0'],['Cost basis lots','96,880','<span class="flag">6.1%</span>','5'],['Performance series','96,530','0.9%','1']],exc:'Cost basis lots have the highest null rate, mostly missing acquisition dates.'},
+ M3:{sum:'Rules proposed from the profiles and the selected skill packs. Firm rules override generic ones.',kp:[['Rules proposed','9'],['Approved earlier','4'],['Waiting','5'],['Skill packs','4 active']],cols:['Rule','Applies to','Skill pack','Status'],num:[],rows:[['BR-014 Map account types to the target account types','Accounts','Firm rules','Proposed'],['BR-021 Default a missing acquisition date to the transfer date and flag it','Cost basis lots','Cost basis','Proposed'],['BR-027 Carry household relationships as primary and related','Households','Firm rules','Proposed'],['BR-031 Round share quantities to the target precision','Positions','Wealth management','Proposed'],['BR-036 Keep original trade dates on transferred transactions','Transactions','Firm rules','Proposed']],exc:''},
+ M4:{sum:'Staged records are reshaped to the target contract. The agent is still mapping accounts.',kp:[['Entities mapped','4 of 6'],['Fields mapped','142 of 158'],['Unmapped identifiers','14'],['Progress','74%']],cols:['Target entity','Fields mapped','Unmapped','Status'],num:[1,2],rows:[['Households','24 of 24','0','Complete'],['Accounts','38 of 40','2','Running'],['Positions','31 of 31','0','Complete'],['Transactions','27 of 27','0','Complete'],['Cost basis lots','22 of 26','4','Waiting'],['Performance series','0 of 10','10','Waiting']],exc:'14 positions have an unmapped security identifier. Promotion halts until they are resolved.'},
+ M5:{sum:'Loads the Transformed zone into the target through Data Factory once stage 04 is approved.',kp:[['Batches','Not run'],['Loaded','—'],['Failed','—'],['Target','Orion APIs']],cols:['Entity','Batches','Loaded','Failed'],num:[1,2,3],rows:[['Households','—','—','—'],['Accounts','—','—','—'],['Positions','—','—','—'],['Transactions','—','—','—']],exc:''},
+ M6:{sum:'Independently reconciles the migrated book back to source once the load completes.',kp:[['Match tolerance','0.01%'],['Absolute variance','$1.00'],['Performance drift','2 bps'],['Status','Not run']],cols:['Measure','Source','Target','Variance'],num:[1,2,3],rows:[['Household count','—','—','—'],['Account market value','—','—','—'],['Position quantity','—','—','—'],['Return series','—','—','—']],exc:''}};
+var ZL={landing:'Landing',staged:'Staged',transformed:'Transformed'};
+var STL={approved:'Approved',review:'Needs review',running:'Running',queued:'Not run'};
+var OWN={MA:'MA',VS:'VS',PA:'PA',IL:'IL',CR:'CR',EVP:'EV',DT:'DT'};
+/* ================= state ================= */
+var saved,work;
+function loadCfg(){var j=XS.get('xodus.dm.cfg2');try{saved=j?JSON.parse(j):clone(DEF)}catch(e){saved=clone(DEF)}
+ saved.platform=saved.platform||clone(DEF.platform);saved.workspaces=(saved.workspaces&&saved.workspaces.length)?saved.workspaces:clone(DEF.workspaces);work=clone(saved)}
+loadCfg();
+var V={view:'workspaces',stage:'M3',level:'migration',sec:'profile',ws:null,newws:false,confirm:'',open:{},openInit:{},pn:{},home:{platform:true,migration:true},edit:{}};
+function openSec(level,key){V.home[level]=false;V.openInit[level]=1;V.open[level+':'+key]=true;V.sec=key}
+var NOLOCK=false;
+function session(){try{return JSON.parse(XS.get('xodus.dm.session',true)||'null')}catch(e){return null}}
+function nameFrom(id){var s=String(id).split('@')[0].replace(/[._-]+/g,' ');return s.replace(/\b\w/g,function(c){return c.toUpperCase()})}
+function initials(n){return (String(n).match(/\b\w/g)||['U']).slice(0,2).join('').toUpperCase()}
+function P(){return work.platform}
+function WS(){return work.workspaces.filter(function(w){return w.id==V.ws})[0]||null}
+function M(){var w=WS();return (w||work.workspaces[0]).migration}
+function EDIT(lvl){var r=XS.role();if(lvl=='platform')return r=='PA';var w=WS();return r=='IL'&&!!w&&w.status!='archived'}
+function dis(l){return EDIT(l)?'':' disabled'}
+function rootOf(path){return path.indexOf('migration.')==0?[M(),path.slice(10)]:[work,path]}
+function getp(path){var r=rootOf(path);return r[1].split('.').reduce(function(o,k){return o==null?undefined:o[/^\d+$/.test(k)?+k:k]},r[0])}
+function setp(path,v){var r=rootOf(path),k=r[1].split('.'),last=k.pop(),t=k.reduce(function(o,x){return o[/^\d+$/.test(x)?+x:x]},r[0]);t[/^\d+$/.test(last)?+last:last]=v}
+function dirty(){return JSON.stringify(work)!=JSON.stringify(saved)}
+function countDirty(){var n=0;(function w(a,b){if(a===b)return;if(typeof a!='object'||typeof b!='object'||!a||!b){n++;return}Object.keys(Object.assign({},a,b)).forEach(function(k){if(JSON.stringify(a[k])!=JSON.stringify(b[k]))w(a[k],b[k])})})(work,saved);return n}
+function stageOf(id){return M().stages.filter(function(s){return s.id==id})[0]}
+function landingFolder(s){var t=P().storage.landingTemplate;return t.replace('{migration}',M().zones.prefix).replace('{source}',s.slug||s.system.toLowerCase()).replace('{yyyy}','yyyy').replace('{MM}','MM').replace('{dd}','dd')}
+/* ================= branding: read from the suite-level tenant settings ================= */
+function WL(){return XS.tenant()}
+function brandHTML(){var w=WL();
+ if(w.wordmark)return '<span class="lock"><img class="wm" alt="'+esc(w.productName)+'" src="'+w.wordmark+'"></span>';
+ var mk=w.logoMark?'<span class="mk'+(w.logoBackdrop=='tile'?' tile':'')+'"><img alt="" src="'+w.logoMark+'"></span>':'<span class="mk">'+esc(w.logoInitials)+'</span>';
+ return '<span class="lock">'+mk+'<span><strong>'+esc(w.productName)+'</strong><span>'+esc(w.tagline)+'</span></span></span>'}
+function applyBrand(){var w=WL(),r=document.documentElement.style;r.setProperty('--brand',w.primary);r.setProperty('--acc',w.accent);r.setProperty('--shell',w.shell);document.title=w.productName+' · Data Migration';
+ var pb=document.getElementById('pbLock');if(pb)pb.innerHTML=brandHTML()}
+/* ================= sign-in ================= */
+var SEEDED={MA:'priya.nair',VS:'marcus.webb',PA:'platform.admin',IL:'avery.chen',CR:'dana.ortiz'};
+function groupFor(r){return XS.groupFor(r)}
+function vLogin(){var w=WL(),r=XS.role();
+ var idp={entra:'Microsoft Entra ID',okta:'Okta',ping:'PingFederate',saml:'SAML 2.0 provider'}[P().identity.provider]||'single sign-on';
+ return '<div class="login"><aside class="l-aside"><div>'+brandHTML().replace('class="lock"','class="lock" style="color:#fff"')+'</div><div><span class="l-tag"><i></i> Deployed for '+esc(w.deployedFor)+'</span><h1>Move the advisory book <b>without losing the detail</b>.</h1><p>A governed Landing, Staged and Transformed migration pipeline with an agent at every stage and a human review gate before anything is promoted.</p>'
+ +'<div class="l-flow">'+[['◉','Load and inspect','CoreCap, Schwab, Amplify, Black Diamond'],['✦','Discover and author rules','Entity profiling, gap analysis, business rules'],['◇','Map and execute','Schema mapping into Orion via Data Factory'],['✓','Reconcile and sign off','Independent financial reconciliation']].map(function(x){return '<div class="l-row"><b>'+x[0]+'</b><div><strong>'+x[1]+'</strong><span>'+x[2]+'</span></div><span>→</span></div>'}).join('')+'</div></div>'
+ +'<div class="l-foot"><span>'+esc(w.hostname)+'</span>'+(w.poweredByVisible?'<span>Powered by '+esc(w.vendor)+'</span>':'')+'</div></aside>'
+ +'<main class="l-main"><div class="l-card" id="loginForm"><span class="ey">Data Migration</span><h2>Continue to Data Migration</h2><p class="lead">You signed in once to the suite with '+esc(idp)+'. Data Migration has its own address, but it uses that same session, so there is no second password.</p>'
+ +'<div class="idc"><span class="av">'+initials(XS.PEOPLE[r])+'</span><span><strong>'+esc(XS.PEOPLE[r])+'</strong><small>'+esc(XS.ROLES[r])+' · '+esc(w.deployedFor)+'</small></span></div>'
+ +'<div class="idn"><b>Your access comes from your directory group.</b><span>'+esc(groupFor(r))+' maps to '+esc(XS.ROLES[r])+'. Inside each migration workspace an owner can narrow or widen what you can do.</span></div>'
+ +'<button type="button" class="btn p" id="ssoBtn" style="width:100%;justify-content:center;padding:12px">Continue as '+esc(XS.PEOPLE[r])+' →</button>'
+ +'<div class="hint"><b>Mock environment.</b> The role comes from the demo selector in the top bar. In a real deployment there is no selector: your role is read from your directory group when you sign in to the suite.</div>'
+ +'<p class="fh" style="text-align:center;margin:14px 0 0">'+esc(w.footerNote)+' · ENV UAT</p></div></main></div>'}
+function enter(){XS.set('xodus.dm.session',JSON.stringify({id:SEEDED[XS.role()],method:'sso'}),true);render()}
+/* ================= shell ================= */
+function pbar(){var w=inWS()?WS():null,ctx;
+ if(V.view=='platform')ctx='<div class="pb-ctx"><span>Scope</span><b>Platform configuration</b></div>';
+ else if(w)ctx='<div class="pb-ctx"><span>Migration</span><b>'+esc(M().profile.name)+'</b><span class="pbchip">'+esc(M().profile.code)+'</span></div>';
+ else ctx='<div class="pb-ctx"><span>Scope</span><b>All migration workspaces</b></div>';
+ return '<div class="pbar"><div class="wrap pb-in"><span id="pbLock">'+brandHTML()+'</span>'+ctx+'<span class="sp"></span>'+(w?'<span class="pbchip">ENV · '+esc(String(M().profile.environment).toUpperCase())+'</span>':'')+'<span class="pbchip">'+esc(P().deployment.provider.toUpperCase())+' · '+esc(P().deployment.region)+'</span><div class="uc"><span class="av">'+initials(XS.PEOPLE[XS.role()])+'</span><span>'+esc(XS.PEOPLE[XS.role()])+'<small>'+XS.ROLES[XS.role()]+'</small></span></div><button class="pbtn" id="signout" type="button">Sign out</button></div></div>'}
+function counts(){var g=XS.state().gates.filter(function(x){return x.sp=='dm'});return{done:g.filter(function(x){return x.st=='approved'}).length,wait:g.filter(function(x){return x.st=='review'}).length}}
+function inWS(){return ['overview','command','stage','team','validation','config'].indexOf(V.view)>-1&&!!WS()}
+function side(){var h='';
+ if(XS.role()=='PA')return '<div class="sh">Platform</div><button class="nv on" data-v="platform" type="button">Platform configuration</button><div class="fh" style="color:#8FA9BC;padding:10px 12px">Migration workspaces are not available to the Platform Admin role.</div>';
+ h+='<div class="sh">Data migration</div><button class="nv'+(V.view=='workspaces'?' on':'')+'" data-v="workspaces" type="button">Migration workspaces</button>';
+ if(!inWS())return h;
+ var w=WS(),run=w.status=='running',c=counts();
+ h+='<div class="sh">'+esc(M().profile.name)+'</div>';
+ if(run)h+='<div class="runh"><small>Pipeline run</small><strong>'+esc(M().profile.code)+'</strong><div class="meter"><i style="width:'+Math.round(c.done/6*100)+'%"></i></div><div class="sub"><span><b style="color:#fff">'+c.done+'</b> of 6 approved</span><span>'+esc(String(M().profile.environment).toUpperCase())+'</span></div></div>';
+ h+=[['overview','Overview'],['command','Command center'],['config','Workspace configuration'],['team','Team and access'],['validation','Validation rules']].map(function(x){return '<button class="nv'+(V.view==x[0]?' on':'')+'" data-v="'+x[0]+'" type="button">'+x[1]+'</button>'}).join('');
+ if(!run)return h+'<div class="fh" style="color:#8FA9BC;padding:10px 12px">The pipeline stages appear here once the first run starts.</div>';
+ var lz=null;M().stages.forEach(function(s){var g=XS.gate(s.id);var pl=CPS.indexOf(s.id)>-1?'cp':'dp';if(pl!=lz){h+='<div class="zg '+(pl=='cp'?'landing':'staged')+'"><i></i>'+(pl=='cp'?'Control plane · setup':'Data plane · runs')+'</div>';lz=pl}
+  h+='<button class="stg'+(V.view=='stage'&&V.stage==s.id?' on':'')+'" data-s="'+s.id+'" type="button"><span class="ix">'+s.n+'</span><span><strong>'+esc(s.name)+'</strong><small>'+XS.stateLabel(g)+'</small></span>'+(s.gate?'<span class="own">'+OWN[g.own[g.own.length-1]]+'</span>':'<span></span>')+'<i class="dot '+g.st+'"></i></button>'});
+ return h}
+function head(ey,t,p,act){return '<div class="ph"><div><div class="ey dm">'+ey+'</div><h1>'+t+'</h1><p>'+p+'</p></div>'+(act||'')+'</div>'}
+function pill(s){return '<span class="pill '+s+'">'+STL[s]+'</span>'}
+function waitingBanner(){return XS.gate('D4').st!='approved'?'<div class="exc">Waiting for the go / no-go decision in the Deal Room. The pipeline starts when it is approved.</div>':''}
+/* ================= views ================= */
+function vRun(){var c=counts(),g=XS.state().gates.filter(function(x){return x.sp=='dm'});
+ var zones=[['Control plane · setup',['M1','M2','M3','M4'],'landing'],['Data plane · runs',['M5','M6'],'staged']].map(function(z){return '<div class="zs '+z[2]+'"><h4>'+z[0]+'</h4>'+z[1].map(function(id){var s=stageOf(id);return '<div class="row"><span>'+s.n+' '+esc(s.name)+'</span><i class="dot '+XS.gate(id).st+'"></i></div>'}).join('')+'</div>'}).join('');
+ var inbox=g.filter(function(x){return x.st=='review'});
+ var log=XS.state().log.filter(function(l){return l.sp=='dm'}).slice().reverse().slice(0,6);
+ return head(esc(M().profile.name),'Overview','Where the run stands, what is waiting on a person, and what the agents did last.')+waitingBanner()
+ +'<div class="kpis"><div class="kpi"><small>Stages approved</small><b>'+c.done+' / 6</b><span>Landing to Transformed</span></div><div class="kpi"><small>Gates waiting</small><b>'+c.wait+'</b><span>Need a person</span></div><div class="kpi"><small>Source systems</small><b>'+M().sources.filter(function(s){return s.enabled}).length+'</b><span>'+M().sources.filter(function(s){return s.enabled}).map(function(s){return esc(s.system)}).join(', ')+'</span></div><div class="kpi"><small>Dictionary coverage</small><b>98.2%</b><span>Minimum is '+M().thresholds.dictionaryCoveragePct+'%</span></div></div>'
+ +'<div class="card"><h3>Pipeline by plane</h3><p class="d">The control plane sets the migration up and publishes one artifact bundle. The data plane runs it on the real data, as many times as needed.</p><div class="zonestrip">'+zones+'</div></div>'
+ +'<div class="two"><div class="card"><h3>Waiting on a person</h3><p class="d">Open a stage to review the agent output and approve the gate.</p>'+(inbox.length?'<div class="list">'+inbox.map(function(x){var s=stageOf(x.id);return '<button class="li" data-s="'+x.id+'" type="button"><b>'+s.n+'</b><span><strong>'+esc(s.name)+'</strong><span>Gate owner: '+x.own.map(function(r){return XS.ROLES[r]}).join(' and ')+' · '+ZL[s.zone]+' zone</span></span>'+pill('review')+'</button>'}).join('')+'</div>':'<div class="empty">No gates are waiting.</div>')+'</div>'
+ +'<div class="card"><h3>Recent activity</h3><p class="d">Every approval is stored as evidence.</p>'+(log.length?'<ul class="feed">'+log.map(function(l){return '<li><i></i><span><b>'+esc(l.t)+'</b><br>'+esc(l.w)+'</span></li>'}).join('')+'</ul>':'<div class="empty">Nothing yet.</div>')+'</div></div>'}
+/* ================= pipeline: control plane and data plane ================= */
+var CODEOPEN={};
+function fmt(n){return (typeof n=='number')?n.toLocaleString('en-US'):n}
+function hash8(str){var h=2166136261;for(var i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return ('00000000'+(h>>>0).toString(16)).slice(-8)}
+var STG={
+ M1:{def:'The landing contract and the data dictionary.',gen:'An ingestion pipeline and the file checks.',run:'Land the vendor files exactly as received and inspect them.',
+  tel:{run:'RUN-0141',at:'09:14',dur:'4m 12s',rin:1760494,rout:1760494,rej:0,acts:'18 of 18'},
+  arts:[{n:'ingest_landing.arm.json',t:'ADF ARM template',d:'Copy pipeline from the SFTP drop and direct upload into the Landing container.',code:`{\n  "type": "Microsoft.DataFactory/factories/pipelines",\n  "name": "[concat(parameters('factoryName'), '/pl_ingest_landing')]",\n  "properties": { "activities": [\n    { "name": "CopyVendorFiles", "type": "Copy",\n      "inputs":  [{ "referenceName": "ds_sftp_vendor" }],\n      "outputs": [{ "referenceName": "ds_landing_dated" }] }\n  ] }\n}`},
+   {n:'inspect_files.sql',t:'SQL',d:'Hash, row count and dictionary coverage for every landed file.',code:`SELECT file_name, sha256_hash, COUNT(*) AS row_count,\n       SUM(CASE WHEN col_in_dictionary = 0 THEN 1 ELSE 0 END) AS unknown_columns\nFROM landing.file_manifest\nGROUP BY file_name, sha256_hash;`}],
+  ev:[['09:14','info','Copy activity started for 4 sources'],['09:18','info','Landed 14 files, 1,760,494 rows'],['09:18','info','Dictionary coverage 98.2%']]},
+ M2:{def:'Which entities to profile and what to measure.',gen:'Profiling SQL and the pipeline that runs it.',run:'Parse, type and profile every entity in the Staged zone.',
+  tel:{run:'RUN-0142',at:'09:31',dur:'5m 40s',rin:1760494,rout:1760494,rej:0,acts:'12 of 12'},
+  arts:[{n:'profile_entities.sql',t:'SQL',d:'Null rate, distinct values and ranges for every column of every entity.',code:`SELECT entity, column_name,\n       COUNT(*) AS n,\n       AVG(CASE WHEN value IS NULL THEN 1.0 ELSE 0 END) AS null_rate,\n       COUNT(DISTINCT value) AS distinct_values\nFROM staged.parsed_columns\nGROUP BY entity, column_name;`},
+   {n:'pl_profile.arm.json',t:'ADF ARM template',d:'Runs the profiling script against the Staged zone.',code:`{ "name": "pl_profile_entities", "properties": { "activities": [\n  { "name": "ProfileStaged", "type": "Script",\n    "linkedServiceName": { "referenceName": "ls_sql_staged" },\n    "typeProperties": { "scripts": [{ "text": "EXEC staged.usp_profile_entities" }] } }\n] } }`}],
+  ev:[['09:31','info','Profiling started on the Staged zone'],['09:36','info','Profiled 6 entities'],['09:36','warn','Highest null rate: acquisition date on cost basis lots']]},
+ M3:{def:'The business rules, from the profiles and the skill packs.',gen:'Rule SQL that applies each rule and flags what it changes.',run:'Apply the rules to the Staged zone as a dry run and count what they touch.',
+  tel:{run:'RUN-0143',at:'10:05',dur:'3m 02s',rin:1760494,rout:1760494,rej:0,acts:'9 of 9'},
+  arts:[{n:'apply_business_rules.sql',t:'SQL',d:'Nine rules from the firm and cost basis skill packs, each tagged with its rule ID.',code:`-- BR-021 Default a missing acquisition date to the transfer date and flag it\nUPDATE staged.cost_basis_lots\nSET acquisition_date = transfer_date,\n    rule_flag = 'BR-021'\nWHERE acquisition_date IS NULL;`},
+   {n:'rule_exceptions.sql',t:'SQL',d:'Counts how many rows each rule touched.',code:`SELECT rule_id, COUNT(*) AS affected_rows\nFROM staged.rule_flags\nGROUP BY rule_id;`}],
+  ev:[['10:05','info','Rules applied as a dry run: 9 rules'],['10:08','warn','BR-021 flagged 312 cost basis lots']]},
+ M4:{def:'The mapping from source fields to the target contract.',gen:'Transformation SQL and the pipeline that writes the Transformed zone.',run:'Reshape the Staged records into the target contract.',
+  tel:{run:'RUN-0144',at:'10:40',dur:'6m 18s',rin:1760494,rout:1760480,rej:14,acts:'16 of 16'},
+  arts:[{n:'map_to_target_contract.sql',t:'SQL',d:'One view per target entity, built from the approved mapping.',code:`CREATE OR ALTER VIEW transformed.accounts AS\nSELECT a.account_id      AS source_account_id,\n       m.target_account_type AS account_type,\n       h.household_id\nFROM staged.accounts a\nJOIN ref.account_type_map m ON m.source_type = a.account_type\nJOIN staged.households h ON h.source_key = a.household_key;`},
+   {n:'pl_transform.arm.json',t:'ADF ARM template',d:'Runs the mapping views and writes the Transformed zone.',code:`{ "name": "pl_transform", "properties": { "activities": [\n  { "name": "BuildTransformed", "type": "Script",\n    "linkedServiceName": { "referenceName": "ls_sql_transformed" },\n    "typeProperties": { "scripts": [{ "text": "EXEC transformed.usp_build_all" }] } }\n] } }`}],
+  ev:[['10:40','info','Transformation started'],['10:46','warn','14 positions have no security identifier']]},
+ M5:{def:'The load order and the target connector settings.',gen:'The load pipeline and the Python layer that integrates the data into the target.',run:'Load the Transformed zone into the target in batches.',
+  tel:{run:'RUN-0145',at:'11:20',dur:'18m 47s',rin:1760480,rout:1760480,rej:0,acts:'12 of 12'},
+  arts:[{n:'pl_load_target.arm.json',t:'ADF ARM template',d:'Runs the curated dissemination step for each entity, in order.',code:`{ "name": "pl_load_target", "properties": { "activities": [\n  { "name": "LoadHouseholds", "type": "AzureFunctionActivity" },\n  { "name": "LoadAccounts", "type": "AzureFunctionActivity",\n    "dependsOn": [{ "activity": "LoadHouseholds", "dependencyConditions": ["Succeeded"] }] }\n] } }`},
+   {n:'curate_and_disseminate.py',t:'Python',d:'Writes the curated files and integrates them into the target. The last layer of the pipeline.',code:`def load_batch(entity, batch, client):\n    payload = to_target_payload(entity, batch)\n    resp = client.post(f"/v1/{entity}", json=payload, timeout=60)\n    resp.raise_for_status()\n    return len(batch)`},
+   {n:'load_preflight.sql',t:'SQL',d:'Checks that every parent record exists before its children are loaded.',code:`SELECT COUNT(*) AS orphans\nFROM transformed.accounts a\nLEFT JOIN transformed.households h ON h.household_id = a.household_id\nWHERE h.household_id IS NULL;`}],
+  ev:[['11:20','info','Load started for 4 entities'],['11:39','info','Batch 12 of 12 loaded, 0 failed']]},
+ M6:{def:'The measures and tolerances to reconcile.',gen:'Reconciliation SQL and the validation rules, compiled together.',run:'Compare the migrated book with the source, independently.',
+  tel:{run:'RUN-0146',at:'11:55',dur:'7m 05s',rin:1760480,rout:1760480,rej:0,acts:'8 of 8'},
+  arts:[{n:'reconcile_book.sql',t:'SQL',d:'Source totals against target totals for households, accounts, positions and returns.',code:`SELECT s.entity, s.row_count AS source_rows, t.row_count AS target_rows,\n       ABS(s.market_value - t.market_value) AS value_variance\nFROM recon.source_totals s\nJOIN recon.target_totals t ON t.entity = s.entity;`},
+   {n:'validation_rules.sql',t:'SQL',d:'Compiled from the active validation rules written by the Validation Specialist.',dyn:'rules',code:`-- VR-002 Account market value within tolerance\nSELECT 'VR-002' AS rule_id, COUNT(*) AS breaks\nFROM recon.account_totals\nWHERE ABS(variance_pct) > 0.0001;`}],
+  ev:[['11:55','info','Reconciliation started'],['12:02','info','All measures within tolerance']]}};
+/* ===== control plane and data plane views ===== */
+var CPS=['M1','M2','M3','M4'];
+var SRC={M1:'01 Loader & Inspector',M2:'02 Discovery',M3:'03 Business Rules',M4:'04 Schema Mapper',M5:'Target settings',M6:'Validation rules'};
+function XSb(){return XS.state().bundle}
+function plp(cls,t){return '<span class="pill '+cls+'">'+t+'</span>'}
+function bundleList(){var o=[];['M1','M2','M3','M4','M5','M6'].forEach(function(id){STG[id].arts.forEach(function(a,k){o.push({id:id,k:k,a:a})})});return o}
+function bundleHash(){var B=XSb();return hash8('bundle'+B.v)+hash8('xodus'+B.v)}
+function artState(id){var B=XSb();if(B.pub)return['Published','approved'];
+ if(id=='M5'||id=='M6'){return XS.gate('M4').st=='review'?['Ready for review','review']:['Not generated','queued']}
+ var st=XS.gate(id).st;return st=='approved'?['Approved','approved']:st=='review'?['Ready for review','review']:st=='running'?['Generating','running']:['Not generated','queued']}
+function artCard(it){var a=it.a,B=XSb(),st=artState(it.id),key=it.id+':'+it.k,gen=st[1]!='queued'&&st[1]!='running',ver='v'+B.v;
+ var desc=a.dyn=='rules'?'Compiled from the '+rulesOf().filter(function(r){return r.status=='Active'}).length+' active validation rules written by the Validation Specialist.':a.d;
+ return '<div class="art"><div class="r1"><span class="nm">'+esc(a.n)+'</span>'+plp(st[1],st[0])+'</div><div class="ds">'+esc(desc)+'</div><div class="mt"><span class="chip">'+esc(a.t)+'</span><span>From '+esc(SRC[it.id])+'</span>'+(gen?'<span>Bundle '+ver+'</span><span class="mono">sha256 '+hash8(a.n+ver)+'…</span>':'')+(gen?'<button class="btn g sm" type="button" data-code="'+key+'" style="margin-left:auto">'+(CODEOPEN[key]?'Hide code':'View code')+'</button>':'')+'</div>'+(CODEOPEN[key]&&gen?'<pre class="tree" style="margin:0;color:#C7D8E5">'+esc(a.code)+'</pre>':'')+'</div>'}
+function tmAdd(at,off){var m=String(at).match(/(\d\d):(\d\d)\s*$/),h=m?+m[1]:9,mi=m?+m[2]:0,t=h*60+mi+off;return ('0'+(Math.floor(t/60)%24)).slice(-2)+':'+('0'+(t%60)).slice(-2)}
+function RD(run){if(!run||run.st=='running')return null;var bad=run.ver<2,rules=rulesOf().filter(function(r){return r.status=='Active'}),rin=1760494,rej=bad?14:0,rout=rin-rej;
+ var steps=[{n:'Ingest',z:'Landing',a:'ingest_landing.arm.json',i:rin,o:rin,x:0,d:'4m 12s'},{n:'Stage and type',z:'Staged',a:'profile_entities.sql',i:rin,o:rin,x:0,d:'5m 40s'},{n:'Transform',z:'Transformed',a:'map_to_target_contract.sql',i:rin,o:rout,x:rej,d:'6m 18s'},{n:'Disseminate to the target',z:'Target',a:'curate_and_disseminate.py',i:rout,o:rout,x:0,d:'18m 47s'}];
+ var vres=rules.map(function(r,i){var f=bad&&i%3==1;return{id:r.id,name:r.name,ent:r.entity,tol:r.tol,sev:r.sev,ok:!f,d:f?(r.entity=='Positions'?'14 positions not matched':'Variance 0.04% against '+r.tol):'Within tolerance'}});
+ var recon=[['Household count','18,420','18,420','0',true],['Account market value','$4,823,556,210.40',bad?'$4,821,626,788.40':'$4,823,556,210.40',bad?'−$1,929,422.00 (−0.04%)':'$0.00',!bad],['Position quantity','212,604',bad?'212,590':'212,604',bad?'−14':'0',!bad],['Return series','96,530','96,530','0 bps drift',true]];
+ var pass=vres.filter(function(x){return x.ok}).length,fails=vres.filter(function(x){return !x.ok&&x.sev=='Blocker'}).length,rok=recon.filter(function(x){return x[4]}).length;
+ var ev=[[0,'info','Run started with bundle v'+run.ver],[4,'info','Landing complete: 14 files, '+fmt(rin)+' rows'],[10,'info','Staged: 6 entities typed and profiled'],[16,bad?'warn':'info',bad?'Transform rejected 14 positions with no security identifier':'Transform complete: '+fmt(rout)+' rows'],[35,'info','Target load complete: '+fmt(rout)+' rows'],[36,'info','Validation agent triggered with '+rules.length+' active rules'],[42,vres.length-pass?'warn':'info',vres.length-pass?(vres.length-pass)+' validation rule(s) failed':'All validation rules passed'],[42,rok<recon.length?'warn':'info','Reconciliation: '+rok+' of '+recon.length+' measures within tolerance']].map(function(e){return{t:tmAdd(run.at,e[0]),sv:e[1],m:e[2]}});
+ return{bad:bad,rin:rin,rout:rout,rej:rej,steps:steps,dur:'42m 22s',vres:vres,recon:recon,pass:pass,total:vres.length,fails:fails,rok:rok,rtot:recon.length,ev:ev}}
+function runPill(r){return ({running:plp('running','Running'),done:plp('review','Awaiting review'),accepted:plp('approved','Accepted'),rejected:plp('failed','Rejected'),superseded:plp('queued','Superseded')})[r.st]}
+function pickRun(key){var rs=XS.state().runs;if(!rs.length)return null;var n=V[key||'run'];return rs.filter(function(r){return r.n==n})[0]||rs[rs.length-1]}
+function stepTbl(d){return '<div class="tw"><table><thead><tr><th>Step</th><th>Zone</th><th>Artifact</th><th class="r">Rows in</th><th class="r">Rows out</th><th class="r">Rejected</th><th class="r">Duration</th></tr></thead><tbody>'+d.steps.map(function(s){return '<tr><td><b>'+s.n+'</b></td><td>'+s.z+'</td><td class="mono">'+s.a+'</td><td class="r">'+fmt(s.i)+'</td><td class="r">'+fmt(s.o)+'</td><td class="r">'+(s.x?'<span class="flag">'+s.x+'</span>':'0')+'</td><td class="r">'+s.d+'</td></tr>'}).join('')+'</tbody></table></div>'}
+function vTbl(d){return '<div class="tw"><table><thead><tr><th>Rule</th><th>Entity</th><th>Severity</th><th>Result</th><th>Detail</th></tr></thead><tbody>'+d.vres.map(function(v){return '<tr><td><b class="mono">'+esc(v.id)+'</b> '+esc(v.name)+'</td><td>'+esc(v.ent)+'</td><td>'+esc(v.sev)+'</td><td>'+plp(v.ok?'approved':'failed',v.ok?'Passed':'Failed')+'</td><td>'+esc(v.d)+'</td></tr>'}).join('')+'</tbody></table></div>'}
+function rTbl(d){return '<div class="tw"><table><thead><tr><th>Measure</th><th class="r">Source</th><th class="r">Target</th><th class="r">Variance</th><th>Result</th></tr></thead><tbody>'+d.recon.map(function(x){return '<tr><td><b>'+x[0]+'</b></td><td class="r">'+x[1]+'</td><td class="r">'+x[2]+'</td><td class="r">'+(x[4]?x[3]:'<span class="flag">'+x[3]+'</span>')+'</td><td>'+plp(x[4]?'approved':'failed',x[4]?'Within tolerance':'Outside tolerance')+'</td></tr>'}).join('')+'</tbody></table></div>'}
+function runTable(){var rs=XS.state().runs,sel=pickRun('run');
+ if(!rs.length)return '<div class="empty">No runs yet.</div>';
+ return '<div class="tw"><table><thead><tr><th>Run</th><th>Bundle</th><th>Started</th><th>Status</th><th class="r">Loaded</th><th class="r">Rejected</th><th class="r">Rules passed</th></tr></thead><tbody>'+rs.slice().reverse().map(function(r){var d=RD(r);return '<tr'+(sel&&sel.n==r.n?' class="sel"':'')+' data-run="'+r.n+'" style="cursor:pointer"><td class="mono"><b>'+r.id+'</b></td><td class="mono">v'+r.ver+'</td><td>'+esc(r.at)+'</td><td>'+runPill(r)+'</td><td class="r">'+(d?fmt(d.rout):'—')+'</td><td class="r">'+(d?(d.rej?'<span class="flag">'+d.rej+'</span>':'0'):'—')+'</td><td class="r">'+(d?d.pass+' / '+d.total:'—')+'</td></tr>'}).join('')+'</tbody></table></div>'}
+function gateBar(msg,acts,sigs){return '<div class="gate"><div class="t">'+msg+(sigs||'')+'</div><div class="a">'+acts+'</div></div>'}
+function sigsOf(g){return '<div class="sigs">'+g.own.map(function(o){return '<span class="pill '+(g.by.indexOf(o)>-1?'approved':'queued')+'">'+XS.ROLES[o]+(g.by.indexOf(o)>-1?' signed':' to sign')+'</span>'}).join('')+'</div>'}
+function planeHead(id,t,p,plane){var s=stageOf(id),g=XS.gate(id);return head('Stage '+s.n+' · '+(plane=='cp'?'Control plane':'Data plane'),esc(s.name),p,'<div style="display:flex;gap:8px;align-items:center"><span class="chip '+(plane=='cp'?'b':'g')+'">'+(plane=='cp'?'Control plane':'Data plane')+'</span>'+plp(g.st,XS.stateLabel(g))+'</div>')}
+function blockMsg(g,b){return b&&b.sp=='deal'?'<b>Not started.</b> Waiting for the go decision in the Deal Room.':'<b>Not started.</b> This stage waits for the stage before it.'}
+/* ---- control plane stages 01 to 04 ---- */
+function vCP(){var id=V.stage,s=stageOf(id),g=XS.gate(id),c=STC[id],d=STG[id],r=XS.role(),b=XS.blocker(g),B=XSb();
+ var can=g.st=='review'&&g.own.indexOf(r)>-1&&g.by.indexOf(r)<0&&!b,msg,acts='';
+ if(g.st=='approved')msg=id=='M4'?'<b>Gate cleared.</b> Artifact bundle v'+B.v+' is published to the data plane.':'<b>Gate cleared.</b> Evidence is stored with the run.';
+ else if(g.st=='queued')msg=blockMsg(g,b);
+ else if(g.st=='running')msg='<b>The control plane is working on this stage.</b> It reads metadata and sample files, never production data.';
+ else if(can)msg='<b>Your approval is needed.</b> '+(id=='M4'?'Approving publishes artifact bundle v'+B.v+' to the data plane.':'The output feeds the artifact bundle.')+' You are viewing as '+XS.ROLES[r]+'.';
+ else msg='<b>Waiting for '+g.own.filter(function(o){return g.by.indexOf(o)<0}).map(function(o){return XS.ROLES[o]}).join(' and ')+'.</b> You are viewing as '+XS.ROLES[r]+', so approval is disabled.';
+ if(g.st=='running'&&!b)acts='<button class="btn g" data-act="finish" type="button">Simulate the control plane finishing</button>';
+ else if(g.st=='review')acts='<button class="btn g" data-act="changes" type="button"'+(can?'':' disabled')+'>Request changes</button><button class="btn ok" data-act="approve" type="button"'+(can?'':' disabled')+'>'+(id=='M4'?'Approve and publish bundle v'+B.v:'Approve gate')+'</button>';
+ else if(id=='M4'&&g.st=='approved')acts='<button class="btn p" data-s="M5" type="button">Open the data plane</button>';
+ var tbl='<div class="tw"><table><thead><tr>'+c.cols.map(function(x,k){return '<th'+(c.num.indexOf(k)>-1?' class="r"':'')+'>'+x+'</th>'}).join('')+'</tr></thead><tbody>'+c.rows.map(function(row){return '<tr>'+row.map(function(x,k){return '<td'+(c.num.indexOf(k)>-1?' class="r"':'')+'>'+x+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>';
+ var scope=id=='M2'?'<div class="card"><h3>Entities in scope</h3><p class="d">Set in the workspace configuration. Out-of-scope entities are profiled but never mapped or loaded.</p><div class="chips" style="margin-bottom:12px">'+M().scope.map(function(x){return '<span class="chip '+(x.inScope?'g':'')+'">'+esc(x.entity)+(x.inScope?'':' · out of scope')+'</span>'}).join('')+'</div><button class="btn g sm" data-v="config" type="button">Change scope in the workspace configuration</button></div>':'';
+ var arts=id=='M4'?'<div class="card"><h3>Artifact bundle v'+B.v+'</h3><p class="d">Everything the data plane will run, in one versioned bundle. '+(B.pub?'Published.':'Approving this gate publishes it.')+' Bundle hash <span class="mono">'+bundleHash()+'</span></p><div style="display:grid;gap:10px">'+bundleList().map(artCard).join('')+'</div></div>'
+  :'<div class="card"><h3>Artifacts from this stage</h3><p class="d">They join the artifact bundle that stage 04 publishes to the data plane.</p><div style="display:grid;gap:10px">'+d.arts.map(function(a,k){return artCard({id:id,k:k,a:a})}).join('')+'</div></div>';
+ return planeHead(id,0,c.sum,'cp')+'<div class="exc" style="background:var(--tint-b);color:var(--ink-b)"><b>Control plane.</b> '+esc(d.def)+' It works from metadata and sample files. No production data is touched here.</div>'
+ +'<div class="kpis">'+c.kp.map(function(k){return '<div class="kpi"><small>'+k[0]+'</small><b style="font-size:20px">'+k[1]+'</b></div>'}).join('')+'</div>'+(c.exc?'<div class="exc">'+esc(c.exc)+'</div>':'')+tbl+scope+arts+gateBar(msg,acts,'')}
+/* ---- data plane stage 05: runs ---- */
+function vExec(){var id='M5',g=XS.gate(id),S=XS.state(),B=S.bundle,r=XS.role(),b=XS.blocker(g),p=XS.ph(g),sel=pickRun('run'),d=RD(sel),isLast=sel&&sel.n==S.runs.length;
+ var canStart=r=='MA'&&B.pub&&p!='run',canRev=r=='MA'&&B.pub&&p!='run';
+ var top=B.pub?'<div class="card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h3 style="margin:0">Artifact bundle v'+B.v+' <span class="chip g" style="margin-left:6px">Published</span></h3><p class="d" style="margin:6px 0 0">'+bundleList().length+' artifacts from the control plane. Hash <span class="mono">'+bundleHash()+'</span>. Start a run as often as needed. Every run triggers the validation agent when it ends.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn g" data-act="reviseb" type="button"'+(canRev?'':' disabled')+'>Revise in the control plane</button><button class="btn p" data-act="startrun" type="button"'+(canStart?'':' disabled')+'>Start a run</button></div></div>'+(r=='MA'?'':'<p class="fh" style="margin:10px 0 0">You are viewing as '+XS.ROLES[r]+'. The Migration Analyst starts runs.</p>')+'</div>'
+  :'<div class="card"><h3>No artifact bundle yet</h3><p class="d">The data plane runs only what the control plane has published. Approve stage 04 Schema Mapper to publish bundle v'+B.v+'.</p><button class="btn g sm" data-s="M4" type="button">Go to the control plane</button></div>';
+ var detail=!sel?'':sel.st=='running'?'<div class="card"><h3>'+sel.id+' · running</h3><p class="d">Started '+esc(sel.at)+' with bundle v'+sel.ver+'. Telemetry returns to the platform when the run ends.</p><div class="empty">Running on the data plane…</div></div>'
+  :'<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">'+sel.id+' · bundle v'+sel.ver+'</h3>'+runPill(sel)+'</div><p class="d" style="margin:6px 0 12px">Telemetry reported by the data plane. Counts and timings only.</p><div class="kpis" style="grid-template-columns:repeat(4,1fr)"><div class="kpi"><small>Rows in</small><b style="font-size:20px">'+fmt(d.rin)+'</b></div><div class="kpi"><small>Rows loaded</small><b style="font-size:20px">'+fmt(d.rout)+'</b></div><div class="kpi"><small>Rejected</small><b style="font-size:20px">'+d.rej+'</b></div><div class="kpi"><small>Duration</small><b style="font-size:20px">'+d.dur+'</b></div></div>'+stepTbl(d)+'<div class="exc" style="'+(d.fails||d.rej?'':'background:var(--tint-g);color:var(--ink-g)')+'margin-top:12px">Validation agent: '+d.pass+' of '+d.total+' rules passed, '+d.rok+' of '+d.rtot+' reconciliation measures within tolerance. Open 06 Reconciliation for the detail.</div></div>';
+ var canR=g.st=='review'&&p=='results'&&g.own.indexOf(r)>-1&&g.by.indexOf(r)<0&&!b&&isLast&&d&&!d.rej,msg,acts='';
+ if(p=='done')msg='<b>Gate cleared.</b> '+(S.runs.length?S.runs[S.runs.length-1].id:'The run')+' is accepted for the load.';
+ else if(p=='none')msg=b&&b.sp=='deal'?blockMsg(g,b):'<b>Not started.</b> Waits for the artifact bundle from the control plane.';
+ else if(p=='ready'){var lr=S.runs[S.runs.length-1];msg=lr&&lr.st=='rejected'&&lr.ver==B.v?'<b>'+lr.id+' was rejected on bundle v'+B.v+'.</b> Revise the bundle in the control plane before running again, or the result will be the same.':'<b>Ready to run.</b> The Migration Analyst starts a run of bundle v'+B.v+'.'}
+ else if(p=='run')msg='<b>Running on the data plane.</b> The validation agent starts when the run ends.';
+ else if(d&&d.rej&&isLast)msg='<b>'+d.rej+' rows were rejected, so this run cannot be approved.</b> Next step, as the Migration Analyst: revise the bundle in the control plane (this also closes the run), approve and publish the new version, then start a new run. Running again on the same bundle gives the same result.';
+ else if(canR)msg='<b>Approve the run.</b> Both the Migration Analyst and the Validation Specialist sign. You are viewing as '+XS.ROLES[r]+'.';
+ else msg='<b>Waiting for '+g.own.filter(function(o){return g.by.indexOf(o)<0}).map(function(o){return XS.ROLES[o]}).join(' and ')+'.</b> You are viewing as '+XS.ROLES[r]+'.';
+ if(p=='ready')acts='<button class="btn p" data-act="startrun" type="button"'+(canStart?'':' disabled')+'>Start a run</button>';
+ else if(p=='run'&&!b)acts='<button class="btn g" data-act="finish" type="button">Simulate the run finishing</button>';
+ else if(p=='results'){var can2=g.own.indexOf(r)>-1&&g.by.indexOf(r)<0&&isLast;acts=(d&&d.rej&&isLast?'<button class="btn p" data-act="reviseb" type="button"'+(r=='MA'?'':' disabled')+'>Revise bundle in the control plane</button>':'')+'<button class="btn g" data-act="changes" type="button"'+(can2?'':' disabled')+'>Reject the run</button><button class="btn ok" data-act="approve" type="button"'+(canR?'':' disabled')+'>Approve the run</button>'}
+ return planeHead(id,0,'Runs the published bundle on the real data, from ingestion to transformation and the load into the target. Each run triggers the validation agent.','dp')
+ +'<div class="exc" style="background:var(--tint-g);color:var(--ink-g)"><b>Data plane.</b> Runs in the client Azure estate. The data stays there. Only telemetry, validation and reconciliation results come back.</div>'
+ +top+'<div class="card"><h3>Runs</h3><p class="d">Select a run to see its telemetry. The gate applies to the latest run.</p>'+runTable()+'</div>'+detail+gateBar(msg,acts,p=='results'||p=='done'?sigsOf(g):'')}
+/* ---- data plane stage 06: validation and reconciliation ---- */
+function vRecon(){var id='M6',g=XS.gate(id),S=XS.state(),r=XS.role(),b=XS.blocker(g),p=XS.ph(g),sel=pickRun('run'),d=RD(sel),isLast=sel&&sel.n==S.runs.length;
+ var body=!d?'<div class="card"><h3>Validation and reconciliation</h3><div class="empty">No finished run yet. The validation agent starts at the end of each run, using the active validation rules.</div></div>'
+  :'<div class="kpis"><div class="kpi"><small>Run</small><b style="font-size:20px">'+sel.id+'</b><span>Bundle v'+sel.ver+'</span></div><div class="kpi"><small>Rules passed</small><b style="font-size:20px">'+d.pass+' / '+d.total+'</b><span>'+d.fails+' blocker'+(d.fails==1?'':'s')+' failing</span></div><div class="kpi"><small>Reconciled</small><b style="font-size:20px">'+d.rok+' / '+d.rtot+'</b><span>Within tolerance</span></div><div class="kpi"><small>Tolerance</small><b style="font-size:20px">0.01%</b><span>Absolute $1.00</span></div></div>'
+  +(d.fails?'<div class="exc">'+d.fails+' blocker rule'+(d.fails==1?'':'s')+' failed on this run. Reject it, fix the cause in the control plane and run again.</div>':'')
+  +'<div class="card"><h3>Validation rules · '+sel.id+'</h3><p class="d">Run by the validation agent from the active rules. Results are aggregates, never row data.</p>'+vTbl(d)+'</div><div class="card"><h3>Reconciliation · '+sel.id+'</h3><p class="d">Source totals against the migrated book in the target.</p>'+rTbl(d)+'</div>';
+ var canA=g.st=='review'&&g.own.indexOf(r)>-1&&g.by.indexOf(r)<0&&!b&&isLast&&d&&!d.fails&&d.rok==d.rtot,msg,acts='';
+ if(p=='done')msg='<b>Gate cleared.</b> Validation and reconciliation are stored as evidence.';
+ else if(p=='none')msg=b&&b.sp=='deal'?blockMsg(g,b):'<b>Not started.</b> Waits for the run to be approved at 05 Execution.';
+ else if(d&&(d.fails||d.rok<d.rtot))msg='<b>Results are outside tolerance.</b> Reject the run, fix the cause and run again.';
+ else if(canA)msg='<b>Your approval is needed.</b> You are viewing as '+XS.ROLES[r]+'.';
+ else msg='<b>Waiting for the '+XS.ROLES[g.own[0]]+'.</b> You are viewing as '+XS.ROLES[r]+', so approval is disabled.';
+ if(p=='results'){var can2=g.own.indexOf(r)>-1&&isLast;acts='<button class="btn g" data-act="changes" type="button"'+(can2?'':' disabled')+'>Reject the run</button><button class="btn ok" data-act="approve" type="button"'+(canA?'':' disabled')+'>Approve reconciliation</button>'}
+ return planeHead(id,0,'The validation agent runs after every run, using the validation rules and the reconciliation measures. The Validation Specialist decides.','dp')+body+gateBar(msg,acts,p=='done'?sigsOf(g):'')}
+function vStage(){var id=V.stage;return CPS.indexOf(id)>-1?vCP():id=='M5'?vExec():vRecon()}
+/* ================= command center ================= */
+function cmpSel(key,def){var rs=XS.state().runs;return '<select class="input" data-cmp="'+key+'" style="max-width:170px">'+rs.map(function(r){return '<option value="'+r.n+'"'+((V[key]||def)==r.n?' selected':'')+'>'+r.id+'</option>'}).join('')+'</select>'}
+function vCommand(){var w=WS(),S=XS.state(),B=S.bundle,rs=S.runs;
+ if(!w||w.status!='running')return head('Command center','Command center','Pipeline telemetry and data-level insights for this workspace.')+'<div class="card"><div class="empty">The data plane has not started.</div></div>';
+ var intro=head('Command center','Command center','Everything the data plane reports lands here: run telemetry, validation results and reconciliation. It carries counts, timings and aggregates, never row-level data. Anyone with access can view and triage a run.');
+ var cl=XS.gate('M4').st;
+ if(!rs.length)return intro+'<div class="card"><h3>No runs yet</h3><p class="d">'+(B.pub?'Bundle v'+B.v+' is published. The Migration Analyst starts the first run from the data plane.':'The control plane is still setting up the migration. When the Schema Mapper gate is approved, the artifact bundle is published and runs can start.')+'</p><div class="kpis" style="margin-top:12px"><div class="kpi"><small>Control plane</small><b style="font-size:20px">'+counts().done+' of 4 gates approved</b></div><div class="kpi"><small>Artifact bundle</small><b style="font-size:20px">v'+B.v+(B.pub?' published':' not published')+'</b></div></div><div style="margin-top:12px"><button class="btn g" data-s="'+(B.pub?'M5':'M4')+'" type="button">'+(B.pub?'Open the data plane':'Open the control plane')+'</button></div></div>';
+ var sel=pickRun('cmc'),d=RD(sel),last=rs[rs.length-1],dl=RD(last),acc=rs.filter(function(x){return x.st=='accepted'}).length;
+ var runSel='<select class="input" data-cmp="cmc" style="max-width:190px">'+rs.map(function(x){return '<option value="'+x.n+'"'+(sel.n==x.n?' selected':'')+'>'+x.id+' · '+({running:'Running',done:'Awaiting review',accepted:'Accepted',rejected:'Rejected',superseded:'Superseded'})[x.st]+'</option>'}).join('')+'</select>';
+ var kp='<div class="kpis"><div class="kpi"><small>Runs</small><b>'+rs.length+'</b><span>'+acc+' accepted</span></div><div class="kpi"><small>Artifact bundle</small><b>v'+B.v+'</b><span>'+(B.pub?'Published':'Being revised')+'</span></div><div class="kpi"><small>Rows loaded</small><b>'+(d?fmt(d.rout):'—')+'</b><span>'+esc(sel.id)+'</span></div><div class="kpi"><small>Rules passed</small><b>'+(d?d.pass+' / '+d.total:'—')+'</b><span>'+esc(sel.id)+'</span></div><div class="kpi"><small>Reconciled</small><b>'+(d?d.rok+' / '+d.rtot:'—')+'</b><span>Within tolerance</span></div></div>';
+ var zone='<div class="card"><h3>Records by zone · '+esc(sel.id)+'</h3><p class="d">Row counts reported by the run.</p>'+(d?'<div class="zonestrip"><div class="zs landing"><h4>Landing</h4><div class="row"><span>Ingested</span><b>'+fmt(d.steps[0].o)+'</b></div></div><div class="zs staged"><h4>Staged</h4><div class="row"><span>Typed and profiled</span><b>'+fmt(d.steps[1].o)+'</b></div></div><div class="zs transformed"><h4>Transformed</h4><div class="row"><span>Transformed</span><b>'+fmt(d.steps[2].o)+'</b></div><div class="row"><span>Loaded to target</span><b>'+fmt(d.steps[3].o)+'</b></div></div></div>':'<div class="empty">The run is still in progress. Telemetry returns when it ends.</div>')+'</div>';
+ var tri=[];if(d){if(d.rej)tri.push(['bad','Transform rejected '+d.rej+' positions with no security identifier','Fix the mapping in the control plane','M4']);d.vres.forEach(function(v){if(!v.ok)tri.push([v.sev=='Blocker'?'bad':'warn',v.id+' failed: '+v.name+'. '+v.d,'Open reconciliation','M6'])});d.recon.forEach(function(x){if(!x[4])tri.push(['bad',x[0]+' outside tolerance: '+x[3],'Open reconciliation','M6'])});tri.push(['info','BR-021 flagged 312 cost basis lots with a defaulted acquisition date','Review the business rule','M3'])}
+ var triH='<div class="card"><h3>Needs triage · '+esc(sel.id)+'</h3><p class="d">Findings from the run. Fixes happen in the control plane, then a new run starts from the data plane.</p>'+(tri.length?'<div class="list">'+tri.map(function(t){return '<div class="li" style="cursor:default"><b style="background:'+(t[0]=='bad'?'var(--bad-bg);color:var(--bad)':t[0]=='warn'?'var(--warn-bg);color:var(--warn)':'var(--chip);color:var(--muted)')+'">'+(t[0]=='info'?'i':'!')+'</b><span><strong>'+esc(t[1])+'</strong></span><button class="btn g sm" data-s="'+t[3]+'" type="button">'+t[2]+'</button></div>'}).join('')+'</div>':'<div class="empty">Nothing to triage.</div>')+'</div>';
+ var valH=d?'<div class="card"><h3>Validation results · '+esc(sel.id)+'</h3><p class="d">Run by the validation agent from the active rules.</p>'+vTbl(d)+'</div><div class="card"><h3>Reconciliation · '+esc(sel.id)+'</h3><p class="d">Source against target, by measure.</p>'+rTbl(d)+'</div>':'';
+ var cmp='';if(rs.length>1){var A=rs.filter(function(x){return x.n==(V.cmpA||rs[rs.length-2].n)})[0]||rs[rs.length-2],Bn=rs.filter(function(x){return x.n==(V.cmpB||rs[rs.length-1].n)})[0]||rs[rs.length-1],da=RD(A),db=RD(Bn);
+  var row=function(n,f){var a=da?f(da,A):'—',b=db?f(db,Bn):'—';return '<tr><td><b>'+n+'</b></td><td class="r">'+a+'</td><td class="r">'+b+'</td></tr>'};
+  cmp='<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><h3 style="margin:0">Compare runs</h3><p class="d" style="margin:4px 0 0">See what changed between two runs.</p></div><div style="display:flex;gap:8px;align-items:center">'+cmpSel('cmpA',A.n)+'<span style="color:var(--muted)">against</span>'+cmpSel('cmpB',Bn.n)+'</div></div><div class="tw" style="margin-top:12px"><table><thead><tr><th>Measure</th><th class="r">'+A.id+'</th><th class="r">'+Bn.id+'</th></tr></thead><tbody>'
+   +row('Artifact bundle',function(d,r){return 'v'+r.ver})+row('Duration',function(d){return d.dur})+row('Rows loaded',function(d){return fmt(d.rout)})+row('Rows rejected',function(d){return d.rej})+row('Rules passed',function(d){return d.pass+' / '+d.total})+row('Blocker rules failing',function(d){return d.fails})+row('Reconciled within tolerance',function(d){return d.rok+' / '+d.rtot})+'</tbody></table></div></div>'}
+ var evs=d?d.ev.slice().reverse():[{t:tmAdd(sel.at,0),sv:'info',m:'Run started with bundle v'+sel.ver}];
+ var dep=bundleList().map(function(it){return '<tr><td class="mono">'+esc(it.a.n)+'</td><td><span class="chip">'+esc(it.a.t)+'</span></td><td class="mono">v'+B.v+'</td><td class="mono">'+hash8(it.a.n+'v'+B.v)+'</td></tr>'}).join('');
+ var hl=[['Integration runtime','shir-simplicity-01','Online'],['Data Factory','adf-simplicity-uat','Succeeded'],['Storage account',P().storage.primaryAccount,'Reachable'],['Target connector',M().target.system+' APIs','Connected'],['Telemetry sink',P().security.auditSink,'Receiving'],['Last heartbeat','8 seconds ago','Healthy']].map(function(h){return '<div class="hl"><span><b style="color:var(--head)">'+h[0]+'</b><br><span class="mono" style="font-size:11.5px;color:var(--muted)">'+esc(h[1])+'</span></span><span class="pill approved">'+h[2]+'</span></div>'}).join('');
+ return intro+'<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px"><b style="font-size:13px">Run</b>'+runSel+'<span class="sp" style="flex:1"></span><button class="btn g" data-s="M5" type="button">Go to the data plane to start a run</button></div>'+kp+zone
+ +'<div class="two"><div style="display:grid;gap:16px;align-content:start">'+triH
+ +'<div class="card"><h3>Event stream · '+esc(sel.id)+'</h3><p class="d">Latest first.</p><ul class="evs">'+evs.map(function(e){return '<li><time>'+e.t+'</time><span class="'+(e.sv=='warn'?'w':'')+'">'+(e.sv=='warn'?'Warning · ':'')+esc(e.m)+'</span></li>'}).join('')+'</ul></div></div>'
+ +'<div style="display:grid;gap:16px;align-content:start"><div class="card"><h3>Data plane health</h3><p class="d">Reported by the data plane.</p>'+hl+'</div>'
+ +'<div class="card"><h3>What crosses the boundary</h3><p class="d">Sent to the platform</p><div class="chips" style="margin-bottom:10px"><span class="chip g">Row counts</span><span class="chip g">Durations</span><span class="chip g">Failures</span><span class="chip g">Artifact versions</span><span class="chip g">Validation results</span><span class="chip g">Reconciliation totals</span></div><p class="d">Never leaves the data plane</p><div class="chips"><span class="chip">Account records</span><span class="chip">Client names</span><span class="chip">Tax identifiers</span><span class="chip">Row-level values</span></div></div></div></div>'
+ +'<div style="display:grid;gap:16px;margin-top:16px"><div class="card"><h3>Runs</h3><p class="d">One row per run reported by the data plane.</p>'+runTable().replace(/data-run="/g,'data-cmrun="')+'</div>'+cmp+valH
+ +'<div class="card"><h3>Artifact bundle v'+B.v+'</h3><p class="d">What the data plane runs. Published by the control plane, hash <span class="mono">'+bundleHash()+'</span>.</p><div class="tw"><table><thead><tr><th>Artifact</th><th>Type</th><th>Version</th><th>Hash</th></tr></thead><tbody>'+dep+'</tbody></table></div></div></div>'}
+/* ---------- configuration helpers ---------- */
+function lockNotice(l){if(NOLOCK||EDIT(l))return '';var arch=l=='migration'&&WS()&&WS().status=='archived';return '<div class="lockn">🔒 <b>Read-only.</b> '+(arch?'This workspace is archived.':'You are viewing as '+XS.ROLES[XS.role()]+'. These settings are owned by the '+(l=='platform'?'Platform Admin':'IMO lead')+' role. Change the demo role in the top bar to edit.')+'</div>'}
+function lockBody(b){return b.replace(/<(input|select|textarea)\b/g,'<$1 disabled').replace(/<button(?![^>]*(?:data-md|data-v|data-go))/g,'<button disabled').replace(/tabindex="0"/g,'tabindex="-1"')}
+function panel(ic,t,d,body,o){o=o||{};var k=V.level+':'+V.sec+':'+t,closed=V.pn[k]===false,canE=EDIT(V.level),editing=!!V.edit[k]&&canE;
+ var has=/<(?:input|select|textarea)\b|data-opt=|data-skill=|data-conn=/.test(body)&&t!='Deployment facts';
+ var eb=(canE&&has)?'<button class="btn '+(editing?'p':'g')+' sm" data-edit="'+esc(k)+'" type="button">'+(editing?'Done':'Edit')+'</button>':'';
+ var rt=(o.right||eb)?'<div class="rt" style="display:flex;gap:8px;align-items:center">'+(o.right||'')+eb+'</div>':'';
+ return '<section class="pn'+(closed?' shut':'')+(editing?' editing':'')+'"><div class="pn-h'+(o.accent?' acc':'')+'" data-pn="'+esc(k)+'" role="button" tabindex="0" aria-expanded="'+(!closed)+'"><span class="ic">'+ic+'</span><div><h3>'+esc(t)+'</h3><p>'+esc(d)+'</p></div>'+rt+'<span class="pcv" aria-hidden="true">▾</span></div>'+(closed?'':'<div class="pn-b'+(editing?'':' rdo')+'">'+(editing?body:lockBody(body))+'</div>')+'</section>'}
+function fText(l,path,o){o=o||{};var v=getp(path);return '<div class="field"><label for="f-'+path+'">'+esc(l)+'</label><input id="f-'+path+'" class="input'+(o.mono?' mono':'')+'" type="'+(o.type||'text')+'" data-bind="'+path+'" value="'+esc(v==null?'':v)+'"'+(o.num?' data-num="1"':'')+dis(V.level)+'>'+(o.help?'<div class="fh">'+esc(o.help)+'</div>':'')+'</div>'}
+function fArea(l,path){return '<div class="field"><label for="f-'+path+'">'+esc(l)+'</label><textarea id="f-'+path+'" class="input" rows="3" data-bind="'+path+'"'+dis(V.level)+'>'+esc(getp(path))+'</textarea></div>'}
+function fSelect(l,path,opts,o){o=o||{};var v=String(getp(path));return '<div class="field"><label for="f-'+path+'">'+esc(l)+'</label><select id="f-'+path+'" class="input" data-bind="'+path+'" data-sel="1"'+dis(V.level)+'>'+opts.map(function(x){var a=Array.isArray(x)?x[0]:x,b=Array.isArray(x)?x[1]:x;return '<option value="'+esc(a)+'"'+(String(a)==v?' selected':'')+'>'+esc(b)+'</option>'}).join('')+'</select>'+(o.help?'<div class="fh">'+esc(o.help)+'</div>':'')+'</div>'}
+function fColor(l,path,help){var v=getp(path);return '<div class="field"><label>'+esc(l)+'</label><div class="colorf"><input type="color" data-bind="'+path+'" value="'+esc(v)+'" aria-label="'+esc(l)+'"'+dis(V.level)+'><input class="input mono" data-bind="'+path+'" value="'+esc(v)+'" aria-label="'+esc(l)+' value"'+dis(V.level)+'></div>'+(help?'<div class="fh">'+esc(help)+'</div>':'')+'</div>'}
+function tgl(t,d,path,lock){var on=!!getp(path);return '<label class="tr"><span><strong>'+esc(t)+'</strong><span class="d">'+esc(d)+'</span></span><span class="sw"><input type="checkbox" data-bind="'+path+'" data-bool="1"'+(on?' checked':'')+(lock?' disabled':dis(V.level))+'><span class="tk"></span></span></label>'}
+function opts(path,list,cols){var v=String(getp(path));return '<div class="opts c'+(cols||2)+'">'+list.map(function(o){return '<div class="opt'+(String(o.v)==v?' on':'')+'" role="radio" tabindex="0" aria-checked="'+(String(o.v)==v)+'" data-opt="'+path+'" data-val="'+esc(o.v)+'"><strong><i></i>'+esc(o.l)+'</strong><p>'+esc(o.d)+'</p>'+(o.m?'<em>'+esc(o.m)+'</em>':'')+'</div>'}).join('')+'</div>'}
+function tbl(h,rows){return '<div class="tw"><table><thead><tr>'+h.map(function(x){return '<th>'+x+'</th>'}).join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'}
+function facts(items){return '<div class="kvs">'+items.map(function(i){return '<div class="kc"><div class="k">'+esc(i[0])+'</div><div class="v">'+esc(i[1])+'</div></div>'}).join('')+'</div>'}
+function connRows(list,grp){return list.map(function(c,i){var on=c.status=='connected',uses=grp=='source'?M().sources.filter(function(s){return s.connector==c.id}).length:(M().target.connector==c.id?1:0);
+ return '<div class="lr"><span class="ic">'+esc(c.name.slice(0,2).toUpperCase())+'</span><span><strong>'+esc(c.name)+'</strong><span class="s">'+esc(c.transport)+(c.note?' · '+esc(c.note):'')+'</span></span><span class="rt">'+(uses?'<span class="chip b">'+uses+' in use</span>':'')+'<span class="chip mono">'+esc(c.auth)+'</span><span class="chip '+(on?'g':'')+'">'+esc(c.status)+'</span><button class="btn g sm" type="button" data-conn="'+grp+':'+i+'"'+dis('platform')+'>'+(on?'Disconnect':'Connect')+'</button></span></div>'}).join('')}
+var ZD={landing:'Vendor files land here exactly as received. Nothing is parsed or altered. This is the audit copy.',staged:'Files parsed, typed and profiled. Source structure is preserved and quality is now known.',transformed:'Records reshaped to the target contract. This is what the target connector reads.'};
+/* ---------- Level 1 ---------- */
+function secBrand(){var w=WL(),pa=XS.role()=='PA';
+ var pv='<div class="pvw"><div class="a">'+brandHTML()+'<span class="sp"></span><span class="pbchip">ENV · '+esc(String(M().profile.environment).toUpperCase())+'</span></div><div class="b"><span class="sw2"><i style="background:'+esc(w.primary)+'"></i>primary '+esc(w.primary)+'</span><span class="sw2"><i style="background:'+esc(w.accent)+'"></i>accent '+esc(w.accent)+'</span><span class="sw2"><i style="background:'+esc(w.shell)+'"></i>shell '+esc(w.shell)+'</span></div></div>';
+ return panel('◈','Brand and tenant','The brand is set when the platform is deployed and managed once for the whole suite, so this product looks the same as the landing page, the Deal Room and Governance.',
+  '<div class="r2"><div class="field"><span class="fl">Deployed for</span><div class="fh" style="font-size:13px;color:var(--head)">'+esc(w.deployedFor)+'</div></div><div class="field"><span class="fl">Platform hostname</span><div class="fh mono" style="font-size:12px;color:var(--head)">'+esc(w.hostname)+'</div></div></div>'
+  +'<div class="sub">Current brand</div>'+pv
+  +'<div class="lockn" style="margin-top:12px">Branding is not edited inside Data Migration. '+(pa?'Open Tenant settings to change the name, logo, colours or attribution.':'Only the Platform Admin can change it, in Tenant settings.')+'</div>'
+  +'<div style="margin-top:12px"><a class="btn '+(pa?'p':'g')+' sm" href="tenant.html">Open Tenant settings</a></div>',{accent:1})}
+function secIdentity(){var id=P().identity;
+ return lockNotice('platform')+panel('⊞','Identity provider','Single sign-on federation. The platform never stores user passwords in production.',opts('platform.identity.provider',[{v:'entra',l:'Microsoft Entra ID',d:'OIDC federation with the firm Microsoft 365 tenant.',m:'OIDC · recommended'},{v:'okta',l:'Okta',d:'OIDC or SAML 2.0 against an Okta org.',m:'OIDC or SAML'},{v:'ping',l:'PingFederate',d:'Enterprise SAML federation for on-premises directories.',m:'SAML 2.0'},{v:'saml',l:'Generic SAML 2.0',d:'Any SAML-compliant provider through metadata exchange.',m:'Metadata URL'}],2)
+ +'<div class="sub">Connection</div><div class="r2">'+fText('Directory or tenant ID','platform.identity.tenantId',{mono:1})+fText('Application (client) ID','platform.identity.clientId',{mono:1})+'</div>'+fText('Redirect URI','platform.identity.redirectUri',{mono:1,help:'Register this exact value with the identity provider.'})
+ +'<div class="sub">Session policy</div>'+tgl('Enforce multi-factor authentication','Reject assertions without an MFA claim.','platform.identity.mfa')+tgl('SCIM user provisioning','Sync users and groups from the directory.','platform.identity.scim')+tgl('Just-in-time provisioning','Create a platform user on first successful sign-in.','platform.identity.jitProvisioning')
+ +'<div class="r2" style="margin-top:12px">'+fSelect('Session timeout','platform.identity.sessionTimeoutMins',[[30,'30 minutes'],[60,'60 minutes'],[120,'2 hours'],[480,'8 hours']])+'<div></div></div>')
+ +panel('⚿','Roles and security groups','Roles are defined once for the whole suite, not per feature. The Platform Admin maps security groups to roles in Tenant settings, and every space reads that mapping.',tbl(['Role','Security group','Platform configuration','Migration workspaces'],Object.keys(XS.ROLES).map(function(k){return '<tr><td><b>'+esc(XS.ROLES[k])+'</b></td><td class="mono">'+esc(XS.groupFor(k))+'</td><td>'+(k=='PA'?'<span class="chip g">Access</span>':'<span class="chip">No access</span>')+'</td><td>'+(XS.ACCESS.dm.indexOf(k)>-1&&k!='PA'?'<span class="chip g">Access</span>':'<span class="chip">No access</span>')+'</td></tr>'}))+'<div style="margin-top:12px"><a class="btn g sm" href="tenant.html">Open Tenant settings</a></div>')}
+function secCompute(){var d=P().deployment;
+ return lockNotice('platform')+panel('🔒','Deployment facts','Fixed when the platform was installed into your estate. These are not settings. Changing any of them is a redeployment raised through your normal change process.',facts([['Deployment model',{saas:'Managed SaaS',dedicated:'Dedicated tenant',customer:'Customer-hosted'}[d.model]],['Cloud and region',d.provider.toUpperCase()+' · '+d.region],['Platform version',d.platformVersion+' · installed '+d.installedOn]])+facts([['Subscription',d.subscription],['Resource group',d.resourceGroup],['Key Vault',d.keyVault],['Managed identity',d.managedIdentity]])+'<div class="fh">To change the deployment model, cloud, region or subscription, raise <b>'+esc(d.changeRequest)+'</b>. The platform is deployed once for '+esc(WL().deployedFor)+' and shared by every migration programme.</div>')
+ +panel('⚙','Orchestration engine','Which engine runs pipeline activities. Tunable per firm without redeploying.',opts('platform.compute.orchestrator',[{v:'adf',l:'Azure Data Factory',d:'Managed pipeline activities and copy jobs.',m:'Default for Azure'},{v:'databricks',l:'Databricks',d:'Spark compute for high-volume transformation.',m:'For 25M+ row books'},{v:'synapse',l:'Synapse Pipelines',d:'Runs inside an existing Synapse workspace.',m:'Reuses existing estate'}],3)+fText('Integration runtime','platform.compute.integrationRuntime',{mono:1,help:'A self-hosted runtime reaches on-premises sources such as the legacy core.'}),{accent:1})
+ +panel('◴','Compute limits','Throughput and resilience settings applied to every run on this platform.','<div class="r3">'+fSelect('Compute tier','platform.compute.tier',[['light','Light, up to 1M rows'],['standard','Standard, up to 25M rows'],['scale','Scale, 25M+ rows']])+fSelect('Max parallel activities','platform.compute.maxParallelActivities',[[2,'2'],[4,'4'],[8,'8'],[16,'16']])+fSelect('Activity timeout','platform.compute.activityTimeoutMins',[[30,'30 minutes'],[60,'60 minutes'],[120,'2 hours'],[480,'8 hours']])+'</div>'+tgl('Auto-scale compute','Scale up during a run and back down when idle.','platform.compute.autoScale')+tgl('Retry on transient failure','Retry throttling and network errors before failing the activity.','platform.compute.retryOnTransient'))}
+function secStorage(){var st=P().storage,flow=['landing','staged','transformed'].map(function(k,i){var c=st.containers.filter(function(x){return x.id==k})[0];return (i?'<div class="ar">→</div>':'')+'<div class="zc '+k+'"><h4>'+esc(c.zone)+'</h4><p>'+ZD[k]+'</p><div class="path">'+esc(c.container)+'@'+esc(c.account)+'</div></div>'}).join('');
+ var act=M().sources.filter(function(s){return s.enabled}),tree='<u>'+esc(st.containers[0].container)+'@'+esc(st.primaryAccount)+'</u>\n';
+ if(!act.length)tree+='└─ (no sources enabled)\n';else{var root=landingFolder(act[0]).split('/')[0];tree+='└─ <b>'+esc(root)+'/</b>\n';act.forEach(function(s,i){var last=i==act.length-1,parts=landingFolder(s).replace(/\/$/,'').split('/');tree+='   '+(last?'└─':'├─')+' <b>'+esc(parts[1])+'/</b>'+esc(parts.slice(2).join('/'))+'/   ← '+esc(s.system)+'\n'+'   '+(last?'  ':'│ ')+'  └─ <u>'+esc(s.filePattern)+'</u>\n'})}
+ return lockNotice('platform')+panel('▤','Zones','Three zones, one purpose each. This is a migration pipeline, not an analytics lake. There is no medallion layering and no serving layer.','<div class="zf">'+flow+'</div><div class="sub">Containers</div>'+st.containers.map(function(c){return '<div class="lr"><span class="ic">'+esc(c.zone.slice(0,2).toUpperCase())+'</span><span><strong>'+esc(c.zone)+'</strong><span class="s mono">abfss://'+esc(c.container)+'@'+esc(c.account)+'.dfs.core.windows.net</span></span><span class="rt"><span class="chip g">'+esc(c.status)+'</span></span></div>'}).join('')+'<div class="r2" style="margin-top:12px">'+fText('Storage account','platform.storage.primaryAccount',{mono:1})+fSelect('Landing retention','platform.storage.retentionDays',[[90,'90 days'],[180,'180 days'],[365,'1 year'],[2555,'7 years (SEC 17a-4)']])+'</div>')
+ +panel('⊞','Landing folder template','The firm-wide convention for how source folders are laid out in the Landing container. Every migration builds its folders from this, so nobody types a path by hand.',fText('Folder template','platform.storage.landingTemplate',{mono:1,help:'Tokens: {migration} {source} {yyyy} {MM} {dd}'})+fText('Expected file pattern','platform.storage.filePattern',{mono:1,help:'Each source can override this in Level 2.'})+tgl('Create folders when a source is registered','When a migration adds a source, its Landing folder is created from the template at once.','platform.storage.autoCreateFolders')+'<div class="sub">What this produces for '+esc(M().profile.code)+'</div><div class="tree">'+tree+'</div><div class="fh" style="margin-top:10px">Sources and their file patterns are chosen in <b>Level 2, Source and target</b>.</div>',{accent:1})
+ +panel('⇄','File handling and network','How files arrive, what is checked on arrival and how the platform reaches storage.',tgl('Archive files after successful ingest','Move the original into the Archive container.','platform.storage.archiveAfterIngest')+tgl('Require a checksum on arrival','Reject a file whose checksum does not match.','platform.storage.requireChecksum')+tgl('Reject on schema drift','Halt ingest when a file has unexpected columns.','platform.storage.rejectOnSchemaDrift')+'<div class="sub">Network path</div>'+opts('platform.storage.network',[{v:'public',l:'Public endpoint',d:'Firewall-restricted with an IP allow-list.',m:'Lowest setup effort'},{v:'private-endpoint',l:'Private endpoint',d:'Traffic stays on the cloud backbone through Private Link.',m:'Recommended'},{v:'vnet',l:'VNet-injected',d:'Compute runs inside your virtual network.',m:'Strictest isolation'}],3))}
+function secSecurity(){var s=P().security;
+ return lockNotice('platform')+'<div class="exc">Open item: security and compliance is still to be decided. These settings are placeholders.</div>'+panel('🛡','Encryption and residency','Key custody and where migration data may live.',opts('platform.security.encryption',[{v:'platform',l:'Platform-managed keys',d:'Keys managed by the platform. No setup required.',m:'AES-256 at rest'},{v:'cmk',l:'Customer-managed keys',d:'Encryption keys held in your own Key Vault.',m:'You can revoke access'}],2)+(s.encryption=='cmk'?fText('Key URI','platform.security.cmkUri',{mono:1}):'')+'<div class="r2" style="margin-top:12px">'+fSelect('Data residency','platform.security.residency',[['us-only','United States only'],['eu-only','European Union only'],['global','No restriction']])+fSelect('PII handling','platform.security.piiPolicy',[['passthrough','Pass through unchanged'],['mask','Mask in UI, store raw'],['tokenise','Tokenise at ingest']])+'</div>'+tgl('Mask tax identifiers in the UI','Tax IDs show as ***-**-1234 everywhere outside an approved gate.','platform.security.maskTaxId')+tgl('Redact PII before model calls','Strip identifiers from any payload sent to the agent runtime.','platform.security.redactBeforeModel'))
+ +panel('✓','Audit and compliance','Where the immutable audit trail is written and which control frameworks apply.','<div class="r2">'+fSelect('Audit log sink','platform.security.auditSink',[['log-analytics','Azure Log Analytics'],['storage','Immutable blob storage'],['siem','External SIEM']])+fSelect('Audit retention','platform.security.auditRetentionDays',[[365,'1 year'],[1095,'3 years'],[2555,'7 years (SEC 17a-4)']])+'</div><div class="sub">Asserted frameworks</div>'+tgl('SOC 2 Type II controls','Capture change-management and access-review evidence.','platform.security.frameworks.soc2')+tgl('GLBA safeguards','Customer financial information handling controls.','platform.security.frameworks.glba')+tgl('FINRA and SEC 17a-4','Write-once audit retention on all gate approvals.','platform.security.frameworks.finra')+tgl('GDPR','Subject-access and erasure workflows for EU data subjects.','platform.security.frameworks.gdpr'))}
+function secConnectors(){return lockNotice('platform')+panel('↓','Source connector types','How data gets into the platform. Register the transport once here. A migration then binds each source system to one of these and supplies only the folder, file pattern and schedule.',connRows(P().sourceConnectors,'source')+'<div class="fh" style="margin-top:10px">Most wealth-vendor extracts are flat files, so the default path is <b>SFTP drop to a Landing folder</b>.</div>',{right:'<button class="btn g sm" type="button"'+dis('platform')+'>+ Register type</button>'})
+ +panel('↑','Target connector types','How data gets out of the platform and into the receiving system. Targets vary far more than sources, so each is a purpose-built connector.',connRows(P().targetConnectors,'target')+'<div class="fh" style="margin-top:10px">Every target connector reads from the <b>Transformed</b> zone.</div>',{accent:1,right:'<button class="btn g sm" type="button"'+dis('platform')+'>+ Register type</button>'})
+ +panel('⚿','Credential handling','Shared by every connector above.','<div class="fh">Connector secrets are never stored in the platform database. Each type reads its secret from <b>'+esc(P().deployment.keyVault)+'</b> at run time using the managed identity <b>'+esc(P().deployment.managedIdentity)+'</b>.</div>')}
+function secRuntime(){return lockNotice('platform')+panel('✦','Agent runtime','The model endpoint the migration agents run on, and the guard rails on every call.','<div class="r2">'+fSelect('Model provider','platform.ai.provider',[['azure-openai','Azure OpenAI (in tenant)'],['bedrock','AWS Bedrock'],['vertex','Google Vertex AI'],['onprem','Self-hosted endpoint']])+fText('Model deployment','platform.ai.model')+'</div>'+fText('Endpoint','platform.ai.endpoint',{mono:1})+'<div class="r2">'+fSelect('Max concurrent agents','platform.ai.maxConcurrentAgents',[[1,'1, serial'],[2,'2'],[4,'4'],[8,'8']])+fSelect('Monthly token budget','platform.ai.monthlyTokenBudget',[[10,'10M tokens'],[25,'25M tokens'],[50,'50M tokens'],[0,'Unmetered']])+'</div><div class="sub">Guard rails</div>'+tgl('Grounded responses only','Agents may only cite loaded source files and selected skill packs.','platform.ai.groundingOnly')+tgl('Log every prompt and response','Full capture to the audit sink for review and replay.','platform.ai.logPrompts')+'<div class="sub">Human-in-the-loop policy</div>'+opts('platform.ai.hitlPolicy',[{v:'all-gates',l:'Every stage gated',d:'A person must approve at every stage before promotion.',m:'Strictest · platform floor'},{v:'risk-gates',l:'Risk-based gating',d:'Only stages with exceptions or policy hits need approval.',m:'Below the floor'},{v:'final-gate',l:'Final sign-off only',d:'A single approval at reconciliation.',m:'Below the floor'}],3)+'<div class="fh" style="margin-top:10px">Governance reads this setting. Anything other than every stage gated is flagged there.</div>')}
+function secOps(){return lockNotice('platform')+panel('◎','Notifications','Where stage completions, failures and pending gates are announced.',tgl('Email','Send to the migration team distribution list.','platform.ops.email')+tgl('Microsoft Teams','Post to a channel through an incoming webhook.','platform.ops.teams')+tgl('Slack','Post to a Slack channel through a webhook.','platform.ops.slack')+fText('Webhook URL','platform.ops.webhook',{mono:1})+'<div class="sub">Triggers</div>'+tgl('Alert on stage failure','Notify immediately when an agent run fails.','platform.ops.alertOnFailure')+tgl('Alert on pending gate','Notify the gate owner when a stage waits on approval.','platform.ops.alertOnGate')+'<div class="r2" style="margin-top:12px">'+fSelect('Digest frequency','platform.ops.digest',[['none','No digest'],['daily','Daily summary'],['weekly','Weekly summary']])+fText('Log Analytics workspace','platform.ops.logWorkspace',{mono:1})+'</div>')}
+/* ---------- Level 2 ---------- */
+function secProfile(){return lockNotice('migration')+panel('◉','Migration profile','Identity of this migration programme. Everything else on Level 2 is scoped to it.','<div class="r2">'+fText('Migration name','migration.profile.name')+fText('Programme code','migration.profile.code',{mono:1})+'</div><div class="r3">'+fText('Firm','migration.profile.firm')+fText('Wave','migration.profile.wave')+fText('Programme owner','migration.profile.owner')+'</div><div class="r2">'+fSelect('Environment','migration.profile.environment',[['dev','Development'],['uat','UAT'],['prod','Production']])+fText('Target cutover date','migration.profile.cutover',{type:'date'})+'</div>'+fArea('Description','migration.profile.description'))
+ +panel('⇅','Migration strategy','How the cutover runs against the live book.',opts('migration.profile.type',[{v:'big-bang',l:'Big bang',d:'Single cutover window. Legacy retired right after sign-off.',m:'Shortest timeline, highest risk'},{v:'parallel-run',l:'Parallel run',d:'Both systems run side by side and reconcile daily before retirement.',m:'Recommended for the advisory book'},{v:'phased',l:'Phased by segment',d:'Migrate by branch, advisor or asset tier across several waves.',m:'Lowest blast radius'}],3),{accent:1})}
+function secSources(){var co=P().sourceConnectors.filter(function(c){return c.status=='connected'}).map(function(c){return [c.id,c.name]}),to=P().targetConnectors.filter(function(c){return c.status=='connected'}).map(function(c){return [c.id,c.name]});
+ var rows=M().sources.map(function(s,i){return '<tr'+(s.enabled?'':' style="opacity:.5"')+'><td><b>'+esc(s.system)+'</b><div class="fh">'+esc(s.role)+'</div></td><td><select class="fi" data-bind="migration.sources.'+i+'.connector" data-sel="1"'+dis('migration')+'>'+co.map(function(c){return '<option value="'+c[0]+'"'+(c[0]==s.connector?' selected':'')+'>'+esc(c[1])+'</option>'}).join('')+'</select></td><td class="mono" style="color:var(--ink-g)">'+esc(landingFolder(s))+'</td><td><input class="fi mono" data-bind="migration.sources.'+i+'.filePattern" value="'+esc(s.filePattern)+'"'+dis('migration')+'></td><td>'+esc(s.freq)+'</td><td><label class="sw"><input type="checkbox" data-bind="migration.sources.'+i+'.enabled" data-bool="1"'+(s.enabled?' checked':'')+dis('migration')+'><span class="tk"></span></label></td></tr>'}).join('');
+ var tc=P().targetConnectors.filter(function(c){return c.id==M().target.connector})[0];
+ return lockNotice('migration')+panel('↓','Source systems','Each source binds to a connector type registered at platform level and gets a Landing folder from the platform template. Nothing here defines a new path by hand.',tbl(['System','Connector','Landing folder','File pattern','Frequency','Enabled'],[rows]).replace('<tbody><tr','<tbody><tr')+'<div class="fh" style="margin-top:10px">Folders come from <b class="mono">'+esc(P().storage.landingTemplate)+'</b>. Change the convention in <b>Level 1, Zones and landing folders</b>.</div>',{right:'<button class="btn g sm" type="button"'+dis('migration')+'>+ Add source</button>'})
+ +panel('↑','Target system','Where the migrated book lands. The target connector reads from the Transformed zone, always.','<div class="r2">'+fText('Target platform','migration.target.system')+fSelect('Target connector','migration.target.connector',to,{help:tc?tc.transport:''})+'</div><div class="r2">'+fText('Target tenant','migration.target.tenant',{mono:1})+fText('Target environment','migration.target.env')+'</div><div class="r2">'+fText('Endpoint or alias','migration.target.endpoint',{mono:1})+fText('Data dictionary','migration.target.dictionary',{mono:1,help:'Drives Discovery gap analysis and Schema Mapper coverage.'})+'</div><div class="sub">Load behaviour</div>'+opts('migration.target.loadMode',[{v:'staged-bulk',l:'Staged bulk load',d:'Write the full Transformed set, then load in bulk after reconciliation sign-off.',m:'Reversible until load'},{v:'api-stream',l:'Incremental load',d:'Push records as each batch is approved.',m:'Lower memory, slower overall'}],2)+tgl('Validate against the target contract before loading','Dry-run each payload through the connector and fail fast on contract breaches.','migration.target.validateBeforeLoad')+'<div class="fh">Reads from: <b class="mono" style="color:var(--ink-g)">'+esc(P().storage.containers[2].container)+'/'+esc(M().zones.prefix)+'/</b></div>',{accent:1})}
+function secScope(){var n=M().scope.filter(function(s){return s.inScope}).length;
+ return lockNotice('migration')+panel('▦','Entities in scope','Which parts of the book this wave migrates. Out-of-scope entities are still profiled in Staged but never transformed or loaded.',tbl(['Entity','Grain','Est. volume','Note','In scope'],M().scope.map(function(s,i){return '<tr><td><b>'+esc(s.entity)+'</b></td><td class="mono">'+esc(s.grain)+'</td><td class="r">'+esc(s.volume)+'</td><td class="fh">'+esc(s.note)+'</td><td><label class="sw"><input type="checkbox" data-bind="migration.scope.'+i+'.inScope" data-bool="1"'+(s.inScope?' checked':'')+dis('migration')+'><span class="tk"></span></label></td></tr>'})),{right:'<span class="chip g">'+n+' of '+M().scope.length+' in scope</span>'})}
+function secSkills(){var n=M().skills.filter(function(s){return s.on}).length;
+ return lockNotice('migration')+panel('✦','Skill packs','Domain knowledge the agents apply when reading source data, writing rules and deciding what to escalate. Open any pack to read exactly what it tells the agent.','<div class="opts c2">'+M().skills.map(function(s,i){return '<div class="cc'+(s.on?' on':'')+'" data-skill="'+i+'" role="checkbox" tabindex="0" aria-checked="'+s.on+'"><span class="bx">'+(s.on?'✓':'')+'</span><span><strong>'+esc(s.label)+'</strong><p>'+esc(s.desc)+'</p></span><button type="button" data-md="'+s.id+'">'+esc(s.file)+'</button></div>'}).join('')+'</div><div class="fh" style="margin-top:12px">Packs compose in order. Firm rules override generic domain rules where they conflict.</div>',{accent:1,right:'<span class="chip g">'+n+' selected</span>'})}
+function secZones(){var opt=P().storage.containers.map(function(c){return [c.id,c.zone+' · '+c.container]});
+ var flow=['landing','staged','transformed'].map(function(k,i){var n=M().stages.filter(function(s){return s.zone==k&&s.enabled}).length;return (i?'<div class="ar">→</div>':'')+'<div class="zc '+k+'"><h4>'+ZL[k]+' <span class="chip">'+n+' stage'+(n==1?'':'s')+'</span></h4><p>'+ZD[k]+'</p><div class="path">'+esc(P().storage.containers.filter(function(c){return c.id==M().zones[k]})[0].container)+'/'+esc(M().zones.prefix)+'/</div></div>'}).join('');
+ return lockNotice('migration')+panel('▤','Data zones','Landing to Staged to Transformed. Each zone binds to a container registered at platform level under a prefix that isolates this migration. Paths are derived, never typed.','<div class="zf">'+flow+'</div><div class="sub">Container binding</div><div class="r3">'+fSelect('Landing','migration.zones.landing',opt)+fSelect('Staged','migration.zones.staged',opt)+fSelect('Transformed','migration.zones.transformed',opt)+'</div>'+fText('Path prefix','migration.zones.prefix',{mono:1,help:'Isolates this migration inside the shared containers. Also feeds the {migration} token in the folder template.'})+'<div class="fh">There is deliberately no bronze, silver or gold layering and no serving layer. Data moves through these three zones once and lands in the target.</div>')}
+function secPipeline(){var floor=P().ai.hitlPolicy=='all-gates';
+ var cells=M().stages.map(function(s){return '<div class="sc '+s.zone+'"><div class="n">'+s.n+' · '+ZL[s.zone]+'</div><div class="t">'+esc(s.name)+'</div>'+(s.gate?'<span class="pill review">gated</span>':'<span class="pill queued">auto</span>')+'</div>'}).join('');
+ var rows=M().stages.map(function(s,i){return '<tr><td class="mono">'+s.n+'</td><td><b>'+esc(s.name)+'</b></td><td><span class="zp '+s.zone+'">'+ZL[s.zone]+'</span></td><td>'+esc(s.owner)+'</td><td><label class="sw"><input type="checkbox" data-bind="migration.stages.'+i+'.gate" data-bool="1"'+(s.gate?' checked':'')+(floor?' disabled':dis('migration'))+'><span class="tk"></span></label></td><td><label class="sw"><input type="checkbox" data-bind="migration.stages.'+i+'.enabled" data-bool="1"'+(s.enabled?' checked':'')+dis('migration')+'><span class="tk"></span></label></td></tr>'}).join('');
+ return lockNotice('migration')+panel('⇢','Pipeline stages','The agent chain for this migration and the human gate on each stage. A gated stage cannot promote its output until its owner approves.','<div class="stagestrip">'+cells+'</div>'+tbl(['#','Stage','Zone','Gate owner','Gate','Enabled'],[rows])+'<div class="fh" style="margin-top:10px">Platform policy is <b>'+({'all-gates':'every stage gated','risk-gates':'risk-based gating','final-gate':'final sign-off only'}[P().ai.hitlPolicy])+'</b>.'+(floor?' Gates are locked on. Governance checks this.':' Tightening a gate is always allowed. Loosening below the platform floor is flagged in Governance.')+'</div>')}
+function secThresholds(){return lockNotice('migration')+panel('◇','Reconciliation thresholds','What counts as a match when the Reconciliation agent compares the migrated book back to source.','<div class="r3">'+fText('Match tolerance (%)','migration.thresholds.matchTolerancePct',{type:'number',mono:1,num:1,help:'Relative drift allowed per value.'})+fText('Absolute variance (USD)','migration.thresholds.varianceAbsUsd',{type:'number',mono:1,num:1,help:'Ignore differences below this.'})+fText('Performance drift (bps)','migration.thresholds.perfDriftBps',{type:'number',mono:1,num:1,help:'Return series tolerance.'})+'</div>'+fText('Minimum dictionary coverage (%)','migration.thresholds.dictionaryCoveragePct',{type:'number',mono:1,num:1,help:'Loader and Inspector blocks promotion below this unless undefined columns are approved.'}))
+ +panel('🔒','Sign-off policy','Who has to agree before anything is promoted or loaded.',tgl('Auto-approve clean stages','Stages that finish with zero exceptions skip the human gate.','migration.thresholds.autoApproveClean')+tgl('Dual sign-off before target load','The Migration Analyst and the Validation Specialist must both approve the Transformed output before it reaches the target.','migration.thresholds.dualSignoffOnGold')+tgl('Block on unmapped security identifiers','Any position with an unmapped identifier halts promotion.','migration.thresholds.blockOnUnmappedCusip'))}
+function secTeam(){return lockNotice('migration')+panel('◎','Migration team','People assigned to this programme and the gates they own. Membership comes from the directory groups mapped in Level 1.',M().team.map(function(t){return '<div class="lr"><span class="ic">'+esc(t.initials)+'</span><span><strong>'+esc(t.name)+'</strong><span class="s">'+esc(t.email)+' · '+esc(t.scope)+'</span></span><span class="rt"><span class="chip b">'+esc(t.role)+'</span></span></div>'}).join(''),{right:'<button class="btn g sm" type="button" data-v="team">Manage on Team and access</button>'})
+ +panel('◷','Run schedule and cutover','When the pipeline runs and how long the two systems overlap.','<div class="r2">'+fText('Execution window','migration.schedule.window')+fText('Cutover start','migration.schedule.startDate',{type:'date'})+'</div><div class="r2">'+fSelect('Retries on failure','migration.schedule.retries',[[0,'None'],[1,'1 retry'],[2,'2 retries'],[3,'3 retries']])+fSelect('Parallel-run length','migration.schedule.parallelRunDays',[[0,'No parallel run'],[14,'14 days'],[30,'30 days'],[60,'60 days'],[90,'90 days']])+'</div>'+tgl('Run in parallel with the legacy system','Both books stay live and reconcile daily until retirement.','migration.schedule.parallelRun')+tgl('Freeze window before cutover','Block legacy writes for 24 hours before the final extract.','migration.schedule.freezeWindow')+tgl('Notify the team on completion','Send a summary when the pipeline finishes a run.','migration.schedule.notifyOnComplete'))}
+var SEC={platform:[['brand','1.1','Brand and tenant',secBrand],['identity','1.2','Identity and access',secIdentity],['compute','1.3','Orchestration and compute',secCompute],['storage','1.4','Zones and landing folders',secStorage],['security','1.5','Security and compliance',secSecurity],['connectors','1.6','Connector registry',secConnectors],['runtime','1.7','Agent runtime',secRuntime],['ops','1.8','Notifications',secOps]],
+ migration:[['profile','2.1','Migration profile',secProfile],['sources','2.2','Source and target',secSources],['scope','2.3','Entities in scope',secScope],['skills','2.4','Skill packs',secSkills],['zones','2.5','Data zones',secZones],['pipeline','2.6','Pipeline and gates',secPipeline],['thresholds','2.7','Thresholds and sign-off',secThresholds],['team','2.8','Team and schedule',secTeam]]};
+/* ================= workspaces, readiness ================= */
+var STAT={running:'Running',ready:'Ready for first run',draft:'Draft',archived:'Archived'};
+function readiness(w){var m=w.migration,hasRole=function(r){return m.team.some(function(t){return t.role==r})};
+ var items=[
+  {k:'profile',l:'Migration profile',ok:!!(m.profile.name&&m.profile.firm&&m.profile.cutover),d:'Name, firm and target cutover date'},
+  {k:'sources',l:'Sources and target',ok:m.sources.some(function(s){return s.enabled})&&!!m.target.system,d:'At least one source system and the target'},
+  {k:'scope',l:'Entities in scope',ok:m.scope.some(function(s){return s.inScope}),d:'What the migration moves'},
+  {k:'skills',l:'Skill packs',ok:m.skills.some(function(s){return s.on}),d:'The domain knowledge the agents apply'},
+  {k:'thresholds',l:'Thresholds and sign-off',ok:m.thresholds.matchTolerancePct>0,d:'Reconciliation tolerances'},
+  {k:'team',l:'Team assigned',ok:hasRole('Migration Analyst')&&hasRole('Validation Specialist'),d:'A Migration Analyst and a Validation Specialist'}];
+ return {items:items,done:items.filter(function(i){return i.ok}).length,total:items.length}}
+function wcard(w){var m=w.migration,il=XS.role()=='IL',run=w.status=='running',c=counts(),rd=readiness(w),cf=V.confirm;
+ var prog=run?'<div class="meter" style="max-width:420px"><i style="width:'+Math.round(c.done/6*100)+'%"></i></div><div class="fh" style="margin-top:7px">'+c.done+' of 6 stages approved · '+c.wait+' gate waiting · '+m.sources.filter(function(s){return s.enabled}).length+' source systems · target '+esc(m.target.system)+'</div>'
+  :'<div class="fh" style="margin-top:2px">'+rd.done+' of '+rd.total+' setup steps complete'+(w.status=='archived'?' · kept for audit':'')+'</div>';
+ var acts='<button class="btn p" data-act="openws" data-id="'+w.id+'" type="button">Open workspace</button>';
+ if(il){
+  if(w.status=='archived')acts+='<button class="btn g" data-act="restore" data-id="'+w.id+'" type="button">Restore</button>';
+  else{acts+='<button class="btn g" data-act="editws" data-id="'+w.id+'" type="button">Edit details</button><button class="btn g" data-act="archive" data-id="'+w.id+'" type="button">'+(cf=='archive:'+w.id?'Confirm archive':'Archive')+'</button>';
+   if(w.status!='running')acts+='<button class="btn g" data-act="delws" data-id="'+w.id+'" type="button">'+(cf=='delws:'+w.id?'Confirm delete':'Delete')+'</button>'}}
+ return '<div class="wcard"><div><h3>'+esc(m.profile.name)+'</h3><div class="m"><span class="chip '+(run?'g':w.status=='archived'?'':'b')+'">'+STAT[w.status]+'</span><span class="chip">'+esc(m.profile.code)+'</span><span class="chip">'+esc(m.profile.wave)+'</span><span class="chip">'+esc(String(m.profile.environment).toUpperCase())+'</span><span class="chip">Cutover '+esc(m.profile.cutover)+'</span></div>'+prog+'</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">'+acts+'</div></div>'}
+function newForm(){return '<div class="card"><h3>New migration workspace</h3><p class="d">It starts as a draft with the platform defaults. You then set up sources, scope and thresholds, assign the team, and mark it ready.</p>'
+ +'<div class="r2"><div class="field"><label for="nw-name">Migration name</label><input class="input" id="nw-name" placeholder="For example, Harbor Advisors Book Migration"></div><div class="field"><label for="nw-firm">Acquired firm</label><input class="input" id="nw-firm" placeholder="Harbor Advisors"></div></div>'
+ +'<div class="r3"><div class="field"><label for="nw-wave">Wave</label><input class="input" id="nw-wave" value="Wave 1"></div><div class="field"><label for="nw-env">Environment</label><select class="input" id="nw-env"><option value="dev">Development</option><option value="uat" selected>UAT</option><option value="prod">Production</option></select></div><div class="field"><label for="nw-cut">Target cutover</label><input class="input" id="nw-cut" type="date"></div></div>'
+ +'<div style="display:flex;gap:8px"><button class="btn p" data-act="createws" type="button">Create workspace</button><button class="btn g" data-act="newws" type="button">Cancel</button></div></div>'}
+function vWorkspaces(){var il=XS.role()=='IL',act=work.workspaces.filter(function(w){return w.status!='archived'}),arc=work.workspaces.filter(function(w){return w.status=='archived'});
+ return head('Data Migration','Migration workspaces','Each acquisition or conversion gets its own workspace with its own sources, scope, team, gates and validation rules. The IMO lead creates and configures them. Deal analysis stays in the Deal Room.',il?'<button class="btn p" data-act="newws" type="button">+ New workspace</button>':'')
+ +(V.newws&&il?newForm():'')
+ +(act.length?act.map(wcard).join(''):'<div class="empty">No active workspaces.</div>')
+ +(arc.length?'<div class="card"><h3>Archived</h3><p class="d">Kept for audit. Approvals and reconciliation evidence stay available.</p></div>'+arc.map(wcard).join(''):'')
+ +(il?'<div class="fh">A draft or ready workspace that has never run can be deleted. Once a workspace has run it can only be archived.</div>':'<div class="fh">Only the IMO lead can create, change, archive or delete workspaces.</div>')}
+function vDraft(){var w=WS(),rd=readiness(w),il=XS.role()=='IL',arch=w.status=='archived',m=M();
+ return head(esc(m.profile.name),'Overview','Setup status for this workspace.')
+ +(arch?'<div class="exc">This workspace is archived. It is read-only and kept for audit.</div>':'')
+ +'<div class="kpis"><div class="kpi"><small>Status</small><b style="font-size:20px;margin-top:8px">'+STAT[w.status]+'</b><span>'+esc(m.profile.code)+'</span></div><div class="kpi"><small>Setup steps</small><b>'+rd.done+' / '+rd.total+'</b><span>Complete</span></div><div class="kpi"><small>Team</small><b>'+m.team.length+'</b><span>Assigned people</span></div><div class="kpi"><small>Sources</small><b>'+m.sources.filter(function(s){return s.enabled}).length+'</b><span>Enabled</span></div></div>'
+ +'<div class="card"><h3>Setup checklist</h3><p class="d">The IMO lead completes these before the first run. Select a step to go to it.</p><div class="list">'+rd.items.map(function(i){return '<button class="li" data-go="'+i.k+'" type="button"><b>'+(i.ok?'✓':'○')+'</b><span><strong>'+i.l+'</strong><span>'+i.d+'</span></span><span class="pill '+(i.ok?'approved':'queued')+'">'+(i.ok?'Done':'To do')+'</span></button>'}).join('')+'</div>'
+ +(arch?'':(w.status=='ready'?'<div class="exc" style="margin-top:12px;background:var(--tint-g);color:var(--ink-g)">Ready for the first run. In the full product the run starts from here. This mock runs one live pipeline, CoreCap.</div>':(il?'<div style="margin-top:12px"><button class="btn p" data-act="markready" type="button"'+(rd.done==rd.total?'':' disabled')+'>Mark ready for first run</button>'+(rd.done==rd.total?'':'<span class="fh" style="margin-left:10px">Finish every step first.</span>')+'</div>':'')))+'</div>'}
+function vOverview(){return WS().status=='running'?vRun():vDraft()}
+/* ================= team ================= */
+var TEAMSCOPE={'IMO lead':'Owns this workspace and its configuration. Owns cutover readiness.','Migration Analyst':'Works the pipeline stages and owns gates 01 to 04. Co-signs the load.','Validation Specialist':'Owns data-level validation. Creates and generates validation rules. Owns reconciliation and co-signs the load.','Compliance reviewer':'Reads evidence and the audit trail. Read-only.'};
+function vTeam(){var me=XS.PEOPLE[XS.role()],canEdit=EDIT('migration');
+ var rows=M().team.map(function(t,i){var mine=t.name==me,k=Object.keys(XS.ROLES).filter(function(x){return XS.ROLES[x]==t.role})[0]||'MA';return '<div class="tmh'+(mine?' me':'')+'"><span class="ic">'+esc(t.initials)+'</span><span><strong>'+esc(t.name)+(mine?' · you':'')+'</strong><small>'+esc(t.email)+'</small></span><span><span class="chip b">'+esc(t.role)+'</span><small style="display:block;margin-top:4px">'+esc(t.scope)+'</small></span><span><small>Security group</small><strong style="font-size:12px;font-weight:600">'+esc(XS.groupFor(k))+'</strong></span><span>'+(canEdit?'<button class="btn g sm" type="button" data-act="rmmember" data-i="'+i+'">Remove</button>':'')+'</span></div>'}).join('');
+ var opts=['IMO lead','Migration Analyst','Validation Specialist','Compliance reviewer'].map(function(r){return '<option>'+r+'</option>'}).join('');
+ return head('Team and access','Who can do what in this workspace','Your suite role comes from your security group and gets you into Data Migration. Assignment to a workspace decides where you work. The same person can sit on several workspaces.')
+ +'<div class="card"><h3>Your access</h3><p class="d">Signed in once at the suite. Roles come from security groups defined for the whole suite, not from a second login.</p><div class="idc" style="margin:0"><span class="av">'+initials(me)+'</span><span><strong>'+esc(me)+'</strong><small>Suite role: '+esc(XS.ROLES[XS.role()])+' · Workspace: '+esc(M().profile.name)+'</small></span></div></div>'
+ +'<div class="card"><h3>'+esc(M().profile.name)+' team</h3><p class="d">Assigned per workspace. A change here applies only to this migration.</p><div class="tw">'+(rows||'<div class="empty">Nobody is assigned yet.</div>')+'</div>'
+ +(canEdit?'<div class="tmf"><div class="field"><label for="tmn">Name</label><input class="input" id="tmn" placeholder="Full name"></div><div class="field"><label for="tme">Email</label><input class="input" id="tme" placeholder="name@simplicitygroup.com"></div><div class="field"><label for="tmr">Workspace role</label><select class="input" id="tmr">'+opts+'</select></div><button class="btn p" type="button" data-act="addmember" style="margin-bottom:12px">Assign</button></div><div class="fh">Assignments are part of the workspace configuration. Save them from the bar at the bottom.</div>':'<div class="lockn" style="margin-top:12px">View only. The IMO lead assigns people to this workspace.</div>')+'</div>'
+ +'<div class="card"><h3>What each role does here</h3><div class="tw"><table><thead><tr><th>Role</th><th>In this workspace</th></tr></thead><tbody>'+Object.keys(TEAMSCOPE).map(function(k){return '<tr><td><b>'+k+'</b></td><td>'+TEAMSCOPE[k]+'</td></tr>'}).join('')+'<tr><td><b>Platform Admin</b></td><td>No access. Works at the platform level only.</td></tr></tbody></table></div></div>'}
+/* ================= validation rules ================= */
+var VENT=['Households','Accounts','Positions','Transactions','Cost basis lots','Performance series'];
+var VMEAS=['Count match','Market value match','Quantity match','Null rate','Return drift (bps)','Identifier resolved'];
+var VGEN=[
+ {name:'Every position has a resolved security identifier',entity:'Positions',measure:'Identifier resolved',tol:'0 unresolved',sev:'Blocker'},
+ {name:'Every account links to a household',entity:'Accounts',measure:'Count match',tol:'exact',sev:'Blocker'},
+ {name:'Household relationships name a primary member',entity:'Households',measure:'Count match',tol:'exact',sev:'Blocker'},
+ {name:'Transaction count by account matches the source',entity:'Transactions',measure:'Count match',tol:'exact',sev:'Blocker'},
+ {name:'Performance series covers every funded account',entity:'Performance series',measure:'Count match',tol:'exact',sev:'Warning'}];
+function rulesOf(){var m=M();m.validation=m.validation||{rules:[]};return m.validation.rules}
+function nextRuleId(){var n=0;rulesOf().forEach(function(r){var k=parseInt(String(r.id).slice(3),10);if(k>n)n=k});return 'VR-'+('00'+(n+1)).slice(-3)}
+function vValidation(){var w=WS(),canV=XS.role()=='VS'&&w.status!='archived',rs=rulesOf();
+ var act=rs.filter(function(r){return r.status=='Active'}).length,prop=rs.filter(function(r){return r.status=='Proposed'}).length,gen=rs.filter(function(r){return r.source=='Generated'}).length,blk=rs.filter(function(r){return r.status=='Active'&&r.sev=='Blocker'}).length;
+ var st={Active:'approved',Proposed:'review',Retired:'queued'};
+ var rows=rs.map(function(r,i){var b='';
+  if(canV){if(r.status=='Proposed')b='<button class="btn ok sm" data-rule="accept" data-i="'+i+'" type="button">Accept</button> <button class="btn g sm" data-rule="reject" data-i="'+i+'" type="button">Reject</button>';
+   else if(r.status=='Active')b='<button class="btn g sm" data-rule="retire" data-i="'+i+'" type="button">Retire</button>';
+   else b='<button class="btn g sm" data-rule="activate" data-i="'+i+'" type="button">Reactivate</button> <button class="btn g sm" data-rule="delete" data-i="'+i+'" type="button">Delete</button>'}
+  return '<tr><td class="mono">'+esc(r.id)+'</td><td><b>'+esc(r.name)+'</b></td><td>'+esc(r.entity)+'</td><td>'+esc(r.measure)+'</td><td>'+esc(r.tol)+'</td><td><span class="chip '+(r.sev=='Blocker'?'':'b')+'">'+esc(r.sev)+'</span></td><td>'+esc(r.source)+'</td><td><span class="pill '+st[r.status]+'">'+esc(r.status)+'</span></td><td>'+b+'</td></tr>'}).join('');
+ var form=canV?'<div class="card"><h3>New validation rule</h3><p class="d">Write a check the migrated book must pass. Active rules run in stage 06 Reconciliation.</p><div class="r2"><div class="field"><label for="vr-name">Rule</label><input class="input" id="vr-name" placeholder="For example, Account count by custodian matches the source"></div><div class="field"><label for="vr-tol">Tolerance</label><input class="input" id="vr-tol" placeholder="exact, or 0.01%"></div></div><div class="r3"><div class="field"><label for="vr-ent">Entity</label><select class="input" id="vr-ent">'+VENT.map(function(x){return '<option>'+x+'</option>'}).join('')+'</select></div><div class="field"><label for="vr-mea">Measure</label><select class="input" id="vr-mea">'+VMEAS.map(function(x){return '<option>'+x+'</option>'}).join('')+'</select></div><div class="field"><label for="vr-sev">Severity</label><select class="input" id="vr-sev"><option>Blocker</option><option>Warning</option></select></div></div><button class="btn p" data-act="addrule" type="button">Add rule</button></div>'
+  :'<div class="lockn">View only. '+(w.status=='archived'?'This workspace is archived.':'The Validation Specialist creates and generates validation rules. You are viewing as '+XS.ROLES[XS.role()]+'.')+'</div>';
+ return head('Validation','Validation rules','Data-level checks the migrated book must pass. The Validation Specialist writes them, or asks the agent to propose them from the mapping and the profiles. Active rules run in stage 06 Reconciliation.',canV?'<button class="btn g" data-act="genrules" type="button">Generate rules from the mapping</button>':'')
+ +'<div class="kpis"><div class="kpi"><small>Active rules</small><b>'+act+'</b><span>Run at reconciliation</span></div><div class="kpi"><small>Blocking</small><b>'+blk+'</b><span>Stop promotion on a break</span></div><div class="kpi"><small>Proposed</small><b>'+prop+'</b><span>Waiting for your decision</span></div><div class="kpi"><small>Agent generated</small><b>'+gen+'</b><span>Of '+rs.length+' rules</span></div></div>'
+ +form
+ +'<div class="card"><h3>Rule set</h3><p class="d">Generated rules stay proposed until the Validation Specialist accepts them.</p>'+(rs.length?'<div class="tw"><table><thead><tr><th>ID</th><th>Rule</th><th>Entity</th><th>Measure</th><th>Tolerance</th><th>Severity</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="empty">No rules yet. Add one, or generate a starting set from the mapping.</div>')+'</div>'}
+/* ================= configuration views ================= */
+var DESC={brand:'Name, logo and colours come from Tenant settings',identity:'Single sign-on and how roles map from security groups',compute:'Orchestrator, integration runtime and limits',storage:'Zones, containers and landing folders',security:'Encryption, data residency, PII handling and audit',connectors:'Source and target connectors available to workspaces',runtime:'Model endpoint, limits and the human-review floor',ops:'Alerts and digests',profile:'Name, firm, wave, environment and cutover strategy',sources:'Source systems and the target',scope:'The entities this migration moves',skills:'Domain knowledge the agents apply',zones:'Zone folders for this migration',pipeline:'Stages, gates and review policy',thresholds:'Reconciliation tolerances and sign-off',team:'People and schedule'};
+function cfgBody(level,label){var list=SEC[level],sec=list.filter(function(x){return x[0]==V.sec})[0]||list[0];V.sec=sec[0];
+ var body=sec[3](),multi=(body.match(/<section class="pn/g)||[]).length>1;
+ return '<div class="cfg"><aside class="cr"><h5>'+label+'</h5><button class="ri home" data-home="1" type="button"><i>⌂</i>Configuration home</button>'+list.map(function(x){return '<button class="ri'+(x[0]==sec[0]?' on':'')+'" data-sec="'+x[0]+'" type="button"><i>'+x[1]+'</i>'+x[2]+'</button>'}).join('')+'</aside>'
+  +'<div class="cb" id="cfgBody"><div class="sech"><div><span class="num">'+sec[1]+'</span><h2>'+sec[2]+'</h2><p>'+(DESC[sec[0]]||'')+'</p></div>'+(multi?'<div class="sbtn"><button class="btn g sm" data-pnall="close" type="button">Collapse all</button><button class="btn g sm" data-pnall="open" type="button">Expand all</button></div>':'')+'</div>'+body+'</div></div>'}
+var SECTITLE={};
+function tileInfo(level,key){var P0=P(),m=level=='migration'?M():null;
+ try{
+ if(level=='platform'){
+  if(key=='brand')return {s:WL().productName,d:'Set in Tenant settings',ok:true};
+  if(key=='identity'){var id=P0.identity;return {s:({entra:'Microsoft Entra ID',okta:'Okta',ping:'PingFederate',saml:'SAML 2.0'}[id.provider]||id.provider)+(id.mfa?' · MFA enforced':' · MFA off'),d:(id.scim?'SCIM on':'SCIM off')+' · session '+id.sessionTimeoutMins+' min',ok:!!id.mfa}}
+  if(key=='compute'){var c=P0.compute;return {s:(c.orchestrator=='adf'?'Azure Data Factory':c.orchestrator)+' · '+c.tier,d:'Up to '+c.maxParallelActivities+' parallel activities',ok:true}}
+  if(key=='storage'){var cs=P0.storage.containers,rd=cs.filter(function(x){return x.status=='ready'}).length;return {s:rd+' of '+cs.length+' containers ready',d:'Account '+P0.storage.primaryAccount+' · retention '+Math.round(P0.storage.retentionDays/365)+' years',ok:rd==cs.length}}
+  if(key=='security'){var sc=P0.security,fw=Object.keys(sc.frameworks||{}).filter(function(x){return sc.frameworks[x]}).length;return {s:'Encryption: '+(sc.encryption=='cmk'?'customer-managed key':sc.encryption),d:sc.residency+' residency · '+fw+' frameworks on',ok:!!sc.encryption}}
+  if(key=='connectors'){var a=P0.sourceConnectors.filter(function(x){return x.status=='connected'}).length,b=P0.targetConnectors.filter(function(x){return x.status=='connected'}).length;return {s:a+' source and '+b+' target connected',d:'Of '+P0.sourceConnectors.length+' source and '+P0.targetConnectors.length+' target types',ok:a>0&&b>0}}
+  if(key=='runtime'){var ai=P0.ai,pol={'all-gates':'Every stage gated','risk-gates':'Risk-based gates','final-gate':'Final sign-off only'}[ai.hitlPolicy]||ai.hitlPolicy;return {s:ai.model,d:'Review: '+pol+(ai.hitlPolicy=='all-gates'?'':' · below the floor'),ok:ai.hitlPolicy=='all-gates'}}
+  if(key=='ops'){var o=P0.ops,n=[o.email,o.teams,o.slack,!!o.webhook].filter(Boolean).length;return {s:n+' channels on',d:'Digest '+o.digest+(o.alertOnFailure?' · failure alerts on':''),ok:!!o.alertOnFailure}}
+ }else{
+  if(key=='profile')return {s:m.profile.code+' · '+m.profile.wave,d:'Cutover '+(m.profile.cutover||'not set'),ok:!!(m.profile.name&&m.profile.firm&&m.profile.cutover)};
+  if(key=='sources'){var en=m.sources.filter(function(x){return x.enabled});return {s:en.length+' source'+(en.length==1?'':'s')+' to '+m.target.system,d:en.map(function(x){return x.system}).join(', ')||'No source enabled',ok:en.length>0}}
+  if(key=='scope'){var n=m.scope.filter(function(x){return x.inScope}).length;return {s:n+' of '+m.scope.length+' entities in scope',d:'What the migration moves',ok:n>0}}
+  if(key=='skills'){var k=m.skills.filter(function(x){return x.on}).length;return {s:k+' of '+m.skills.length+' skill packs on',d:'Domain knowledge the agents apply',ok:k>0}}
+  if(key=='zones')return {s:'Prefix '+m.zones.prefix,d:'Landing, Staged and Transformed',ok:true};
+  if(key=='pipeline'){var g=m.stages.filter(function(x){return x.gate}).length;return {s:g+' gated stages',d:P0.ai.hitlPolicy=='all-gates'?'Meets the platform review floor':'Below the platform review floor',ok:P0.ai.hitlPolicy=='all-gates'}}
+  if(key=='thresholds')return {s:'Match tolerance '+m.thresholds.matchTolerancePct+'%',d:'Variance $'+m.thresholds.varianceAbsUsd+' · drift '+m.thresholds.perfDriftBps+' bps',ok:true};
+  if(key=='team'){var has=function(r){return m.team.some(function(t){return t.role==r})};return {s:m.team.length+' people',d:has('Migration Analyst')&&has('Validation Specialist')?'Analyst and validator assigned':'Needs an analyst and a validator',ok:has('Migration Analyst')&&has('Validation Specialist')}}
+ }}catch(e){}
+ return {s:'Open to review',d:'',ok:true}}
+function homeView(level){var list=SEC[level],canE=EDIT(level),inf=list.map(function(x){return [x,tileInfo(level,x[0])]}),ok=inf.filter(function(i){return i[1].ok}).length;
+ return '<div class="kpis"><div class="kpi"><small>Sections ready</small><b>'+ok+' / '+list.length+'</b><span>Nothing blocking</span></div><div class="kpi"><small>Need attention</small><b>'+(list.length-ok)+'</b><span>'+(list.length-ok?'Look for the amber edge':'All clear')+'</span></div><div class="kpi"><small>Your access</small><b style="font-size:18px;margin-top:8px">'+(canE?'You can edit':'View only')+'</b><span>'+esc(XS.ROLES[XS.role()])+'</span></div><div class="kpi"><small>Scope</small><b style="font-size:18px;margin-top:8px">'+(level=='platform'?'Every workspace':esc(M().profile.code))+'</b><span>'+(level=='platform'?'Platform level':'This workspace only')+'</span></div></div>'
+ +lockNotice(level)
+ +'<div class="tiles">'+inf.map(function(i){var x=i[0],t=i[1];return '<button class="tl'+(t.ok?'':' attn')+'" data-open="'+x[0]+'" type="button"><span class="top"><i>'+x[1]+'</i><span class="pill '+(t.ok?'approved':'review')+'">'+(t.ok?'Ready':'Needs attention')+'</span></span><strong>'+x[2]+'</strong><span class="st">'+esc(t.s)+'</span><span class="ds">'+esc(t.d||DESC[x[0]]||'')+'</span><span class="go">Open →</span></button>'}).join('')+'</div>'
+ +'<div class="fh">Open a tile to see its settings. Inside a section, choose Edit on a sub-section to change it, then save from the bar at the bottom.</div>'}
+function cfgActs(can){return '<div style="display:flex;gap:8px;flex-wrap:wrap">'+(can?'<button class="btn g sm" data-act="reset" type="button">Reset to defaults</button>':'')+'<button class="btn g sm" data-act="export" type="button">View JSON</button></div>'}
+function vConfig(){V.level='migration';
+ return head(esc(M().profile.name),'Workspace configuration','Settings for this migration only. The platform decides what is available and the minimum standards. This workspace chooses within them.',cfgActs(EDIT('migration')))+(V.home.migration?homeView('migration'):cfgBody('migration','Workspace setup'))}
+function vPlatform(){V.level='platform';
+ return head('Platform','Platform configuration','Generic to every migration workspace. Set once by the Platform Admin. Workspaces choose from what is set up here.',cfgActs(EDIT('platform')))+(V.home.platform?homeView('platform'):cfgBody('platform','Platform setup'))}
+
+/* ================= render ================= */
+function saveBar(){var h=document.getElementById('saveHost'),d=dirty();h.innerHTML=d?'<div class="savebar show"><b>Unsaved changes</b><span>'+countDirty()+' field'+(countDirty()==1?'':'s')+' modified</span><button class="btn g sm" data-act="discard" type="button">Discard</button><button class="btn ok sm" data-act="save" type="button">Save configuration</button></div>':''}
+function guard(){var pa=XS.role()=='PA';
+ if(pa&&V.view!='platform'){V.view='platform';V.level='platform';V.sec='brand'}
+ if(!pa&&V.view=='platform'){V.view='workspaces';V.level='migration';V.sec='profile'}
+ if(['overview','command','stage','team','validation','config'].indexOf(V.view)>-1){var w=WS();if(!w)V.view='workspaces';else if((V.view=='stage'||V.view=='command')&&w.status!='running')V.view='overview'}
+ if(V.view=='config')V.level='migration';if(V.view=='platform')V.level='platform'}
+function render(){
+ XS.top('dm',{onrole:onRole});
+ var r=document.getElementById('root');
+ if(!XS.can('dm')){r.innerHTML='<div class="wrap">'+XS.restricted('dm')+'</div>';applyBrand();return}
+ var s=session();
+ if(!s){r.innerHTML=vLogin();applyBrand();saveBar();return}
+ guard();
+ var view=({workspaces:vWorkspaces,platform:vPlatform,overview:vOverview,command:vCommand,stage:vStage,config:vConfig,team:vTeam,validation:vValidation})[V.view]();
+ r.innerHTML=pbar()+'<div class="wrap app"><nav class="side" aria-label="Pipeline">'+side()+'</nav><main class="main">'+view+'</main></div>';
+ applyBrand();saveBar();syncBars()}
+function syncBars(){var x=document.querySelector('.xtop'),b=document.querySelector('.pbar'),r=document.documentElement.style;r.setProperty('--xh',(x&&getComputedStyle(x).position=='sticky')?x.offsetHeight+'px':'0px');r.setProperty('--ph',(b&&getComputedStyle(b).position=='sticky')?b.offsetHeight+'px':'0px')}
+window.addEventListener('resize',syncBars);
+function onRole(){render()}
+function toast(m){XS.toast(m)}
+/* ================= events ================= */
+document.addEventListener('click',function(e){var t=e.target;
+ if(t.closest('#ssoBtn')){toast('Redirecting to the identity provider…');setTimeout(enter,500);return}
+ if(t.closest('#signout')){try{sessionStorage.removeItem('xodus.dm.session')}catch(x){}XS.set('xodus.dm.session','null',true);render();return}
+ var v=t.closest('[data-v]');if(v){V.view=v.dataset.v;V.confirm='';V.edit={};if(V.view=='platform'){V.level='platform';V.sec='brand';V.home.platform=true}if(V.view=='config'){V.level='migration';V.sec='profile';V.home.migration=true}render();window.scrollTo({top:0});return}
+ var go=t.closest('[data-go]');if(go){if(go.dataset.go=='team'){V.view='team'}else{V.view='config';V.level='migration';openSec('migration',go.dataset.go)}render();window.scrollTo({top:0});return}
+ var rl=t.closest('[data-rule]');if(rl&&XS.role()=='VS'){var rs=rulesOf(),i=+rl.dataset.i,a0=rl.dataset.rule;if(a0=='accept'||a0=='activate')rs[i].status='Active';else if(a0=='retire')rs[i].status='Retired';else if(a0=='reject'||a0=='delete')rs.splice(i,1);render();return}
+ var s=t.closest('[data-s]');if(s){V.view='stage';V.stage=s.dataset.s;render();window.scrollTo({top:0});return}
+ var hm=t.closest('[data-home]');if(hm){V.home[V.level]=true;V.edit={};render();window.scrollTo({top:0});return}
+ var op2=t.closest('[data-open]');if(op2){V.home[V.level]=false;V.sec=op2.dataset.open;V.edit={};render();window.scrollTo({top:0});return}
+ var ed=t.closest('[data-edit]');if(ed){var ek=ed.dataset.edit;V.edit[ek]=!V.edit[ek];var y3=window.scrollY;render();window.scrollTo(0,y3);return}
+ var sc=t.closest('[data-sec]');if(sc){V.sec=sc.dataset.sec;V.edit={};render();window.scrollTo({top:0});return}
+ var pn=t.closest('[data-pn]');if(pn&&!t.closest('.rt')){var pk=pn.dataset.pn;V.pn[pk]=V.pn[pk]===false;var y=window.scrollY;render();window.scrollTo(0,y);return}
+ var pa=t.closest('[data-pnall]');if(pa){var open=pa.dataset.pnall=='open';document.querySelectorAll('#cfgBody [data-pn]').forEach(function(h){V.pn[h.dataset.pn]=open});var y2=window.scrollY;render();window.scrollTo(0,y2);return}
+ var md=t.closest('[data-md]');if(md){e.stopPropagation();showMd(md.dataset.md);return}
+ var sk=t.closest('[data-skill]');if(sk&&EDIT('migration')){var i=+sk.dataset.skill;M().skills[i].on=!M().skills[i].on;render();return}
+ var op=t.closest('[data-opt]');if(op&&EDIT(V.level)){setp(op.dataset.opt,op.dataset.val=='true'?true:op.dataset.val=='false'?false:isNaN(+op.dataset.val)||op.dataset.val===''?op.dataset.val:op.dataset.val);render();return}
+ var cn=t.closest('[data-conn]');if(cn&&EDIT('platform')){var p=cn.dataset.conn.split(':'),arr=p[0]=='source'?P().sourceConnectors:P().targetConnectors;arr[+p[1]].status=arr[+p[1]].status=='connected'?'disconnected':'connected';render();return}
+ var rn=t.closest('[data-run],[data-cmrun]');if(rn){if(rn.dataset.run){V.run=+rn.dataset.run}else{V.cmc=+rn.dataset.cmrun}render();return}
+ var cd=t.closest('[data-code]');if(cd){CODEOPEN[cd.dataset.code]=!CODEOPEN[cd.dataset.code];var y=window.scrollY;render();window.scrollTo(0,y);return}
+ var a=t.closest('[data-act]');if(!a)return;var act=a.dataset.act,r=XS.role(),id=V.stage;
+
+ if(act=='startrun'){var q=XS.startRun(r);toast(q.msg);V.run=null;render();return}
+ if(act=='reviseb'){var q2=XS.reviseBundle(r);toast(q2.msg);if(q2.ok){V.stage='M4';V.view='stage'}render();window.scrollTo({top:0});return}
+ if(act=='newws'){V.newws=!V.newws;render();return}
+ if(act=='createws'){var nm=document.getElementById('nw-name').value.trim();if(!nm){toast('Enter a migration name');return}
+  var firm=document.getElementById('nw-firm').value.trim()||nm,wave=document.getElementById('nw-wave').value.trim()||'Wave 1',env=document.getElementById('nw-env').value,cut=document.getElementById('nw-cut').value;
+  var t=clone(DEF.workspaces[0].migration),code=(nm.replace(/[^A-Za-z ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(function(x){return x.slice(0,7)}).join('-')||'NEW').toUpperCase()+'-W'+((wave.match(/\d+/)||['1'])[0]);
+  t.profile={name:nm,code:code,firm:firm,wave:wave,owner:XS.PEOPLE.IL,environment:env,cutover:cut,description:'',type:'parallel-run'};
+  t.sources.forEach(function(x){x.enabled=false});t.zones.prefix=code.toLowerCase();t.team=[{initials:'AC',name:XS.PEOPLE.IL,email:'avery.chen@simplicitygroup.com',role:'IMO lead',scope:'Workspace owner'}];t.validation={rules:[]};
+  var id='ws-'+Date.now();work.workspaces.push({id:id,status:'draft',migration:t});V.newws=false;V.ws=id;V.view='config';V.level='migration';openSec('migration','profile');toast('Draft workspace created');render();return}
+ if(act=='openws'){V.ws=a.dataset.id;V.view='overview';render();window.scrollTo({top:0});return}
+ if(act=='editws'){V.ws=a.dataset.id;V.view='config';V.level='migration';openSec('migration','profile');render();window.scrollTo({top:0});return}
+ if(act=='archive'||act=='delws'){var key=act+':'+a.dataset.id;if(V.confirm!=key){V.confirm=key;render();return}V.confirm='';var wi=work.workspaces.filter(function(x){return x.id==a.dataset.id})[0];
+  if(act=='archive'){wi.was=wi.status;wi.status='archived';toast('Workspace archived')}else if(wi.status!='running'){work.workspaces=work.workspaces.filter(function(x){return x.id!=wi.id});toast('Workspace deleted')}
+  if(V.ws==a.dataset.id)V.ws=null;render();return}
+ if(act=='restore'){var wr=work.workspaces.filter(function(x){return x.id==a.dataset.id})[0];wr.status=wr.was||'draft';toast('Workspace restored');render();return}
+ if(act=='markready'){var wm=WS();if(readiness(wm).done==readiness(wm).total){wm.status='ready';toast('Marked ready for the first run');render()}return}
+ if(act=='genrules'&&XS.role()=='VS'){var rs2=rulesOf(),add=0;VGEN.forEach(function(g){if(!rs2.some(function(r){return r.name==g.name})){rs2.push({id:nextRuleId(),name:g.name,entity:g.entity,measure:g.measure,tol:g.tol,sev:g.sev,source:'Generated',status:'Proposed'});add++}});toast(add?('The agent proposed '+add+' rule'+(add==1?'':'s')):'No new rules to propose');render();return}
+ if(act=='addrule'&&XS.role()=='VS'){var rn=document.getElementById('vr-name').value.trim();if(!rn){toast('Enter a rule name');return}rulesOf().push({id:nextRuleId(),name:rn,entity:document.getElementById('vr-ent').value,measure:document.getElementById('vr-mea').value,tol:document.getElementById('vr-tol').value.trim()||'exact',sev:document.getElementById('vr-sev').value,source:'Authored',status:'Active'});toast('Rule added');render();return}
+ if(act=='addmember'){var nm=document.getElementById('tmn').value.trim(),em=document.getElementById('tme').value.trim(),rl=document.getElementById('tmr').value;if(!nm){toast('Enter a name');return}M().team.push({initials:initials(nm),name:nm,email:em||(nm.toLowerCase().replace(/\s+/g,'.')+'@simplicitygroup.com'),role:rl,scope:TEAMSCOPE[rl]||''});render();return}
+ if(act=='rmmember'){M().team.splice(+a.dataset.i,1);render();return}
+ if(act=='approve'){var res=XS.approve(id,r);toast(res.msg);render();return}
+ if(act=='changes'){XS.changes(id,r);toast('Sent back to the agent');render();return}
+ if(act=='finish'){XS.finish(id);toast('Agent finished. Ready for review.');render();return}
+ if(act=='save'){saved=clone(work);XS.set('xodus.dm.cfg2',JSON.stringify(saved));toast('Saved');saveBar();return}
+ if(act=='discard'){work=clone(saved);render();return}
+ if(act=='reset'){if(V.view=='platform'){work.platform=clone(DEF.platform)}else if(WS()){var tpl=clone(DEF.workspaces[0].migration);if(WS().id!='ws-corecap'){tpl.profile=WS().migration.profile;tpl.team=WS().migration.team;tpl.validation=WS().migration.validation;tpl.sources.forEach(function(x){x.enabled=false})}WS().migration=tpl}toast('Reset. Save to keep it.');render();return}
+ if(act=='export'){showJson();return}
+ if(act=='closemodal'){document.getElementById('modalHost').innerHTML='';return}
+ if(act=='copyjson'){var tx=document.getElementById('jsonpre').textContent;try{navigator.clipboard.writeText(tx).then(function(){toast('Copied')},function(){toast('Select the text to copy')})}catch(x){toast('Select the text to copy')}}});
+document.addEventListener('keydown',function(e){if((e.key=='Enter'||e.key==' ')&&e.target.matches&&e.target.matches('[data-opt],[data-skill],[data-pn]')){e.preventDefault();e.target.click()}});
+document.addEventListener('input',function(e){var t=e.target;if(!t.dataset||!t.dataset.bind||t.type=='checkbox'||t.dataset.sel||t.type=='file')return;if(!EDIT(V.level))return;
+ var v=t.dataset.num?(t.value===''?0:parseFloat(t.value)):t.value;setp(t.dataset.bind,v);
+ saveBar()});
+document.addEventListener('change',function(e){var t=e.target;if(t.dataset&&t.dataset.cmp){V[t.dataset.cmp]=+t.value;render();return}if(!t.dataset||!t.dataset.bind||!EDIT(V.level))return;
+ if(t.dataset.bool){setp(t.dataset.bind,t.checked);render();return}
+ if(t.dataset.sel){var val=t.value,n=+val;setp(t.dataset.bind,(val!==''&&!isNaN(n)&&/^\d+$/.test(val))?n:val);render();return}});
+function md2h(s){return s.split('\n').map(function(l){if(l.indexOf('# ')==0)return '<h3>'+esc(l.slice(2))+'</h3>';if(l.indexOf('- ')==0)return '<li>'+esc(l.slice(2))+'</li>';return l.trim()?'<p>'+esc(l)+'</p>':''}).join('').replace(/(<li>.*?<\/li>)+/g,function(m){return '<ul>'+m+'</ul>'})}
+function showMd(id){var sk=M().skills.filter(function(x){return x.id==id})[0];document.getElementById('modalHost').innerHTML='<div class="modal-bg" data-act="closemodal"><div class="modal" onclick="event.stopPropagation()"><div class="modal-h"><span>'+esc(sk?sk.file:'skill.md')+'</span><button class="btn g sm" data-act="closemodal" type="button">Close</button></div><div class="modal-b">'+md2h(SKILLMD[id]||'# Skill pack\n\nNo definition authored yet.')+'</div></div></div>'}
+function showJson(){var j=JSON.stringify(V.view=='platform'?work.platform:M(),function(k,v){return (typeof v=='string'&&v.indexOf('data:')==0)?'(image data)':v},2);document.getElementById('modalHost').innerHTML='<div class="modal-bg" data-act="closemodal"><div class="modal" onclick="event.stopPropagation()"><div class="modal-h"><span>Configuration JSON</span><span><button class="btn g sm" data-act="copyjson" type="button">Copy</button> <button class="btn g sm" data-act="closemodal" type="button">Close</button></span></div><div class="modal-b"><p class="fh">This object is the contract for a real backend.</p><pre id="jsonpre">'+esc(j)+'</pre></div></div></div>'}
+render();
+</script></body></html>

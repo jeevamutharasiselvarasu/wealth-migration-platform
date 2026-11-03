@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" data-trole="{{ trole|default('IL') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -14,6 +14,7 @@
     {# Fallback while pages are converted: Tailwind utilities and the previous xa-* styles keep unconverted markup working. #}
     <link rel="stylesheet" href="/static/legacy.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/assistant.css">
 </head>
 <body>
 <a class="xa-skip" href="#main-content">Skip to content</a>
@@ -78,6 +79,10 @@
     <div class="sh">Setup inputs</div>
     <a href="/target-mapping" class="nv {% if path == '/target-mapping' %}on{% endif %}" {% if path == '/target-mapping' %}aria-current="page"{% endif %}>Target mapping</a>
     <a href="/firm-knowledge" class="nv {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
+    <div class="sh">Workspace views</div>
+    <a href="/migration-workspaces?view=workspaces" class="nv">Migration workspaces</a>
+    <a href="/migration-workspaces?view=command" class="nv">Command center</a>
+    <a href="/migration-workspaces?view=validation" class="nv">Validation rules</a>
     <div class="sh">Pilot scope</div>
     <div class="scope"><span>Account</span><span>Household</span><span>Client</span></div>
     <div class="fh" style="color:#8FA9BC;padding:6px 10px">Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>
@@ -240,5 +245,6 @@
   window.addEventListener("resize", size); window.addEventListener("load", size);
 })();
 </script>
+<script src="/static/assistant.js"></script>
 </body>
 </html>

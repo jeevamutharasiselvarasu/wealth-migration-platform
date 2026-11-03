@@ -1,0 +1,26 @@
+/* Meeting assistant, from the Xodus suite template. Scoped to #mdr so it cannot restyle page elements. */
+.mfab{position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:max(18px,env(safe-area-inset-bottom,0px));z-index:70;background:var(--navy-900);color:#fff;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:13px;box-shadow:var(--shadow);display:flex;gap:9px;align-items:center}
+.mfab i{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(39,201,120,.25)}
+.mdr{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);z-index:80;background:var(--panel);border-left:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.25);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .25s;padding-top:env(safe-area-inset-top,0px)}
+.mdr.open{transform:none}
+.mdr-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.mdr-h strong{color:var(--head);font-size:15px}
+.mdr-h small{display:block;color:var(--muted);font-size:11px}
+.mdr-b{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.mdr .tabs{padding:10px 16px;border-bottom:1px solid var(--line)}
+#mdr .msg{font-size:12.5px;padding:10px 12px;border-radius:13px;max-width:94%}
+#mdr .msg.u{align-self:flex-end;background:var(--navy-900);color:#fff}
+#mdr .msg.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+#mdr .msg .src{margin-top:7px;display:flex;gap:5px;flex-wrap:wrap}
+#mdr .msg .src span{font-size:10px;font-weight:700;padding:3px 7px;border-radius:99px;background:var(--tint-c);color:var(--ink-c)}
+.mdr-f{padding:12px 16px 16px;border-top:1px solid var(--line);display:grid;gap:8px}
+.mdr-f .row{display:flex;gap:8px}
+.mdr-f input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:11px;padding:10px 12px;font-size:12.5px}
+#mdr .chips{display:flex;gap:6px;flex-wrap:wrap}
+#mdr .qchip{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:6px 10px;font-size:11px;font-weight:600;color:var(--muted)}
+#mdr .qchip:hover{border-color:var(--cyan);color:var(--ink-c)}
+#mdr .mtg{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg);display:grid;gap:6px}
+#mdr .mtg strong{color:var(--head);font-size:13px}
+#mdr .mtg small{color:var(--muted)}
+#mdr .ins{border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:12px;padding:11px 13px;background:var(--bg);font-size:12.5px}
+#mdr .ins b{display:block;color:var(--head);margin-bottom:3px}

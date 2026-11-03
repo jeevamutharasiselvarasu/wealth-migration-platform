@@ -125,3 +125,5 @@ body h1,body h2,body h3,body h4{font-weight:700}
 :root{--xh:0px}
 /* Spaces other than Data Migration have no rail. */
 .app.solo{grid-template-columns:1fr;max-width:1100px}
+/* Legacy 9px captions (Source discovery) are raised to the template's smallest readable size. */
+.xa-legacy [class*="text-[9px]"],.xa-legacy [style*="font-size:9px"]{font-size:10.5px !important}
