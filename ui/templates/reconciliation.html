@@ -9,11 +9,18 @@
     </nav>
     <div class="ph">
         <div>
-            <div class="ey dm">Transformed · stages 05 and 06</div>
+            <div class="ey dm">Stages 05 and 06 · Data plane · Execution and Reconciliation</div>
             <h1>Mapping Validation Review</h1>
             <p>Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
         </div>
+        <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">Data plane</span></div>
     </div>
+    <div class="ins"><b>Data plane.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>
+    {% if progress %}<section class="kpis" aria-label="Validation summary">
+        <div class="kpi"><small>Mappings approved</small><b>{{ progress.mappings_approved }}</b><span>ready to run</span></div>
+        <div class="kpi"><small>Proposals waiting</small><b>{{ progress.proposals_pending }}</b><span>not yet in a run</span></div>
+        <div class="kpi"><small>Files confirmed</small><b>{{ progress.files_confirmed }} / {{ progress.files_total }}</b><span>{{ progress.files_pending }} awaiting review</span></div>
+    </section>{% endif %}
 
     <section class="card">
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px">
