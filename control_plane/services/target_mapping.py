@@ -180,7 +180,8 @@ def revise(conn: sqlite3.Connection, target_mapping_id: str, reviewer: str, reas
 
 
 def review(conn: sqlite3.Connection, target_mapping_id: str, decision: str, reviewer: str,
-           comments: str, rule_override: str = "") -> Dict[str, Any]:
+           comments: str, rule_override: str = "", canonical_override: str = "",
+           known_fields: Optional[List[str]] = None) -> Dict[str, Any]:
     from agents.discovery.schema_mapper_agent import SchemaMapperAgent
     ensure_table(conn)
     row = conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = ?", (target_mapping_id,)).fetchone()
@@ -194,18 +195,31 @@ def review(conn: sqlite3.Connection, target_mapping_id: str, decision: str, revi
     if decision == "REJECTED" and not comments.strip():
         raise ValueError("A rejection reason is required.")
     expression = row["transformation_expression"]
+    canonical = row["canonical_field"]
+    comments = comments.strip()
     if decision == "APPROVED":
-        if not row["canonical_field"]:
-            raise ValueError("No canonical source field is proposed for this target field; it cannot be approved.")
+        new_canonical = (canonical_override or "").strip()
+        if new_canonical and new_canonical != canonical:
+            if known_fields is not None and new_canonical not in known_fields:
+                raise ValueError(f"'{new_canonical}' is not a canonical {row['entity_name']} field.")
+            comments = f"Canonical source changed from {canonical or 'none'} to {new_canonical}. {comments}".strip()
+            canonical = new_canonical
+        if not canonical:
+            raise ValueError("No canonical source field is proposed for this target field; choose one to approve it.")
         override = rule_override.strip().upper()
         if override:
-            if not SchemaMapperAgent.supports_transformation(override):
-                raise ValueError(f"'{override}' is not an approved, registered transformation.")
+            from control_plane.services import transformation_rules
+            exact = (transformation_rules.approved_rule_for_expression(override) is not None
+                     if transformation_rules.parse_expression(override)
+                     else override in SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS)
+            if not exact:
+                raise ValueError(f"'{override}' is not a registered transformation. Pick one from the list, or author and approve it "
+                                 "first on the Transformation Rules page; typed text is never executed.")
             expression = override
     conn.execute(
-        "UPDATE target_mappings SET status = ?, reviewer = ?, review_comments = ?, reviewed_utc = ?, transformation_expression = ? "
-        "WHERE target_mapping_id = ? AND status = 'PROPOSED'",
-        (decision, reviewer, comments.strip(), datetime.now(timezone.utc).isoformat(), expression, target_mapping_id))
+        "UPDATE target_mappings SET status = ?, reviewer = ?, review_comments = ?, reviewed_utc = ?, transformation_expression = ?, "
+        "canonical_field = ? WHERE target_mapping_id = ? AND status = 'PROPOSED'",
+        (decision, reviewer, comments, datetime.now(timezone.utc).isoformat(), expression, canonical, target_mapping_id))
     return dict(conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = ?", (target_mapping_id,)).fetchone())
 
 

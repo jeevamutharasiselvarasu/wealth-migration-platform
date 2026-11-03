@@ -1002,6 +1002,8 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "can_discover": user["role"] in DISCOVERY_ROLES,
             "can_answer_rfi": user["role"] in DEFINITION_ROLES,
             "approved_rules": transformation_rules.approved_rules(),
+            "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
+            "canonical_fields": _canonical_field_lists(),
             "firm_context": state_store.questionnaire_data,
             "pipeline_run": latest_run,
             "source_files": source_files,
@@ -1707,6 +1709,19 @@ CHANGE_DECISIONS = {"APPROVED", "REJECTED", "DEFERRED"}
 # ---------------------------------------------------------------------------
 # Canonical-to-target mapping (forward only, demo target spec, no target loading)
 # ---------------------------------------------------------------------------
+def _typed_rule_ok(expression: str) -> bool:
+    """A rule a reviewer picked or typed must be exactly a built-in transformation or an APPROVED pinned rule version.
+    Free text is never executed: anything else has to be authored and approved on the Transformation Rules page."""
+    expr = str(expression or "").strip().upper()
+    if transformation_rules.parse_expression(expr):
+        return transformation_rules.approved_rule_for_expression(expr) is not None
+    return expr in SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS
+
+
+_RULE_NOT_REGISTERED = ("'{rule}' is not a registered transformation. Pick one from the list, or author and approve it first on the "
+                        "Transformation Rules page; typed text is never executed.")
+
+
 def _canonical_field_lists() -> Dict[str, List[str]]:
     try:
         cfg = load_firm_config()
@@ -1762,7 +1777,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
-        "approved_rules": transformation_rules.approved_rules(), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
+        "approved_rules": transformation_rules.approved_rules(), "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
@@ -2282,13 +2297,17 @@ async def review_selected_target_mappings(request: Request):
     done, failed = 0, []
     conn = get_db_connection()
     try:
-        labels = {r["target_mapping_id"]: f"{r['entity_name']}.{r['target_field']}" for r in conn.execute(
-            "SELECT target_mapping_id, entity_name, target_field FROM target_mappings").fetchall()}
+        _tm_rows = conn.execute("SELECT target_mapping_id, entity_name, target_field FROM target_mappings").fetchall()
+        labels = {r["target_mapping_id"]: f"{r['entity_name']}.{r['target_field']}" for r in _tm_rows}
+        labels_entity = {r["target_mapping_id"]: r["entity_name"] for r in _tm_rows}
         for tid in ids:
             note = str(form.get("note::" + tid, "")).strip() or common
             rule = str(form.get("rule::" + tid, "")).strip()
+            canon = str(form.get("canonical::" + tid, "")).strip()
             try:
-                row = target_mapping.review(conn, tid, decision, user["name"], note, rule if decision == "APPROVED" else "")
+                row = target_mapping.review(conn, tid, decision, user["name"], note, rule if decision == "APPROVED" else "",
+                                            canon if decision == "APPROVED" else "",
+                                            _canonical_field_lists().get(labels_entity.get(tid, ""), []))
             except (LookupError, ValueError) as exc:
                 failed.append(f"{labels.get(tid, tid[-6:])}: {exc}")
                 continue
@@ -2364,7 +2383,9 @@ async def review_selected_source_mappings(request: Request):
         note = str(form.get("note::" + sid, "")).strip() or common
         rule = str(form.get("rule::" + sid, "")).strip()
         try:
-            await review_source_mapping_suggestion(sid, decision, user["name"], note, rule if decision == "APPROVED" else "", None)
+            await review_source_mapping_suggestion(
+                sid, decision, user["name"], note, rule if decision == "APPROVED" else "", request=None,
+                canonical_override=str(form.get("canonical::" + sid, "")).strip() if decision == "APPROVED" else "")
             done += 1
         except HTTPException as exc:
             failed.append(f"{labels.get(sid, sid[-6:])}: {exc.detail}")
@@ -3561,6 +3582,7 @@ async def review_source_mapping_suggestion(
     comments: str = Form(""),
     rule_override: str = Form(""),
     request: Request = None,
+    canonical_override: str = Form(""),
 ):
     """Record an explicit approve/reject decision and prevent repeat review."""
     if request is not None:
@@ -3589,12 +3611,24 @@ async def review_source_mapping_suggestion(
             raise HTTPException(status_code=404, detail="Mapping suggestion was not found.")
         if row["status"] != "PENDING":
             raise HTTPException(status_code=409, detail=f"Mapping suggestion is already {row['status']}.")
+        canonical_field = row["canonical_field"]
+        change_note = ""
+        new_canonical = canonical_override.strip() if isinstance(canonical_override, str) else ""
+        if normalized == "APPROVED" and new_canonical and new_canonical != canonical_field:
+            if new_canonical not in _canonical_field_lists().get(row["entity_name"], []):
+                conn.rollback()
+                raise HTTPException(status_code=400, detail=f"'{new_canonical}' is not a canonical {row['entity_name']} field.")
+            conn.execute("UPDATE mapping_suggestions SET canonical_field = ? WHERE suggestion_id = ? AND status = 'PENDING'",
+                         (new_canonical, suggestion_id))
+            change_note = f"Canonical field changed from {canonical_field or 'none'} to {new_canonical}."
+            canonical_field = new_canonical
+        comments = (change_note + " " + comments).strip() if change_note else comments
         proposed_expression = str(row["proposed_rule"] or "DIRECT_COPY").strip().upper()
         override = rule_override.strip().upper() if isinstance(rule_override, str) else ""
         if normalized == "APPROVED" and override:
-            if not transformation_rules.approved_rule_for_expression(override):
+            if not _typed_rule_ok(override):
                 conn.rollback()
-                raise HTTPException(status_code=400, detail=f"'{override}' is not an approved transformation rule version.")
+                raise HTTPException(status_code=400, detail=_RULE_NOT_REGISTERED.format(rule=override))
             proposed_expression = override
             conn.execute("UPDATE mapping_suggestions SET proposed_rule = ? WHERE suggestion_id = ? AND status = 'PENDING'", (override, suggestion_id))
         if normalized == "APPROVED" and not SchemaMapperAgent.supports_transformation(proposed_expression):
@@ -3616,7 +3650,7 @@ async def review_source_mapping_suggestion(
         )
         # Only an explicit approval creates a reusable, migration-scoped rule.
         # Rejections are auditable but never become confirmed canonical mappings.
-        if normalized == "APPROVED" and row["canonical_field"]:
+        if normalized == "APPROVED" and canonical_field:
             conn.execute(
                 """
                 INSERT INTO canonical_mappings
@@ -3635,7 +3669,7 @@ async def review_source_mapping_suggestion(
                 (
                     f"MAP-{row['migration_id']}-{row['entity_name']}-{row['source_field']}",
                     row["migration_id"], row["entity_name"], row["source_field"],
-                    row["canonical_field"], proposed_expression,
+                    canonical_field, proposed_expression,
                     float(row["confidence_score"] or 0.0), reviewer_name, now,
                 ),
             )
@@ -3649,7 +3683,7 @@ async def review_source_mapping_suggestion(
         ).fetchone()
         conn.commit()
         _sync_mapping_information_requests(str(row["migration_id"]))
-        publish_event("MAPPING_REVIEWED", str(row["migration_id"]), "mapping_suggestion", suggestion_id, {"entity": row["entity_name"], "source_field": row["source_field"], "canonical_field": row["canonical_field"], "decision": normalized}, reviewer_name)
+        publish_event("MAPPING_REVIEWED", str(row["migration_id"]), "mapping_suggestion", suggestion_id, {"entity": row["entity_name"], "source_field": row["source_field"], "canonical_field": canonical_field, "decision": normalized}, reviewer_name)
         if request is not None and "text/html" in request.headers.get("accept", ""):
             return RedirectResponse(url="/agent-pipeline", status_code=status.HTTP_303_SEE_OTHER)
         return JSONResponse({"status": "SUCCESS", "suggestion": dict(updated)})

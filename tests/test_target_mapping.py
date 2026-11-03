@@ -102,7 +102,7 @@ def test_review_requires_reason_and_rejects_unapproved_rules_and_repeat_decision
     m = {(x["entity_name"], x["target_field"]): x for x in tm.list_mappings(conn, "MIG-T", spec)}[("Account", "SIMP_ACCT_MASTER.CUSTODIAN_CD")]
     with pytest.raises(ValueError, match="rejection reason"):
         tm.review(conn, m["target_mapping_id"], "REJECTED", "Ann", "")
-    with pytest.raises(ValueError, match="not an approved"):
+    with pytest.raises(ValueError, match="not a registered transformation"):
         tm.review(conn, m["target_mapping_id"], "APPROVED", "Ann", "ok", "RULE:NOPE@1")
     done = tm.review(conn, m["target_mapping_id"], "APPROVED", "Ann", "ok", "TRIM")
     assert done["status"] == "APPROVED" and done["transformation_expression"] == "TRIM" and done["reviewer"] == "Ann"
@@ -780,3 +780,23 @@ def test_reopening_an_approved_mapping_lets_a_later_rule_be_applied_and_keeps_hi
     conn.execute("DELETE FROM target_mapping_history WHERE revision_reason = 'back to a plain copy'")
     hist = conn.execute("SELECT prior_status, prior_expression, prior_reviewer, prior_comments, revision_reason FROM target_mapping_history").fetchall()
     assert [tuple(h) for h in hist] == [("APPROVED", "DIRECT_COPY", "Ann", "ok", "custodian codes need the value map")]
+
+
+def test_reviewer_can_change_the_canonical_source_and_type_only_registered_rules(conn, spec):
+    tm.propose(conn, "MIG-T", {**CANON, "Client": ["CLIENT_ID", "LEGAL_NAME"]}, spec)
+    conn.commit()
+    rows = {(x["entity_name"], x["target_field"]): x for x in tm.list_mappings(conn, "MIG-T", spec)}
+    acct = rows[("Account", "SIMP_ACCT_MASTER.OPENED_ON")]            # inferred OPEN_DATE
+    known = CANON["Account"]
+    with pytest.raises(ValueError, match="not a canonical Account field"):
+        tm.review(conn, acct["target_mapping_id"], "APPROVED", "Ann", "", "", "NOT_A_FIELD", known)
+    with pytest.raises(ValueError, match="not a registered transformation"):
+        tm.review(conn, acct["target_mapping_id"], "APPROVED", "Ann", "", "UPPERCASE (DROP TABLE)", "", known)  # free text is never executed
+    changed = tm.review(conn, acct["target_mapping_id"], "APPROVED", "Ann", "wrong source", "uppercase", known[0], known)
+    assert changed["canonical_field"] == known[0] and changed["transformation_expression"] == "UPPERCASE"
+    assert changed["review_comments"].startswith(f"Canonical source changed from OPEN_DATE to {known[0]}")
+    # a field with no inferred source can be approved once the reviewer chooses one
+    gap = rows[("Client", "SIMP_CUSTOMER_TAX.TAX_NO")]
+    assert gap["canonical_field"] is None and gap["status"] == "PROPOSED"
+    done = tm.review(conn, gap["target_mapping_id"], "APPROVED", "Ann", "", "", "LEGAL_NAME", ["CLIENT_ID", "LEGAL_NAME"])
+    assert done["status"] == "APPROVED" and done["canonical_field"] == "LEGAL_NAME"

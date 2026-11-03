@@ -762,3 +762,42 @@ def test_source_files_are_confirmed_as_a_table_and_errors_name_the_file(tmp_path
     assert records["accounts.csv"]["inference_approval_status"] == "APPROVED"
     assert records["accounts.csv"]["inference_review"]["comments"] == "custodian extract"
     assert records["households.csv"]["inference_approval_status"] != "APPROVED"
+
+
+def test_source_review_lets_the_reviewer_change_the_canonical_field_and_type_a_registered_rule(tmp_path, monkeypatch):
+    import sqlite3
+
+    import httpx
+
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "srcedit")
+    assert _post_setup(app_module, session_id).status_code == 303
+    active = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "srcedit.db")
+    for sid, src, canon in (("E-1", "ACCT_X", "ACCT_NUM"), ("E-2", "KIND_X", "REG_TYPE"), ("E-3", "NOTE_X", "REP_CODE"), ("E-4", "OTHER_X", "OPEN_DATE")):
+        conn.execute("INSERT INTO mapping_suggestions (suggestion_id, run_id, migration_id, entity_name, source_field, "
+                     "canonical_field, proposed_rule, confidence_score, status, created_utc) "
+                     "VALUES (?, 'R', ?, 'Account', ?, ?, 'DIRECT_COPY', 0.2, 'PENDING', '2026-01-01')", (sid, active, src, canon))
+    conn.commit()
+
+    async def post(data):
+        app_module.session_mgr.active_sessions[session_id]["role"] = "Migration Analyst"
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": session_id}) as client:
+            page = await client.get("/agent-pipeline")
+            res = await client.post("/api/mapping-suggestions/review-selected", data=data, follow_redirects=False, headers={"accept": "text/html"})
+            return page.text, res
+
+    page, bad_field = asyncio.run(post({"ids": ["E-1"], "decision": "APPROVED", "canonical::E-1": "NOT_A_FIELD"}))
+    assert 'name="canonical::E-1"' in page and 'name="rule::E-1"' in page and 'id="rule-options"' in page  # offered at any confidence
+    assert "not+a+canonical+Account+field" in bad_field.headers["location"]
+    _, bad_rule = asyncio.run(post({"ids": ["E-1"], "decision": "APPROVED", "rule::E-1": "x; DROP TABLE y"}))
+    assert "not+a+registered+transformation" in bad_rule.headers["location"]
+    status = lambda sid: conn.execute("SELECT status, canonical_field, proposed_rule, review_comments FROM mapping_suggestions WHERE suggestion_id = ?", (sid,)).fetchone()
+    assert status("E-1")[0] == "PENDING"  # nothing half-applied
+    _, ok = asyncio.run(post({"ids": ["E-2", "E-3"], "decision": "APPROVED", "canonical::E-2": "BALANCE", "rule::E-2": "uppercase", "note::E-2": "it is a balance"}))
+    assert "notice=2+approved" in ok.headers["location"]
+    st = status("E-2")
+    assert st[0] == "APPROVED" and st[1] == "BALANCE" and st[2] == "UPPERCASE" and st[3].startswith("Canonical field changed from REG_TYPE to BALANCE.")
+    mapped = dict(conn.execute("SELECT source_field, canonical_field FROM canonical_mappings WHERE is_confirmed = 1").fetchall())
+    assert mapped["KIND_X"] == "BALANCE" and mapped["NOTE_X"] == "REP_CODE"
+    conn.close()
