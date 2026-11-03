@@ -133,6 +133,7 @@ td.r,th.r{text-align:right}
 .mtg small{color:var(--muted)}
 .ins{border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:12px;padding:11px 13px;background:var(--bg);font-size:12.5px}
 .ins b{display:block;color:var(--head);margin-bottom:3px}
+.ins.inl b{display:inline;margin:0}
 .conn{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);font-size:12.5px}
 @media(max-width:1020px){.kpis{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}}
 @media(max-width:620px){.kpis{grid-template-columns:1fr 1fr}}

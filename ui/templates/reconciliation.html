@@ -150,7 +150,7 @@
             {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Target system &amp; mapping first.</span>{% endif %}
             {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
         </div>
-        <div class="ins" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim">
+        <div class="ins inl" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="text-xs text-[#41506B]"><b class="text-[#152C6B]">Simulated Azure Data Factory</b> <span class="font-mono text-[10px] text-amber-800">SIMULATED, no Azure call</span><br>Deploys the latest <b>stored</b> ADF package into a fictitious factory (broken references, clear-text secrets and non-simulated packages are rejected), then triggers its pipeline on the simulated data plane. A real ADF client would replace this step.</div>
                 {% if can_run_validation and adf_status %}<div class="flex gap-2">
