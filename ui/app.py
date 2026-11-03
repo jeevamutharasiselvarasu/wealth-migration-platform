@@ -1179,13 +1179,13 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
 
 @app.get("/validation-rules", response_class=HTMLResponse)
 async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 05: the scenarios that extend the validation run (control plane, set up before data is executed)."""
+    """Stage 06: the scenarios that extend the validation run, defined after the data plane has executed."""
     return _validation_stage_view(request, "rules", error, notice)
 
 
 @app.get("/execution", response_class=HTMLResponse)
 async def execution_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 06: simulated data-plane execution of the deployment package."""
+    """Stage 05: simulated data-plane execution of the deployment package."""
     return _validation_stage_view(request, "execution", error, notice)
 
 
