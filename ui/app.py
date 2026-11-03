@@ -18,7 +18,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -447,6 +447,20 @@ async def tenant_settings_page(request: Request):
     return _space_page(request, "tenant.html", note)
 
 
+@app.get("/migrations", response_class=HTMLResponse)
+async def migrations_page(request: Request, notice: str = ""):
+    """All migrations of this firm: the active one and earlier ones. A finished migration can seed the next one as a template."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        items = migration_registry.list_migrations(conn, str(state_store.questionnaire_data.get("migration_id", "")))
+    finally:
+        conn.close()
+    return render_template_with_context(request, "migrations.html", {
+        "page_title": "Migration workspaces", "user_name": user["name"], "user_role": user["role"], "migrations": items,
+        "can_start": user["role"] in SETUP_ROLES, "notice": notice})
+
+
 @app.get("/migration-workspaces", response_class=HTMLResponse)
 async def migration_workspaces_page(request: Request, view: str = "workspaces"):
     """Template views the live pipeline does not have yet (workspaces list, command center, validation rules, team). Sample data."""
@@ -509,8 +523,12 @@ def _target_connection_status() -> Dict[str, Any]:
 async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = "", new_migration: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
+    template_prefill = state_store.questionnaire_data.get("migration_template") or {}
+    prefilled = bool(template_prefill) and not setup
+    if prefilled:
+        setup = template_prefill  # pre-fills the form only; nothing is in scope or approved until the setup is saved
     return render_template_with_context(request, "migration_setup.html", {
-        "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup,
+        "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup, "prefilled": prefilled,
         "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": _can_load_demo(user),
         "target_connection": _target_connection_status(),
         "demo_loaded": demo_loaded == "1", "new_migration": new_migration == "1",
@@ -524,8 +542,20 @@ async def start_new_migration(request: Request):
     """Begin a clean migration. Earlier migrations stay stored but isolated by migration_id;
     firm knowledge assets are kept because they are platform knowledge, not migration data."""
     user = get_current_user(request)
+    form = await request.form()
+    template_id = str(form.get("template_id", "")).strip()
     previous_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     migration_id = f"MIG-{uuid.uuid4().hex[:10].upper()}"
+    prefill: Dict[str, Any] = {}
+    if template_id:
+        conn = get_db_connection()
+        try:
+            prefill = migration_registry.carry_over(conn, template_id)
+        finally:
+            conn.close()
+        if not prefill:
+            raise HTTPException(status_code=404, detail="That migration has no saved setup to use as a template.")
+    state_store.questionnaire_data["migration_template"] = prefill
     state_store.entity_sample_files.clear()
     state_store.entity_source_files.clear()
     state_store.pipeline_runs.clear()
@@ -534,13 +564,13 @@ async def start_new_migration(request: Request):
     state_store.questionnaire_data["migration_id"] = migration_id
     for entity in ("Account", "Household", "Client"):
         state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
-    context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id}
+    context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id, "migration_template": prefill}
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
     publish_event(
         "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
         {"scopes": {entity: "OUT_OF_SCOPE" for entity in ("Account", "Household", "Client")}}, user["name"],
     )
-    return RedirectResponse(url="/migration-setup?new_migration=1", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/migration-setup?new_migration=1" + ("&from_template=1" if prefill else ""), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/migration/setup")
@@ -585,6 +615,8 @@ async def save_migration_setup(request: Request):
         raise HTTPException(status_code=400, detail=f"Canonical contract reference must match the configured firm contract ({firm_config.canonical_contract_ref}).")
     setup["firm_id"] = firm_config.firm_id
     setup["firm_config_version"] = firm_config.version_id
+    if (state_store.questionnaire_data.get("migration_template") or {}).get("template_migration_id"):
+        setup["template_migration_id"] = state_store.questionnaire_data["migration_template"]["template_migration_id"]
     if setup["source_acquisition"] == "AZURE_CONNECTION":
         required_azure = ["azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"]
         missing_azure = [field for field in required_azure if not setup.get(field)]

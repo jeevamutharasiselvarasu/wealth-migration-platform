@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page" style="padding-block:0">
+  <div class="ph">
+    <div>
+      <div class="ey dm">Data Migration · Migration workspaces</div>
+      <h1>Migration workspaces</h1>
+      <p>Each acquisition or conversion is its own migration with its own sources, scope, mappings and approvals. When one is finished, the next one can start from it as a template: the target, contract, scope and knowledge references are copied. Mappings, approvals and files are never copied; the new source firm is mapped and approved from scratch.</p>
+    </div>
+    {% if can_start %}<form action="/api/migration/new" method="post" onsubmit="return confirm('Start a blank migration? The current files, mappings and requests will no longer be shown (they remain stored).');"><button class="btn p" type="submit">+ New migration</button></form>{% endif %}
+  </div>
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+
+  {% for m in migrations %}
+  <section class="card" aria-label="Migration {{ m.id }}" style="border-top:3px solid {{ 'var(--blue,#0878C9)' if m.active else 'var(--line,#D8E1EE)' }}">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start">
+      <div style="min-width:0">
+        <h3 style="margin:0">{{ m.name }}</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+          <span class="chip {{ 'g' if m.active else 'c' }}">{{ 'Active' if m.active else 'Earlier' }}</span>
+          <span class="chip">{{ m.source_firm or 'Source not set' }} → {{ m.target_system or 'Target not set' }}</span>
+          {% for e in m.entities %}<span class="chip b">{{ e }}</span>{% endfor %}
+          <span class="chip mono">{{ m.id }}</span>
+        </div>
+        <p class="fh" style="margin:8px 0 0">{{ m.files }} source file event{{ '' if m.files == 1 else 's' }} · {{ m.approved_mappings }} approved mapping{{ '' if m.approved_mappings == 1 else 's' }} · set up by {{ m.created_by or 'unknown' }} on {{ m.created_utc[:10] }}{% if m.template_id %} · started from template <b>{{ m.template_name }}</b>{% endif %}</p>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        {% if m.active %}<a class="btn p sm" href="/">Open workspace</a>{% endif %}
+        {% if can_start and m.configured %}
+        <form action="/api/migration/new" method="post" onsubmit="return confirm('Start a new migration from this one as a template? The target, contract, scope and knowledge references are copied. Mappings, approvals and files are not.');">
+          <input type="hidden" name="template_id" value="{{ m.id }}"><button class="btn g sm" type="submit">Start a new migration from this</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% if not m.active %}<p class="fh" style="margin:8px 0 0">Read-only summary. Reopening an earlier migration's working state is not part of this POC; its records stay stored for audit.</p>{% endif %}
+  </section>
+  {% else %}
+  <div class="empty">No migration has been set up yet. Use Workspace configuration to set up the first one.</div>
+  {% endfor %}
+</div>
+{% endblock %}

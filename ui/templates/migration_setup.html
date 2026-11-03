@@ -25,6 +25,10 @@
   <div class="ins" role="status"><b>New migration started.</b> Source files, mappings and requests from earlier migrations are kept separately and no longer shown. Firm knowledge assets were kept. Fill in the setup below to begin.</div>
   {% endif %}
 
+  {% if prefilled %}
+  <div class="ins" role="status"><b>Pre-filled from an earlier migration.</b> The target system, contract reference, entity scope and knowledge references were copied from <span class="font-mono">{{ setup.template_migration_id }}</span>. Enter the new migration name and source firm, review the values, then save. Nothing is in scope and nothing is approved until you save, and no mappings, approvals or files are carried over.</div>
+  {% endif %}
+
   {% if can_configure %}
   <section class="card">
     <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center">
