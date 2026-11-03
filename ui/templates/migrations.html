@@ -25,8 +25,9 @@
         <p class="fh" style="margin:8px 0 0">{{ m.files }} source file event{{ '' if m.files == 1 else 's' }} · {{ m.approved_mappings }} approved mapping{{ '' if m.approved_mappings == 1 else 's' }} · set up by {{ m.created_by or 'unknown' }} on {{ m.created_utc[:10] }}{% if m.template_id %} · started from template <b>{{ m.template_name }}</b>{% endif %}</p>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        {% if m.active %}<a class="btn p sm" href="/">Open workspace</a>
-        {% elif can_start and m.configured %}<form action="/api/migration/open" method="post" data-full-reload><input type="hidden" name="migration_id" value="{{ m.id }}"><button class="btn p sm" type="submit">Open workspace</button></form>{% endif %}
+        {% if m.active %}<a class="btn p sm" href="/">Open workspace</a> <a class="btn g sm" href="/setup">Setup</a>
+        {% elif can_start and m.configured %}<form action="/api/migration/open" method="post" data-full-reload><input type="hidden" name="migration_id" value="{{ m.id }}"><button class="btn p sm" type="submit">Open workspace</button></form>
+        <form action="/api/migration/open" method="post" data-full-reload><input type="hidden" name="migration_id" value="{{ m.id }}"><input type="hidden" name="next" value="/setup"><button class="btn g sm" type="submit">Setup</button></form>{% endif %}
         {% if can_start and m.configured %}
         <form action="/api/migration/new" method="post" onsubmit="return confirm('Start a new migration from this one as a template? The target, contract, scope and knowledge references are copied. Mappings, approvals and files are not.');">
           <input type="hidden" name="template_id" value="{{ m.id }}"><button class="btn g sm" type="submit">Start a new migration from this</button>

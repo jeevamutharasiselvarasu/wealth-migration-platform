@@ -195,7 +195,9 @@ def test_exception_proposed_by_validator_approved_by_analyst_never_the_proposer(
     assert "error=" in asyncio.run(call("sid2", "Migration Analyst", "POST", decide, {"decision": "REJECTED"})).headers["location"]  # reject needs a comment
     assert "notice=" in asyncio.run(call("sid2", "Migration Analyst", "POST", decide, {"decision": "APPROVED", "comments": "accepted"})).headers["location"]
     page = asyncio.run(call("sid", "Validation Specialist", "GET", "/reconciliation")).text
-    assert "Validation scenarios" in page and "SCENARIO SCN-" in page and f"Exception {eid} APPROVED" in page and "decided by Ann" in page
+    rules_page = asyncio.run(call("sid", "Validation Specialist", "GET", "/validation-rules")).text
+    assert "Validation scenarios" in rules_page and "Validation scenarios" not in page
+    assert "SCENARIO SCN-" in page and f"Exception {eid} APPROVED" in page and "decided by Ann" in page
     row = conn.execute("SELECT status, decided_by FROM validation_exceptions").fetchone()
     assert row == ("APPROVED", "Ann")
     from control_plane.services import validation_scenarios as _vs

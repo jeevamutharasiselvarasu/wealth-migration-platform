@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% include "_setup_tabs.html" %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Data migration · Setup</div>
+      <h1>Migration setup</h1>
+      <p>Everything a migration needs before data moves: the workspace configuration, the target system and its mapping, and the firm knowledge the agents rely on. Validation rules are set in stage 05 once mappings are transformed.</p>
+    </div>
+  </div>
+  <section class="kpis" aria-label="Setup summary">
+    <div class="kpi"><small>Workspace configuration</small><b>{{ 'Saved' if configured else 'Needs setup' }}</b><span>{{ setup_entities|length }} entit{{ 'y' if setup_entities|length == 1 else 'ies' }} in scope</span></div>
+    <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if target_confirmed else 'Not confirmed' }}</b><span>{{ target_system or 'no target recorded' }}</span></div>
+    <div class="kpi"><small>Firm knowledge</small><b>{{ knowledge_saved }}</b><span>last saved</span></div>
+  </section>
+  <div class="two">
+    <section class="card"><h3>Workspace configuration</h3>
+      <p class="fh">Source firm, target system, canonical version, entities in scope and source access.</p>
+      <a class="btn p sm" href="/migration-setup">Open configuration →</a></section>
+    <section class="card"><h3>Target mapping</h3>
+      <p class="fh">One-time target setup, then canonical → target field mappings reviewed by an analyst.</p>
+      <a class="btn p sm" href="/target-mapping">Open target mapping →</a></section>
+    <section class="card"><h3>Firm knowledge</h3>
+      <p class="fh">Knowledge assets and the discovery form that give the agents firm context.</p>
+      <a class="btn p sm" href="/firm-knowledge">Open firm knowledge →</a></section>
+  </div>
+</div>
+{% endblock %}

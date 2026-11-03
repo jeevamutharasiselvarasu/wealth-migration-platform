@@ -519,6 +519,20 @@ def _target_connection_status() -> Dict[str, Any]:
     return {"config": cfg}
 
 
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_hub(request: Request):
+    """One place for the inputs a migration needs before data moves: configuration, target mapping, firm knowledge."""
+    user = get_current_user(request)
+    setup = state_store.questionnaire_data.get("migration_setup", {}) or {}
+    cfg = _target_connection_status().get("config") or {}
+    return render_template_with_context(request, "setup_hub.html", {
+        "page_title": "Setup", "user_name": user["name"], "user_role": user["role"],
+        "configured": bool(setup), "setup_entities": setup.get("entities") or [],
+        "target_confirmed": cfg.get("status") == "CONFIRMED", "target_system": setup.get("target_system", ""),
+        "knowledge_saved": state_store.questionnaire_data.get("last_updated") or "Not yet",
+    })
+
+
 @app.get("/migration-setup", response_class=HTMLResponse)
 async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = "", new_migration: str = ""):
     user = get_current_user(request)
@@ -603,7 +617,8 @@ async def open_migration_workspace(request: Request):
         publish_event("MIGRATION_CONTEXT_UPDATED", target_id, "migration", target_id, {**context, "reopened_from": current_id}, user["name"])
         state_store.hydrate_from_durable_state()
         _sync_mapping_information_requests(target_id)
-    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    destination = "/setup" if str(form.get("next", "")) == "/setup" else "/"  # fixed allow-list, never a free URL
+    return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/migration/setup")
@@ -1159,6 +1174,22 @@ async def hitl_approval_queue(request: Request):
 
 @app.get("/reconciliation", response_class=HTMLResponse)
 async def reconciliation_dashboard(request: Request, error: str = "", notice: str = ""):
+    return _validation_stage_view(request, "reconcile", error, notice)
+
+
+@app.get("/validation-rules", response_class=HTMLResponse)
+async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
+    """Stage 05: the scenarios that extend the validation run (control plane, set up before data is executed)."""
+    return _validation_stage_view(request, "rules", error, notice)
+
+
+@app.get("/execution", response_class=HTMLResponse)
+async def execution_page(request: Request, error: str = "", notice: str = ""):
+    """Stage 06: simulated data-plane execution of the deployment package."""
+    return _validation_stage_view(request, "execution", error, notice)
+
+
+def _validation_stage_view(request: Request, view: str, error: str, notice: str):
     user = get_current_user(request)
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
     conn = get_db_connection()
@@ -1245,7 +1276,8 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
         request=request,
         template_name="reconciliation.html",
         extra_context={
-            "page_title": "Validation & Exception Management",
+            "page_title": {"rules": "Validation rules", "execution": "Execution"}.get(view, "Reconciliation"),
+            "view": view,
             "user_name": user["name"],
             "user_role": user["role"],
             "pipeline_runs": state_store.pipeline_runs,
@@ -1304,14 +1336,14 @@ async def run_simulated_execution(request: Request, outage: str = Form(""), retr
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     rid, telemetry, package = _run_simulated_execution(user, migration_id, outage, retry_of)
     if rid is None:
-        return RedirectResponse(url="/reconciliation?error=" + quote_plus(telemetry) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/execution?error=" + quote_plus(telemetry), status_code=status.HTTP_303_SEE_OTHER)
     _target_setup_audit("EXECUTION_SIMULATED_RUN", user, {"run_id": rid, "package_id": package["meta"]["package_id"], "status": telemetry["status"], "retry_of": retry_of or None})
-    return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"SIMULATED run {rid}: {telemetry['status']}. No data left this platform.") + "#execution",
+    return RedirectResponse(url="/execution?notice=" + quote_plus(f"SIMULATED run {rid}: {telemetry['status']}. No data left this platform."),
                             status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _execution_redirect(key: str, message: str):
-    return RedirectResponse(url=f"/reconciliation?{key}=" + quote_plus(message) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/execution?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/adf/simulated-deploy")
@@ -1374,18 +1406,22 @@ async def review_execution_failure(request: Request, run_id: str, idx: int, deci
         try:
             res = execution_simulator.review_failure(conn, run_id, idx, decision, reason, user["name"])
         except ValueError as exc:
-            return RedirectResponse(url="/reconciliation?error=" + quote_plus(str(exc)) + "#execution", status_code=status.HTTP_303_SEE_OTHER)
+            return RedirectResponse(url="/execution?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
         conn.commit()
     finally:
         conn.close()
     f = res["failure"]
     _target_setup_audit("EXECUTION_PROBLEM_" + res["status"], user, {"run_id": run_id, "entity": f["entity"], "table": f["table"], "column": f["column"], "rule": f["rule"]})
-    return RedirectResponse(url="/reconciliation?notice=" + quote_plus(f"Problem on {f['entity']}.{f['table']}.{f['column']} marked {res['status'].lower()}.") + "#execution",
+    return RedirectResponse(url="/execution?notice=" + quote_plus(f"Problem on {f['entity']}.{f['table']}.{f['column']} marked {res['status'].lower()}."),
                             status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _validation_redirect(key: str, message: str):
-    return RedirectResponse(url=f"/reconciliation?{key}=" + quote_plus(message) + "#validation-scenarios", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/reconciliation?{key}=" + quote_plus(message) + "#validation-results", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _scenario_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/validation-rules?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/validation/scenarios")
@@ -1418,9 +1454,9 @@ async def create_validation_scenario(request: Request, entity_name: str = Form(.
         finally:
             conn.close()
     except ValueError as exc:
-        return _validation_redirect("error", str(exc))
+        return _scenario_redirect("error", str(exc))
     _target_setup_audit("VALIDATION_SCENARIO_DEFINED", user, {"scenario_id": created["scenario_id"], "check_type": check_type, "entity": entity_name, "stage": stage})
-    return _validation_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
+    return _scenario_redirect("notice", f"Scenario {created['scenario_id']} saved. It runs with the next validation run.")
 
 
 def _adf_status(conn, migration_id: str):
@@ -1467,13 +1503,13 @@ async def download_signoff_evidence(request: Request):
             approved = [dict(r) for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()]
             blocked, override = _stale_gate(conn, migration_id, request.query_params.get("stale_reason", ""))
             if blocked:
-                return _validation_redirect("error", blocked)
+                return _scenario_redirect("error", blocked)
             doc = signoff_evidence.build(conn, migration_id, user["name"], drift_detection.detect(approved, state_store.entity_source_files))
             doc["adf_package"] = _adf_reference(conn, migration_id, doc["validation_run"]["run_id"])
             if override:
                 doc["stale_package_override"] = {**override, "reviewer": user["name"]}
         except ValueError as exc:
-            return _validation_redirect("error", str(exc))
+            return _scenario_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
@@ -1491,7 +1527,7 @@ async def suggest_validation_scenarios(request: Request):
     try:
         spec = target_connector.spec(conn)
         if not spec:
-            return _validation_redirect("error", "Confirm the target system first; suggestions come from the target contract.")
+            return _scenario_redirect("error", "Confirm the target system first; suggestions come from the target contract.")
         maps = target_mapping.list_mappings(conn, migration_id, spec)
         found = validation_scenarios.suggest_defaults(spec, maps, validation_scenarios.list_scenarios(conn, migration_id))
         count = validation_scenarios.save_suggestions(conn, migration_id, found, user["name"])
@@ -1499,7 +1535,7 @@ async def suggest_validation_scenarios(request: Request):
     finally:
         conn.close()
     _target_setup_audit("VALIDATION_SCENARIOS_SUGGESTED", user, {"count": count})
-    return _validation_redirect("notice", f"{count} suggested scenario(s) added as drafts. Adopt the ones you want; drafts are not evaluated." if count else "No new suggestions: approved required fields and keys are already covered.")
+    return _scenario_redirect("notice", f"{count} suggested scenario(s) added as drafts. Adopt the ones you want; drafts are not evaluated." if count else "No new suggestions: approved required fields and keys are already covered.")
 
 
 @app.post("/api/validation/scenarios/{scenario_id}/adopt")
@@ -1510,12 +1546,12 @@ async def adopt_validation_scenario(request: Request, scenario_id: str):
         try:
             validation_scenarios.adopt_scenario(conn, scenario_id)
         except ValueError as exc:
-            return _validation_redirect("error", str(exc))
+            return _scenario_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("VALIDATION_SCENARIO_ADOPTED", user, {"scenario_id": scenario_id})
-    return _validation_redirect("notice", f"Scenario {scenario_id} adopted. It runs with the next validation run.")
+    return _scenario_redirect("notice", f"Scenario {scenario_id} adopted. It runs with the next validation run.")
 
 
 @app.post("/api/validation/scenarios/{scenario_id}/retire")
@@ -1526,12 +1562,12 @@ async def retire_validation_scenario(request: Request, scenario_id: str):
         try:
             validation_scenarios.retire_scenario(conn, scenario_id)
         except ValueError as exc:
-            return _validation_redirect("error", str(exc))
+            return _scenario_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("VALIDATION_SCENARIO_RETIRED", user, {"scenario_id": scenario_id})
-    return _validation_redirect("notice", f"Scenario {scenario_id} retired.")
+    return _scenario_redirect("notice", f"Scenario {scenario_id} retired.")
 
 
 @app.post("/api/validation/exceptions")

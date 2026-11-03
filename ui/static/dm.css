@@ -31,7 +31,7 @@
 .runh .sub{display:flex;justify-content:space-between;font-size:10.5px;color:#7F98AC;margin-top:7px}
 .zg{display:flex;align-items:center;gap:8px;margin:12px 8px 5px;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;font-weight:800;color:#7F98AC}
 .zg i{width:16px;height:3px;border-radius:9px}
-.zg.landing i{background:var(--cyan)}.zg.staged i{background:var(--green)}.zg.transformed i{background:#4DA3E8}
+.zg.landing i{background:var(--cyan)}.zg.staged i{background:var(--green)}.zg.transformed i{background:#4DA3E8}.zg.rules i{background:#E8B04D}.zg.dplane i{background:#27C978}
 .stg{display:grid;grid-template-columns:26px 1fr auto auto;gap:8px;align-items:center;width:100%;text-align:left;background:transparent;border:0;border-radius:11px;padding:8px 9px;color:#C7D8E5}
 .stg:hover{background:rgba(255,255,255,.06)}.stg.on{background:rgba(255,255,255,.11)}
 .stg .ix{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:10px;font-weight:800;background:rgba(255,255,255,.08)}

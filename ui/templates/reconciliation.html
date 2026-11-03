@@ -2,26 +2,53 @@
 
 {% block content %}
 <div class="page" style="padding-block:0">
+    {% set vtitle = {"rules": "Validation rules", "execution": "Execution"}.get(view, "Mapping Validation Review") %}
     <nav aria-label="Validation workflow navigation" class="tabs">
         <a href="/agent-pipeline" class="tab">← Mapping &amp; approvals</a>
-        <a href="/entity-sample-files" class="tab">Source inventory</a>
+        <a href="/validation-rules" class="tab {% if view == 'rules' %}on{% endif %}" {% if view == 'rules' %}aria-current="page"{% endif %}>05 Validation rules</a>
+        <a href="/execution" class="tab {% if view == 'execution' %}on{% endif %}" {% if view == 'execution' %}aria-current="page"{% endif %}>06 Execution</a>
+        <a href="/reconciliation" class="tab {% if view == 'reconcile' %}on{% endif %}" {% if view == 'reconcile' %}aria-current="page"{% endif %}>07 Reconciliation</a>
         <a href="/hitl" class="tab">Open review queue</a>
     </nav>
     <div class="ph">
         <div>
-            <div class="ey dm">Stages 05 and 06 · Data plane · Execution and Reconciliation</div>
+            {% if view == 'rules' %}
+            <div class="ey dm">Stage 05 · Control plane · Validation rules</div>
+            <h1>Validation rules</h1>
+            <p>Define the extra checks that run with every validation, after the mappings are transformed. Rules are drafted or adopted here once; they are evaluated in Reconciliation and, for post-execution checks, after Execution.</p>
+            {% elif view == 'execution' %}
+            <div class="ey dm">Stage 06 · Data plane · Execution</div>
+            <h1>Execution</h1>
+            <p>Run the latest deployment package through the simulated data plane and review telemetry and failures. Nothing is loaded into a target system in this POC.</p>
+            {% else %}
+            <div class="ey dm">Stage 07 · Data plane · Reconciliation</div>
             <h1>Mapping Validation Review</h1>
             <p>Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
+            {% endif %}
         </div>
-        <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">Data plane</span></div>
+        <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">{{ 'Control plane' if view == 'rules' else 'Data plane' }}</span></div>
     </div>
-    <div class="ins"><b>Data plane.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>
+    {% if view == 'rules' %}<div class="ins"><b>Control plane.</b> Validation rules are part of the migration setup. They are defined once and travel with the deployment package; adopting or retiring a rule is recorded in the audit log.</div>
+    {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> Executes the deployment package as many times as needed. Each run records counts, duration and the mapping or rule behind each problem.</div>
+    {% else %}<div class="ins"><b>Data plane.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>{% endif %}
+    {% if view == 'rules' %}<section class="kpis" aria-label="Validation rules summary">
+        <div class="kpi"><small>Active rules</small><b>{{ scenarios|selectattr('status','equalto','ACTIVE')|list|length }}</b><span>run with every validation</span></div>
+        <div class="kpi"><small>Drafts to review</small><b>{{ scenarios|selectattr('status','equalto','DRAFT')|list|length }}</b><span>not evaluated until adopted</span></div>
+        <div class="kpi"><small>Retired</small><b>{{ scenarios|selectattr('status','equalto','RETIRED')|list|length }}</b><span>kept for the audit trail</span></div>
+    </section>
+    {% elif view == 'execution' %}<section class="kpis" aria-label="Execution summary">
+        <div class="kpi"><small>Deployment package</small><b>{{ 'Ready' if has_package else 'Not built' }}</b><span>{{ 'latest stored package' if has_package else 'build one in Target mapping' }}</span></div>
+        <div class="kpi"><small>Runs recorded</small><b>{{ exec_runs|length }}</b><span>simulated data plane</span></div>
+    </section>
+    {% else %}
     {% if progress %}<section class="kpis" aria-label="Validation summary">
         <div class="kpi"><small>Mappings approved</small><b>{{ progress.mappings_approved }}</b><span>ready to run</span></div>
         <div class="kpi"><small>Proposals waiting</small><b>{{ progress.proposals_pending }}</b><span>not yet in a run</span></div>
         <div class="kpi"><small>Files confirmed</small><b>{{ progress.files_confirmed }} / {{ progress.files_total }}</b><span>{{ progress.files_pending }} awaiting review</span></div>
     </section>{% endif %}
+    {% endif %}
 
+    {% if view == 'reconcile' %}
     <section class="card">
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px">
             <div><h3 style="font-size:16px">Approved source-to-canonical mappings</h3>
@@ -57,18 +84,21 @@
         <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E9EFF9] p-3 text-[10px]"><span class="font-bold text-[#152C6B]">{{ run.entity_name }} · {{ run.run_id }}</span><span class="text-[#5A6A88]">{{ run.source_record_count }} records · {{ ((run.confidence_score|float)*100)|round(1) }}% confidence</span><span class="font-mono text-[#5A6A88]">{{ run.status }} · {{ run.executed_utc }}</span></div>
         {% endfor %}</div></div>{% endif %}
     </section>
-
     <section class="kpis" style="grid-template-columns:repeat(3,1fr)">
         <article class="kpi"><small>Entity scope</small><b style="font-size:18px">3 entities</b><span>Account · Household · Client</span></article>
         <article class="kpi"><small>Validation focus</small><b style="font-size:18px">Keys &amp; required fields</b><span>Completeness, uniqueness and documented relationships</span></article>
         <article class="kpi"><small>Release control</small><b style="font-size:18px;color:var(--warn)">Human review</b><span>Unresolved issues must be reviewed before approval</span></article>
     </section>
+    {% endif %}
 
     {% if error %}<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">{{ error }}</div>{% endif %}
     {% if notice %}<div class="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800" role="status">{{ notice }}</div>{% endif %}
+    {% if view in ('reconcile', 'execution') %}
     {% if drift %}<section id="source-drift" class="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-xs text-amber-900"><h2 class="text-sm font-bold">Source drift: {{ drift|length }} approved mapping(s) no longer match the source files</h2>
         <p class="mt-1">A source file was replaced or changed after these mappings were approved. Re-confirm the files or revisit the mappings before validating; nothing was changed automatically.</p>
         <ul class="mt-2 list-disc pl-5">{% for d in drift %}<li><span class="font-mono">{{ d.entity }}.{{ d.source_field }}</span> → <span class="font-mono">{{ d.canonical_field }}</span>: {{ d.detail }}</li>{% endfor %}</ul></section>{% endif %}
+    {% endif %}
+    {% if view == 'reconcile' %}
     <section id="validation-results" class="card">
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px">
             <div>
@@ -107,7 +137,8 @@
         <p class="mt-3 rounded-xl bg-[#F8FAFD] p-4 text-xs text-[#5A6A88]">No validation run recorded for this migration yet.</p>
         {% endif %}
     </section>
-
+    {% endif %}
+    {% if view == 'execution' %}
     <section id="execution" class="card">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -160,7 +191,8 @@
         </article>
         {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No executions yet.</p>{% endfor %}
     </section>
-
+    {% endif %}
+    {% if view == 'rules' %}
     <section id="validation-scenarios" class="card">
         <h3 style="font-size:16px">Validation scenarios</h3>
         <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst or Platform Admin approves (never the proposer).</p>
@@ -184,7 +216,6 @@
         </form>
         {% endif %}
     </section>
-
     <section class="card">
         <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding-bottom:12px">
             <div>
@@ -210,5 +241,6 @@
             <b>Not part of P0:</b> target load verification, target-side AUM drift gates and wave/cohort assignment. These should not be represented as passed until the corresponding future execution path exists.
         </div>
     </section>
+    {% endif %}
 </div>
 {% endblock %}

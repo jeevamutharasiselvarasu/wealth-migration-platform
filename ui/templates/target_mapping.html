@@ -2,6 +2,7 @@
 
 {% block content %}
 <div class="page" style="padding-block:0">
+  {% include "_setup_tabs.html" %}
   {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   <div class="ph">

@@ -48,7 +48,7 @@
     {% else %}
     <a href="/migrations" class="nv">← Migration workspaces</a>
     <a href="/" class="nv {% if path == '/' %}on{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}>Overview</a>
-    <a href="/migration-setup" class="nv {% if path == '/migration-setup' %}on{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}>Workspace configuration</a>
+    <a href="/setup" class="nv {% if path in ('/setup', '/migration-setup', '/target-mapping', '/firm-knowledge') %}on{% endif %}" {% if path in ('/setup', '/migration-setup', '/target-mapping', '/firm-knowledge') %}aria-current="page"{% endif %}>Setup</a>
     {% if pg and pg.steps %}
     {% set done_n = pg.steps|selectattr('state','equalto','done')|list|length %}
     <div class="sh">{{ pg.facts.name }}</div>
@@ -77,15 +77,14 @@
     {{ stage('03', 'Business Rules', '/transformation-rules', 'map', 'MA', path == '/transformation-rules') }}
     <div class="zg transformed"><i></i>Transformed</div>
     {{ stage('04', 'Schema Mapper', '/agent-pipeline', 'map', 'MA', path == '/agent-pipeline') }}
-    {{ stage('05', 'Execution', '/reconciliation#execution', 'validate', 'VS', false) }}
-    {{ stage('06', 'Reconciliation', '/reconciliation', 'validate', 'VS', path == '/reconciliation') }}
+    <div class="zg rules"><i></i>Validation</div>
+    {{ stage('05', 'Validation rules', '/validation-rules', 'validate', 'VS', path == '/validation-rules') }}
+    <div class="zg dplane"><i></i>Data plane</div>
+    {{ stage('06', 'Execution', '/execution', 'validate', 'VS', path == '/execution') }}
+    {{ stage('07', 'Reconciliation', '/reconciliation', 'validate', 'VS', path == '/reconciliation') }}
     {% endif %}
-    <div class="sh">Setup inputs</div>
-    <a href="/target-mapping" class="nv {% if path == '/target-mapping' %}on{% endif %}" {% if path == '/target-mapping' %}aria-current="page"{% endif %}>Target mapping</a>
-    <a href="/firm-knowledge" class="nv {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
     <div class="sh">Workspace views</div>
     <a href="/migration-workspaces?view=command" class="nv">Command center</a>
-    <a href="/migration-workspaces?view=validation" class="nv">Validation rules</a>
     <div class="sh">Pilot scope</div>
     <div class="scope"><span>Account</span><span>Household</span><span>Client</span></div>
     <div class="fh" style="color:#8FA9BC;padding:6px 10px">Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>

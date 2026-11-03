@@ -38,7 +38,7 @@ def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow()
     assert "pg.steps" in navigation and 'class="runh"' in navigation and "Next: {{ pg.next.label }}" in navigation  # stage rail with run progress
     for route in ('/migration-setup', '/entity-sample-files', '/agent-pipeline', '/reconciliation'):
         assert f'"{route}"' in app_source  # stepper destinations
-    assert 'href="/firm-knowledge"' in navigation  # Governance reference, not a workflow step
+    assert 'href="/setup"' in navigation  # Setup (configuration, target mapping, firm knowledge) is one rail item
     assert 'href="/hitl"' not in navigation
     assert "Persona" in navigation and "persona_options" in navigation
     assert '"discover": "Discover"' in app_source
@@ -550,8 +550,12 @@ def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_
     assert 'href="/deal-room"' in base and 'href="/governance"' in base and "planned" not in base.lower().split("suite spaces")[1][:900]  # all three spaces are live
     assert 'href="/tenant">Tenant settings' in base  # Governance and Tenant settings are their own spaces
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/migrations"' in base  # the top-bar Data Migration tab opens the workspaces list
-    for href in ("/target-mapping", "/firm-knowledge"):
-        assert f'href="{href}"' in base  # setup inputs stay in the Data Migration rail
+    assert 'href="/setup"' in base  # setup inputs sit behind one Setup item in the Data Migration rail
+    tabs = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "_setup_tabs.html").read_text(encoding="utf-8")
+    for href in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
+        assert f'href="{href}"' in tabs  # the three setup pages share one tab strip
+    for href in ("/validation-rules", "/execution", "/reconciliation"):
+        assert f"'{href}'" in base  # stages 05, 06 and 07
     rail = base[base.index('<aside class="side"'):base.index("</aside>")]
     assert "/canonical-changes" not in rail and "/admin/users" not in rail  # moved to Governance and Tenant settings, not duplicated
     for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Execution", "Reconciliation"):
@@ -646,6 +650,7 @@ def test_assistant_tenant_and_workspace_views_follow_the_template(tmp_path, monk
                 want = view if view != "bogus" else "workspaces"
                 assert page.status_code == 200 and f"var V={{view:'{want}'" in page.text
             rail = (await c.get("/")).text
-            assert "/migration-workspaces?view=command" in rail and "/migration-workspaces?view=validation" in rail
+            assert "/migration-workspaces?view=command" in rail and 'href="/validation-rules"' in rail and 'href="/setup"' in rail
+            assert "/migration-workspaces?view=validation" not in rail  # Validation rules is a real stage now, not a template preview
     asyncio.run(run())
     app_module.session_mgr.active_sessions.pop("sid-v", None)

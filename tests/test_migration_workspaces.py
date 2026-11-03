@@ -145,7 +145,8 @@ def test_an_earlier_migration_can_be_opened_and_stays_active_after_restart(tmp_p
     assert second_id != first_id and state.questionnaire_data["migration_setup"]["entities"] == ["Household"]
 
     page = _call(app_module, sid, "GET", "/migrations").text
-    assert page.count('action="/api/migration/open"') == 1  # only the earlier one offers Open (the active one links to the Overview)
+    assert page.count('action="/api/migration/open"') == 2  # only the earlier one offers Open and Setup (the active one links to them)
+    assert page.count('name="next" value="/setup"') == 1 and 'href="/setup"' in page
 
     opened = _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id)])
     assert opened.status_code == 303 and opened.headers["location"] == "/"
@@ -184,3 +185,30 @@ def test_active_workspace_is_listed_first_even_when_older(tmp_path, monkeypatch)
     assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id)]).status_code == 303
     listing = _call(app_module, sid, "GET", "/migrations").text
     assert listing.index(first_id) < listing.index("Harbor RIA to Simplicity")  # the reopened (older) CoreCap migration leads
+
+
+def test_setup_button_opens_an_earlier_migration_on_the_setup_hub_and_ignores_free_next_urls(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "setupbtn")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)])
+    assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id), ("next", "/setup")]).headers["location"] == "/setup"
+    assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id), ("next", "https://evil.example/")]).headers["location"] == "/"
+    hub = _call(app_module, sid, "GET", "/setup").text
+    for href in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
+        assert f'href="{href}"' in hub
+    for path in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
+        assert 'aria-label="Setup navigation"' in _call(app_module, sid, "GET", path).text
+
+
+def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "stages")
+    assert _post_setup(app_module, sid).status_code == 303
+    rules = _call(app_module, sid, "GET", "/validation-rules").text
+    execution = _call(app_module, sid, "GET", "/execution").text
+    recon = _call(app_module, sid, "GET", "/reconciliation").text
+    assert 'id="validation-scenarios"' in rules and 'id="execution"' not in rules and 'id="validation-results"' not in rules
+    assert 'id="execution"' in execution and 'id="validation-scenarios"' not in execution
+    assert 'id="validation-results"' in recon and 'id="validation-scenarios"' not in recon and 'id="execution"' not in recon
+    for page in (rules, execution, recon):
+        assert "05 Validation rules" in page and "06 Execution" in page and "07 Reconciliation" in page
