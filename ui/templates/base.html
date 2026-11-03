@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>{{ page_title|default('Migration Workspace') }} · XODUS Data Migration</title>
+    <title>{{ page_title|default('Migration Workspace') }} · XODUS {{ {"dm": "Data Migration", "gov": "Governance", "tenant": "Tenant settings"}[space|default("dm")] }}</title>
     <script>try{var t=localStorage.getItem("xodus.theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,7 +20,8 @@
 {% set pg = progress|default({}) %}
 {% set path = request.url.path %}
 {% set role = user_role|default('') %}
-{% set suite_cur = "dm" %}{% set hide_signout = true %}{% include "_suite_top.html" %}
+{% set space = space|default("dm") %}{% set suite_cur = space %}{% set hide_signout = true %}{% include "_suite_top.html" %}
+{% if space == "dm" %}
 <div class="pbar">
   <div class="wrap pb-in">
     <span class="lock"><span class="mk">XA</span><span><strong>Data Migration</strong><span>Agentic migration workbench</span></span></span>
@@ -37,8 +38,9 @@
     <a class="pbtn" href="/logout">Sign out</a>
   </div>
 </div>
-<div class="wrap app">
-  <aside class="side" aria-label="Data migration navigation">
+{% endif %}
+<div class="wrap app{% if space != "dm" %} solo{% endif %}">
+  {% if space == "dm" %}<aside class="side" aria-label="Data migration navigation">
     <div class="sh">Data migration</div>
     <a href="/" class="nv {% if path == '/' %}on{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}>Overview</a>
     <a href="/migration-setup" class="nv {% if path == '/migration-setup' %}on{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}>Workspace configuration</a>
@@ -73,18 +75,13 @@
     {{ stage('05', 'Execution', '/reconciliation#execution', 'validate', 'VS', false) }}
     {{ stage('06', 'Reconciliation', '/reconciliation', 'validate', 'VS', path == '/reconciliation') }}
     {% endif %}
-    <div class="sh">Governance inputs</div>
-    <a href="/canonical-changes" class="nv {% if path == '/canonical-changes' %}on{% endif %}" {% if path == '/canonical-changes' %}aria-current="page"{% endif %}>Canonical changes{% if pg and pg.changes_open %}<span class="tag">{{ pg.changes_open }}</span>{% endif %}</a>
+    <div class="sh">Setup inputs</div>
     <a href="/target-mapping" class="nv {% if path == '/target-mapping' %}on{% endif %}" {% if path == '/target-mapping' %}aria-current="page"{% endif %}>Target mapping</a>
     <a href="/firm-knowledge" class="nv {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
-    {% if role == 'Platform Admin' %}
-    <div class="sh">Platform</div>
-    <a href="/admin/users" class="nv {% if path == '/admin/users' %}on{% endif %}" {% if path == '/admin/users' %}aria-current="page"{% endif %}>Team and access</a>
-    {% endif %}
     <div class="sh">Pilot scope</div>
     <div class="scope"><span>Account</span><span>Household</span><span>Client</span></div>
     <div class="fh" style="color:#8FA9BC;padding:6px 10px">Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>
-  </aside>
+  </aside>{% endif %}
   <main class="main xa-legacy" id="main-content">
     {% block content %}{% endblock %}
   </main>
@@ -231,7 +228,7 @@
         }
         return resp.text().then(function (html) {
           var doc = new DOMParser().parseFromString(html, "text/html");
-          if (doc.getElementById("main-content") && doc.querySelector(".wrap.app")) return swap(doc, resp.url);
+          if (doc.getElementById("main-content")) return swap(doc, resp.url);
           if (resp.redirected) { location.assign(resp.url); return; }
           document.open(); document.write(html); document.close();
         });

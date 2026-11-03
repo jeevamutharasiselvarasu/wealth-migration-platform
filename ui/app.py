@@ -374,6 +374,7 @@ async def admin_users_page(request: Request, notice: str = "", error: str = ""):
         conn.close()
     demo = [{"email": e, "name": v["name"], "roles": v["roles"], "has_password": bool(v["password_sha256"])} for e, v in session_mgr.authorized_users.items()]
     return render_template_with_context(request, "admin_users.html", {
+        "space": "tenant",
         "page_title": "Users & access", "user_name": user["name"], "user_role": user["role"], "users": users, "demo_users": demo,
         "all_roles": user_registry.ALL_ROLES, "notice": notice, "error": error})
 
@@ -396,41 +397,6 @@ async def decide_user(email: str, request: Request, action: str = Form(...)):
             del session_mgr.active_sessions[sid]
     _target_setup_audit("USER_ACCESS_CHANGED", actor, {"target": updated["email"], "action": action.upper(), "status": updated["status"], "roles": updated["roles"]})
     return RedirectResponse(url="/admin/users?notice=" + quote_plus(f"{updated['email']}: {updated['status']}, roles {', '.join(updated['roles']) or 'none'}."), status_code=status.HTTP_303_SEE_OTHER)
-
-
-@app.get("/persona-selection", response_class=HTMLResponse)
-async def persona_selection_page(request: Request):
-    user = get_current_user(request)
-    personas = [
-        {"id":"Platform Admin","label":"Platform Admin","initials":"PA","plane":"Platform governance",
-         "description":"Maintain the platform: firm configuration, canonical model, users and access, demo data. Holds every capability.",
-         "stages":["Migration setup","Access & governance","Audit"]},
-        {"id":"IMO Lead","label":"IMO Lead","initials":"IL","plane":"Migration office",
-         "description":"Create and configure migration workspaces: scope, source environments and the migration setup. No access to platform configuration.",
-         "stages":["Workspaces","Scope","Configuration"]},
-        {"id":"Migration Analyst","label":"Migration Analyst","initials":"MA","plane":"Control plane",
-         "description":"Set up the migration, upload and confirm sample files, generate mappings, approve or reject mappings and transformation rules, and answer information requests.",
-         "stages":["Discovery","Mapping","Rule design"]},
-        {"id":"Domain SME","label":"Domain SME / Data Steward","initials":"SME","plane":"Business review",
-         "description":"Own the canonical model: handle requested changes to canonical definitions and the wealth kernel, and resolve canonical meaning. Also holds the Analyst and Validation personas.",
-         "stages":["Canonical model","Definitions","Kernel"]},
-        {"id":"Validation Specialist","label":"Validation Specialist","initials":"VS","plane":"Validation",
-         "description":"Review field completeness, keys, relationships, data-quality exceptions and reconciliation evidence.",
-         "stages":["Validation","Exceptions","Evidence"]},
-        {"id":"Compliance Reviewer","label":"Compliance Reviewer","initials":"CR","plane":"Oversight",
-         "description":"Read evidence, lineage and the audit trail across the migration. Read-only: cannot change or approve anything.",
-         "stages":["Evidence","Lineage","Audit"]},
-    ]
-    allowed_roles = session_mgr.assigned_roles(user["email"]) or {user["role"]}
-    personas = [persona for persona in personas if persona["id"] in allowed_roles]
-    response = render_template_with_context(request, "persona_selection.html", {
-        "page_title":"Choose Persona", "user_name":user["name"], "user_role":user["role"],
-        "selected_role":user["role"], "personas":personas
-    })
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
 
 
 @app.get("/suite", response_class=HTMLResponse)
@@ -2687,6 +2653,7 @@ async def canonical_changes_page(request: Request, notice: str = "", error: str 
         if row["applied_utc"] and row["change_type"] == "ADD_FIELD":
             row["yaml_snippet"] = canonical_overlay.yaml_snippet(row["entity_name"], row["canonical_field"].strip().upper(), row["proposed_change"])
     return render_template_with_context(request, "canonical_changes.html", {
+        "space": "gov",
         "page_title": "Canonical Change Requests", "user_name": user["name"], "user_role": user["role"],
         "requests": rows, "change_types": CHANGE_TYPES, "entities": CHANGE_ENTITIES,
         "can_raise": user["role"] in CHANGE_REQUEST_ROLES, "can_decide": user["role"] in CANONICAL_ROLES,

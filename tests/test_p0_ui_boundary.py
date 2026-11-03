@@ -79,11 +79,12 @@ def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
 
 def test_login_has_no_role_field_and_persona_is_chosen_from_the_top_bar_selector():
     login = (ROOT / "ui" / "templates" / "login.html").read_text()
-    persona = (ROOT / "ui" / "templates" / "persona_selection.html").read_text()
+    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text()
     app = (ROOT / "ui" / "app.py").read_text()
     assert 'name="role"' not in login
     assert 'name="role"' in persona
-    assert '@app.get("/persona-selection"' in app
+    assert '@app.get("/persona-selection"' not in app  # no separate persona page; the top-bar selector is the only control
+    assert not (ROOT / "ui" / "templates" / "persona_selection.html").exists()
     assert '@app.post("/persona-selection"' in app
     assert 'RedirectResponse(url="/suite"' in app  # login goes straight to the suite home; persona switches from the top bar
     assert 'next.startswith("/") and not next.startswith("//")' in app  # persona switch only returns to same-site paths
@@ -138,14 +139,9 @@ def test_azure_connection_requires_environment_identifiers_without_collecting_se
     assert "Do not paste secrets" in setup
 
 
-def test_persona_selection_is_not_cached_and_back_navigation_shows_active_role():
-    app = (ROOT / "ui" / "app.py").read_text()
-    persona = (ROOT / "ui" / "templates" / "persona_selection.html").read_text()
-    assert 'response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"' in app
-    assert 'response.headers["Pragma"] = "no-cache"' in app
-    assert '"selected_role":user["role"]' in app
-    assert '{% if role.id == selected_role %}checked{% endif %}' in persona
-    assert '{% if loop.first %}checked{% endif %}' not in persona
+def test_top_bar_selector_shows_the_active_role():
+    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text()
+    assert "active_persona" in persona and "selected" in persona
 
 
 def test_entity_level_approval_ui_and_backend_are_evidence_gated():
@@ -544,12 +540,14 @@ def test_suite_template_shell_marks_other_spaces_planned_and_groups_governance_i
 
     root = Path(__file__).resolve().parents[1] / "ui"
     base = _shell_source()
-    for space in ("Deal Room", "Governance"):
-        line = next(l for l in base.splitlines() if space in l and 'class="' in l and "planned" in l)
-        assert 'aria-disabled="true"' in line and "href=" not in line and "Planned" in line
+    line = next(l for l in base.splitlines() if "Deal Room" in l and 'class="' in l and "planned" in l)
+    assert 'aria-disabled="true"' in line and "href=" not in line and "Planned" in line
+    assert 'href="/canonical-changes"' in base and 'href="/admin/users">Tenant settings' in base  # Governance and Tenant settings are their own spaces
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/continue-data-migration"' in base
-    for href in ("/canonical-changes", "/target-mapping", "/firm-knowledge"):
-        assert f'href="{href}"' in base  # Governance inputs live in the Data Migration rail
+    for href in ("/target-mapping", "/firm-knowledge"):
+        assert f'href="{href}"' in base  # setup inputs stay in the Data Migration rail
+    rail = base[base.index('<aside class="side"'):base.index("</aside>")]
+    assert "/canonical-changes" not in rail and "/admin/users" not in rail  # moved to Governance and Tenant settings, not duplicated
     for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Execution", "Reconciliation"):
         assert stage in base
     for asset in ("suite.css", "dm.css", "xodus.css", "legacy.css"):
@@ -564,10 +562,10 @@ def test_suite_home_is_the_post_login_landing_and_opens_data_migration_on_the_sa
     top = (ROOT / "ui" / "templates" / "_suite_top.html").read_text(encoding="utf-8")
     login = (ROOT / "ui" / "templates" / "login.html").read_text(encoding="utf-8")
     base = (ROOT / "ui" / "templates" / "base.html").read_text(encoding="utf-8")
-    assert '@app.get("/suite"' in app and 'RedirectResponse(url="/suite"' in app  # persona selection lands on the suite home
+    assert '@app.get("/suite"' in app and 'RedirectResponse(url="/suite"' in app  # login lands on the suite home
     assert 'href="/continue-data-migration"' in suite and 'href="/migration-setup"' in suite  # Data Migration and its setup open from the suite home
     assert 'href="/"' in (ROOT / "ui" / "templates" / "continue_data_migration.html").read_text(encoding="utf-8")
-    assert top.count('<span class="chip">Planned</span>') == 2  # Deal Room and Governance stay visible, marked Planned
+    assert top.count('<span class="chip">Planned</span>') == 1  # Deal Room stays visible, marked Planned
     assert "Sign in to the Xodus suite" in login and "no second password" in login
     assert 'class="xbrand" href="/suite"' in _shell_source()  # the brand returns to the suite home
 

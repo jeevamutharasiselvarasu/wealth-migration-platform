@@ -123,3 +123,5 @@ body h1,body h2,body h3,body h4{font-weight:700}
 .gate[data-bulk-bar]{position:static;margin-top:12px}
 /* The suite top bar scrolls away; only the Data Migration bar and rail stay pinned, so offsets must not reserve space for the top bar. */
 :root{--xh:0px}
+/* Spaces other than Data Migration have no rail. */
+.app.solo{grid-template-columns:1fr;max-width:1100px}
