@@ -115,8 +115,7 @@
     toast(text, !q.get("notice"));
   }
   function size() {
-    var a = document.querySelector(".xtop"), b = document.querySelector(".pbar"), r = document.documentElement.style;
-    if (a) r.setProperty("--xh", a.offsetHeight + "px");
+    var b = document.querySelector(".pbar"), r = document.documentElement.style;
     if (b) r.setProperty("--ph", b.offsetHeight + "px");
   }
   /* Table-style approvals: tick rows, add a note or a change, then submit. Editing a row's

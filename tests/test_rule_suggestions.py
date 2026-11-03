@@ -119,3 +119,9 @@ def test_actions_update_in_place_and_tables_freeze_header_and_first_column():
     assert 'fetch(url.href, {method: "POST"' in base and "data-full-reload" in base and "replaceWith" in base
     css = (ROOT / "ui" / "static" / "xodus.css").read_text()
     assert ".tw thead th{position:sticky;top:0" in css and "position:sticky;left:0" in css
+
+
+def test_pinned_bars_do_not_reserve_space_for_the_scrolling_suite_top_bar():
+    css = (ROOT / "ui" / "static" / "xodus.css").read_text()
+    base = (ROOT / "ui" / "templates" / "base.html").read_text()
+    assert ":root{--xh:0px}" in css and '"--xh"' not in base
