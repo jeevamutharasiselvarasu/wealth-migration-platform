@@ -173,3 +173,14 @@ def test_no_template_pins_a_form_over_the_content_with_sticky_bottom():
     from pathlib import Path
     offenders = [p.name for p in (Path(__file__).resolve().parents[1] / "ui" / "templates").glob("*.html") if "sticky bottom-0" in p.read_text(encoding="utf-8")]
     assert offenders == []  # a floating bar covers table rows while its own table is out of view
+
+
+def test_active_workspace_is_listed_first_even_when_older(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "order")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    assert _second_setup(app_module, sid).status_code == 303
+    assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id)]).status_code == 303
+    listing = _call(app_module, sid, "GET", "/migrations").text
+    assert listing.index(first_id) < listing.index("Harbor RIA to Simplicity")  # the reopened (older) CoreCap migration leads

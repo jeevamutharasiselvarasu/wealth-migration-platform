@@ -53,6 +53,7 @@ def list_migrations(conn, active_id: str = "") -> List[Dict[str, Any]]:
                     "template_id": s.get("template_migration_id", ""), "configured": bool(s), "active": mid == active_id,
                     "approved_mappings": int(approved.get(mid, 0)), "files": int(files.get(mid, 0))})
     out.sort(key=lambda m: m["created_utc"], reverse=True)
+    out.sort(key=lambda m: not m["active"])  # the active workspace first, then newest to oldest
     names = {m["id"]: m["name"] for m in out}
     for m in out:
         m["template_name"] = names.get(m["template_id"], m["template_id"])
