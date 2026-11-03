@@ -70,3 +70,12 @@ def carry_over(conn, migration_id: str) -> Dict[str, Any]:
     carried = {k: setup[k] for k in CARRIED_FIELDS if k in setup}
     carried["template_migration_id"] = migration_id
     return carried
+
+
+def latest_context(conn, migration_id: str) -> Dict[str, Any]:
+    """The migration's context as last saved (later events override earlier ones), or {} when it is unknown or never configured."""
+    context: Dict[str, Any] = {}
+    for ev in _events(conn):
+        if ev["id"] == migration_id:
+            context.update(ev["payload"])
+    return context if context.get("migration_setup") else {}

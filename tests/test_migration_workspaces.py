@@ -132,3 +132,38 @@ def test_data_migration_opens_on_the_workspaces_list_and_only_a_workspace_shows_
     assert "All migration workspaces" in lobby and "Loader &amp; Inspector" not in lobby and "Schema Mapper" not in lobby.split("</aside>")[0]
     inside = _call(app_module, sid, "GET", "/").text
     assert "Loader &amp; Inspector" in inside and "← Migration workspaces" in inside
+
+
+def test_an_earlier_migration_can_be_opened_and_stays_active_after_restart(tmp_path, monkeypatch):
+    from ui.state import WorkspaceStateStore
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "reopen")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    assert _second_setup(app_module, sid).status_code == 303
+    second_id = state.questionnaire_data["migration_id"]
+    assert second_id != first_id and state.questionnaire_data["migration_setup"]["entities"] == ["Household"]
+
+    page = _call(app_module, sid, "GET", "/migrations").text
+    assert page.count('action="/api/migration/open"') == 1  # only the earlier one offers Open (the active one links to the Overview)
+
+    opened = _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id)])
+    assert opened.status_code == 303 and opened.headers["location"] == "/"
+    assert state.questionnaire_data["migration_id"] == first_id
+    assert state.questionnaire_data["migration_setup"]["entities"] == ["Account"] and state.questionnaire_data["migration_setup"]["source_firm"] == "CoreCap"
+    assert state.entity_scopes["Account"] != "OUT_OF_SCOPE" and state.entity_scopes["Household"] == "OUT_OF_SCOPE"
+
+    fresh = WorkspaceStateStore()
+    assert fresh.questionnaire_data["migration_id"] == first_id  # the switch survives a restart
+    listing = _call(app_module, sid, "GET", "/migrations").text
+    assert "Harbor RIA to Simplicity" in listing and "Earlier" in listing
+
+
+def test_opening_an_unknown_migration_is_rejected_and_read_only_roles_cannot_switch(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "reopen404")
+    assert _post_setup(app_module, sid).status_code == 303
+    current = state.questionnaire_data["migration_id"]
+    assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", "MIG-NOPE")]).status_code == 404
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, sid, {"email": "t@example.invalid", "name": "Reader", "role": "Validation Specialist"})
+    denied = _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", current)])
+    assert denied.status_code in (303, 403) and state.questionnaire_data["migration_id"] == current

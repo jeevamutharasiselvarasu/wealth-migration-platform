@@ -575,6 +575,37 @@ async def start_new_migration(request: Request):
     return RedirectResponse(url="/migration-setup?new_migration=1" + ("&from_template=1" if prefill else ""), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/api/migration/open")
+async def open_migration_workspace(request: Request):
+    """Make an earlier migration the active workspace again: its files, scope, mappings and requests are restored from the durable log.
+    Only one migration is worked on at a time, so this switches the workspace for everyone using this server."""
+    user = get_current_user(request)
+    form = await request.form()
+    target_id = str(form.get("migration_id", "")).strip()
+    conn = get_db_connection()
+    try:
+        context = migration_registry.latest_context(conn, target_id)
+    finally:
+        conn.close()
+    if not context:
+        raise HTTPException(status_code=404, detail="That migration has no saved setup to open.")
+    current_id = str(state_store.questionnaire_data.get("migration_id", ""))
+    if target_id != current_id:
+        state_store.entity_sample_files.clear()
+        state_store.entity_source_files.clear()
+        state_store.pipeline_runs.clear()
+        state_store.questionnaire_data["mapping_information_requests"] = []
+        state_store.questionnaire_data["migration_setup"] = {}
+        state_store.questionnaire_data["migration_template"] = {}
+        for entity in ("Account", "Household", "Client"):
+            state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
+        # Becoming the latest context event makes this the active migration after a restart too.
+        publish_event("MIGRATION_CONTEXT_UPDATED", target_id, "migration", target_id, {**context, "reopened_from": current_id}, user["name"])
+        state_store.hydrate_from_durable_state()
+        _sync_mapping_information_requests(target_id)
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/api/migration/setup")
 async def save_migration_setup(request: Request):
     user = get_current_user(request)
