@@ -6,11 +6,20 @@
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   <div class="ph">
     <div>
-      <div class="ey dm">Source → canonical · governed rules</div>
+      <div class="ey dm">Stage 03 · Control plane · governed rules</div>
       <h1>Transformation Rules</h1>
       <p>Rules are declarative, parameterized and versioned. Nothing here runs as code. A new version is a draft until a Migration Analyst or Platform Admin approves it; a mapping then pins an exact version (<span class="font-mono">RULE:ID@version</span>) so lineage stays reproducible. Apply an approved rule from the Mapping page when you approve a mapping.</p>
     </div>
+    {% set _appr = rules|selectattr('status','equalto','APPROVED')|list|length %}{% set _draft = rules|selectattr('status','equalto','DRAFT')|list|length %}
+    <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip {{ 'g' if rules and not _draft else 'ex' }}">{{ 'Approved' if rules and not _draft else 'Needs review' }}</span></div>
   </div>
+  <div class="ins"><b>Control plane.</b> The governed business rules, from the registered knowledge and the source data. Rules are declarative; nothing here runs as code and no production data is touched.</div>
+  <section class="kpis" aria-label="Rule summary">
+    <div class="kpi"><small>Rules registered</small><b>{{ rules|length }}</b><span>all versions</span></div>
+    <div class="kpi"><small>Approved</small><b>{{ _appr }}</b><span>usable in mappings</span></div>
+    <div class="kpi"><small>Waiting</small><b>{{ _draft }}</b><span>draft, need a person</span></div>
+    <div class="kpi"><small>Suggestions</small><b>{{ suggestions|length }}</b><span>from the source data</span></div>
+  </section>
   <p class="d" style="margin:0">Built-in families: <span class="font-mono">{{ builtin_rules|join(', ') }}</span></p>
 
   {% if can_author %}
