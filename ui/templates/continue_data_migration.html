@@ -36,7 +36,7 @@
       <p class="lead">You signed in once to the suite. Data Migration uses that same session, so there is no second password.</p>
       <div class="idc"><span class="av">{{ user_name.split()[:2]|map('first')|join|upper }}</span><span><strong>{{ user_name }}</strong><small>{{ user_role }} · WealthAI Labs</small></span></div>
       <div class="idn"><b>Your access comes from your assigned roles.</b><span>You are acting as {{ user_role }}. Inside each migration workspace the persona controls which actions are available; it never grants extra permissions.</span></div>
-      <a class="btn p" href="/" style="width:100%;justify-content:center;padding:12px">Continue as {{ user_name }} →</a>
+      <a class="btn p" href="/migrations" style="width:100%;justify-content:center;padding:12px">Continue as {{ user_name }} →</a>
       <a class="btn g" href="/migration-setup" style="width:100%;justify-content:center;margin-top:8px">Go to migration setup</a>
       <div class="hint"><b>Switch persona</b> any time from the Persona selector in the top bar.</div>
     </div>

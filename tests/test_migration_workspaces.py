@@ -121,3 +121,14 @@ def test_new_migration_does_not_inherit_the_previous_name_or_source(tmp_path, mo
     assert state.questionnaire_data["firm_name"] == "" and state.questionnaire_data["migration_name"] == ""
     form = _call(app_module, sid, "GET", "/migration-setup?new_migration=1&from_template=1").text
     assert 'name="migration_name" value=""' in form and 'name="source_firm" value=""' in form
+
+
+def test_data_migration_opens_on_the_workspaces_list_and_only_a_workspace_shows_the_stage_rail(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "lobby")
+    assert _post_setup(app_module, sid).status_code == 303
+    cont = _call(app_module, sid, "GET", "/continue-data-migration").text
+    assert 'href="/migrations"' in cont and 'Continue as' in cont
+    lobby = _call(app_module, sid, "GET", "/migrations").text
+    assert "All migration workspaces" in lobby and "Loader &amp; Inspector" not in lobby and "Schema Mapper" not in lobby.split("</aside>")[0]
+    inside = _call(app_module, sid, "GET", "/").text
+    assert "Loader &amp; Inspector" in inside and "← Migration workspaces" in inside

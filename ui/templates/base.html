@@ -27,11 +27,11 @@
   <div class="wrap pb-in">
     <span class="lock"><span class="mk">XA</span><span><strong>Data Migration</strong><span>Agentic migration workbench</span></span></span>
     <div class="pb-ctx">
-      <span>Migration</span><b>{{ pg.facts.name if pg and pg.facts else 'New migration' }}</b>
-      {% if pg and pg.facts %}<span class="pbchip">{{ pg.facts.migration_id }}</span>{% endif %}
+      {% if lobby %}<span>Scope</span><b>All migration workspaces</b>{% else %}<span>Migration</span><b>{{ pg.facts.name if pg and pg.facts else 'New migration' }}</b>
+      {% if pg and pg.facts %}<span class="pbchip">{{ pg.facts.migration_id }}</span>{% endif %}{% endif %}
     </div>
     <span class="sp"></span>
-    {% if pg and pg.facts %}<span class="pbchip">{{ pg.facts.route }}</span>{% endif %}
+    {% if pg and pg.facts and not lobby %}<span class="pbchip">{{ pg.facts.route }}</span>{% endif %}
     <div class="uc">
       <span class="av" aria-hidden="true">{{ (user_name|default('MA')).split()[:2]|map('first')|join|upper }}</span>
       <span>{{ user_name|default('Migration Analyst') }}<small>{{ role or 'Control plane' }}</small></span>
@@ -43,6 +43,10 @@
 <div class="wrap app{% if space != "dm" %} solo{% endif %}">
   {% if space == "dm" %}<aside class="side" aria-label="Data migration navigation">
     <div class="sh">Data migration</div>
+    {% if lobby %}
+    <a href="/migrations" class="nv on" aria-current="page">Migration workspaces</a>
+    {% else %}
+    <a href="/migrations" class="nv">← Migration workspaces</a>
     <a href="/" class="nv {% if path == '/' %}on{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}>Overview</a>
     <a href="/migration-setup" class="nv {% if path == '/migration-setup' %}on{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}>Workspace configuration</a>
     {% if pg and pg.steps %}
@@ -80,12 +84,12 @@
     <a href="/target-mapping" class="nv {% if path == '/target-mapping' %}on{% endif %}" {% if path == '/target-mapping' %}aria-current="page"{% endif %}>Target mapping</a>
     <a href="/firm-knowledge" class="nv {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
     <div class="sh">Workspace views</div>
-    <a href="/migrations" class="nv {% if path == '/migrations' %}on{% endif %}" {% if path == '/migrations' %}aria-current="page"{% endif %}>Migration workspaces</a>
     <a href="/migration-workspaces?view=command" class="nv">Command center</a>
     <a href="/migration-workspaces?view=validation" class="nv">Validation rules</a>
     <div class="sh">Pilot scope</div>
     <div class="scope"><span>Account</span><span>Household</span><span>Client</span></div>
     <div class="fh" style="color:#8FA9BC;padding:6px 10px">Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>
+    {% endif %}
   </aside>{% endif %}
   <main class="main xa-legacy" id="main-content">
     {% block content %}{% endblock %}

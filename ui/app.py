@@ -458,7 +458,7 @@ async def migrations_page(request: Request, notice: str = ""):
         conn.close()
     return render_template_with_context(request, "migrations.html", {
         "page_title": "Migration workspaces", "user_name": user["name"], "user_role": user["role"], "migrations": items,
-        "can_start": user["role"] in SETUP_ROLES, "notice": notice})
+        "can_start": user["role"] in SETUP_ROLES, "notice": notice, "lobby": True})
 
 
 @app.get("/migration-workspaces", response_class=HTMLResponse)
