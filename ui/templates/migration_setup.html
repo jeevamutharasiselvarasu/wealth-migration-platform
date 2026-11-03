@@ -66,10 +66,10 @@
     <section class="card">
       <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Target system and canonical contract</h2><p>Capture the destination and target schema requirements before mapping. This configures the intended contract; it does not enable target loading in P0.</p></div></div>
       <div class="fgrid" style="margin-top:12px">
-        <div class="field"><label for="f-migration-name">Migration name</label><input id="f-migration-name" class="input" name="migration_name" value="{{ setup.get('migration_name','CoreCap to Simplicity - Wealth Migration Demo') }}" required placeholder="e.g. CoreCap to Simplicity"></div>
+        <div class="field"><label for="f-migration-name">Migration name</label><input id="f-migration-name" class="input" name="migration_name" value="{{ setup.get('migration_name', '' if prefilled else 'CoreCap to Simplicity - Wealth Migration Demo') }}" required placeholder="e.g. CoreCap to Simplicity"></div>
         <div class="field"><label for="f-target-system">Target system / platform</label><input id="f-target-system" class="input" name="target_system" value="{{ setup.get('target_system','Simplicity') }}" required placeholder="Target platform name"></div>
         <div class="field"><label for="f-canonical-version">Canonical schema / contract version</label><input id="f-canonical-version" class="input" name="canonical_version" value="{{ setup.get('canonical_version','Simplicity-MCL-v1') }}" required placeholder="Version or target schema document reference"></div>
-        <div class="field"><label for="f-source-firm">Source firm</label><input id="f-source-firm" class="input" name="source_firm" value="{{ setup.get('source_firm','CoreCap') }}" required placeholder="CoreCap"></div>
+        <div class="field"><label for="f-source-firm">Source firm</label><input id="f-source-firm" class="input" name="source_firm" value="{{ setup.get('source_firm', '' if prefilled else 'CoreCap') }}" required placeholder="CoreCap"></div>
         <div class="field"><label for="f-target-owner">Target owner / SME</label><input id="f-target-owner" class="input" name="target_owner" value="{{ setup.get('target_owner','') }}" placeholder="Name or team responsible for target rules"></div>
       </div>
       <div class="ins" style="border-left-color:var(--blue)">
@@ -122,7 +122,7 @@
         <label class="lt"><input type="radio" name="source_acquisition" value="SAMPLE_FILES" {% if setup.get('source_acquisition','SAMPLE_FILES') == 'SAMPLE_FILES' %}checked{% endif %}><span><strong>Upload representative sample files</strong><span>CSV, TSV, Excel or JSON. Platform infers the likely entity and proposes mappings.</span></span></label>
         <label class="lt"><input type="radio" name="source_acquisition" value="AZURE_CONNECTION" {% if setup.get('source_acquisition') == 'AZURE_CONNECTION' %}checked{% endif %}><span><strong>Connect to Azure source storage</strong><span>Use the registered Azure details and approved identity; connection must be tested before discovery.</span></span></label>
       </div>
-      <div class="field" style="margin-top:12px"><label for="f-source-details">Source systems / locations</label><input id="f-source-details" class="input" name="source_details" value="{{ setup.get('source_details','CoreCap sample files') }}" placeholder="CoreCap sample files, ADLS paths or folders"></div>
+      <div class="field" style="margin-top:12px"><label for="f-source-details">Source systems / locations</label><input id="f-source-details" class="input" name="source_details" value="{{ setup.get('source_details', '' if prefilled else 'CoreCap sample files') }}" placeholder="CoreCap sample files, ADLS paths or folders"></div>
     </section>
 
     {% if can_configure %}

@@ -561,10 +561,12 @@ async def start_new_migration(request: Request):
     state_store.pipeline_runs.clear()
     state_store.questionnaire_data["mapping_information_requests"] = []
     state_store.questionnaire_data["migration_setup"] = {}
+    for stale in ("firm_name", "migration_name", "source_systems"):
+        state_store.questionnaire_data[stale] = ""  # the previous migration's name must not label the new one
     state_store.questionnaire_data["migration_id"] = migration_id
     for entity in ("Account", "Household", "Client"):
         state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
-    context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id, "migration_template": prefill}
+    context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id, "migration_template": prefill, "firm_name": "", "migration_name": "", "source_systems": ""}
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
     publish_event(
         "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,

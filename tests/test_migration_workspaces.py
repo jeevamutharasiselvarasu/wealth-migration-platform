@@ -111,3 +111,13 @@ def test_generated_proposal_from_template_is_pending_and_says_where_it_came_from
     conn.close()
     assert rows and rows[0][0] == "ACCT_NUM" and rows[0][1] == "PENDING"
     assert "CoreCap to Simplicity" in (rows[0][2] or "") and approved == 0
+
+
+def test_new_migration_does_not_inherit_the_previous_name_or_source(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "tplname")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    assert state.questionnaire_data["firm_name"] == "" and state.questionnaire_data["migration_name"] == ""
+    form = _call(app_module, sid, "GET", "/migration-setup?new_migration=1&from_template=1").text
+    assert 'name="migration_name" value=""' in form and 'name="source_firm" value=""' in form
