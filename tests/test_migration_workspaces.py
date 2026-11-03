@@ -167,3 +167,9 @@ def test_opening_an_unknown_migration_is_rejected_and_read_only_roles_cannot_swi
     monkeypatch.setitem(app_module.session_mgr.active_sessions, sid, {"email": "t@example.invalid", "name": "Reader", "role": "Validation Specialist"})
     denied = _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", current)])
     assert denied.status_code in (303, 403) and state.questionnaire_data["migration_id"] == current
+
+
+def test_no_template_pins_a_form_over_the_content_with_sticky_bottom():
+    from pathlib import Path
+    offenders = [p.name for p in (Path(__file__).resolve().parents[1] / "ui" / "templates").glob("*.html") if "sticky bottom-0" in p.read_text(encoding="utf-8")]
+    assert offenders == []  # a floating bar covers table rows while its own table is out of view
