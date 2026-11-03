@@ -3234,6 +3234,22 @@ def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     return safe_mapping
 
 
+def _template_mapping_seeds(migration_id: str, entity_name: str) -> Dict[str, Any]:
+    """Source-to-canonical names approved in the template migration this one was started from (names only, never approvals).
+    Returns {"template_id", "template_name", "seeds": {source_field: canonical_field}}; empty seeds when there is no template."""
+    template_id = str((state_store.questionnaire_data.get("migration_template") or {}).get("template_migration_id") or "")
+    if not template_id or template_id == str(migration_id):
+        return {"template_id": "", "template_name": "", "seeds": {}}
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("SELECT source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND entity_name = ? AND is_confirmed = 1",
+                            (template_id, entity_name)).fetchall()
+        name = next((m["name"] for m in migration_registry.list_migrations(conn, str(migration_id)) if m["id"] == template_id), template_id)
+    finally:
+        conn.close()
+    return {"template_id": template_id, "template_name": name, "seeds": {r["source_field"]: r["canonical_field"] for r in rows}}
+
+
 def _get_approved_mapping_rules(migration_id: str, entity_name: str) -> Dict[str, Dict[str, str]]:
     """Return approved target fields and transformation expressions for one migration/entity."""
     conn = get_db_connection()
@@ -3404,8 +3420,11 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     # Approved rules are reusable only within the same migration and canonical entity.
     migration_id = state_store.questionnaire_data.get("migration_id", "UNCONFIGURED")
     approved_rules = _get_approved_mapping_rules(migration_id, entity_name)
+    template_seed = _template_mapping_seeds(str(migration_id), entity_name)
+    # Names approved in the template migration seed PROPOSALS only (no transformation, no approval); this migration's own approvals win.
     approved_catalog = {
-        source: rule["canonical_field"] for source, rule in approved_rules.items()
+        **template_seed["seeds"],
+        **{source: rule["canonical_field"] for source, rule in approved_rules.items()},
     }
     approved_transformations = {
         source: rule["transformation_expression"] for source, rule in approved_rules.items()
@@ -3427,6 +3446,11 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     mapping["entity"] = entity_name
     mapping["canonical_entity"] = "Client" if entity_name == "Client" else entity_name
     mapping["run_id"] = run_id
+    if template_seed["seeds"]:
+        for lineage in mapping.get("field_lineages", []):
+            if template_seed["seeds"].get(str(lineage.get("source_field"))) == lineage.get("canonical_field") and str(lineage.get("source_field")) not in approved_rules:
+                lineage["basis_note"] = f"Same source field and canonical field were approved in {template_seed['template_name']}. Confirm that it means the same for this source firm."
+                lineage["from_template"] = template_seed["template_id"]
     # Derive information requests from required canonical fields that remain unmapped.
     # These requests are questions for the source owner/SME, never auto-filled defaults.
     mapped_canonical = {

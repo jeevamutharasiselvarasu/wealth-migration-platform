@@ -66,3 +66,48 @@ def test_analyst_may_start_from_template_but_read_only_roles_may_not(tmp_path, m
     denied = _call(app_module, sid, "POST", "/api/migration/new", [("template_id", state.questionnaire_data["migration_id"])])
     assert denied.status_code in (303, 403)
     assert "may+not+perform" in denied.headers.get("location", "") or denied.status_code == 403
+
+
+def test_template_migration_seeds_proposals_but_never_approvals(tmp_path, monkeypatch):
+    import sqlite3
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "tplseed")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "tplseed.db")
+    conn.execute("INSERT INTO canonical_mappings (mapping_id, migration_id, entity_name, source_field, canonical_field, mapping_type, transformation_expression, confidence_score, is_confirmed, created_by, updated_utc) "
+                 "VALUES ('M1', ?, 'Account', 'WEIRD_ACCT_REF', 'ACCT_NUM', 'DIRECT', 'TRIM', 0.9, 1, 'tester', '2026-11-03')", (first_id,))
+    conn.commit(); conn.close()
+
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    assert _second_setup(app_module, sid).status_code == 303
+    second_id = state.questionnaire_data["migration_id"]
+    seed = app_module._template_mapping_seeds(second_id, "Account")
+    assert seed["seeds"] == {"WEIRD_ACCT_REF": "ACCT_NUM"} and seed["template_id"] == first_id
+    assert app_module._template_mapping_seeds(first_id, "Account")["seeds"] == {}  # the template itself is not seeded from itself
+    assert app_module._get_approved_mapping_rules(second_id, "Account") == {}  # nothing approved in the new migration
+
+
+def test_generated_proposal_from_template_is_pending_and_says_where_it_came_from(tmp_path, monkeypatch):
+    import sqlite3
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "tplgen")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    db = tmp_path / "tplgen.db"
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO canonical_mappings (mapping_id, migration_id, entity_name, source_field, canonical_field, mapping_type, transformation_expression, confidence_score, is_confirmed, created_by, updated_utc) "
+                 "VALUES ('M1', ?, 'Account', 'WEIRD_ACCT_REF', 'ACCT_NUM', 'DIRECT', 'DIRECT_COPY', 0.9, 1, 'tester', '2026-11-03')", (first_id,))
+    conn.commit(); conn.close()
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    assert _second_setup(app_module, sid).status_code == 303
+    second_id = state.questionnaire_data["migration_id"]
+    csv_path = tmp_path / "harbor_accounts.csv"
+    csv_path.write_text("WEIRD_ACCT_REF,NOTES\nA-1,x\nA-2,y\n")
+    state.entity_scopes["Account"] = "IN_SCOPE"
+    state.entity_sample_files["Account"] = {"filename": "harbor_accounts.csv", "stored_path": str(csv_path), "status": "UPLOADED", "file_id": "F1"}
+    app_module._map_uploaded_source_entity("Account")
+    conn = sqlite3.connect(db)
+    rows = conn.execute("SELECT canonical_field, status, inference_basis FROM mapping_suggestions WHERE migration_id = ? AND source_field = 'WEIRD_ACCT_REF'", (second_id,)).fetchall()
+    approved = conn.execute("SELECT COUNT(*) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (second_id,)).fetchone()[0]
+    conn.close()
+    assert rows and rows[0][0] == "ACCT_NUM" and rows[0][1] == "PENDING"
+    assert "CoreCap to Simplicity" in (rows[0][2] or "") and approved == 0
