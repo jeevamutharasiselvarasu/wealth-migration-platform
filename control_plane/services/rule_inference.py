@@ -112,6 +112,25 @@ def _value_map(s: str) -> Optional[Dict[str, Any]]:
 _MATCHERS = (_default, _concat, _split, _date, _number, _if_equals, _value_map)
 
 
+def meaning(rule_type: str, p: Dict[str, Any]) -> str:
+    """One plain-English sentence saying exactly what the validated rule will do (shown beside each business-rule line)."""
+    if rule_type == "VALUE_MAP":
+        pairs = list(p["map"].items())
+        shown = ", ".join(f"{k} becomes {v}" for k, v in pairs[:4]) + (f" and {len(pairs) - 4} more" if len(pairs) > 4 else "")
+        return f"Looks each source value up and replaces it: {shown}. Any other value passes through unchanged and is reported."
+    if rule_type == "DATE_FORMAT":
+        return f"Reads dates written as {', '.join(p['input_formats'])} and writes them as YYYY-MM-DD. A date in any other layout is reported."
+    if rule_type == "NUMBER_CLEAN":
+        return f"Removes {p['strip_chars'] or 'no'} characters, treats (x) as negative if enabled, and rounds to {p['decimals']} decimals."
+    if rule_type == "CONCAT":
+        return f"Joins {', '.join(p['sources'])} with '{p['separator']}' (blank parts are skipped and reported)."
+    if rule_type == "SPLIT_PART":
+        return f"Splits on '{p['delimiter']}' and keeps part {p['index'] + 1}."
+    if rule_type == "DEFAULT_IF_BLANK":
+        return f"Uses '{p['default']}' only when the source value is empty."
+    return f"Replaces '{p['when_equals']}' with '{p['then']}'; other values are kept."
+
+
 def infer(text: str) -> List[Dict[str, Any]]:
     """One result per statement: a validated proposal or an explicit 'not recognised'."""
     results = []
@@ -130,7 +149,8 @@ def infer(text: str) -> List[Dict[str, Any]]:
             results.append({"statement": stmt, "recognised": False, "reason": f"Matched {tr.RULE_TYPES[hit['type']]['label']} but it is invalid: {exc}"})
             continue
         results.append({"statement": stmt, "recognised": True, "rule_type": hit["type"], "params": params,
-                        "explanation": f"{tr.RULE_TYPES[hit['type']]['label']}: {tr.RULE_TYPES[hit['type']]['help']}"})
+                        "explanation": f"{tr.RULE_TYPES[hit['type']]['label']}: {tr.RULE_TYPES[hit['type']]['help']}",
+                        "meaning": meaning(hit["type"], params)})
     return results
 
 

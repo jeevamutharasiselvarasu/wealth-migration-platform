@@ -90,49 +90,19 @@
   </main>
 </div>
 <script>
-/* Offsets for the sticky product bar and rail, plus the theme toggle. */
+/* In-place actions. A POST form is sent with fetch and only the page content (top bar, rail, main) is swapped, so a click
+   no longer reloads the page: scroll position, open <details> and keyboard focus area stay put. Redirects to other pages,
+   downloads and failed requests degrade to normal navigation or a message. A form can opt out with data-full-reload.
+   A floating toast shows the notice/error because the inline banner sits at the top, out of view. */
 (function () {
-  function size() {
-    var a = document.querySelector(".xtop"), b = document.querySelector(".pbar"), r = document.documentElement.style;
-    if (a) r.setProperty("--xh", a.offsetHeight + "px");
-    if (b) r.setProperty("--ph", b.offsetHeight + "px");
-  }
-  window.addEventListener("resize", size); window.addEventListener("load", size); size();
-  var btn = document.getElementById("themeBtn");
-  if (btn) btn.addEventListener("click", function () {
-    var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", next);
-    try { localStorage.setItem("xodus.theme", next); } catch (e) {}
-  });
-})();
-</script>
-<script>
-/* Keep the reader's place after an action: a form post redirects back to the same page,
-   so remember the scroll position on submit and restore it on load. Redirects that carry
-   a #anchor keep their own target. A floating toast shows ?notice= / ?error= because the
-   inline banner sits at the top of the page, out of view after a restore. */
-(function () {
-  var KEY = "xodus.scroll";
+  var busy = false;
   try { if ("scrollRestoration" in history) history.scrollRestoration = "manual"; } catch (e) {}
-  document.addEventListener("submit", function (ev) {
-    var f = ev.target;
-    if (!f || (f.method || "get").toLowerCase() !== "post") return;
-    try { sessionStorage.setItem(KEY, JSON.stringify({p: location.pathname, y: window.scrollY, t: Date.now()})); } catch (e) {}
-  }, true);
-  function restore() {
-    var saved = null;
-    try { saved = JSON.parse(sessionStorage.getItem(KEY) || "null"); sessionStorage.removeItem(KEY); } catch (e) {}
-    if (saved && saved.p === location.pathname && Date.now() - saved.t < 15000 && !location.hash) {
-      window.scrollTo(0, saved.y);
-    }
-  }
-  function toast() {
-    var q = new URLSearchParams(location.search), text = q.get("notice") || q.get("error");
+  function toast(text, bad) {
     if (!text) return;
-    var bad = !q.get("notice");
     if (bad && document.getElementById("workflow-error-modal")) return;  /* the page already shows this error in its own dialog */
+    var old = document.querySelector("[data-xtoast]"); if (old) old.remove();
     var d = document.createElement("div");
-    d.setAttribute("role", "status");
+    d.setAttribute("role", "status"); d.setAttribute("data-xtoast", "1");
     d.textContent = text;
     d.style.cssText = "position:fixed;right:16px;bottom:16px;max-width:420px;z-index:9999;padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.18);cursor:pointer;" +
       (bad ? "background:#FEF2F2;color:#7F1D1D;border:1px solid #FECACA;" : "background:#F0FDFA;color:#134E4A;border:1px solid #99F6E4;");
@@ -140,43 +110,138 @@
     document.body.appendChild(d);
     setTimeout(function () { d.remove(); }, 8000);
   }
+  function toastFromUrl() {
+    var q = new URLSearchParams(location.search), text = q.get("notice") || q.get("error");
+    toast(text, !q.get("notice"));
+  }
+  function size() {
+    var a = document.querySelector(".xtop"), b = document.querySelector(".pbar"), r = document.documentElement.style;
+    if (a) r.setProperty("--xh", a.offsetHeight + "px");
+    if (b) r.setProperty("--ph", b.offsetHeight + "px");
+  }
   /* Table-style approvals: tick rows, add a note or a change, then submit. Editing a row's
      change/note ticks it automatically; the header box selects every row in that table. */
-  function bulk() {
-    var checks = function () { return Array.prototype.slice.call(document.querySelectorAll("[data-row-check]")); };
-    function refresh() {
-      var n = checks().filter(function (c) { return c.checked; }).length;
-      document.querySelectorAll("[data-selected-count]").forEach(function (el) { el.textContent = n; });
-      document.querySelectorAll("[data-needs-selection]").forEach(function (b) { b.disabled = n === 0; });
-      document.querySelectorAll("[data-bulk-table]").forEach(function (t) {
-        var rows = t.querySelectorAll("[data-row-check]"), all = t.querySelector("[data-select-all]");
-        if (!all || !rows.length) return;
-        var on = Array.prototype.filter.call(rows, function (c) { return c.checked; }).length;
-        all.checked = on === rows.length; all.indeterminate = on > 0 && on < rows.length;
-      });
-    }
-    document.addEventListener("change", function (ev) {
-      var t = ev.target;
-      if (t.matches && t.matches("[data-select-all]")) {
-        var tbl = t.closest("table");
-        tbl.querySelectorAll("[data-row-check]").forEach(function (c) { c.checked = t.checked; });
-      } else if (t.matches && t.matches("[data-row-input]")) {
-        var tr = t.closest("tr"), c = tr && tr.querySelector("[data-row-check]");
-        if (c && t.value) c.checked = true;
-      }
-      refresh();
+  function refresh() {
+    var checks = Array.prototype.slice.call(document.querySelectorAll("[data-row-check]"));
+    var n = checks.filter(function (c) { return c.checked; }).length;
+    document.querySelectorAll("[data-selected-count]").forEach(function (el) { el.textContent = n; });
+    document.querySelectorAll("[data-needs-selection]").forEach(function (b) { b.disabled = n === 0; });
+    document.querySelectorAll("[data-bulk-table]").forEach(function (t) {
+      var rows = t.querySelectorAll("[data-row-check]"), all = t.querySelector("[data-select-all]");
+      if (!all || !rows.length) return;
+      var on = Array.prototype.filter.call(rows, function (c) { return c.checked; }).length;
+      all.checked = on === rows.length; all.indeterminate = on > 0 && on < rows.length;
     });
-    document.addEventListener("input", function (ev) {
-      var t = ev.target;
-      if (t.matches && t.matches("[data-row-input]") && t.value) {
-        var tr = t.closest("tr"), c = tr && tr.querySelector("[data-row-check]");
-        if (c && !c.checked) { c.checked = true; refresh(); }
-      }
-    });
-    refresh();
   }
-  document.addEventListener("DOMContentLoaded", function () { restore(); toast(); bulk(); });
-  window.addEventListener("load", restore);
+  document.addEventListener("change", function (ev) {
+    var t = ev.target;
+    if (t.matches && t.matches("[data-select-all]")) {
+      t.closest("table").querySelectorAll("[data-row-check]").forEach(function (c) { c.checked = t.checked; });
+    } else if (t.matches && t.matches("[data-row-input]")) {
+      var tr = t.closest("tr"), c = tr && tr.querySelector("[data-row-check]");
+      if (c && t.value) c.checked = true;
+    }
+    refresh();
+  });
+  document.addEventListener("input", function (ev) {
+    var t = ev.target;
+    if (t.matches && t.matches("[data-row-input]") && t.value) {
+      var tr = t.closest("tr"), c = tr && tr.querySelector("[data-row-check]");
+      if (c && !c.checked) { c.checked = true; refresh(); }
+    }
+  });
+  document.addEventListener("click", function (ev) {
+    var tb = ev.target.closest && ev.target.closest("#themeBtn");
+    if (tb) {
+      var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("xodus.theme", next); } catch (e) {}
+      return;
+    }
+    var use = ev.target.closest && ev.target.closest("[data-use-rule]");
+    if (use) {
+      var input = use.closest("td").querySelector("input[name^='rule::']");
+      if (input) { input.value = use.getAttribute("data-use-rule"); input.dispatchEvent(new Event("input", {bubbles: true})); }
+    }
+  });
+  function openKeys() {
+    var keys = {};
+    document.querySelectorAll("#main-content details[open]").forEach(function (d) {
+      var s = d.querySelector("summary"); keys[(d.id || "") + "|" + (s ? s.textContent.trim() : "")] = 1;
+    });
+    return keys;
+  }
+  function reopen(keys) {
+    document.querySelectorAll("#main-content details").forEach(function (d) {
+      var s = d.querySelector("summary");
+      if (keys[(d.id || "") + "|" + (s ? s.textContent.trim() : "")]) d.open = true;
+    });
+  }
+  function runScripts(root) {
+    root.querySelectorAll("script").forEach(function (old) {
+      var n = document.createElement("script");
+      Array.prototype.forEach.call(old.attributes, function (a) { n.setAttribute(a.name, a.value); });
+      n.textContent = old.textContent; old.replaceWith(n);
+    });
+  }
+  function swap(doc, url) {
+    var keys = openKeys(), y = window.scrollY;
+    ["header.xtop", ".pbar", ".wrap.app"].forEach(function (sel) {
+      var cur = document.querySelector(sel), nxt = doc.querySelector(sel);
+      if (cur && nxt) cur.replaceWith(document.importNode(nxt, true));
+    });
+    document.title = doc.title || document.title;
+    var u = new URL(url, location.href), q = new URLSearchParams(u.search), text = q.get("notice") || q.get("error"), bad = !q.get("notice");
+    q.delete("notice"); q.delete("error");
+    try { history.replaceState(null, "", u.pathname + (q.toString() ? "?" + q.toString() : "") + u.hash); } catch (e) {}
+    runScripts(document.querySelector(".wrap.app"));
+    reopen(keys); size(); refresh();
+    var target = u.hash && document.getElementById(decodeURIComponent(u.hash.slice(1)));
+    if (target) target.scrollIntoView({block: "start"}); else window.scrollTo(0, y);
+    toast(text, bad);
+  }
+  function download(resp) {
+    var cd = resp.headers.get("content-disposition") || "", m = /filename="?([^";]+)"?/i.exec(cd);
+    return resp.blob().then(function (blob) {
+      var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = m ? m[1] : "download";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    });
+  }
+  document.addEventListener("submit", function (ev) {
+    var f = ev.target, sub = ev.submitter;
+    if (ev.defaultPrevented || !f || (f.method || "get").toLowerCase() !== "post" || f.hasAttribute("data-full-reload") || busy) return;
+    if (f.target && f.target !== "_self") return;
+    var action = (sub && sub.getAttribute("formaction")) || f.getAttribute("action") || location.pathname + location.search;
+    var url = new URL(action, location.href);
+    if (url.origin !== location.origin || !document.getElementById("main-content") || !window.fetch || !window.DOMParser) return;
+    ev.preventDefault();
+    busy = true; document.body.style.cursor = "progress";
+    var multipart = /multipart/i.test(f.enctype || "");
+    var data = sub ? new FormData(f, sub) : new FormData(f);
+    var body = multipart ? data : new URLSearchParams(data);
+    var held = sub && !sub.disabled ? sub : null; if (held) held.disabled = true;
+    fetch(url.href, {method: "POST", body: body, credentials: "same-origin", redirect: "follow", headers: {"X-Requested-With": "xodus-fetch", "Accept": "text/html,application/json,*/*"}})
+      .then(function (resp) {
+        var type = (resp.headers.get("content-type") || "").toLowerCase();
+        if (/attachment/i.test(resp.headers.get("content-disposition") || "") || /zip|yaml|octet-stream/.test(type)) return download(resp);
+        if (type.indexOf("text/html") === -1) {
+          return resp.text().then(function (t) {
+            var msg = t; try { var j = JSON.parse(t); msg = j.detail || j.message || j.error || (resp.ok ? "Done." : "The request failed."); if (typeof msg !== "string") msg = JSON.stringify(msg); } catch (e) {}
+            toast(String(msg).slice(0, 300), !resp.ok);
+          });
+        }
+        return resp.text().then(function (html) {
+          var doc = new DOMParser().parseFromString(html, "text/html");
+          if (doc.getElementById("main-content") && doc.querySelector(".wrap.app")) return swap(doc, resp.url);
+          if (resp.redirected) { location.assign(resp.url); return; }
+          document.open(); document.write(html); document.close();
+        });
+      })
+      .catch(function () { toast("Could not reach the server. Nothing was changed on this page; try again.", true); })
+      .then(function () { busy = false; document.body.style.cursor = ""; if (held) held.disabled = false; });
+  });
+  document.addEventListener("DOMContentLoaded", function () { toastFromUrl(); refresh(); size(); });
+  window.addEventListener("resize", size); window.addEventListener("load", size);
 })();
 </script>
 </body>

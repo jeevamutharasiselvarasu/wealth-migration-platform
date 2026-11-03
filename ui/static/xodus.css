@@ -108,3 +108,16 @@ body h1,body h2,body h3,body h4{font-weight:700}
   .side .nv{padding:9px 12px}
   .side a.stg{min-width:210px}
 }
+
+/* Freeze panes: wide tables scroll inside a bounded box; the header row stays visible and the first column(s) stay pinned. */
+.tw{max-height:min(68vh,680px);overflow:auto;position:relative}
+.tw thead th{position:sticky;top:0;z-index:3;box-shadow:inset 0 -1px 0 var(--line)}
+.tw th:first-child,.tw td:first-child{position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:inset -1px 0 0 var(--line)}
+.tw thead th:first-child{z-index:4;background:var(--bg)}
+.tw table[data-bulk-table] th:first-child,.tw table[data-bulk-table] td:first-child{width:40px;min-width:40px;padding-inline:12px;text-align:center}
+.tw table[data-bulk-table] th:nth-child(2),.tw table[data-bulk-table] td:nth-child(2){position:sticky;left:40px;z-index:2;background:var(--panel);box-shadow:inset -1px 0 0 var(--line)}
+.tw table[data-bulk-table] thead th:nth-child(2){z-index:4;background:var(--bg)}
+.rule-hint{margin-top:4px;font-size:10.5px;line-height:1.35;color:var(--muted);max-width:12rem}
+.rule-hint .lnk{border:0;background:none;padding:0;color:var(--blue,#1D4ED8);font-weight:700;cursor:pointer;text-decoration:underline}
+/* The bulk-action bar sits under its table instead of floating over the rows it acts on. */
+.gate[data-bulk-bar]{position:static;margin-top:12px}

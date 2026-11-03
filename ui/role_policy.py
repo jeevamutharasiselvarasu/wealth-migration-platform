@@ -77,6 +77,7 @@ POST_POLICY = [
     (r"^/api/target-mapping/(review-selected|revise-selected|[^/]+/review)$", APPROVAL_ROLES),
     (r"^/api/transformation-rules/preview$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules/infer$", DISCOVERY_ROLES),
+    (r"^/api/transformation-rules/(infer-preview|suggestion)$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules/[^/]+/[^/]+/(decision|retire)$", APPROVAL_ROLES),
 ]

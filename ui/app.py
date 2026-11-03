@@ -18,7 +18,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
+from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1036,6 +1036,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "pipeline_run": latest_run,
             "source_files": source_files,
             "mapping_suggestions": mapping_suggestions,
+            "rule_hints": _rule_hints(mapping_suggestions),
             "information_requests": [item for item in state_store.questionnaire_data.get("mapping_information_requests", []) if item.get("entity") in selected_scope and str(item.get("migration_id", active_migration_id)) == active_migration_id],
             "notice": notice,
             "error": error,
@@ -2428,8 +2429,54 @@ def _rules_redirect(key: str, message: str):
     return RedirectResponse(url=f"/transformation-rules?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.get("/transformation-rules", response_class=HTMLResponse)
-async def transformation_rules_page(request: Request, notice: str = "", error: str = ""):
+def _source_columns(limit_files: int = 12) -> List[Dict[str, Any]]:
+    """Observed values per source column from the uploaded sample files (read-only; used for rule suggestions)."""
+    cols: List[Dict[str, Any]] = []
+    done = 0
+    for entity, group in state_store.entity_source_files.items():
+        for rec in group.values():
+            stored = rec.get("stored_path")
+            if done >= limit_files or rec.get("inference_approval_status") == "REJECTED" or not stored or not file_store.is_file(stored):
+                continue
+            try:
+                rows = read_source_records(rec.get("filename", "source.csv"), file_store.read_bytes(stored))
+            except (OSError, ValueError):
+                continue
+            done += 1
+            for field in (rows[0].keys() if rows else []):
+                cols.append({"entity": entity, "file": rec.get("filename", "source"), "field": str(field), "values": [r.get(field) for r in rows]})
+    return cols
+
+
+def _rule_hints(mapping_suggestions) -> Dict[str, Dict[str, Any]]:
+    """Best transformation suggestion per pending mapping row, keyed 'Entity|SOURCE_FIELD' (shown beside the rule input)."""
+    if not mapping_suggestions:
+        return {}
+    wanted = {(m["entity_name"], str(m["source_field"]).upper()) for m in mapping_suggestions}
+    hints: Dict[str, Dict[str, Any]] = {}
+    try:
+        for sg in _rule_suggestions():
+            k = (sg["entity"], str(sg["source_field"]).upper())
+            if k in wanted and f"{k[0]}|{k[1]}" not in hints:
+                hints[f"{k[0]}|{k[1]}"] = sg
+    except Exception:  # suggestions are advisory; never block the review page
+        return {}
+    return hints
+
+
+def _rule_suggestions() -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    try:
+        rules = transformation_rules.list_rules(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    cross = {"custodian": SchemaMapperAgent.COMMON_CUSTODIAN_CROSSWALK, "registration": SchemaMapperAgent.REGISTRATION_TYPE_CROSSWALK,
+             "client_type": SchemaMapperAgent.CLIENT_TYPE_CROSSWALK}
+    return rule_suggestions.suggest(_source_columns(), rules, cross)
+
+
+def _rules_page(request: Request, notice: str = "", error: str = "", inferred=None, inferred_label: str = "", inferred_source=None):
     user = get_current_user(request)
     conn = get_db_connection()
     try:
@@ -2445,6 +2492,9 @@ async def transformation_rules_page(request: Request, notice: str = "", error: s
     for rule in rules:
         rule["params_text"] = json.dumps(rule["params"], indent=1, sort_keys=True)
         rule["used_by"] = usage.get(rule["expression"], 0)
+    for item in inferred or []:
+        if item.get("recognised"):
+            item["params_text"] = json.dumps(item["params"], sort_keys=True)
     return render_template_with_context(request, "transformation_rules.html", {
         "page_title": "Transformation Rules", "user_name": user["name"], "user_role": user["role"],
         "rules": rules, "rule_types": transformation_rules.RULE_TYPES,
@@ -2452,8 +2502,72 @@ async def transformation_rules_page(request: Request, notice: str = "", error: s
         "date_formats": list(transformation_rules.DATE_FORMATS),
         "can_author": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
         "rule_assets": [d for d in state_store.firm_knowledge_docs if d.get("category") in ("business_rules", "transformation_rule") and d.get("full_text")],
+        "suggestions": _rule_suggestions() if user["role"] in DISCOVERY_ROLES else [],
+        "inferred": inferred, "inferred_label": inferred_label, "inferred_source": inferred_source or {},
         "notice": notice, "error": error,
     })
+
+
+@app.get("/transformation-rules", response_class=HTMLResponse)
+async def transformation_rules_page(request: Request, notice: str = "", error: str = ""):
+    return _rules_page(request, notice, error)
+
+
+def _rule_text_and_label(rule_text: str, asset_id: str):
+    """Resolve pasted text or a registered asset to (text, label, error)."""
+    if asset_id:
+        doc = next((d for d in state_store.firm_knowledge_docs if d.get("id") == asset_id), None)
+        if not doc or not doc.get("full_text"):
+            return "", "", "That knowledge asset has no readable text. Register the business rules as a Markdown or text file."
+        return doc["full_text"], f"asset {doc['id']}, {doc['filename']}", ""
+    if not rule_text.strip():
+        return "", "", "Paste at least one business rule or choose a business-rules knowledge asset."
+    return rule_text, "", ""
+
+
+@app.post("/api/transformation-rules/infer-preview", response_class=HTMLResponse)
+async def preview_inferred_rules(request: Request, rule_text: str = Form(""), asset_id: str = Form("")):
+    """Show, line by line, what the inference recognised (or why not) without creating anything."""
+    get_current_user(request)
+    text, label, err = _rule_text_and_label(rule_text, asset_id)
+    if err:
+        return _rules_page(request, error=err)
+    return _rules_page(request, inferred=rule_inference.infer(text), inferred_label=label or "pasted text",
+                       inferred_source={"asset_id": asset_id, "text": "" if asset_id else rule_text})
+
+
+@app.post("/api/transformation-rules/suggestion")
+async def create_suggested_rule(request: Request):
+    """Turn one reviewed suggestion into a DRAFT rule. Lookup targets are exactly what the reviewer typed."""
+    user = get_current_user(request)
+    form = await request.form()
+    rule_type, rule_id = str(form.get("rule_type", "")), str(form.get("rule_id", ""))
+    field, evidence = str(form.get("source_field", "")), str(form.get("evidence", ""))
+    try:
+        if rule_type == "VALUE_MAP":
+            pairs = {}
+            for key, val in form.multi_items():
+                if key.startswith("value::"):
+                    target = str(form.get("target::" + key[7:], "")).strip()
+                    if target:
+                        pairs[str(val).strip()] = target
+            if not pairs:
+                return _rules_redirect("error", "Enter the canonical value for at least one source value before saving the lookup.")
+            params = {"map": pairs, "case_insensitive": True}
+        else:
+            params = json.loads(str(form.get("params_json", "{}")))
+        desc = f"Suggested from the data in {field or 'a source column'}: {evidence}"[:900]
+        conn = get_db_connection()
+        try:
+            rule = transformation_rules.create_rule_version(conn, rule_id, rule_type, desc, params, user["name"])
+            conn.commit()
+        finally:
+            conn.close()
+    except (ValueError, TypeError) as exc:
+        return _rules_redirect("error", str(exc))
+    state_store.audit_log.append({"event": "TRANSFORMATION_RULE_SUGGESTED", "actor": user["name"], "timestamp_utc": rule["created_utc"],
+                                  "details": {"rule": rule["expression"], "type": rule_type, "field": field}})
+    return _rules_redirect("notice", f"{rule['expression']} saved as a draft from the suggestion for {field}. It needs approval before a mapping can use it.")
 
 
 @app.post("/api/transformation-rules/preview")
@@ -2479,14 +2593,9 @@ def _shorten(text: str, limit: int) -> str:
 async def infer_transformation_rules(request: Request, rule_text: str = Form(""), asset_id: str = Form("")):
     """Turn business-rule text into DRAFT governed rules. Each still needs Analyst/Admin approval; unmatched sentences are reported, not guessed."""
     user = get_current_user(request)
-    label = ""
-    if asset_id:
-        doc = next((d for d in state_store.firm_knowledge_docs if d.get("id") == asset_id), None)
-        if not doc or not doc.get("full_text"):
-            return _rules_redirect("error", "That knowledge asset has no readable text. Register the business rules as a Markdown or text file.")
-        rule_text, label = doc["full_text"], f"asset {doc['id']}, {doc['filename']}"
-    if not rule_text.strip():
-        return _rules_redirect("error", "Paste at least one business rule or choose a business-rules knowledge asset.")
+    rule_text, label, err = _rule_text_and_label(rule_text, asset_id)
+    if err:
+        return _rules_redirect("error", err)
     conn = get_db_connection()
     try:
         result = rule_inference.save_drafts(conn, rule_text, user["name"], label)

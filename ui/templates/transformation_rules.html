@@ -14,7 +14,6 @@
   <p class="d" style="margin:0">Built-in families: <span class="font-mono">{{ builtin_rules|join(', ') }}</span></p>
 
   {% if can_author %}
-  {% if can_author %}
   <section class="card" id="infer-rules">
     <h3 style="font-size:16px">Infer rules from business-rule text</h3>
     <p class="mt-1 text-xs text-[#5A6A88]">Paste business rules, one per line or Markdown bullet. Recognised sentences become <b>draft</b> rules with your wording kept as the source; nothing is used until a Migration Analyst or Platform Admin approves it. Supported: map A to B / A -&gt; B, dates are MM/DD/YYYY, strip $ and , with 2 decimals, concatenate F1 and F2 with a space, split on "-" and take the second part, default to "X" if blank, replace "X" with "Y". Anything else is reported, never guessed.</p>
@@ -22,10 +21,65 @@
       <label class="field fl">From a registered business-rules knowledge asset
         <select name="asset_id" class="input w-full"><option value="">{% if rule_assets %}Choose an asset{% else %}No business-rules asset registered yet{% endif %}</option>{% for d in rule_assets %}<option value="{{ d.id }}">{{ d.id }} · {{ d.filename }} ({{ d.category }})</option>{% endfor %}</select></label>
       <button class="btn p sm" {% if not rule_assets %}disabled{% endif %}>Infer draft rules from asset</button>
+      <button class="btn g sm" formaction="/api/transformation-rules/infer-preview" {% if not rule_assets %}disabled{% endif %}>Show what is inferred</button>
       <a href="/firm-knowledge" class="ml-2 text-xs text-blue-700">Register business rules as a knowledge asset</a>
     </form>
-    <form action="/api/transformation-rules/infer" method="post" class="mt-3"><textarea name="rule_text" rows="5" required aria-label="Business rule text" class="input w-full font-mono" placeholder="- Map SCH to SCHWAB, FID to FIDELITY&#10;- Dates are MM/DD/YYYY"></textarea><button class="btn p sm">Infer draft rules</button></form>
+    <form action="/api/transformation-rules/infer" method="post" class="mt-3"><textarea name="rule_text" rows="5" required aria-label="Business rule text" class="input w-full font-mono" placeholder="- Map SCH to SCHWAB, FID to FIDELITY&#10;- Dates are MM/DD/YYYY"></textarea><button class="btn p sm">Infer draft rules</button> <button class="btn g sm" formaction="/api/transformation-rules/infer-preview">Show what is inferred</button></form>
+    <p class="mt-2 text-[10px] text-[#8A97B2]">Write only rule lines (and "#" comment lines) in the file. A plain prose line is read as a rule and reported as not recognised. Example file: <span class="font-mono">demo_data/knowledge/corecap_business_rules.md</span>.</p>
   </section>
+
+  {% if inferred is not none %}
+  <section class="card" id="inferred">
+    <h3 style="font-size:16px">What was inferred <span class="font-mono text-[10px] text-[#8A97B2]">{{ inferred_label }}</span></h3>
+    {% set ok = inferred|selectattr('recognised')|list %}
+    <p class="mt-1 text-xs text-[#5A6A88]">{{ ok|length }} of {{ inferred|length }} line(s) recognised. Nothing was created; use the button below to save the recognised ones as drafts.</p>
+    <div class="tw mt-3"><table><thead><tr><th>Business rule line</th><th>Inferred as</th><th>Parameters</th><th>Meaning / reason</th></tr></thead><tbody>
+      {% for it in inferred %}<tr>
+        <td class="font-mono text-[11px]">{{ it.statement }}</td>
+        {% if it.recognised %}<td><span class="pill approved">{{ rule_types[it.rule_type].label }}</span></td><td class="font-mono text-[10px]">{{ it.params_text }}</td><td class="text-[11px]">{{ it.meaning }}</td>
+        {% else %}<td><span class="pill review">Not recognised</span></td><td>-</td><td class="text-[11px] text-[#9a5b00]">{{ it.reason }}</td>{% endif %}
+      </tr>{% endfor %}
+    </tbody></table></div>
+    {% if ok %}<form action="/api/transformation-rules/infer" method="post" class="mt-3">
+      <input type="hidden" name="asset_id" value="{{ inferred_source.asset_id }}"><textarea name="rule_text" hidden>{{ inferred_source.text }}</textarea>
+      <button class="btn p sm">Save {{ ok|length }} recognised rule(s) as drafts</button></form>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if suggestions %}
+  <section class="card" id="suggested-rules">
+    <h3 style="font-size:16px">Suggested from your source data <span class="font-mono text-[10px] text-[#8A97B2]">{{ suggestions|length }}</span></h3>
+    <p class="mt-1 text-xs text-[#5A6A88]">Read from the uploaded sample files and the rules already registered. Suggestions are recommendations only: saving one creates a <b>draft</b> that an Analyst or Admin must approve. Where a lookup target is unknown it is left blank for you to supply; blanks stay unmapped and are reported.</p>
+    <div class="mt-3 space-y-3">
+      {% for sg in suggestions %}
+      <article class="rounded-xl border border-[#D9E3F5] p-4" id="sug-{{ sg.source_field }}">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div><span class="font-bold text-[#152C6B]">{{ sg.entity }} · {{ sg.source_field }}</span> <span class="ml-2 text-[10px] text-[#5A6A88]">{{ sg.file }}{% if sg.sample %} · e.g. {{ sg.sample|join(', ') }}{% endif %}</span></div>
+          <span class="pill {% if sg.kind == 'EXISTING' %}approved{% else %}review{% endif %}">{{ rule_types[sg.rule_type].label }} · {{ sg.origin }}</span>
+        </div>
+        <p class="mt-1 text-xs text-[#41506B]">{{ sg.evidence }}</p>
+        {% if sg.kind == 'EXISTING' %}
+        <p class="mt-1 text-[11px] text-[#5A6A88]">Use <span class="font-mono font-bold">{{ sg.expression }}</span> ({{ sg.status|lower }}){% if sg.status == 'DRAFT' %} once it is approved{% endif %} in the Transformation column of the Mapping page.</p>
+        {% elif sg.exists %}
+        <p class="mt-1 text-[11px] text-[#5A6A88]">A rule for this already exists in the list below.</p>
+        {% else %}
+        <form action="/api/transformation-rules/suggestion" method="post" class="mt-2">
+          <input type="hidden" name="rule_type" value="{{ sg.rule_type }}"><input type="hidden" name="rule_id" value="{{ sg.rule_id }}">
+          <input type="hidden" name="source_field" value="{{ sg.source_field }}"><input type="hidden" name="evidence" value="{{ sg.evidence }}">
+          {% if sg.rule_type == 'VALUE_MAP' %}
+          <div class="tw"><table><thead><tr><th>Source value</th><th>Rows</th><th>Canonical value</th></tr></thead><tbody>
+            {% for e in sg.entries %}<tr><td class="font-mono">{{ e.value }}<input type="hidden" name="value::{{ loop.index }}" value="{{ e.value }}"></td><td>{{ e.count }}</td>
+              <td><input name="target::{{ loop.index }}" value="{{ e.target }}" placeholder="{{ 'known crosswalk' if e.known else 'supply the target value' }}" aria-label="Canonical value for {{ e.value }}" class="input w-56 font-mono"></td></tr>{% endfor %}
+          </tbody></table></div>
+          {% else %}<input type="hidden" name="params_json" value="{{ sg.params|tojson|forceescape }}"><p class="text-[10px] font-mono text-[#5A6A88]">{{ sg.params|tojson }}</p>{% endif %}
+          <button class="btn p sm mt-2">Save as draft rule →</button>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
   {% endif %}
 
   <section class="card" id="new-rule">
@@ -50,7 +104,6 @@
       <div id="rule-preview" class="md:col-span-3" aria-live="polite"></div>
     </form>
   </section>
-  {% endif %}
 
   <section class="card">
     <h3 style="font-size:16px">Rule versions <span class="font-mono text-[10px] text-[#8A97B2]">{{ rules|length }}</span></h3>

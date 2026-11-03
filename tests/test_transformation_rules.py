@@ -277,7 +277,7 @@ def test_demo_manifest_registers_a_business_rules_asset():
     root = Path(__file__).resolve().parents[1]
     text = (root / "demo_data" / "knowledge" / "corecap_business_rules.md").read_text()
     from control_plane.services import rule_inference as ri
-    assert sum(1 for r in ri.infer(text) if r["recognised"]) == 4
+    assert sum(1 for r in ri.infer(text) if r["recognised"]) == 5
     assert "corecap_business_rules.md" in (root / "ui" / "app.py").read_text()
 
 

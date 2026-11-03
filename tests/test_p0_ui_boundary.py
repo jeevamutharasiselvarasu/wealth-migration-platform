@@ -529,14 +529,13 @@ def test_git_ignored_local_users_add_rehearsal_accounts_without_replacing_tracke
 
 
 def test_base_template_keeps_scroll_position_after_actions():
-    """Form posts redirect to the same page; the shared layout must restore the scroll position."""
+    """Form posts are sent in place; the shared layout keeps the reader's scroll position, honours anchors and toasts the notice."""
     from pathlib import Path
 
     html = Path("ui/templates/base.html").read_text(encoding="utf-8")
-    assert "xodus.scroll" in html
-    assert "sessionStorage" in html and "scrollTo" in html
-    assert "location.hash" in html  # anchored redirects keep their own target
+    assert "window.scrollTo(0, y)" in html and "scrollIntoView" in html  # scroll kept; anchored redirects keep their own target
     assert 'get("notice")' in html  # notice shown as a toast, since the banner is off-screen
+    assert "data-full-reload" in html  # a form can opt out of in-place handling
 
 
 def test_suite_template_shell_marks_other_spaces_planned_and_groups_governance_inputs_in_the_rail():
