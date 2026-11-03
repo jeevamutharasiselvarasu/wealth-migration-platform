@@ -14,7 +14,15 @@
       <h1>Source discovery & entity inference</h1>
       <p>Upload one or many source files without assigning entities. XODUS attempts inference from headers and file structure first. Optional context can refine results; ambiguous files are flagged for review rather than blocking the whole batch.</p>
     </div>
+    {% set _ok = source_uploads|selectattr('inference_approval_status','equalto','APPROVED')|list|length %}
+    <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip {{ 'g' if source_uploads and _ok == source_uploads|length else 'ex' }}">{{ 'Approved' if source_uploads and _ok == source_uploads|length else 'Needs review' }}</span></div>
   </div>
+  <div class="ins"><b>Control plane.</b> The landing contract and the source inventory. It works from headers and sample files. No production data is touched here.</div>
+  <section class="kpis" aria-label="Landing summary">
+    <div class="kpi"><small>Files landed</small><b>{{ source_uploads|length }}</b><span>{{ source_uploads|selectattr('inference_approval_status','equalto','APPROVED')|list|length }} confirmed</span></div>
+    <div class="kpi"><small>Awaiting review</small><b>{{ source_uploads|length - _ok }}</b><span>need a person</span></div>
+    <div class="kpi"><small>Entities inferred</small><b>{{ source_uploads|map(attribute='inferred_entity')|reject('equalto','Needs clarification')|unique|list|length }}</b><span>Account, Client, Household</span></div>
+  </section>
 
   {% if uploaded_entity %}
   <div class="ins"><b>File analysed.</b> The source columns were classified as <b>{{ uploaded_entity }}</b>. Review the inferred file below before running mapping.</div>

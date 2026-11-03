@@ -497,6 +497,7 @@ def test_compact_workflow_bar_and_my_queue_are_in_templates():
     base = (root / "base.html").read_text(encoding="utf-8")
     assert 'class="runh"' in base and 'aria-label="Data migration navigation"' in base
     assert 'aria-label="My queue"' in (root / "dashboard.html").read_text(encoding="utf-8")
+    assert "Landing summary" in (root / "entity_sample_files.html").read_text(encoding="utf-8")
     assert "Pipeline by plane" in (root / "dashboard.html").read_text(encoding="utf-8")
     tm = (root / "target_mapping.html").read_text(encoding="utf-8")
     assert 'aria-label="On this page"' in tm and 'id="target-mappings"' in tm and "Inferred target model" in tm
