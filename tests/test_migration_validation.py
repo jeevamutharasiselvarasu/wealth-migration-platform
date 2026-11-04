@@ -18,11 +18,12 @@ def _by(checks, name, entity):
 
 
 def test_unmapped_required_blank_duplicate_and_orphan_findings_are_reported():
-    mappings = {"Account": {"ACCT": "ACCT_NUM", "HH": "HH_ID"}, "Household": {"H": "HH_ID"}}
+    mappings = {"Account": {"ACCT": "ACCT_NUM", "HH": "HH_ID"}, "Household": {"H": "HH_ID"}, "Client": {"HHREF": "HH_ID"}}
     files = {
         "Account": [{"filename": "accounts.csv", "records": [
             {"ACCT": "A1", "HH": "H1"}, {"ACCT": "A1", "HH": "H9"}, {"ACCT": "", "HH": "H1"}]}],
         "Household": [{"filename": "hh.csv", "records": [{"H": "H1"}, {"H": "H2"}]}],
+        "Client": [{"filename": "contacts.csv", "records": [{"HHREF": "H2"}, {"HHREF": "H7"}]}],
     }
     result = run_checks(CONTRACT, mappings, files)
     checks = result["checks"]
@@ -33,10 +34,10 @@ def test_unmapped_required_blank_duplicate_and_orphan_findings_are_reported():
     assert "ACCT_NUM (1 row(s))" in _by(checks, "REQUIRED_VALUES_PRESENT", "Account")[0]["detail"]
     assert _by(checks, "KEY_UNIQUE", "Account")[0]["status"] == "FAIL"
     assert _by(checks, "KEY_UNIQUE", "Household")[0]["status"] == "PASS"
-    household_link = [c for c in checks if c["check"] == "RELATIONSHIP" and "Household.HH_ID" in c["field"]][0]
-    assert household_link["status"] == "FAIL" and household_link["orphans"] == ["H9"]
-    client_link = [c for c in checks if c["check"] == "RELATIONSHIP" and "Client.CLIENT_ID" in c["field"]][0]
-    assert client_link["status"] == "NOT_EVALUATED"
+    links = {c["entity"]: c for c in checks if c["check"] == "RELATIONSHIP" and "Household.HH_ID" in c["field"]}
+    assert links["Account"]["status"] == "FAIL" and links["Account"]["orphans"] == ["H9"]
+    assert links["Client"]["status"] == "FAIL" and links["Client"]["orphans"] == ["H7"]
+    assert not [c for c in checks if c["check"] == "RELATIONSHIP" and "Client.CLIENT_ID" in c["field"]]
 
 
 def test_clean_data_passes_without_inventing_unmapped_relationship_results():

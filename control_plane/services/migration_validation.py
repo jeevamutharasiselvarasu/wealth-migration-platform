@@ -12,7 +12,7 @@ from control_plane.services.mcl_validation import _key_check, _present, _relatio
 ENTITIES = ("Account", "Client", "Household")
 RELATIONSHIPS = (
     ("Account", "HH_ID", "Household", "HH_ID"),
-    ("Account", "CLIENT_ID", "Client", "CLIENT_ID"),
+    ("Client", "HH_ID", "Household", "HH_ID"),
 )
 
 
