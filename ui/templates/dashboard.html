@@ -47,7 +47,7 @@
 
   {% if progress %}
   <section class="kpis" aria-label="Progress counts">
-    <a href="/entity-sample-files" class="kpi"><small>Files confirmed</small><b>{{ progress.files_confirmed }} / {{ progress.files_total }}</b><span>{{ progress.files_pending }} awaiting review</span></a>
+    <a href="/discovery" class="kpi"><small>Files confirmed</small><b>{{ progress.files_confirmed }} / {{ progress.files_total }}</b><span>{{ progress.files_pending }} awaiting review</span></a>
     <a href="/agent-pipeline" class="kpi"><small>Mappings approved</small><b>{{ progress.mappings_approved }}</b><span>{{ progress.proposals_pending }} proposal{{ '' if progress.proposals_pending == 1 else 's' }} waiting</span></a>
     <a href="/agent-pipeline#information-requests" class="kpi"><small>Information requests</small><b {% if progress.rfi_open %}style="color:var(--warn)"{% endif %}>{{ progress.rfi_open }}</b><span>open</span></a>
     <a href="/canonical-changes" class="kpi"><small>Canonical change requests</small><b>{{ progress.changes_open }}</b><span>open or deferred</span></a>
@@ -61,7 +61,7 @@
     <div class="two">
       <div class="card" style="border-top:3px solid var(--cyan,#08A6D8)"><b>Control plane · setup</b>
         {{ prow('01 Loader & Inspector', '/entity-sample-files', 'discover') }}
-        {{ prow('02 Discovery', '/entity-sample-files#discovered-source-inventory', 'discover') }}
+        {{ prow('02 Discovery', '/discovery#', 'discover') }}
         {{ prow('03 Business Rules', '/transformation-rules', 'map') }}
         {{ prow('04 Schema Mapper', '/agent-pipeline', 'map') }}
         {{ prow('05 Mapping Validation Review', '/reconciliation', 'validate') }}
@@ -155,7 +155,7 @@
   <details class="card"><summary class="dsum">Platform flow <span class="chip" style="margin-left:8px">what each stage does</span></summary>
     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin:12px 0">
       <p class="d" style="margin:0;max-width:760px">Configure the target contract first, register Azure and knowledge references, then let discovery infer source entities before mapping.</p>
-      {% if migration_setup and migration_setup.get("target_system") %}<a href="/entity-sample-files" class="btn g sm">Continue to source discovery →</a>{% else %}<a href="/migration-setup" class="btn g sm">Start migration setup →</a>{% endif %}
+      {% if migration_setup and migration_setup.get("target_system") %}<a href="/entity-sample-files" class="btn g sm">Continue to Loader &amp; Inspector →</a>{% else %}<a href="/migration-setup" class="btn g sm">Start migration setup →</a>{% endif %}
     </div>
     <div class="tiles">
       <div class="tl"><div class="top"><i>01</i></div><strong style="font-size:13.5px">Discover & profile</strong><span class="ds">Upload representative source files, inspect schema and profile quality.</span></div>

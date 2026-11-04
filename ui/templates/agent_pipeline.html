@@ -17,7 +17,7 @@
   {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   <nav aria-label="Mapping workflow navigation" class="tabs">
-    <a href="/entity-sample-files" class="tab">← Source discovery & entity confirmation</a>
+    <a href="/discovery" class="tab">← Source discovery & entity confirmation</a>
     <a href="#pending-mappings" class="tab">Pending proposals ({{ mapping_suggestions|length }})</a>
     <a href="#information-requests" class="tab">Information requests ({{ information_requests|selectattr('status','equalto','OPEN')|list|length }} open)</a>
     <a href="/reconciliation" class="tab">Continue to mapping validation →</a>
@@ -38,7 +38,7 @@
   </section>{% endif %}
 
   <section id="pending-mappings" class="card">
-    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px"><div><h3 style="font-size:16px">Pending mapping proposals</h3><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><div class="flex flex-wrap gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="btn g sm">← Source discovery</a></div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding-bottom:12px"><div><h3 style="font-size:16px">Pending mapping proposals</h3><p class="mt-1 text-xs text-[#5A6A88]">Confirm only when the source evidence supports the canonical meaning. Reject unclear proposals with a reason so the analyst knows what to correct.</p></div><div class="flex flex-wrap gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files</button></form>{% endif %}<a href="/discovery#discovered-source-inventory" class="btn g sm">← Source discovery</a></div></div>
     {% if mapping_suggestions %}
     <p class="mt-3 text-xs text-[#5A6A88]">Reviewing as <b class="text-[#152C6B]">{{ user_name }}</b> ({{ user_role }}). The reviewer on every decision is taken from your signed-in session.</p>
     <div class="mt-3 space-y-3">
@@ -84,7 +84,7 @@
     {% else %}
     {% if progress and progress.mappings_approved %}<div class="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-6 text-center"><div class="font-bold text-teal-900">All proposals reviewed · {{ progress.mappings_approved }} mappings approved</div><p class="mt-1 text-xs text-teal-800">{% if progress.rfi_open %}{{ progress.rfi_open }} information request{{ '' if progress.rfi_open == 1 else 's' }} still open below.{% else %}Nothing is waiting here. Continue to validation.{% endif %}</p><a href="/reconciliation" class="btn ok sm">Continue to validation →</a></div>
     {% else %}
-    <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center"><div class="font-bold text-[#152C6B]">No pending mapping proposals</div><p class="mt-1 text-xs text-[#5A6A88]">Confirm each inferred entity in Source Discovery, then select “Generate proposals from approved files” to profile all newly approved files and create review items.</p><div class="mt-3 flex flex-wrap justify-center gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files →</button></form>{% endif %}<a href="/entity-sample-files#discovered-source-inventory" class="btn g sm">Open Source Discovery</a></div></div>
+    <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center"><div class="font-bold text-[#152C6B]">No pending mapping proposals</div><p class="mt-1 text-xs text-[#5A6A88]">Confirm each inferred entity in Source Discovery, then select “Generate proposals from approved files” to profile all newly approved files and create review items.</p><div class="mt-3 flex flex-wrap justify-center gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files →</button></form>{% endif %}<a href="/discovery#discovered-source-inventory" class="btn g sm">Open Source Discovery</a></div></div>
     {% endif %}
     {% endif %}
   </section>
