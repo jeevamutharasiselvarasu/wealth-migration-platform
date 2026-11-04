@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote, quote_plus, urlparse
+from urllib.parse import quote, quote_plus, urlencode, urlparse
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
@@ -18,7 +18,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source
+from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -517,6 +517,58 @@ def _target_connection_status() -> Dict[str, Any]:
     finally:
         conn.close()
     return {"config": cfg}
+
+
+def _azure_page(request: Request, user, notice: str = "", error: str = ""):
+    conn = get_db_connection()
+    try:
+        cfg = azure_connection.get_config(conn)
+    finally:
+        conn.close()
+    return render_template_with_context(request, "azure_setup.html", {
+        "page_title": "Azure connection", "user_name": user["name"], "user_role": user["role"], "cfg": cfg or {},
+        "fields": azure_connection.FIELDS, "can_edit_azure": user["role"] in PLATFORM_ROLES,
+        "default_secret_env": azure_connection.DEFAULT_SECRET_ENV, "notice": notice, "error": error,
+    })
+
+
+@app.get("/azure-setup", response_class=HTMLResponse)
+async def azure_setup_page(request: Request, notice: str = "", error: str = ""):
+    return _azure_page(request, get_current_user(request), notice, error)
+
+
+@app.post("/api/azure/connection")
+async def save_azure_connection(request: Request):
+    user = get_current_user(request)
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            azure_connection.save(conn, user["name"], {k: str(form.get(k, "")) for k in azure_connection.FIELDS})
+        except ValueError as exc:
+            return RedirectResponse(url="/azure-setup?" + urlencode({"error": str(exc)}), status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("AZURE_CONNECTION_SAVED", user, {"factory": str(form.get("factory_name", "")).strip()})
+    return RedirectResponse(url="/azure-setup?" + urlencode({"notice": "Settings saved. Test the connection next."}), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/azure/connection/test")
+async def test_azure_connection(request: Request):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = azure_connection.test_connection(conn)
+        except ValueError as exc:
+            return RedirectResponse(url="/azure-setup?" + urlencode({"error": str(exc)}), status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("AZURE_CONNECTION_TESTED", user, {"status": cfg["status"]})
+    key = "notice" if cfg["status"] == "CONNECTED" else "error"
+    return RedirectResponse(url="/azure-setup?" + urlencode({key: cfg["check_detail"]}), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/setup", response_class=HTMLResponse)

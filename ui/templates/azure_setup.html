@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% include "_setup_tabs.html" %}
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Data migration · Setup</div>
+      <h1>Azure connection</h1>
+      <p>The Azure Data Factory the deployment is run in. The platform signs in as a service principal. Only identifiers are saved here; the client secret is never typed into the platform. It is read from a server environment variable.</p>
+    </div>
+  </div>
+  <section class="kpis" aria-label="Connection summary">
+    <div class="kpi"><small>Connection</small><b>{{ cfg.status|default('Not set up')|title if cfg else 'Not set up' }}</b><span>{{ cfg.check_detail|default('save settings, then test') if cfg else 'no settings saved' }}</span></div>
+    <div class="kpi"><small>Client secret</small><b>{{ 'Present' if cfg and cfg.secret_present else 'Missing' }}</b><span>{{ cfg.secret_env_var if cfg else default_secret_env }} on the server</span></div>
+    <div class="kpi"><small>Last tested</small><b>{{ (cfg.checked_utc or 'Never')[:19] if cfg else 'Never' }}</b><span>{{ ('by ' ~ cfg.configured_by) if cfg else '' }}</span></div>
+  </section>
+  {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the Azure connection.</p>{% endif %}
+  <form action="/api/azure/connection" method="POST" class="card"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+    <h3>Service principal and factory</h3>
+    <div class="two">
+      <div class="field"><label for="a-tenant">Tenant ID</label><input id="a-tenant" class="input" name="tenant_id" value="{{ cfg.tenant_id|default('') }}" placeholder="00000000-0000-0000-0000-000000000000" required></div>
+      <div class="field"><label for="a-client">Client (application) ID</label><input id="a-client" class="input" name="client_id" value="{{ cfg.client_id|default('') }}" required></div>
+      <div class="field"><label for="a-sub">Subscription ID</label><input id="a-sub" class="input" name="subscription_id" value="{{ cfg.subscription_id|default('') }}" required></div>
+      <div class="field"><label for="a-rg">Resource group</label><input id="a-rg" class="input" name="resource_group" value="{{ cfg.resource_group|default('') }}" required></div>
+      <div class="field"><label for="a-adf">Data factory name</label><input id="a-adf" class="input" name="factory_name" value="{{ cfg.factory_name|default('') }}" required></div>
+      <div class="field"><label for="a-env">Secret environment variable</label><input id="a-env" class="input" name="secret_env_var" value="{{ cfg.secret_env_var|default(default_secret_env) }}" pattern="AZURE_[A-Z0-9_]+" required>
+        <span class="fh">Name only, starting with AZURE_. Put the secret value in the server's .env, never here.</span></div>
+    </div>
+    <h3 style="margin-top:14px">Staging and target resources</h3>
+    <div class="two">
+      <div class="field"><label for="a-sa">Storage account</label><input id="a-sa" class="input" name="storage_account" value="{{ cfg.storage_account|default('') }}" required></div>
+      <div class="field"><label for="a-ct">Staging container</label><input id="a-ct" class="input" name="staging_container" value="{{ cfg.staging_container|default('') }}" required></div>
+      <div class="field"><label for="a-sql">SQL server</label><input id="a-sql" class="input" name="sql_server" value="{{ cfg.sql_server|default('') }}" placeholder="myserver.database.windows.net" required></div>
+      <div class="field"><label for="a-db">SQL database</label><input id="a-db" class="input" name="sql_database" value="{{ cfg.sql_database|default('') }}" required></div>
+      <div class="field"><label for="a-sch">SQL schema</label><input id="a-sch" class="input" name="sql_schema" value="{{ cfg.sql_schema|default('dbo') }}" required></div>
+      <div class="field"><label for="a-kv">Key Vault URL</label><input id="a-kv" class="input" name="key_vault_url" value="{{ cfg.key_vault_url|default('') }}" placeholder="https://myvault.vault.azure.net/" required></div>
+      <div class="field"><label for="a-ks">Key Vault secret holding the SQL connection string</label><input id="a-ks" class="input" name="key_vault_sql_secret" value="{{ cfg.key_vault_sql_secret|default('') }}" required></div>
+    </div>
+    <button type="submit" class="btn p sm" style="margin-top:10px">Save settings</button>
+  </fieldset></form>
+  {% if cfg %}
+  <form action="/api/azure/connection/test" method="POST" class="card"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+    <h3>Test connection</h3>
+    <p class="fh">Signs in as the service principal and reads the data factory. Nothing is created or changed in Azure.</p>
+    <button type="submit" class="btn g sm">Test connection</button>
+  </fieldset></form>
+  {% endif %}
+</div>
+{% endblock %}

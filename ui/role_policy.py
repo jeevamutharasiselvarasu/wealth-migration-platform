@@ -34,6 +34,7 @@ OPEN_POST_PATHS = {"/login", "/persona-selection", "/register"}
 
 POST_POLICY = [
     (r"^/api/migration/setup$", SETUP_ROLES),
+    (r"^/api/azure/connection(/test)?$", PLATFORM_ROLES),
     (r"^/api/demo/load$", PLATFORM_ROLES),
     (r"^/api/users/[^/]+/decision$", PLATFORM_ROLES),
     (r"^/api/migration/new$", SETUP_ROLES),
