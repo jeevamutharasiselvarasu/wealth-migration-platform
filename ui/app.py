@@ -570,7 +570,7 @@ def _target_connection_status() -> Dict[str, Any]:
     return {"config": cfg}
 
 
-def _azure_page(request: Request, user, notice: str = "", error: str = "", preview: str = ""):
+def _azure_page(request: Request, user, notice: str = "", error: str = "", preview: str = "", lines: int = 25):
     conn = get_db_connection()
     try:
         cfg = azure_connection.get_config(conn)
@@ -581,23 +581,23 @@ def _azure_page(request: Request, user, notice: str = "", error: str = "", previ
         "fields": azure_connection.FIELDS, "can_edit_azure": user["role"] in PLATFORM_ROLES,
         "default_secret_env": azure_connection.DEFAULT_SECRET_ENV, "notice": notice, "error": error,
         "blob": _blob_panel(with_files=False), "can_seed_blob": user["role"] in PLATFORM_ROLES,
-        "preview": _blob_preview(preview) if user["role"] in DISCOVERY_ROLES else None, "can_preview": user["role"] in DISCOVERY_ROLES,
+        "preview": _blob_preview(preview, lines) if user["role"] in DISCOVERY_ROLES else None, "can_preview": user["role"] in DISCOVERY_ROLES,
     })
 
 
-def _blob_preview(path: str):
+def _blob_preview(path: str, lines: int = 25):
     """Read-only preview of one blob for the Azure connection page; a problem is shown instead of failing the page."""
     if not path:
         return None
     try:
-        return blob_source.preview(_blob_container(), path)
+        return blob_source.preview(_blob_container(), path, max_lines=max(5, min(int(lines or 25), 500)))
     except Exception as exc:
         return {"name": path, "error": str(exc)[:200] if isinstance(exc, ValueError) else f"Could not read the file: {type(exc).__name__}"}
 
 
 @app.get("/azure-setup", response_class=HTMLResponse)
-async def azure_setup_page(request: Request, notice: str = "", error: str = "", preview: str = ""):
-    return _azure_page(request, get_current_user(request), notice, error, preview)
+async def azure_setup_page(request: Request, notice: str = "", error: str = "", preview: str = "", lines: int = 25):
+    return _azure_page(request, get_current_user(request), notice, error, preview, lines)
 
 
 @app.post("/api/azure/connection")
