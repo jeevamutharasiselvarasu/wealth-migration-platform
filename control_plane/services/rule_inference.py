@@ -106,10 +106,40 @@ def _value_map(s: str) -> Optional[Dict[str, Any]]:
         m = re.match(rf"^\s*{_Q}([^\"'“‘]+?){_Q}\s*(?:->|=>|→|\bto\b|\bas\b)\s*{_Q}([^\"'”’]+?){_Q}\s*\.?\s*$", chunk, re.I)
         if m:
             pairs[_clean(m.group(1))] = _clean(m.group(2))
-    return {"type": "VALUE_MAP", "params": {"map": pairs, "case_insensitive": True}} if pairs else None
+    if not pairs:
+        return None
+    params: Dict[str, Any] = {"map": pairs, "case_insensitive": True}
+    # "...anything else is rejected / fails": a code outside the list must stop the record, not pass through
+    if re.search(r"\b(?:reject(?:ed|s)?|fail(?:s|ed)?|errors?|not\s+allowed|must\s+be\s+one\s+of)\b|\bno\s+default\b", s, re.I):
+        params["strict"] = True
+    return {"type": "VALUE_MAP", "params": params}
 
 
-_MATCHERS = (_default, _concat, _split, _date, _number, _if_equals, _value_map)
+def _if_blank(s: str) -> Optional[Dict[str, Any]]:
+    """'If ClosedDate is NULL, then Open Else Closed' -> IF_BLANK."""
+    m = re.search(rf"\b(?:if|when)\s+(?:the\s+)?[\w .]+?\s+(?:is|are)\s+(?:null|blank|empty|missing)\s*,?\s*(?:then\s+)?(?:use\s+|set\s+to\s+)?{_Q}(.+?){_Q}\s*[,;]?\s*(?:else|otherwise)\s+(?:use\s+|set\s+to\s+)?{_Q}(.+?){_Q}\s*\.?$", s, re.I)
+    return {"type": "IF_BLANK", "params": {"when_blank": _clean(m.group(1)), "when_filled": _clean(m.group(2))}} if m else None
+
+
+_DELIMS = {"comma": ",", "dash": " - ", "hyphen": " - ", "slash": "/", "colon": ":", "semicolon": ";", "space": " ", "pipe": "|"}
+_WORD = "comma|dash|hyphen|slash|colon|semicolon|space|pipe"
+
+
+def _split_words(s: str) -> Optional[Dict[str, Any]]:
+    """'Take the part before the comma', 'the text after ' - '', 'remove everything after ' - '' -> SPLIT_PART."""
+    strip = re.search(rf"\b(?:remove|strip|drop|trim)\s+(?:everything|the\s+(?:suffix|text|part))\s+(?:after|from)\s+(?:the\s+)?(?:first\s+)?(?:[\"'“‘](.+?)[\"'”’]|({_WORD}))", s, re.I)
+    if strip:
+        return {"type": "SPLIT_PART", "params": {"delimiter": strip.group(1) or _DELIMS[strip.group(2).lower()], "index": 0}}
+    lit = re.search(r"\b(before|after)\s+(?:the\s+)?(?:first\s+)?[\"'“‘](.+?)[\"'”’]", s, re.I)
+    if lit:
+        return {"type": "SPLIT_PART", "params": {"delimiter": lit.group(2), "index": 0 if lit.group(1).lower() == "before" else 1}}
+    word = re.search(rf"\b(before|after)\s+(?:the\s+|a\s+)?(?:first\s+)?({_WORD})\b", s, re.I)
+    if word and re.search(r"\b(take|use|keep|parse|extract|part|text|name)\b", s, re.I):
+        return {"type": "SPLIT_PART", "params": {"delimiter": _DELIMS[word.group(2).lower()], "index": 0 if word.group(1).lower() == "before" else 1}}
+    return None
+
+
+_MATCHERS = (_default, _if_blank, _concat, _split, _split_words, _date, _number, _if_equals, _value_map)
 
 
 def meaning(rule_type: str, p: Dict[str, Any]) -> str:
@@ -128,6 +158,8 @@ def meaning(rule_type: str, p: Dict[str, Any]) -> str:
         return f"Splits on '{p['delimiter']}' and keeps part {p['index'] + 1}."
     if rule_type == "DEFAULT_IF_BLANK":
         return f"Uses '{p['default']}' only when the source value is empty."
+    if rule_type == "IF_BLANK":
+        return f"Writes '{p['when_blank']}' when the source value is empty, otherwise '{p['when_filled']}'."
     return f"Replaces '{p['when_equals']}' with '{p['then']}'; other values are kept."
 
 
