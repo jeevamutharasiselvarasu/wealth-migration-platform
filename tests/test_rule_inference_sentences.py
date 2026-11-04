@@ -51,3 +51,9 @@ def test_lookup_sentence_uses_the_confirmed_relationship():
 def test_lookup_sentence_is_not_recognised_without_a_confirmed_relationship():
     assert not rule_inference.infer(_SENTENCE, [])[0]["recognised"]
     assert not rule_inference.infer(_SENTENCE, [{"child": "Households.OtherId", "parent": "Advisors.Id"}])[0]["recognised"]
+
+
+def test_lookup_matches_a_prefixed_file_name():
+    rels = [{"child": "corecap_households.csv.AdvisorId", "parent": "corecap_advisors.csv.Id"}]
+    (res,) = rule_inference.infer(_SENTENCE, rels)
+    assert res["params"] == {"parent_file": "corecap_advisors.csv", "parent_key": "Id", "return_column": "Name"}

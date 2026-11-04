@@ -158,7 +158,7 @@ def _lookup(s: str, relationships: List[Dict[str, str]]) -> Optional[Dict[str, A
         pfile, _, pcol = str(rel["parent"]).rpartition(".")
         ccol = str(rel["child"]).rpartition(".")[2]
         pst = _stem(pfile)
-        if not (pst == want or pst.rstrip("s") == want.rstrip("s")):
+        if not (pst == want or pst.rstrip("s").endswith(want.rstrip("s"))):
             continue
         if via_stem and via_stem != _stem(ccol):
             continue
