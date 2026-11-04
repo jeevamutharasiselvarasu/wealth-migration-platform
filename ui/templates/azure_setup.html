@@ -16,6 +16,19 @@
     <div class="kpi"><small>Client secret</small><b>{{ 'Present' if cfg and cfg.secret_present else 'Missing' }}</b><span>{{ cfg.secret_env_var if cfg else default_secret_env }} on the server</span></div>
     <div class="kpi"><small>Last tested</small><b>{{ (cfg.checked_utc or 'Never')[:19] if cfg else 'Never' }}</b><span>{{ ('by ' ~ cfg.configured_by) if cfg else '' }}</span></div>
   </section>
+  <section class="card" id="blob-storage" data-testid="blob-storage">
+    <h3>Source storage (Blob) {% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
+    <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the source files), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Source files are dropped in <span class="font-mono">{{ blob.firm_folder }}</span>; discovery then works from there. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
+    {% if not blob.configured %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>
+    {% elif not blob.reachable %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>{% endif %}
+    <form action="/api/blob/layout" method="POST" class="flex flex-wrap items-end gap-2 mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="min-width:260px"><label for="b-container">Container</label><input id="b-container" class="input" name="container" value="{{ blob.container }}" pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]" required></div>
+      <button class="btn p sm">Save container &amp; create folders</button>
+      <span class="fh">{% if blob.reachable %}<span class="chip ok">Reachable</span>{% endif %} {% if blob.layout_ready %}<span class="chip ok">Folders in place</span>{% elif blob.container_exists %}<span class="chip ex">Folders missing</span>{% else %}<span class="chip ex">Container not created</span>{% endif %}</span>
+    </fieldset></form>
+    {% if blob.reachable and blob.container_exists %}<h3 style="margin-top:14px">What is in the container now</h3>{% include "_blob_tree.html" %}{% endif %}
+    {% if blob.emulator and can_seed_blob and blob.reachable %}<form action="/api/blob/seed-demo" method="POST" class="mt-2"><button class="btn g sm">Put the CoreCap sample files in {{ blob.firm_folder }}</button><span class="fh"> Local emulator only. Resets that one folder.</span></form>{% endif %}
+  </section>
   {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the Azure connection.</p>{% endif %}
   <form action="/api/azure/connection" method="POST" class="card"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
     <h3>Service principal and factory</h3>
@@ -28,11 +41,9 @@
       <div class="field"><label for="a-env">Secret environment variable</label><input id="a-env" class="input" name="secret_env_var" value="{{ cfg.secret_env_var|default(default_secret_env) }}" pattern="AZURE_[A-Z0-9_]+" required>
         <span class="fh">Name only, starting with AZURE_. Put the secret value in the server's .env, never here.</span></div>
     </div>
-    <h3 style="margin-top:14px">Source, staging and target resources</h3>
+    <h3 style="margin-top:14px">Staging and target resources</h3>
     <div class="two">
       <div class="field"><label for="a-sa">Storage account</label><input id="a-sa" class="input" name="storage_account" value="{{ cfg.storage_account|default('') }}" required></div>
-      <div class="field"><label for="a-src">Source container <span class="fh">(optional)</span></label><input id="a-src" class="input" name="source_container" value="{{ cfg.source_container|default('') }}">
-        <span class="fh">Where the CoreCap source files are read from, when the migration uses Azure source storage.</span></div>
       <div class="field"><label for="a-ct">Staging container</label><input id="a-ct" class="input" name="staging_container" value="{{ cfg.staging_container|default('') }}" required></div>
       <div class="field"><label for="a-sql">SQL server</label><input id="a-sql" class="input" name="sql_server" value="{{ cfg.sql_server|default('') }}" placeholder="myserver.database.windows.net" required></div>
       <div class="field"><label for="a-db">SQL database</label><input id="a-db" class="input" name="sql_database" value="{{ cfg.sql_database|default('') }}" required></div>

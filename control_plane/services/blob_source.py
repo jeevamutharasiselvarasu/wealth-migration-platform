@@ -7,12 +7,30 @@ Only listing, reading and (for seeding the demo in the emulator) writing blobs h
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 ENV_VAR = "AZURE_BLOB_CONNECTION_STRING"
 # Azurite's published development account; the key is a documented public constant, not a secret.
 AZURITE_ACCOUNT = "devstoreaccount1"
 SOURCE_SUFFIXES = (".csv", ".tsv", ".xlsx", ".xlsm", ".xls", ".json")
+# Data lake zones inside the one container the user names. Blob storage has no real empty folders (outside ADLS Gen2), so a folder is
+# made visible with a zero-byte marker blob; the marker is hidden from file lists.
+ZONES = ("raw", "stage", "curated")
+MARKER = ".xodus-folder"
+
+
+def firm_folder(source_firm: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (source_firm or "").lower()).strip("-") or "source"
+
+
+def source_prefix(source_firm: str) -> str:
+    """Where the source firm's files are dropped: raw/<firm>/."""
+    return f"raw/{firm_folder(source_firm)}/"
+
+
+def layout_prefixes(source_firm: str) -> List[str]:
+    return [f"{z}/" for z in ZONES] + [source_prefix(source_firm)]
 
 
 def connection_string() -> str:
@@ -53,10 +71,45 @@ def status(container: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
     return out
 
 
-def list_source_blobs(container: str, conn_str: Optional[str] = None) -> List[Dict[str, Any]]:
+def ensure_layout(container: str, source_firm: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
+    """Create the container if needed and the raw/stage/curated folders plus raw/<firm>/. Safe to run again; never deletes anything."""
+    if not NAME_OK.match(container or ""):
+        raise ValueError("Container names use lowercase letters, digits and '-' (3 to 63 characters).")
+    cc = _service(conn_str).get_container_client(container)
+    created_container = False
+    if not cc.exists():
+        cc.create_container()
+        created_container = True
+    existing = {b.name for b in cc.list_blobs()}
+    created = []
+    for prefix in layout_prefixes(source_firm):
+        marker = prefix + MARKER
+        if marker not in existing:
+            cc.upload_blob(marker, b"", overwrite=False)
+            created.append(prefix)
+    return {"container_created": created_container, "folders_created": created}
+
+
+NAME_OK = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61})[a-z0-9]$")
+
+
+def tree(container: str, conn_str: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Flat, depth-annotated rows (folders and files) for showing the container's structure. Marker blobs only make their folder visible."""
+    entries: Dict[str, Dict[str, Any]] = {}
+    for b in _service(conn_str).get_container_client(container).list_blobs():
+        parts = b.name.split("/")
+        for i in range(1, len(parts)):
+            path = "/".join(parts[:i]) + "/"
+            entries.setdefault(path, {"path": path, "name": parts[i - 1], "kind": "folder", "depth": i - 1, "size": 0})
+        if parts[-1] != MARKER:
+            entries[b.name] = {"path": b.name, "name": parts[-1], "kind": "file", "depth": len(parts) - 1, "size": int(b.size or 0)}
+    return [entries[k] for k in sorted(entries)]
+
+
+def list_source_blobs(container: str, conn_str: Optional[str] = None, prefix: str = "") -> List[Dict[str, Any]]:
     svc = _service(conn_str)
     items = []
-    for b in svc.get_container_client(container).list_blobs():
+    for b in svc.get_container_client(container).list_blobs(name_starts_with=prefix or None):
         if not b.name.lower().endswith(SOURCE_SUFFIXES):
             continue
         items.append({"name": b.name, "size": int(b.size or 0), "modified": b.last_modified.isoformat() if b.last_modified else ""})
@@ -69,17 +122,17 @@ def read_blob(container: str, name: str, conn_str: Optional[str] = None) -> byte
     return _service(conn_str).get_container_client(container).download_blob(name).readall()
 
 
-def seed(container: str, files: Dict[str, bytes], conn_str: Optional[str] = None) -> int:
-    """Create the container if needed, make it hold exactly these files, upload them. Only allowed against the emulator."""
+def seed(container: str, files: Dict[str, bytes], conn_str: Optional[str] = None, prefix: str = "", source_firm: str = "") -> int:
+    """Emulator only: create the layout, then make `prefix` hold exactly these files (other folders are left alone)."""
     cs = conn_str if conn_str is not None else connection_string()
     if not is_emulator(cs):
         raise ValueError("Seeding sample files is only allowed against the local blob emulator.")
+    ensure_layout(container, source_firm or "source", cs)
     cc = _service(cs).get_container_client(container)
-    if not cc.exists():
-        cc.create_container()
-    for existing in [b.name for b in cc.list_blobs()]:  # the emulator container is reset to exactly this set
-        if existing not in files:
+    keep = {prefix + n for n in files}
+    for existing in [b.name for b in cc.list_blobs(name_starts_with=prefix or None)]:
+        if existing not in keep and not existing.endswith("/" + MARKER) and existing != MARKER:
             cc.delete_blob(existing)
     for name, data in files.items():
-        cc.upload_blob(name, data, overwrite=True)
+        cc.upload_blob(prefix + name, data, overwrite=True)
     return len(files)

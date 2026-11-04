@@ -579,6 +579,7 @@ def _azure_page(request: Request, user, notice: str = "", error: str = ""):
         "page_title": "Azure connection", "user_name": user["name"], "user_role": user["role"], "cfg": cfg or {},
         "fields": azure_connection.FIELDS, "can_edit_azure": user["role"] in PLATFORM_ROLES,
         "default_secret_env": azure_connection.DEFAULT_SECRET_ENV, "notice": notice, "error": error,
+        "blob": _blob_panel(with_files=False), "can_seed_blob": user["role"] in PLATFORM_ROLES,
     })
 
 
@@ -3391,38 +3392,65 @@ async def save_entity_scopes(request: Request):
 
 
 def _blob_container() -> str:
-    """Source container: the Azure connection page's value, else the server default (so the local emulator works before any ADF details exist)."""
-    cfg = _azure_cfg_for_display()
-    return (cfg.get("source_container") if cfg else "") or os.environ.get("AZURE_BLOB_SOURCE_CONTAINER", "corecap-source")
+    """The container the user named on the Azure connection page, else the server default (so the emulator works before anything is entered)."""
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    return str(setup.get("blob_container") or "").strip() or os.environ.get("AZURE_BLOB_SOURCE_CONTAINER", "corecap-source")
 
 
-def _blob_panel() -> dict:
-    """Status and listing for the Loader when the migration reads source files from Azure Blob storage."""
-    container = _blob_container()
+def _source_firm() -> str:
+    return str(state_store.questionnaire_data.get("migration_setup", {}).get("source_firm") or "CoreCap")
+
+
+def _blob_panel(with_files: bool = True) -> dict:
+    """Status, folder tree and the raw/<firm>/ listing for pages that show the migration's blob storage."""
+    container, firm = _blob_container(), _source_firm()
     st = blob_source.status(container)
-    st["container"] = container
-    st["blobs"] = []
+    prefix = blob_source.source_prefix(firm)
+    st.update({"container": container, "firm_folder": prefix, "blobs": [], "tree": [], "layout_ready": False, "zones": blob_source.ZONES})
     if st["reachable"] and st["container_exists"]:
         try:
-            loaded = {rec.get("filename") for group in getattr(state_store, "entity_source_files", {}).values() for rec in group.values()}
-            st["blobs"] = [dict(b, loaded=b["name"].split("/")[-1] in loaded) for b in blob_source.list_source_blobs(container)]
+            st["tree"] = blob_source.tree(container)
+            have = {r["path"] for r in st["tree"] if r["kind"] == "folder"}
+            st["layout_ready"] = all(p in have for p in blob_source.layout_prefixes(firm))
+            if with_files:
+                loaded = {rec.get("filename") for group in getattr(state_store, "entity_source_files", {}).values() for rec in group.values()}
+                st["blobs"] = [dict(b, loaded=b["name"].split("/")[-1] in loaded) for b in blob_source.list_source_blobs(container, prefix=prefix)]
         except Exception as exc:
-            st["detail"] = f"Could not list blobs: {type(exc).__name__}"
+            st["detail"] = f"Could not read the container: {type(exc).__name__}"
     return st
+
+
+@app.post("/api/blob/layout")
+async def create_blob_layout(request: Request, container: str = Form("")):
+    """Remember the container the user named and create raw/, stage/, curated/ and raw/<source firm>/ in it."""
+    user = get_current_user(request)
+    container = container.strip().lower()
+    setup = state_store.questionnaire_data.setdefault("migration_setup", {})
+    try:
+        res = blob_source.ensure_layout(container, _source_firm())
+    except Exception as exc:
+        return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
+    setup["blob_container"] = container
+    state_store.audit_log.append({"event": "BLOB_LAYOUT_CREATED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                  "details": {"container": container, "folders_created": res["folders_created"]}})
+    made = ", ".join(res["folders_created"]) or "nothing new (already in place)"
+    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"Container '{container}' ready. Folders created: {made}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/blob/load")
 async def load_blob_source_files(request: Request):
-    """Read the ticked blobs from the source container and run them through the same intake as an upload."""
+    """Read the ticked blobs from raw/<source firm>/ and run them through the same intake as an upload."""
     get_current_user(request)
     form = await request.form()
     names = [str(n) for n in form.getlist("blob")]
     if not names:
         return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Tick at least one blob to load."), status_code=status.HTTP_303_SEE_OTHER)
-    container = _blob_container()
+    container, prefix = _blob_container(), blob_source.source_prefix(_source_firm())
     files = []
     try:
         for name in names:
+            if not name.startswith(prefix):
+                raise ValueError("Files are loaded from " + prefix + " only.")
             files.append(UploadFile(file=io.BytesIO(blob_source.read_blob(container, name)), filename=name.split("/")[-1]))
     except Exception as exc:
         return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(f"Could not read from blob storage: {exc}"), status_code=status.HTTP_303_SEE_OTHER)
@@ -3431,16 +3459,16 @@ async def load_blob_source_files(request: Request):
 
 @app.post("/api/blob/seed-demo")
 async def seed_blob_with_demo_files(request: Request):
-    """Local emulator only: put the demo source files into the source container so the Azure path can be tried without Azure."""
+    """Local emulator only: create the folders and put the CoreCap sample files in raw/<source firm>/ (that folder is reset; others are untouched)."""
     get_current_user(request)
-    # The CoreCap files are the POC's source firm; they are what the Orion migration loads.
     folder = (Path(root_dir) / "demo_data" / "corecap_source_files").resolve()
     files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in blob_source.SOURCE_SUFFIXES}
+    firm = _source_firm()
     try:
-        n = blob_source.seed(_blob_container(), files)
+        n = blob_source.seed(_blob_container(), files, prefix=blob_source.source_prefix(firm), source_firm=firm)
     except Exception as exc:
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Local blob container now holds the {n} CoreCap sample files."), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"{n} CoreCap sample files placed in {blob_source.source_prefix(firm)}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/upload-sample-file")

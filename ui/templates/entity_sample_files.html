@@ -45,8 +45,8 @@
     {% if acquisition_method == 'AZURE_CONNECTION' %}
     <div class="tw"><table><tbody>
       <tr><th style="width:220px">Source</th><td>Azure Blob / ADLS storage</td></tr>
-      <tr><th>Storage account</th><td class="font-mono">{{ (azure_cfg and azure_cfg.storage_account) or ('devstoreaccount1 (local emulator)' if blob and blob.emulator else 'not set') }}</td></tr>
-      <tr><th>Source container</th><td class="font-mono">{{ (azure_cfg and azure_cfg.source_container) or (blob.container if blob else 'not set') }}</td></tr>
+      <tr><th>Storage account</th><td class="font-mono">{{ 'devstoreaccount1 (local emulator)' if blob and blob.emulator else ((azure_cfg and azure_cfg.storage_account) or 'set on the server') }}</td></tr>
+      <tr><th>Source folder</th><td class="font-mono">{{ (blob.container ~ '/' ~ blob.firm_folder) if blob else 'not set' }}</td></tr>
       <tr><th>Access method</th><td>Service principal (secret read from the server)</td></tr>
       <tr><th>Connection status</th><td>{% if blob %}<span class="chip {{ 'ok' if blob.reachable else 'ex' }}">{{ 'Reachable' if blob.reachable else 'Not reachable' }}</span> blob storage is checked each time this page loads. {% else %}<span class="chip ex">{% if azure_cfg and azure_cfg.status == 'CONNECTED' %}Connected{% elif azure_cfg %}Recorded, not verified{% else %}Not set up{% endif %}</span> {% endif %}<a href="/azure-setup" class="font-mono text-blue-700">Edit on Azure connection →</a></td></tr>
     </tbody></table></div>
@@ -68,7 +68,9 @@
     {% elif not blob.reachable %}
     <p class="d" style="margin:8px 0 0;color:var(--bad)">{{ blob.detail }}</p>
     {% else %}
-    <p class="d" style="margin:8px 0 0">Container <span class="font-mono">{{ blob.container }}</span> · {{ blob.blobs|length }} source file(s) found{% if not blob.container_exists %} · {{ blob.detail|trim('.') }}{% endif %}. Loading runs the same intake as an upload; entity review happens in Discovery.</p>
+    <p class="d" style="margin:8px 0 0">Container <span class="font-mono">{{ blob.container }}</span>, folder <span class="font-mono">{{ blob.firm_folder }}</span> · {{ blob.blobs|length }} source file(s) found{% if not blob.container_exists %} · {{ blob.detail|trim('.') }}{% endif %}. Loading runs the same intake as an upload; entity review happens in Discovery.</p>
+    {% if not blob.layout_ready %}<p class="d" style="color:var(--bad)">The folder structure is not in place yet. <a href="/azure-setup#blob-storage" class="font-mono text-blue-700">Create it on the Azure connection page →</a></p>{% endif %}
+    {% if blob.tree %}<details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Folder structure</summary>{% include "_blob_tree.html" %}</details>{% endif %}
     {% if blob.blobs %}
     <form action="/api/blob/load" method="post" class="mt-2">
       <div class="tw"><table><thead><tr>{% if can_discover %}<th style="width:28px"></th>{% endif %}<th>Blob</th><th>Size</th><th>Modified</th><th>State</th></tr></thead><tbody>
@@ -77,7 +79,6 @@
       {% if can_discover %}<button class="btn p sm" style="margin-top:8px">Load ticked files</button>{% endif %}
     </form>
     {% endif %}
-    {% if blob.emulator and user_role == 'Platform Admin' %}<form action="/api/blob/seed-demo" method="post" class="mt-2"><button class="btn g sm">Reset the local container to the CoreCap sample files</button></form>{% endif %}
     {% endif %}
   </section>
   {% else %}

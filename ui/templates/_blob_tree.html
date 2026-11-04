@@ -1,0 +1,5 @@
+{# Folder structure of the source container: folders and files, indented. Needs `blob` (from _blob_panel). #}
+<div class="tw" data-testid="blob-tree"><table><thead><tr><th>Container <span class="font-mono">{{ blob.container }}</span></th><th style="width:90px">Size</th></tr></thead><tbody>
+  {% for r in blob.tree %}<tr><td class="font-mono" style="padding-left:{{ 10 + r.depth * 22 }}px">{{ '📁' if r.kind == 'folder' else '📄' }} {{ r.name }}{{ '/' if r.kind == 'folder' }}</td><td>{% if r.kind == 'file' %}{{ '%.1f'|format(r.size / 1024) }} KB{% endif %}</td></tr>
+  {% else %}<tr><td colspan="2" class="d">The container is empty. Create the folder structure first.</td></tr>{% endfor %}
+</tbody></table></div>
