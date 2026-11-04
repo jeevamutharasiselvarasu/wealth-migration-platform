@@ -1521,6 +1521,76 @@ async def decide_gap_recommendation(request: Request, rec_id: str, decision: str
     return RedirectResponse(url="/execution?notice=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/api/execution/recommendations/bulk-decide")
+async def bulk_decide_gap_recommendations(request: Request):
+    """Apply one decision to the ticked recommendations; each row may carry its own comment (comment_<rec_id>), else the shared one."""
+    user = get_current_user(request)
+    form = await request.form()
+    decision = str(form.get("decision", ""))
+    shared = str(form.get("reason", "")).strip()
+    rec_ids = [str(v) for v in form.getlist("rec_id")]
+    if not rec_ids:
+        return RedirectResponse(url="/execution?error=" + quote_plus("Tick at least one recommendation first."), status_code=status.HTTP_303_SEE_OTHER)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    done, errors, drafts = 0, [], []
+    conn = get_db_connection()
+    try:
+        for rid in rec_ids:
+            reason = str(form.get("comment_" + rid, "")).strip() or shared
+            try:
+                res = gap_recommender.decide(conn, migration_id, rid, decision, reason, user["name"])
+            except ValueError as exc:
+                errors.append(f"{rid}: {exc}")
+                continue
+            done += 1
+            if res["draft"]:
+                drafts.append(res["draft"])
+            r = res["rec"]
+            _target_setup_audit("GAP_RECOMMENDATION_" + res["status"], user, {"rec_id": rid, "kind": r["kind"], "entity": r["entity"], "column": r["column"], "draft": res["draft"]})
+        conn.commit()
+    finally:
+        conn.close()
+    msg = f"{done} recommendation(s) marked {decision.lower().replace('_', ' ')}."
+    if drafts:
+        msg += " Draft rule(s) " + ", ".join(drafts) + " created; they need approval on Business Rules."
+    url = "/execution?notice=" + quote_plus(msg)
+    if errors:
+        url += "&error=" + quote_plus("; ".join(errors)[:400])
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/execution/runs/{run_id}/failures/bulk-review")
+async def bulk_review_execution_failures(request: Request, run_id: str):
+    """Acknowledge or resolve the ticked problems; each row may carry its own comment (comment_<idx>), else the shared one."""
+    user = get_current_user(request)
+    form = await request.form()
+    decision = str(form.get("decision", ""))
+    shared = str(form.get("reason", "")).strip()
+    idxs = [int(v) for v in form.getlist("idx") if str(v).isdigit()]
+    if not idxs:
+        return RedirectResponse(url="/execution?error=" + quote_plus("Tick at least one problem first."), status_code=status.HTTP_303_SEE_OTHER)
+    done, errors = 0, []
+    conn = get_db_connection()
+    try:
+        for i in idxs:
+            reason = str(form.get(f"comment_{i}", "")).strip() or shared
+            try:
+                res = execution_simulator.review_failure(conn, run_id, i, decision, reason, user["name"])
+            except ValueError as exc:
+                errors.append(f"#{i + 1}: {exc}")
+                continue
+            done += 1
+            f = res["failure"]
+            _target_setup_audit("EXECUTION_PROBLEM_" + res["status"], user, {"run_id": run_id, "entity": f["entity"], "table": f["table"], "column": f["column"], "rule": f["rule"]})
+        conn.commit()
+    finally:
+        conn.close()
+    url = "/execution?notice=" + quote_plus(f"{done} problem(s) marked {decision.lower()}.")
+    if errors:
+        url += "&error=" + quote_plus("; ".join(errors)[:400])
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/api/execution/run")
 async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
     """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""

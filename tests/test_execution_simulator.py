@@ -107,3 +107,26 @@ def test_strict_value_map_counts_blank_and_unlisted_rows_as_failed_not_skipped()
     t = ex.simulate(pkg, rows)
     assert t["totals"] == {"read": 3, "loaded": 1, "skipped": 0, "failed": 2}
     assert not any(f["reason"] == "required value blank after transformation" for f in t["failures"])
+
+
+def test_bulk_review_routes_are_approval_roles_only():
+    from ui.role_policy import allowed_roles_for
+    for path in ("/api/execution/runs/RUN-1/failures/bulk-review", "/api/execution/recommendations/bulk-decide"):
+        assert allowed_roles_for("POST", path) == {"Platform Admin", "Migration Analyst"}
+
+
+def test_bulk_routes_need_a_ticked_row_and_apply_per_row_comments(tmp_path, monkeypatch):
+    import asyncio, httpx
+    from ui import app as app_module
+    sessions = app_module.session_mgr.active_sessions
+    sessions["sid"] = dict(sessions.get("sid", {}), role="Migration Analyst", name="Ann")
+
+    async def call(path, data):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
+            return await client.post(path, data=data, follow_redirects=False)
+
+    r = asyncio.run(call("/api/execution/recommendations/bulk-decide", {"decision": "DISMISSED"}))
+    assert r.status_code == 303 and "Tick+at+least+one" in r.headers["location"]
+    r = asyncio.run(call("/api/execution/runs/RUN-X/failures/bulk-review", {"decision": "RESOLVED"}))
+    assert r.status_code == 303 and "Tick+at+least+one" in r.headers["location"]
