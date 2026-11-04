@@ -322,3 +322,14 @@ def test_only_approvers_may_reopen_a_rejected_mapping(tmp_path, monkeypatch):
     denied = _call(app_module, sid, "POST", "/api/mappings/reopen-rejected", [("suggestion_id", "MAPSUG-REJ-1"), ("reason", "A real reason here")])
     assert denied.status_code in (303, 403)
     assert not _row(app_module, "SELECT 1 FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (mid,))
+
+
+def test_rail_progress_counts_the_nine_stages_and_names_the_first_unfinished_one():
+    from ui.app import build_stage_view
+    p = {"files_total": 3, "files_pending": 0, "mappings_approved": 38, "proposals_pending": 0, "rfi_open": 0,
+         "validation_status": "", "target_provisioned": True, "target_pending": 0}
+    v = build_stage_view(p, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=0)
+    assert len(v["stages"]) == 9
+    states = [s["state"] for s in v["stages"]]
+    assert states == ["done", "done", "done", "done", "current", "done", "done", "todo", "todo"]
+    assert v["stages_done"] == 6 and v["stage_current"] == "05 Mapping Validation Review"

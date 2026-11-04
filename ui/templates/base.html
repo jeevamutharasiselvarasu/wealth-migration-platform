@@ -50,19 +50,19 @@
     <a href="/" class="nv {% if path == '/' %}on{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}>Overview</a>
     <a href="/setup" class="nv {% if path in ('/setup', '/migration-setup', '/firm-knowledge') %}on{% endif %}" {% if path in ('/setup', '/migration-setup', '/firm-knowledge') %}aria-current="page"{% endif %}>Setup</a>
     {% if pg and pg.steps %}
-    {% set done_n = pg.steps|selectattr('state','equalto','done')|list|length %}
+    {% set done_n = pg.stages_done %}
     <div class="sh">{{ pg.facts.name }}</div>
     <div class="runh">
       <small>Pipeline run</small>
       <strong>{{ pg.facts.migration_id }}</strong>
-      <div class="meter"><i style="width:{{ (done_n * 100 / (pg.steps|length))|round|int }}%"></i></div>
-      <div class="sub"><span><b style="color:#fff">{{ done_n }}</b> of {{ pg.steps|length }} steps complete</span><span>{{ pg.status_chip.label }}</span></div>
+      <div class="meter"><i style="width:{{ (done_n * 100 / (pg.stages|length))|round|int }}%"></i></div>
+      <div class="sub"><span><b style="color:#fff">{{ done_n }}</b> of {{ pg.stages|length }} stages complete</span><span>{{ pg.stage_current }}</span></div>
       <a class="nx" href="{{ pg.next.href }}" title="{{ pg.next.detail }}">Next: {{ pg.next.label }} →</a>
     </div>
     {% set st = {} %}
-    {% for s in pg.steps %}{% if st.update({s.key: s.state}) %}{% endif %}{% endfor %}
+    {% for s in pg.stages %}{% if st.update({s.number: s.state}) %}{% endif %}{% endfor %}
     {% macro stage(ix, name, href, key, owner, active) %}
-      {% set s = st.get(key, 'todo') %}
+      {% set s = st.get(ix, 'todo') %}
       <a class="stg {% if active %}on{% endif %}" href="{{ href }}" {% if active %}aria-current="page"{% endif %}>
         <span class="ix">{{ ix }}</span>
         <span><strong>{{ name }}</strong><small>{{ {'done':'Complete','current':'Needs attention','todo':'Not started'}[s] }}</small></span>

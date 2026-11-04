@@ -111,8 +111,15 @@ def workflow_progress() -> dict:
     proposals_pending = mappings_approved = changes_open = rfi_open = target_pending = 0
     target_provisioned = False
     validation_status = validation_when = ""
+    rules_approved = rules_draft = target_approved = runs_n = 0
+    sql_ready = False
     conn = get_db_connection()
     try:
+        _rules = transformation_rules.list_rules(conn)
+        rules_approved = sum(1 for r in _rules if r["status"] == "APPROVED")
+        rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
+        sql_ready = bool(package_contract.list_packages(conn, migration_id))
+        runs_n = len(execution_simulator.list_runs(conn, migration_id))
         proposals_pending = conn.execute(
             "SELECT COUNT(*) FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (migration_id,)).fetchone()[0]
         mappings_approved = conn.execute(
@@ -125,8 +132,9 @@ def workflow_progress() -> dict:
         changes_open = conn.execute(
             "SELECT COUNT(*) FROM canonical_change_requests WHERE migration_id = ? AND status IN ('OPEN','DEFERRED')", (migration_id,)).fetchone()[0]
         target_provisioned = target_connector.is_confirmed(target_connector.get_config(conn))
-        target_pending = len([m for m in target_mapping.list_mappings(conn, migration_id, target_connector.spec(conn))
-                              if m["status"] == "PROPOSED" and m["canonical_field"]])
+        _tm = target_mapping.list_mappings(conn, migration_id, target_connector.spec(conn))
+        target_pending = len([m for m in _tm if m["status"] == "PROPOSED" and m["canonical_field"]])
+        target_approved = len([m for m in _tm if m["status"] == "APPROVED"])
         last_val = conn.execute(
             "SELECT run_id, status, results_json, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
         if last_val:
@@ -168,8 +176,38 @@ def workflow_progress() -> dict:
         "validation_status": validation_status, "validation_when": validation_when,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
+    progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n))
     progress["activity"] = activity_feed.recent_activity(migration_id)
     return progress
+
+
+def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_approved: int, sql_ready: bool, runs_n: int) -> dict:
+    """The nine pipeline stages in order, each done / current / todo, so the rail counts the same stages it lists.
+    A stage is done when its own work exists; the first unfinished stage is the current one."""
+    mapped = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0
+    done_flags = [
+        ("01", "Loader & Inspector", p["files_total"] > 0),
+        ("02", "Discovery", p["files_total"] > 0 and p["files_pending"] == 0),
+        ("03", "Business Rules", rules_approved > 0 and rules_draft == 0),
+        ("04", "Schema Mapper", mapped),
+        ("05", "Mapping Validation Review", p["validation_status"] == "PASS"),
+        ("06", "Target mapping", p["target_provisioned"] and target_approved > 0 and p["target_pending"] == 0),
+        ("07", "Transformation SQL", sql_ready),
+        ("08", "ADF Execution", runs_n > 0),
+        ("09", "Target validation", runs_n > 0 and p["validation_status"] == "PASS"),
+    ]
+    stages, current_seen = [], False
+    for num, title, ok in done_flags:
+        if ok:
+            state = "done"
+        elif not current_seen:
+            state, current_seen = "current", True
+        else:
+            state = "todo"
+        stages.append({"number": num, "title": title, "state": state})
+    cur = next((s for s in stages if s["state"] == "current"), None)
+    return {"stages": stages, "stages_done": sum(1 for s in stages if s["state"] == "done"),
+            "stage_current": cur["number"] + " " + cur["title"] if cur else "All stages complete"}
 
 
 def build_workflow_view(p: dict, setup: dict, migration_id: str) -> dict:
