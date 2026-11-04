@@ -53,6 +53,7 @@ def test_discovery_page_shows_cross_file_analysis_for_two_or_more_files(tmp_path
     page = asyncio.run(get("/discovery")).text
     assert "Cross-file analysis" in page and "Conflicting values across files" in page and "1 of 3" in page
     assert "IRA" not in page.split("Cross-file analysis")[1].split("Approve all files")[0]
+    assert '<details class="entity-fold"' in page and "to review" in page  # the inventory folds per entity
     assert "Add source files" not in page and "Knowledge assets registered" in page  # stage 02 reviews; it does not load
     loader = asyncio.run(get("/entity-sample-files")).text
     assert "Loaded files" in loader and "Source connection" in loader and "Add source files" in loader
