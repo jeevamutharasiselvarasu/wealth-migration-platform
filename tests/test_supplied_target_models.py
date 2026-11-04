@@ -51,3 +51,14 @@ def test_models_page_shows_supplied_target_beside_canonical_model(tmp_path, monk
     assert page.status_code == 200
     for text in ("ORION_MCL_HOUSEHOLD", "SPARC_CLIENT", "ORION_REF_CUSTODIANS", "Canonical model", "Household", "Account", "Client"):
         assert text in page.text
+
+
+def test_a_database_from_an_older_seed_is_renamed_aside_and_rebuilt(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIMULATED_TARGET_DB", str(tmp_path / "t.db"))
+    monkeypatch.setattr(tdb, "SEED_PATH", tdb.SEED_PATH.with_name("seed_demo.yaml"))
+    assert tdb.bootstrap() is True and tdb.bootstrap() is False          # same version: left alone
+    assert {t["name"] for t in tdb.read_schema()["tables"]} >= {"SIMP_GROUP"}
+    monkeypatch.setattr(tdb, "SEED_PATH", tdb.SEED_PATH.with_name("seed.yaml"))
+    assert tdb.bootstrap() is True                                         # newer seed: rebuilt
+    assert {t["name"] for t in tdb.read_schema()["tables"]} >= {"ORION_MCL_ACCOUNT"}
+    assert (tmp_path / "t.0.2.0.bak.db").is_file()                         # the old file is kept

@@ -38,6 +38,8 @@ RULE_TYPES: Dict[str, Dict[str, str]] = {
                    "example": '{"delimiter": " ", "index": 0}'},
     "DEFAULT_IF_BLANK": {"label": "Default if blank", "help": "Use a documented default only when the source value is empty.",
                          "example": '{"default": "UNKNOWN"}'},
+    "IF_BLANK": {"label": "Blank test", "help": "Return one value when the source is blank and another when it is filled (for example Open when ClosedDate is blank, otherwise Closed).",
+                 "example": '{"when_blank": "Open", "when_filled": "Closed"}'},
     "IF_EQUALS": {"label": "Conditional replace", "help": "Replace a value when it equals a given value; otherwise keep it (or use the else value).",
                   "example": '{"when_equals": "N/A", "then": "", "else": null}'},
 }
@@ -137,6 +139,11 @@ def validate_params(rule_type: str, params: Any) -> Dict[str, Any]:
         if "default" not in params or _text(params["default"]).strip() == "":
             raise ValueError("DEFAULT_IF_BLANK needs a non-empty documented 'default'.")
         return {"default": _text(params["default"])}
+    if rule_type == "IF_BLANK":
+        blank_v, filled_v = _text(params.get("when_blank")).strip(), _text(params.get("when_filled")).strip()
+        if not blank_v or not filled_v:
+            raise ValueError("IF_BLANK needs non-empty 'when_blank' and 'when_filled' values.")
+        return {"when_blank": blank_v, "when_filled": filled_v}
     # IF_EQUALS
     if "when_equals" not in params or "then" not in params:
         raise ValueError("IF_EQUALS needs 'when_equals' and 'then'.")
@@ -163,6 +170,8 @@ def apply_rule(rule_type: str, params: Dict[str, Any], value: Any, record: Optio
         return params["map"][key], None
     if rule_type == "DEFAULT_IF_BLANK":
         return (params["default"], None) if blank else (value, None)
+    if rule_type == "IF_BLANK":
+        return (params["when_blank"] if blank else params["when_filled"]), None
     if rule_type == "CONCAT":
         rec = {str(k).strip().upper(): v for k, v in (record or {}).items()}
         parts = [_text(rec.get(s)).strip() for s in params["sources"]]

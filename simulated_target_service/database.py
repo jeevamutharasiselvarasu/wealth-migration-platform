@@ -24,13 +24,29 @@ def _ident(name: str) -> str:
     return name
 
 
+def _stored_version(path: Path) -> str:
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT VALUE FROM TARGET_META WHERE KEY = 'version'").fetchone()
+        finally:
+            conn.close()
+        return str(row[0]) if row else ""
+    except sqlite3.Error:
+        return ""
+
+
 def bootstrap(path: Path | None = None) -> bool:
     """Create the database from the seed if it does not exist. Returns True when created; never alters an existing one."""
     path = Path(path or db_path())
-    if path.is_file():
-        return False
-    path.parent.mkdir(parents=True, exist_ok=True)
     seed = yaml.safe_load(SEED_PATH.read_text(encoding="utf-8"))
+    if path.is_file():
+        if _stored_version(path) == str(seed["version"]):
+            return False
+        # The seed moved on (for example the target was rebuilt from a supplied workbook). The simulated target holds no data of its own,
+        # so it is recreated from the new seed; the previous file is renamed aside, never deleted.
+        path.rename(path.with_name(f"{path.stem}.{_stored_version(path) or 'unknown'}.bak{path.suffix}"))
+    path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     try:
         conn.execute("CREATE TABLE TARGET_META (KEY TEXT PRIMARY KEY, VALUE TEXT)")

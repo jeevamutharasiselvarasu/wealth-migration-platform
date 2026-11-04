@@ -42,6 +42,8 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]]) -> s
     blank = f"isNull({col}) || trim({col}) == ''"
     if kind == "DEFAULT_IF_BLANK":
         return f"iif({blank}, {_lit(p['default'])}, {col})"
+    if kind == "IF_BLANK":
+        return f"iif({blank}, {_lit(p['when_blank'])}, {_lit(p['when_filled'])})"
     if kind == "CONCAT":
         return f"concatWS({_lit(p['separator'])}, " + ", ".join(f"trim({_ident(s)})" for s in p["sources"]) + ")"
     if kind == "VALUE_MAP":

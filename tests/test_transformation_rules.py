@@ -295,3 +295,15 @@ def test_strict_value_map_fails_blank_and_unlisted_values():
     assert _run("VALUE_MAP", params, "Estate")[0] is None and "unmapped value" in _run("VALUE_MAP", params, "Estate")[1]
     assert _run("VALUE_MAP", params, "")[0] is None and "blank" in _run("VALUE_MAP", params, "  ")[1]
     assert tr.is_strict("VALUE_MAP", params) and not tr.is_strict("VALUE_MAP", {"map": {"A": "B"}, "case_insensitive": True})
+
+
+def test_if_blank_derives_a_status_from_whether_a_field_is_filled():
+    params = tr.validate_params("IF_BLANK", {"when_blank": "Open", "when_filled": "Closed"})
+    assert _run("IF_BLANK", params, "") == ("Open", None) and _run("IF_BLANK", params, None) == ("Open", None)
+    assert _run("IF_BLANK", params, "2024-01-31") == ("Closed", None)
+    with pytest.raises(ValueError):
+        tr.validate_params("IF_BLANK", {"when_blank": "Open"})
+    from control_plane.services import adf_package
+    rule = {"status": "APPROVED", "rule_type": "IF_BLANK", "params": params}
+    expr = adf_package.translate("RULE:X@1", "CLOSED_DATE", rule)
+    assert expr == "iif(isNull(CLOSED_DATE) || trim(CLOSED_DATE) == '', 'Open', 'Closed')"
