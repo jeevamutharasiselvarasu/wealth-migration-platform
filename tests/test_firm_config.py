@@ -619,6 +619,7 @@ def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch
         html = asyncio.run(page(role))
         assert ("Approve selected" in html) is allowed, role
         assert ("Approve all Account mappings" in html) is allowed, role
+        assert '<details class="entity-fold" open' in html and "pending proposals" in html, role  # each entity queue folds
         assert ("Read-only for" in html) is (not allowed), role
         can_generate = role in ("Platform Admin", "Migration Analyst")
         assert ("Generate proposals from approved files" in html) is can_generate, role
