@@ -200,7 +200,7 @@ def test_setup_button_opens_an_earlier_migration_on_the_setup_hub_and_ignores_fr
     for path in ("/migration-setup", "/firm-knowledge"):
         assert 'aria-label="Setup navigation"' in _call(app_module, sid, "GET", path).text
     target_page = _call(app_module, sid, "GET", "/target-mapping").text     # stage 06 now, not a Setup tab
-    assert 'aria-label="Migration stage navigation"' in target_page and 'aria-label="Setup navigation"' not in target_page
+    assert 'aria-label="Migration stage navigation"' not in target_page and 'aria-label="Setup navigation"' not in target_page  # the side rail is the only stage navigation
 
 
 def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_path, monkeypatch):
@@ -213,7 +213,7 @@ def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_p
     assert 'id="execution"' in execution and 'id="validation-scenarios"' not in execution
     assert 'id="validation-results"' in recon and 'id="validation-scenarios"' not in recon and 'id="execution"' not in recon
     for page in (rules, execution, recon):
-        assert "05 Mapping Validation Review" in page and "06 Target mapping" in page and "07 Transformation SQL" in page and "08 ADF Execution" in page and "09 Target validation" in page
+        assert all(name in page for name in ("Mapping Validation Review", "Target mapping", "Transformation SQL", "ADF Execution", "Target validation")) and "Migration stage navigation" not in page
 
 
 def _seed_approved_mapping(app_module, migration_id):

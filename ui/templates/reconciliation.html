@@ -3,7 +3,6 @@
 {% block content %}
 <div class="page" style="padding-block:0">
     {% set vtitle = {"rules": "Target validation", "execution": "ADF Execution"}.get(view, "Mapping Validation Review") %}
-    {% set stage_tab = {'reconcile': 'review', 'execution': 'adf', 'rules': 'rules'}.get(view) %}{% include "_stage_tabs.html" %}
     <div class="ph">
         <div>
             {% if view == 'rules' %}
