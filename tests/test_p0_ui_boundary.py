@@ -555,10 +555,10 @@ def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_
     for href in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
         assert f'href="{href}"' in tabs  # the three setup pages share one tab strip
     for href in ("/validation-rules", "/execution", "/reconciliation"):
-        assert f"'{href}'" in base  # stages 05, 06 and 07
+        assert f"'{href}'" in base  # stages 05, 06 and 07 (mapping validation review, execution, validation rules)
     rail = base[base.index('<aside class="side"'):base.index("</aside>")]
     assert "/canonical-changes" not in rail and "/admin/users" not in rail  # moved to Governance and Tenant settings, not duplicated
-    for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Execution", "Reconciliation"):
+    for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Mapping Validation Review", "Execution", "Validation rules"):
         assert stage in base
     for asset in ("suite.css", "dm.css", "xodus.css", "legacy.css"):
         assert (root / "static" / asset).is_file()
