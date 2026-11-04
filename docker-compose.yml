@@ -18,6 +18,17 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Local stand-in for Azure Blob storage (source files). Production uses the real storage account instead.
+  # --skipApiVersionCheck: the current Azure SDK is newer than the emulator's supported API versions.
+  blob:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --skipApiVersionCheck
+    ports:
+      - "${XODUS_BLOB_PORT:-10000}:10000"
+    volumes:
+      - xodus_blobdata:/data
+    restart: unless-stopped
+
   control_plane:
     build:
       context: .
@@ -25,6 +36,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      blob:
+        condition: service_started
     ports:
       - "${XODUS_PORT:-8080}:8000"
     environment:
@@ -37,6 +50,9 @@ services:
       - ADF_FACTORY_NAME=${ADF_FACTORY_NAME:-adf-wealth-migration-dev}
       - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
       - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      # Source blobs: Azurite's public development account by default; set a real storage connection string for Azure.
+      - AZURE_BLOB_CONNECTION_STRING=${AZURE_BLOB_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://blob:10000/devstoreaccount1;}
+      - AZURE_BLOB_SOURCE_CONTAINER=${AZURE_BLOB_SOURCE_CONTAINER:-corecap-source}
       - CONFLUENCE_EMAIL=${CONFLUENCE_EMAIL:-}
       - CONFLUENCE_API_TOKEN=${CONFLUENCE_API_TOKEN:-}
       - CONFLUENCE_ALLOWED_HOSTS=${CONFLUENCE_ALLOWED_HOSTS:-}
@@ -44,3 +60,4 @@ services:
 
 volumes:
   xodus_pgdata:
+  xodus_blobdata:

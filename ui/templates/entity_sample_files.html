@@ -60,8 +60,25 @@
   {% if stage_view == 'load' %}
   <details class="dgroup" open><summary class="dsum">＋ Add source files <span class="ml-2 text-xs font-medium text-[#5A6A88]">upload CSV, TSV, Excel or JSON</span></summary>
   {% if acquisition_method == 'AZURE_CONNECTION' %}
-  <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-    <div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 font-mono text-sm font-bold text-amber-800">AZ</span><div><h2 class="font-bold text-amber-900">Azure source connection selected</h2><p class="mt-1 text-xs leading-5 text-amber-900">Source files will be read from Azure storage, but a file listing is not built yet, so nothing can be loaded this way. Storage account, container and access are entered once on the Azure connection page. To upload sample files instead, choose that option in Setup.</p><p class="mt-2"><a href="/azure-setup" class="btn g sm">Open Azure connection →</a></p></div></div>
+  <section class="card" id="blob-source" data-testid="blob-source">
+    <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-bold text-[#152C6B]" style="font-size:16px">Source files in Azure Blob storage {% if blob and blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h2>
+      <a href="/azure-setup" class="btn g sm">Azure connection →</a></div>
+    {% if not blob or not blob.configured %}
+    <p class="d" style="margin:8px 0 0">No blob storage is configured on the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>). Upload sample files instead by choosing that option in Setup.</p>
+    {% elif not blob.reachable %}
+    <p class="d" style="margin:8px 0 0;color:var(--bad)">{{ blob.detail }}</p>
+    {% else %}
+    <p class="d" style="margin:8px 0 0">Container <span class="font-mono">{{ blob.container }}</span> · {{ blob.blobs|length }} source file(s) found{% if not blob.container_exists %} · {{ blob.detail }}{% endif %}. Loading runs the same intake as an upload; entity review happens in Discovery.</p>
+    {% if blob.blobs %}
+    <form action="/api/blob/load" method="post" class="mt-2">
+      <div class="tw"><table><thead><tr>{% if can_discover %}<th style="width:28px"></th>{% endif %}<th>Blob</th><th>Size</th><th>Modified</th><th>State</th></tr></thead><tbody>
+        {% for b in blob.blobs %}<tr>{% if can_discover %}<td><input type="checkbox" name="blob" value="{{ b.name }}" aria-label="Select {{ b.name }}" {% if not b.loaded %}checked{% endif %}></td>{% endif %}<td class="font-mono">{{ b.name }}</td><td>{{ '%.1f'|format(b.size / 1024) }} KB</td><td>{{ b.modified[:19] }}</td><td>{% if b.loaded %}<span class="chip ok">Loaded</span>{% else %}New{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% if can_discover %}<button class="btn p sm" style="margin-top:8px">Load ticked files</button>{% endif %}
+    </form>
+    {% endif %}
+    {% if blob.emulator and user_role == 'Platform Admin' %}<form action="/api/blob/seed-demo" method="post" class="mt-2"><button class="btn g sm">Put the demo source files in the local container</button></form>{% endif %}
+    {% endif %}
   </section>
   {% else %}
   <section class="card">

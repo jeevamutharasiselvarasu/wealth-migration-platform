@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import uuid
@@ -18,7 +19,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection
+from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1216,6 +1217,7 @@ def _source_stage_page(request: Request, stage_view: str, uploaded: str, notice:
             "stage_tab_key": stage_view,
             "setup": migration_setup,
             "azure_cfg": _azure_cfg_for_display(),
+            "blob": _blob_panel() if (stage_view == "load" and migration_setup.get("source_acquisition") == "AZURE_CONNECTION") else None,
             "loaded_rows": sum(int(i.get("row_count") or 0) for i in source_uploads),
             "loaded_kb": sum(int(i.get("size_bytes") or 0) for i in source_uploads) / 1024,
             "can_discover": user["role"] in DISCOVERY_ROLES,
@@ -3386,6 +3388,62 @@ async def save_entity_scopes(request: Request):
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     publish_event("ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id, {"scopes": scopes_map}, "migration-analyst")
     return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _blob_container() -> str:
+    """Source container: the Azure connection page's value, else the server default (so the local emulator works before any ADF details exist)."""
+    cfg = _azure_cfg_for_display()
+    return (cfg.get("source_container") if cfg else "") or os.environ.get("AZURE_BLOB_SOURCE_CONTAINER", "corecap-source")
+
+
+def _blob_panel() -> dict:
+    """Status and listing for the Loader when the migration reads source files from Azure Blob storage."""
+    container = _blob_container()
+    st = blob_source.status(container)
+    st["container"] = container
+    st["blobs"] = []
+    if st["reachable"] and st["container_exists"]:
+        try:
+            loaded = {rec.get("filename") for group in getattr(state_store, "entity_source_files", {}).values() for rec in group.values()}
+            st["blobs"] = [dict(b, loaded=b["name"].split("/")[-1] in loaded) for b in blob_source.list_source_blobs(container)]
+        except Exception as exc:
+            st["detail"] = f"Could not list blobs: {type(exc).__name__}"
+    return st
+
+
+@app.post("/api/blob/load")
+async def load_blob_source_files(request: Request):
+    """Read the ticked blobs from the source container and run them through the same intake as an upload."""
+    get_current_user(request)
+    form = await request.form()
+    names = [str(n) for n in form.getlist("blob")]
+    if not names:
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Tick at least one blob to load."), status_code=status.HTTP_303_SEE_OTHER)
+    container = _blob_container()
+    files = []
+    try:
+        for name in names:
+            files.append(UploadFile(file=io.BytesIO(blob_source.read_blob(container, name)), filename=name.split("/")[-1]))
+    except Exception as exc:
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(f"Could not read from blob storage: {exc}"), status_code=status.HTTP_303_SEE_OTHER)
+    return await upload_entity_sample_file(request, files=files, source_role="ENTITY_MASTER", source_context="", data_dictionary_notes="")
+
+
+@app.post("/api/blob/seed-demo")
+async def seed_blob_with_demo_files(request: Request):
+    """Local emulator only: put the demo source files into the source container so the Azure path can be tried without Azure."""
+    get_current_user(request)
+    manifest = json.loads((Path(root_dir) / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
+    files = {}
+    for item in manifest.get("source_files", []):
+        path = (Path(root_dir) / item["path"]).resolve()
+        if path.is_relative_to(Path(root_dir).resolve()) and path.is_file():
+            files[path.name] = path.read_bytes()
+    try:
+        n = blob_source.seed(_blob_container(), files)
+    except Exception as exc:
+        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Seeded {n} demo files into the local blob container."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/upload-sample-file")
