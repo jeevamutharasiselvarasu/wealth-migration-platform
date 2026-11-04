@@ -45,3 +45,12 @@ def test_demo_manifest_source_files_have_entity_inference_evidence():
             f"{path.name} needs more entity evidence: {result}"
         )
 
+
+
+def test_contact_file_with_household_membership_columns_is_client_not_household():
+    from control_plane.services.entity_classification_agent import classify_source_file
+    headers = ["HouseholdId", "ContactId", "FirstName", "LastName", "DateOfBirth", "TaxId", "HouseholdOrder", "HouseholdRelationshipType", "Email"]
+    rows = [{"HouseholdId": f"H{i}", "ContactId": f"C{i}", "FirstName": "A", "LastName": "B", "DateOfBirth": "1980-01-01",
+             "TaxId": "x", "HouseholdOrder": "1", "HouseholdRelationshipType": "Primary", "Email": "a@b.c"} for i in range(5)]
+    result = classify_source_file(headers, rows)
+    assert result["entity"] == "Client"

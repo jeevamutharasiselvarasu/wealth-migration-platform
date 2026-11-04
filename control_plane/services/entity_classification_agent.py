@@ -19,8 +19,8 @@ ENTITY_TERMS = {
         "attributes": {"householdname", "hhname", "grouplabel", "groupname", "leadref", "reviewdate"},
     },
     "Client": {
-        "id": {"client", "clientid", "clientref", "party", "partyref", "partyid", "personid", "individualid"},
-        "attributes": {"legalname", "fullname", "displaytxt", "displayname", "givenname", "givennm", "firstname", "surname", "lastname", "email", "emailtxt", "taxid", "clienttype", "recordkind", "activeflag", "channelcd", "updatedat"},
+        "id": {"client", "clientid", "clientref", "party", "partyref", "partyid", "personid", "individualid", "contactid", "contactref"},
+        "attributes": {"salutation", "nickname", "middlename", "dateofbirth", "dob", "birthdate", "jobtitle", "employername", "employer", "designations", "legalname", "fullname", "displaytxt", "displayname", "givenname", "givennm", "firstname", "surname", "lastname", "email", "emailtxt", "taxid", "clienttype", "recordkind", "activeflag", "channelcd", "updatedat"},
     },
 }
 RELATIONSHIP_TERMS = {
@@ -28,6 +28,7 @@ RELATIONSHIP_TERMS = {
     "relationshiptype", "relatedid", "fromid", "toid", "sourceid", "targetid",
     "validfrom", "validto", "startdt", "enddt", "startdate", "enddate",
 }
+_KEY_SUFFIXES = {"id", "ref", "key", "no", "num", "number", "code", "uid", "guid", "name", "propername", "label"}
 GENERIC_ID_TERMS = {"id", "ref", "key", "code", "type", "kind", "status", "active", "updatedat", "validfrom", "validto"}
 
 
@@ -72,7 +73,9 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
     scores: dict[str, float] = {}
     evidence: dict[str, dict[str, Any]] = {}
     for entity, categories in ENTITY_TERMS.items():
-        id_hits = sorted(t for t in tokens if t in categories["id"] or any(t.startswith(alias) and len(t) > len(alias) for alias in categories["id"] if len(alias) >= 5))
+        # a prefixed column counts as an identifier only when what follows is key-like (householdid, clientref);
+        # householdorder or householdrelationshiptype describe membership and are not identifiers of the household
+        id_hits = sorted(t for t in tokens if t in categories["id"] or any(t.startswith(alias) and t[len(alias):] in _KEY_SUFFIXES for alias in categories["id"] if len(alias) >= 5))
         attr_hits = sorted(t for t in tokens if t in categories["attributes"])
         # Semantic features are stronger than generic profile features.
         score = 3.0 * len(id_hits) + 1.2 * len(attr_hits)
