@@ -4259,9 +4259,9 @@ async def upload_firm_file(
     return_to: str = Form("/firm-knowledge"),
 ):
     filename = file.filename or ""
-    allowed_extensions = {".md", ".txt", ".csv", ".tsv", ".json", ".xlsx", ".xlsm", ".xls"}
+    allowed_extensions = {".md", ".txt", ".csv", ".tsv", ".json", ".xlsx", ".xlsm", ".xls", ".docx", ".pptx", ".pdf"}
     if Path(filename).suffix.lower() not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Knowledge assets must be Markdown, text, CSV/TSV, JSON, or Excel files.")
+        raise HTTPException(status_code=400, detail="Knowledge assets must be Markdown, text, CSV/TSV, JSON, Excel, Word, PowerPoint, or PDF files.")
     content = await file.read()
     try:
         doc_record = state_store.add_firm_file(filename, category, content)

@@ -11,6 +11,7 @@ from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
 from control_plane import file_store
 from control_plane.db import get_db_connection, init_db, table_exists
 from control_plane.services.source_file_adapter import read_source_records
+from control_plane.services import document_text
 
 SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
 
@@ -648,6 +649,8 @@ class WorkspaceStateStore:
                     return []
 
                 columns = discover_columns(payload)
+            elif suffix in document_text.DOCUMENT_SUFFIXES:
+                extracted_text = document_text.extract(suffix, content_bytes)
             elif suffix in {".csv", ".tsv"}:
                 import csv
                 reader = csv.reader(content_bytes.decode("utf-8-sig").splitlines(), delimiter="\t" if suffix == ".tsv" else ",")
@@ -676,7 +679,7 @@ class WorkspaceStateStore:
             "extracted_columns": list(map(str, columns)),
             "transferable_knowledge": rules,
             "content_preview": "\n".join(lines[:30])[:5000],
-            "full_text": extracted_text[:FULL_TEXT_LIMIT] if suffix in {".md", ".txt"} else "",
+            "full_text": extracted_text[:FULL_TEXT_LIMIT] if suffix in {".md", ".txt"} | document_text.DOCUMENT_SUFFIXES else "",
             "status": "REGISTERED_REVIEW_REQUIRED",
         }
         self.firm_knowledge_docs.append(doc_record)

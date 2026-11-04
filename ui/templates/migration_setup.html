@@ -105,7 +105,7 @@
         <p class="fh" style="margin:4px 0 10px">Attach data dictionaries, target schema documents, business rules or operating notes. This uploads to the knowledge registry and returns to migration setup.</p>
         <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:10px;align-items:center" class="kup">
           <select form="knowledge-upload-form" name="category" aria-label="Knowledge asset category" class="input"><option value="data_dictionary">Data dictionary</option><option value="target_schema">Target schema / canonical contract</option><option value="business_rules">Business rules</option><option value="firm_profile">Firm / operating knowledge</option><option value="questionnaire">Questionnaire</option></select>
-          <input form="knowledge-upload-form" type="file" name="file" aria-label="Knowledge asset file" required accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls" class="input">
+          <input form="knowledge-upload-form" type="file" name="file" aria-label="Knowledge asset file" required accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls,.docx,.pptx,.pdf" class="input">
           <button form="knowledge-upload-form" type="submit" class="btn g sm">Upload asset</button>
         </div>
       </div>
