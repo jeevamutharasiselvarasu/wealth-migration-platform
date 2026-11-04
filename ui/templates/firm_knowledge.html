@@ -44,6 +44,17 @@
                         Attach Data Asset
                     </button>
                 </fieldset></form>
+                <form action="/api/knowledge/confluence" method="POST" class="space-y-2"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-2 border-0 p-0">
+                    <select name="category" aria-label="Confluence page category" class="input w-full" style="font-size:12px;text-overflow:ellipsis">
+                        <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
+                        <option value="business_rules">Business Rules</option>
+                        <option value="source_analysis">Current System / Source Analysis</option>
+                        <option value="mapping_reference">Reusable Mapping Reference</option>
+                    </select>
+                    <input type="url" name="link" aria-label="Confluence page link" placeholder="https://yourco.atlassian.net/wiki/spaces/KEY/pages/12345/Title" required class="input w-full" style="font-size:12px">
+                    <button type="submit" class="btn g sm" style="width:100%;justify-content:center">Import Confluence page</button>
+                    <p class="text-[10px] text-[#5A6A88]">Read-only. Uses the server's Confluence token; one page per link.</p>
+                </fieldset></form>
 
                 <div class="space-y-1.5 max-h-64 overflow-y-auto">
                     {% for doc in docs %}

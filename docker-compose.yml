@@ -36,6 +36,9 @@ services:
       - AZURE_RESOURCE_GROUP=${AZURE_RESOURCE_GROUP:-rg-wealth-migration-dev}
       - ADF_FACTORY_NAME=${ADF_FACTORY_NAME:-adf-wealth-migration-dev}
       - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
+      - CONFLUENCE_EMAIL=${CONFLUENCE_EMAIL:-}
+      - CONFLUENCE_API_TOKEN=${CONFLUENCE_API_TOKEN:-}
+      - CONFLUENCE_ALLOWED_HOSTS=${CONFLUENCE_ALLOWED_HOSTS:-}
     restart: unless-stopped
 
 volumes:

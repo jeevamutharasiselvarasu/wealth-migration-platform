@@ -18,7 +18,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry
+from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -4271,6 +4271,27 @@ async def upload_firm_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     destination = return_to if return_to in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
+    return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/knowledge/confluence")
+async def import_confluence_page(
+    category: str = Form(...),
+    link: str = Form(...),
+    return_to: str = Form("/firm-knowledge"),
+):
+    """Read one Confluence Cloud page with the server's read-only token and register it as a knowledge asset."""
+    destination = return_to if return_to in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
+    try:
+        page = confluence_source.fetch_page(link)
+        safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", page["title"]).strip()[:80] or "confluence-page"
+        doc_record = state_store.add_firm_file(f"{safe}.md", category, page["text"].encode("utf-8"))
+        doc_record["source_url"] = page["url"]
+        migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+        publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", str(doc_record["id"]),
+                      {**doc_record, "source": "confluence"}, "knowledge-curator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
 
 

@@ -46,7 +46,7 @@ POST_POLICY = [
     (r"^/api/canonical-changes$", CHANGE_REQUEST_ROLES),
     (r"^/api/canonical-changes/[^/]+/apply$", CANONICAL_ROLES),
     (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
-    (r"^/api/knowledge/(submit-questionnaire|file-upload)$", DISCOVERY_ROLES),
+    (r"^/api/knowledge/(submit-questionnaire|file-upload|confluence)$", DISCOVERY_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
     (r"^/api/relationships/review$", DISCOVERY_ROLES),
     (r"^/api/entities/upload-sample-file$", DISCOVERY_ROLES),
