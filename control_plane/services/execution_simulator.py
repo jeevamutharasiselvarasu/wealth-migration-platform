@@ -66,8 +66,10 @@ def _sanitise(message: str) -> str:
 
 
 def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, Any]]], outage: bool = False,
-             lookups: Dict[Any, Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Return telemetry for one simulated run of the package. Pure and deterministic."""
+             lookups: Dict[Any, Dict[str, Any]] = None, outputs: Dict[str, List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Return telemetry for one simulated run of the package. Pure and deterministic.
+    If `outputs` is given it is filled with the loaded rows per target table ({table: [{target_column: value}]}) for the stage folder;
+    those values are never part of the returned telemetry, which is stored."""
     if outage:
         return {"status": "FAILED", "error": OUTAGE_MESSAGE, "retryable": True, "entities": {}, "failures": [], "post_checks": [],
                 "totals": {"read": 0, "loaded": 0, "skipped": 0, "failed": 0}}
@@ -117,6 +119,8 @@ def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, A
                 else:
                     counts["loaded"] += 1
                     entity_loaded.append(out)
+                    if outputs is not None:
+                        outputs.setdefault(table, []).append({m["target_column"]: out.get(m["canonical_field"]) for m in maps})
             per_table[table] = counts
         entities[entity] = {"source_rows": len(rows), "tables": per_table}
         loaded_rows[entity] = entity_loaded
@@ -148,6 +152,17 @@ def record_run(conn: sqlite3.Connection, migration_id: str, package: Dict[str, A
                  (rid, migration_id, package["meta"]["package_id"], package["meta"]["package_version"], telemetry["status"], started.isoformat(),
                   datetime.now(timezone.utc).isoformat(), duration_ms, actor, retry_of, json.dumps(telemetry)))
     return rid
+
+
+def attach_stage(conn: sqlite3.Connection, run_id: str, stage: Dict[str, Any]) -> None:
+    """Record where a run's output went (or why it was not written) on the stored telemetry. No record values."""
+    import json
+    row = conn.execute("SELECT telemetry_json FROM execution_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if not row:
+        return
+    telemetry = json.loads(row["telemetry_json"] if hasattr(row, "keys") else row[0])
+    telemetry["stage"] = stage
+    conn.execute("UPDATE execution_runs SET telemetry_json = ? WHERE run_id = ?", (json.dumps(telemetry), run_id))
 
 
 def list_runs(conn: sqlite3.Connection, migration_id: str, limit: int = 10) -> List[Dict[str, Any]]:

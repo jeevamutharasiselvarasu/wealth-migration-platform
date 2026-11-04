@@ -139,3 +139,29 @@ def seed(container: str, files: Dict[str, bytes], conn_str: Optional[str] = None
     for name, data in files.items():
         cc.upload_blob(prefix + name, data, overwrite=True)
     return len(files)
+
+
+def write_stage_run(container: str, run_id: str, outputs: Dict[str, List[Dict[str, Any]]], support: Dict[str, Any],
+                    conn_str: Optional[str] = None) -> Dict[str, Any]:
+    """Write one run's transformed output and the files curation needs under stage/run-<id>/. Never touches raw/ or curated/.
+
+    <TABLE>.csv per target table, plus _run/<name>.json for each supporting document (package contract, counts, source file hashes)."""
+    import csv
+    import io
+    import json
+    folder = f"stage/{run_id.lower()}/"
+    cc = _service(conn_str).get_container_client(container)
+    written = []
+    for table, rows in sorted(outputs.items()):
+        cols = list(rows[0].keys()) if rows else []
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, lineterminator="\n")
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: ("" if r.get(c) is None else r.get(c)) for c in cols})
+        cc.upload_blob(folder + f"{table}.csv", buf.getvalue().encode("utf-8"), overwrite=True)
+        written.append({"name": f"{table}.csv", "rows": len(rows)})
+    for name, doc in sorted(support.items()):
+        cc.upload_blob(folder + f"_run/{name}.json", json.dumps(doc, indent=2, default=str).encode("utf-8"), overwrite=True)
+        written.append({"name": f"_run/{name}.json", "rows": None})
+    return {"written": True, "container": container, "path": folder, "files": written}

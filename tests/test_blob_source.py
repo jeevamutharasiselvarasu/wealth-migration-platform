@@ -100,3 +100,29 @@ def test_seeding_resets_only_the_source_folder(monkeypatch):
     bs.seed("lake", {"a.csv": b"9"}, prefix="raw/corecap/", source_firm="CoreCap")
     assert "raw/corecap/b.csv" not in fc.blobs and fc.blobs["raw/corecap/a.csv"] == b"9"
     assert "stage/keep.csv" in fc.blobs and "raw/corecap/.xodus-folder" in fc.blobs
+
+
+def test_stage_run_writes_tables_and_support_files_under_the_run_folder_only(monkeypatch):
+    fc = _fake_service(monkeypatch)
+    bs.ensure_layout("lake", "CoreCap")
+    fc.blobs["raw/corecap/a.csv"] = b"keep"
+    out = {"ORION_MCL_ACCOUNT": [{"ACCT": "1", "NAME": None}, {"ACCT": "2", "NAME": "x"}]}
+    res = bs.write_stage_run("lake", "RUN-ABC12345", out, {"run": {"status": "SUCCEEDED"}, "problems": []})
+    assert res["written"] and res["path"] == "stage/run-abc12345/"
+    assert fc.blobs["stage/run-abc12345/ORION_MCL_ACCOUNT.csv"].decode() == "ACCT,NAME\n1,\n2,x\n"
+    assert "stage/run-abc12345/_run/run.json" in fc.blobs and "stage/run-abc12345/_run/problems.json" in fc.blobs
+    assert fc.blobs["raw/corecap/a.csv"] == b"keep" and not any(k.startswith("curated/") and not k.endswith(bs.MARKER) for k in fc.blobs)
+
+
+def test_simulator_collects_loaded_rows_per_table_without_putting_values_in_telemetry():
+    import json
+    from control_plane.services import execution_simulator as ex
+    pkg = {"meta": {"package_id": "P", "package_version": 1},
+           "transformation_rules": [],
+           "canonical_to_target": [{"entity": "Account", "target_table": "T", "canonical_field": "ID", "target_column": "ACCT_ID", "transformation": "DIRECT_COPY", "required": True}],
+           "validation": {"scenarios": []}}
+    outputs = {}
+    tele = ex.simulate(pkg, {"Account": [{"ID": "SECRET-1"}, {"ID": ""}]}, outputs=outputs)
+    assert outputs == {"T": [{"ACCT_ID": "SECRET-1"}]}
+    assert tele["totals"]["loaded"] == 1 and tele["totals"]["skipped"] == 1
+    assert "SECRET-1" not in json.dumps(tele)

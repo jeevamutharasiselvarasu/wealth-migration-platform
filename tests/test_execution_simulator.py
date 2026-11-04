@@ -130,3 +130,13 @@ def test_bulk_routes_need_a_ticked_row_and_apply_per_row_comments(tmp_path, monk
     assert r.status_code == 303 and "Tick+at+least+one" in r.headers["location"]
     r = asyncio.run(call("/api/execution/runs/RUN-X/failures/bulk-review", {"decision": "RESOLVED"}))
     assert r.status_code == 303 and "Tick+at+least+one" in r.headers["location"]
+
+
+def test_attach_stage_records_the_location_on_the_stored_run():
+    import sqlite3
+    from datetime import datetime, timezone
+    c = sqlite3.connect(":memory:"); c.row_factory = sqlite3.Row
+    pkg = {"meta": {"package_id": "P", "package_version": 1}}
+    rid = ex.record_run(c, "MIG", pkg, "Ann", {"status": "SUCCEEDED", "totals": {}}, datetime.now(timezone.utc), 5)
+    ex.attach_stage(c, rid, {"written": True, "path": f"stage/{rid.lower()}/", "files": []})
+    assert ex.list_runs(c, "MIG")[0]["telemetry"]["stage"]["path"] == f"stage/{rid.lower()}/"

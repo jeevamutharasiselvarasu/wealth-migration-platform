@@ -1488,7 +1488,8 @@ def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of
     t0 = _time.perf_counter()
     lookups, lookup_files = _lookup_context(package)
     rows = {} if outage == "on" else _canonical_rows_for_migration(migration_id, lookup_files)[0]
-    telemetry = execution_simulator.simulate(package, rows, outage == "on", lookups)
+    stage_outputs: Dict[str, list] = {}
+    telemetry = execution_simulator.simulate(package, rows, outage == "on", lookups, outputs=stage_outputs)
     duration = int((_time.perf_counter() - t0) * 1000)
     conn = get_db_connection()
     try:
@@ -1496,9 +1497,45 @@ def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of
         conn.commit()
     finally:
         conn.close()
+    if outage != "on":
+        _write_run_to_stage(migration_id, rid, package, telemetry, stage_outputs)
     if outage != "on" and telemetry.get("failures"):
         _store_gap_recommendations(migration_id, rid, package, telemetry, rows, lookups)
     return rid, telemetry, package
+
+
+def _write_run_to_stage(migration_id: str, run_id: str, package: Dict[str, Any], telemetry: Dict[str, Any], outputs: Dict[str, list]) -> None:
+    """When the migration reads from Azure Blob storage, put the run's transformed files and the files curation needs in stage/run-<id>/.
+    Best effort: a storage problem is recorded on the run and never fails it."""
+    setup = state_store.questionnaire_data.get("migration_setup", {})
+    stage: Dict[str, Any]
+    if setup.get("source_acquisition") != "AZURE_CONNECTION":
+        stage = {"written": False, "reason": "The migration does not use Azure source storage, so no stage folder is written."}
+    else:
+        panel = _blob_panel(with_files=False)
+        if not (panel["reachable"] and panel["layout_ready"]):
+            stage = {"written": False, "reason": "Blob storage is unreachable or the folder structure is not created yet (Azure connection page)."}
+        else:
+            hashes = {rec.get("filename"): rec.get("content_sha256") for g in state_store.entity_source_files.values() for rec in g.values()}
+            support = {
+                "run": {"run_id": run_id, "migration_id": migration_id, "mode": "SIMULATED", "status": telemetry.get("status"), "totals": telemetry.get("totals"),
+                        "package_id": package["meta"]["package_id"], "package_version": package["meta"]["package_version"]},
+                "package_contract": {"canonical_to_target": package.get("canonical_to_target"), "transformation_rules": package.get("transformation_rules"),
+                                     "validation": package.get("validation")},
+                "problems": telemetry.get("failures", []),
+                "source_files": hashes,
+            }
+            try:
+                stage = blob_source.write_stage_run(panel["container"], run_id, outputs, support)
+            except Exception as exc:
+                stage = {"written": False, "reason": f"Could not write to blob storage: {type(exc).__name__}"}
+    conn = get_db_connection()
+    try:
+        execution_simulator.attach_stage(conn, run_id, stage)
+        conn.commit()
+    finally:
+        conn.close()
+    telemetry["stage"] = stage
 
 
 def _store_gap_recommendations(migration_id: str, run_id: str, package: Dict[str, Any], telemetry: Dict[str, Any], canonical_rows, lookups) -> None:
