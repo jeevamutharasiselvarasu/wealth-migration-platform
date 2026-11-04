@@ -12,3 +12,4 @@ services:
       - ./agents:/app/agents
       - ./data_plane:/app/data_plane
       - ./config:/app/config
+      - ./simulated_target_service/data:/app/simulated_target_service/data
