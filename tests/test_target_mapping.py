@@ -806,3 +806,9 @@ def test_reviewer_can_change_the_canonical_source_and_type_only_registered_rules
     assert gap["canonical_field"] is None and gap["status"] == "PROPOSED"
     done = tm.review(conn, gap["target_mapping_id"], "APPROVED", "Ann", "", "", "LEGAL_NAME", ["CLIENT_ID", "LEGAL_NAME"])
     assert done["status"] == "APPROVED" and done["canonical_field"] == "LEGAL_NAME"
+
+
+def test_target_mapping_page_links_back_to_setup():
+    import re, pathlib
+    html = pathlib.Path(__file__).resolve().parent.parent.joinpath("ui/templates/target_mapping.html").read_text()
+    assert re.search(r'href="/setup"[^>]*data-testid="back-to-setup"', html)

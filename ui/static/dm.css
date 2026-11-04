@@ -238,3 +238,15 @@
 .evs li{display:grid;grid-template-columns:48px 1fr;gap:8px}.evs time{font-family:ui-monospace,Menlo,monospace;color:var(--muted)}.evs .w{color:var(--warn)}
 .hl{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line)}.hl:last-child{border:0}
 @media(max-width:900px){.lanes{grid-template-columns:1fr}}
+
+/* Pipeline run card: the one place that says where the migration is, so it stands out from the stage list. */
+.runh{background:linear-gradient(160deg,rgba(34,211,238,.20),rgba(34,211,238,.06) 55%,rgba(255,255,255,.05));border:1px solid rgba(34,211,238,.55);box-shadow:0 0 0 1px rgba(34,211,238,.12),0 6px 18px rgba(0,0,0,.35);padding:14px}
+.runh small{color:var(--cyan-l,#67E8F9)}
+.runh strong{font-size:14px;letter-spacing:.2px}
+.runh .meter{height:8px;background:rgba(255,255,255,.18)}
+.runh .sub{color:#CFE6F2;font-size:11px;align-items:flex-start;gap:8px}
+.runh .sub b{font-size:15px}
+.runh .sub span:last-child{text-align:right;font-weight:700;color:#fff}
+.runh a.nx{background:rgba(34,211,238,.18);border:1px solid rgba(34,211,238,.45);border-radius:9px;padding:7px 10px;color:#fff}
+.runh a.nx:hover{background:rgba(34,211,238,.30)}
+.stg.on{background:rgba(34,211,238,.16);box-shadow:inset 3px 0 0 var(--cyan-l,#67E8F9)}

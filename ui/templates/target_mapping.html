@@ -6,6 +6,7 @@
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   <div class="ph">
     <div>
+      <a href="/setup" class="btn g sm" data-testid="back-to-setup" style="margin-bottom:8px;display:inline-block">← Back to Setup</a>
       <div class="ey dm">Stage 06 · Transformed · Canonical → target{% if target_label %} · {{ target_label }}{% endif %}</div>
       <h1>Target mapping</h1>
       <p>Map each canonical field to a Simplicity target field. Proposals come from the target specification; a Migration Analyst or Platform Admin approves each one and may apply an approved <a href="/transformation-rules" class="text-blue-700">transformation rule</a>. The preview is a read-only dry run that reports counts and findings, never record values.</p>
