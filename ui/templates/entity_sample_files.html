@@ -61,7 +61,7 @@
   <details class="dgroup" open><summary class="dsum">＋ Add source files <span class="ml-2 text-xs font-medium text-[#5A6A88]">upload CSV, TSV, Excel or JSON</span></summary>
   {% if acquisition_method == 'AZURE_CONNECTION' %}
   <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-    <div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 font-mono text-sm font-bold text-amber-800">AZ</span><div><h2 class="font-bold text-amber-900">Azure source connection selected</h2><p class="mt-1 text-xs leading-5 text-amber-900">The setup records the Azure environment and approved access method, but a live connector is not yet verified. Configure managed identity / Key Vault access and connection testing before enabling automated discovery. Do not enter secrets here.</p><a href="/migration-setup" class="mt-3 inline-block rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">Review Azure setup →</a></div></div>
+    <div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 font-mono text-sm font-bold text-amber-800">AZ</span><div><h2 class="font-bold text-amber-900">Azure source connection selected</h2><p class="mt-1 text-xs leading-5 text-amber-900">Source files will be read from Azure storage, but a file listing is not built yet, so nothing can be loaded this way. Storage account, container and access are entered once on the Azure connection page. To upload sample files instead, choose that option in Setup.</p><p class="mt-2"><a href="/azure-setup" class="btn g sm">Open Azure connection →</a></p></div></div>
   </section>
   {% else %}
   <section class="card">
