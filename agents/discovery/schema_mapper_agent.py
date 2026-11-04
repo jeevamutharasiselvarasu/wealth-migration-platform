@@ -333,8 +333,7 @@ class SchemaMapperAgent:
             "record_count": res["record_count"]
         }
 
-    def map_source_to_canonical(self, entity_name: str, raw_records: List[Dict[str, Any]],
-                                context_targets: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    def map_source_to_canonical(self, entity_name: str, raw_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Translates raw records to canonical format, computes lineage, and calculates confidence."""
         if not raw_records:
             return {
@@ -385,7 +384,7 @@ class SchemaMapperAgent:
                         })
                         lineage_fields_seen.add(raw_key)
                     continue
-                target_key = (context_targets or {}).get(raw_key) or self.ENTITY_CATALOG.get(entity_name, {}).get(raw_key) or self.catalog.get(raw_key)
+                target_key = self.ENTITY_CATALOG.get(entity_name, {}).get(raw_key) or self.catalog.get(raw_key)
                 identity_match = False
                 if not target_key:
                     target_key = self._identity_target(entity_name, raw_key)

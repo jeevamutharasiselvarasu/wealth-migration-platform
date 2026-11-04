@@ -3603,10 +3603,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         custom_catalog={**schema_mapper.catalog, **approved_catalog},
         approved_transformations=approved_transformations,
     )
-    from control_plane.services import source_inference
-    context_targets = source_inference.context_name_targets(
-        uploaded["filename"], list(source_records[0].keys()) if source_records else [], _canonical_field_lists().get(entity_name, []))
-    mapping = effective_mapper.map_source_to_canonical(entity_name, source_records, context_targets=context_targets)
+    mapping = effective_mapper.map_source_to_canonical(entity_name, source_records)
     mapping["approved_reusable_rules_applied"] = [
         {
             "source_field": source,

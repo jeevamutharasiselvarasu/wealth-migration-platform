@@ -85,13 +85,3 @@ def test_unseen_target_holdout_floor():
     # measured 23/25 (camelCase splitting fixed after the first run scored 18/25); one known wrong match: groupingId on accounts
     tables, right, total = _target("unseen_target_holdout.json")
     assert tables == 3 and right >= 23 and total == 25
-
-
-def test_bare_name_column_takes_its_qualifier_from_the_file_name():
-    from control_plane.services.source_inference import context_name_targets
-    fields = ["HH_ID", "HH_NAME", "ADVISOR_ID", "ADVISOR_NAME"]
-    assert context_name_targets("corecap_advisors.csv", ["Id", "Name", "Email"], fields) == {"Name": "ADVISOR_NAME"}
-    # the household file's own name column is not redirected
-    assert context_name_targets("corecap_households.csv", ["Id", "Name"], fields) == {}
-    # no qualifying field in the model: nothing is guessed
-    assert context_name_targets("corecap_advisors.csv", ["Name"], ["HH_ID", "HH_NAME"]) == {}
