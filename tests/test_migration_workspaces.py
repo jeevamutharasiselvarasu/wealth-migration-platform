@@ -272,3 +272,51 @@ def test_only_approvers_may_reopen_an_approved_mapping(tmp_path, monkeypatch):
     denied = _call(app_module, sid, "POST", "/api/mappings/reopen", [("entity_name", "Account"), ("source_field", "CustodianName"), ("reason", "A real reason here")])
     assert denied.status_code in (303, 403)
     assert _row(app_module, "SELECT is_confirmed FROM canonical_mappings WHERE migration_id = ?", (mid,))[0]["is_confirmed"] == 1
+
+
+def _seed_rejected_suggestion(app_module, migration_id):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    conn = app_module.get_db_connection()
+    try:
+        conn.execute("INSERT INTO mapping_suggestions (suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, proposed_rule, confidence_score, status, reviewer, review_comments, created_utc, reviewed_utc) "
+                     "VALUES ('MAPSUG-REJ-1', 'RUN-1', ?, 'Account', 'CustodianName', 'CUSTODIAN_CODE', 'DIRECT_COPY', 0.85, 'REJECTED', 'Seed', 'No canonical field fits yet', ?, ?)",
+                     (migration_id, now, now))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_rejected_mapping_can_be_reopened_and_approved_with_another_canonical_field(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "reopen-rejected")
+    assert _post_setup(app_module, sid).status_code == 303
+    mid = state.questionnaire_data["migration_id"]
+    _seed_rejected_suggestion(app_module, mid)
+    page = _call(app_module, sid, "GET", "/agent-pipeline").text
+    assert 'id="rejected-mappings"' in page and "No canonical field fits yet" in page
+
+    assert "error=" in _call(app_module, sid, "POST", "/api/mappings/reopen-rejected", [("suggestion_id", "MAPSUG-REJ-1"), ("reason", "short")]).headers["location"]
+    assert _call(app_module, sid, "POST", "/api/mappings/reopen-rejected", [("suggestion_id", "NOPE"), ("reason", "A real reason here")]).status_code == 404
+    done = _call(app_module, sid, "POST", "/api/mappings/reopen-rejected", [("suggestion_id", "MAPSUG-REJ-1"), ("reason", "Model now has the field")])
+    assert done.status_code == 303 and "notice=" in done.headers["location"]
+    assert _row(app_module, "SELECT status FROM mapping_suggestions WHERE suggestion_id = 'MAPSUG-REJ-1'")[0]["status"] == "REJECTED"  # rejection stays on record
+    pending = _row(app_module, "SELECT * FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (mid,))
+    assert len(pending) == 1 and pending[0]["source_field"] == "CustodianName"
+    assert _call(app_module, sid, "POST", "/api/mappings/reopen-rejected", [("suggestion_id", "MAPSUG-REJ-1"), ("reason", "Second try here")]).status_code == 409  # already pending
+    assert 'Rejected proposals (0)' in _call(app_module, sid, "GET", "/agent-pipeline").text
+
+    approved = _call(app_module, sid, "POST", f"/api/mapping-suggestions/{pending[0]['suggestion_id']}/review",
+                     [("decision", "APPROVED"), ("reviewer", "x"), ("canonical_override", "CUSTODIAN_NAME"), ("comments", "plain name")])
+    assert approved.status_code in (200, 303)
+    assert _row(app_module, "SELECT canonical_field, is_confirmed FROM canonical_mappings WHERE migration_id = ?", (mid,))[0] == {"canonical_field": "CUSTODIAN_NAME", "is_confirmed": 1}
+
+
+def test_only_approvers_may_reopen_a_rejected_mapping(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "reopen-rej-role")
+    assert _post_setup(app_module, sid).status_code == 303
+    mid = state.questionnaire_data["migration_id"]
+    _seed_rejected_suggestion(app_module, mid)
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, sid, {"email": "t@example.invalid", "name": "Reader", "role": "Validation Specialist"})
+    denied = _call(app_module, sid, "POST", "/api/mappings/reopen-rejected", [("suggestion_id", "MAPSUG-REJ-1"), ("reason", "A real reason here")])
+    assert denied.status_code in (303, 403)
+    assert not _row(app_module, "SELECT 1 FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (mid,))
