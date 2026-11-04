@@ -256,6 +256,8 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
     recs: List[Dict[str, Any]] = []
     done: Set[Tuple[str, str]] = set()
     by_col = {(m["entity"], m["target_column"]): m for m in mappings}
+    keys = (hints or {}).get("entity_keys", {})
+    seen_titles: Set[Tuple[str, str]] = set()
     for f in failures:
         entity, column, table = f["entity"], f["column"], f["table"]
         if (entity, column) in done:
@@ -265,12 +267,15 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
         if not m:
             continue
         group = [x for x in failures if x["entity"] == entity and x["column"] == column]
-        total_rows = len(canonical_rows.get(entity, []))
+        keyf = keys.get(entity)
+        # rows with no entity key are reported once as ROWS_WITHOUT_KEY; they are not counted again as gaps in every field
+        ent_rows = [r for r in canonical_rows.get(entity, []) if not keyf or str(r.get(keyf) or "").strip()]
+        total_rows = len(ent_rows)
         cf = m["canonical_field"]
         rule = rules.get(m["transformation"]) if m["transformation"] != "DIRECT_COPY" else None
         rtype = rule["rule_type"] if rule else "DIRECT_COPY"
         blank_in, bad_vals, blank_out = 0, [], 0
-        for row in canonical_rows.get(entity, []):
+        for row in ent_rows:
             v = row.get(cf)
             out, warn = _apply(rule, v, row, lookups)
             if v is None or str(v).strip() == "":
@@ -279,7 +284,8 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
                 bad_vals.append(str(v).strip())
             if out is None or str(out).strip() == "":
                 blank_out += 1
-        home = next(((n, t["lineage"][cf]) for n, t in sorted(tables.items()) if t.get("entity") == entity and cf in t.get("lineage", {})), None)
+        cands = [(len(t["rows"]), n, t["lineage"][cf]) for n, t in sorted(tables.items()) if t.get("entity") == entity and cf in t.get("lineage", {})]
+        home = (lambda c: (c[1], c[2]))(max(cands, key=lambda c: c[0])) if cands else None
         where = f"{entity}.{column}"
         affected = sum(x["rows"] for x in group)
         # ---- value-level gaps
@@ -290,7 +296,7 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
             lines, extra = [], {}
             for val, n in counts.most_common(12):
                 near = difflib.get_close_matches(val, targets, n=1, cutoff=SIMILAR_MIN)
-                lines.append(f"{n} row(s) carry a value with no entry; closest existing target value: {near[0] if near else 'none'}")
+                lines.append(f"'{val}': {n} row(s), no entry; closest existing target value: {near[0] if near else 'none'}")
                 if near:
                     extra[val.upper() if rule['params'].get('case_insensitive', True) else val] = near[0]
             if counts:
@@ -301,7 +307,7 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
                              "description": f"Proposed by gap recommender for {where}: adds {len(extra)} value(s) matched by spelling similarity. Confirm each pair."}
                 recs.append(_rec(migration_id, "CROSSWALK_GAP", entity, table, column,
                                  f"{len(counts)} distinct source value(s) have no crosswalk entry for {where}", lines, sum(counts.values()),
-                                 "Counts come from the rows of this run; the closest value is a spelling match only and needs a business decision.", draft,
+                                 "Coded values are shown because this column is a lookup; the closest value is a spelling match only and needs a business decision.", draft,
                                  detail={"values_without_entry": len(counts), "suggested_pairs": len(extra)}))
         if bad_vals and rtype == "DATE_FORMAT":
             fits = rs.date_formats_for(bad_vals)
@@ -367,7 +373,14 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
         elif not (blank_in or bad_vals) and affected:
             recs.append(_rec(migration_id, "SOURCE_REQUEST", entity, table, column, f"{where}: {affected} row(s) failed with no pattern the recommender could analyse",
                              [f["reason"] for f in group][:3], affected, "No remedy was derived from the data; review the problem manually."))
-    recs.extend(_structural(migration_id, failures, canonical_rows, (hints or {}).get("entity_keys", {})))
+    uniq, seen = [], set()
+    for r in recs:
+        if (r["kind"], r["title"]) in seen:
+            continue
+        seen.add((r["kind"], r["title"]))
+        uniq.append(r)
+    recs = uniq
+    recs.extend(_structural(migration_id, failures, canonical_rows, keys))
     return recs
 
 

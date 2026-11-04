@@ -53,7 +53,7 @@ def test_crosswalk_gap_lists_values_without_entry_and_drafts_only_close_matches(
     (rec,) = [r for r in _run(rule=rule, rows=rows, mapping={"transformation": "RULE:MAPX@1"}, failures=f) if r["kind"] == "CROSSWALK_GAP"]
     assert rec["detail"]["values_without_entry"] == 2 and rec["detail"]["suggested_pairs"] == 1
     assert rec["rule_draft"]["rule_id"] == "MAPX" and "IRA ROLOVER" in rec["rule_draft"]["params"]["map"]
-    assert all("Mystery" not in line and "Rolover" not in line for line in rec["evidence"])    # no record values in output
+    assert any("'Mystery'" in line for line in rec["evidence"])      # a lookup column shows its coded values so the reviewer can decide
 
 
 def test_date_values_in_another_layout_propose_the_matching_format():
@@ -116,3 +116,19 @@ def test_decisions_are_recorded_accept_makes_only_a_draft_and_dismiss_needs_a_re
     res = gr.decide(c, "MIG", rid, "ACCEPTED", "ok", "analyst2")
     assert res["draft"] == "RULE:MAPX@2"
     assert [v["status"] for v in tr.list_rules(c) if v["rule_id"] == "MAPX"][-1] == "DRAFT"
+
+
+def test_rows_without_the_entity_key_are_not_counted_again_as_gaps_in_every_field():
+    rows = [{"ID": "1", "OWNER": ""}] + [{"ID": "", "OWNER": ""}] * 9
+    recs = _run(rows=rows, keys={"Case": "ID"})
+    blank = [r for r in recs if r["kind"] in ("RELAX_REQUIREMENT", "SOURCE_REQUEST")]
+    assert all(r["rows"] == 1 for r in blank)                      # only the one real row, not the 9 padding lines
+    assert [r["kind"] for r in recs].count("ROWS_WITHOUT_KEY") == 1
+
+
+def test_home_file_is_the_one_with_most_rows_and_repeated_titles_are_dropped():
+    t = {"small.csv": {"entity": "Case", "rows": [{"Other": ""}] * 2, "lineage": {"OWNER": "Other"}},
+         "big.csv": {"entity": "Case", "rows": [{"Own": ""}] * 6, "lineage": {"OWNER": "Own"}}}
+    recs = _run(rows=[{"OWNER": ""}] * 6, tables=t)
+    src = [r for r in recs if r["kind"] == "SOURCE_REQUEST"]
+    assert len(src) == 1 and "big.csv.Own" in src[0]["title"]
