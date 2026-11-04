@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import re
@@ -3487,8 +3488,20 @@ def _blob_panel(with_files: bool = True) -> dict:
             have = {r["path"] for r in st["tree"] if r["kind"] == "folder"}
             st["layout_ready"] = all(p in have for p in blob_source.layout_prefixes(firm))
             if with_files:
-                loaded = {rec.get("filename") for group in getattr(state_store, "entity_source_files", {}).values() for rec in group.values()}
-                st["blobs"] = [dict(b, loaded=b["name"].split("/")[-1] in loaded) for b in blob_source.list_source_blobs(container, prefix=prefix)]
+                recs = [rec for group in getattr(state_store, "entity_source_files", {}).values() for rec in group.values()]
+                by_name: Dict[str, set] = {}
+                for rec in recs:
+                    by_name.setdefault(rec.get("filename"), set()).add(rec.get("content_sha256"))
+                blobs = []
+                for b in blob_source.list_source_blobs(container, prefix=prefix):
+                    fname = b["name"].split("/")[-1]
+                    state = "new"
+                    if fname in by_name:
+                        # Same name is not enough: compare content, so a replaced file shows as changed rather than loaded.
+                        digest = hashlib.sha256(blob_source.read_blob(container, b["name"])).hexdigest()
+                        state = "loaded" if digest in by_name[fname] else "changed"
+                    blobs.append(dict(b, state=state, loaded=state == "loaded"))
+                st["blobs"] = blobs
         except Exception as exc:
             st["detail"] = f"Could not read the container: {type(exc).__name__}"
     return st

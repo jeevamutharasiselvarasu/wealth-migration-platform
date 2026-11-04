@@ -220,3 +220,22 @@ def test_committed_scenarios_match_the_generator():
     spec = importlib.util.spec_from_file_location("gen_scn", p); g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
     hh, con, acc = g.build("gaps_b", 45, True)
     assert [r["Id"] for r in _scenario("gaps_b")["corecap_households.csv"]] == [r["Id"] for r in hh]
+
+
+def test_blob_panel_marks_same_name_different_content_as_changed(monkeypatch):
+    import hashlib
+    from ui import app as app_module
+    fc = _fake_service(monkeypatch)
+    monkeypatch.setenv(bs.ENV_VAR, EMU)
+    bs.ensure_layout("lake", "CoreCap")
+    fc.blobs["raw/corecap/a.csv"] = b"x\n1\n"
+    fc.blobs["raw/corecap/b.csv"] = b"x\n2\n"
+    fc.blobs["raw/corecap/c.csv"] = b"x\n3\n"
+    fc.exists_flag = True
+    monkeypatch.setattr(app_module, "_blob_container", lambda: "lake")
+    monkeypatch.setattr(app_module, "_source_firm", lambda: "CoreCap")
+    monkeypatch.setattr(app_module.blob_source, "status", lambda c: {"configured": True, "reachable": True, "container_exists": True, "emulator": True, "detail": ""})
+    app_module.state_store.entity_source_files = {"Account": {"R1": {"filename": "a.csv", "content_sha256": hashlib.sha256(b"x\n1\n").hexdigest()},
+                                                              "R2": {"filename": "b.csv", "content_sha256": hashlib.sha256(b"old").hexdigest()}}}
+    states = {b["name"].split("/")[-1]: b["state"] for b in app_module._blob_panel()["blobs"]}
+    assert states == {"a.csv": "loaded", "b.csv": "changed", "c.csv": "new"}

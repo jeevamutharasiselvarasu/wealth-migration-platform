@@ -74,7 +74,7 @@
     {% if blob.blobs %}
     <form action="/api/blob/load" method="post" class="mt-2">
       <div class="tw"><table><thead><tr>{% if can_discover %}<th style="width:28px"></th>{% endif %}<th>Blob</th><th>Size</th><th>Modified</th><th>State</th></tr></thead><tbody>
-        {% for b in blob.blobs %}<tr>{% if can_discover %}<td><input type="checkbox" name="blob" value="{{ b.name }}" aria-label="Select {{ b.name }}" {% if not b.loaded %}checked{% endif %}></td>{% endif %}<td class="font-mono">{{ b.name }}</td><td>{{ '%.1f'|format(b.size / 1024) }} KB</td><td>{{ b.modified[:19] }}</td><td>{% if b.loaded %}<span class="chip ok">Loaded</span>{% else %}New{% endif %}</td></tr>{% endfor %}
+        {% for b in blob.blobs %}<tr>{% if can_discover %}<td><input type="checkbox" name="blob" value="{{ b.name }}" aria-label="Select {{ b.name }}" {% if b.state != 'loaded' %}checked{% endif %}></td>{% endif %}<td class="font-mono">{{ b.name }}</td><td>{{ '%.1f'|format(b.size / 1024) }} KB</td><td>{{ b.modified[:19] }}</td><td>{% if b.state == 'loaded' %}<span class="chip ok">Loaded</span>{% elif b.state == 'changed' %}<span class="chip ex" title="A file with this name is loaded, but its content is different">Changed since loaded</span>{% else %}New{% endif %}</td></tr>{% endfor %}
       </tbody></table></div>
       {% if can_discover %}<button class="btn p sm" style="margin-top:8px">Load ticked files</button>{% endif %}
     </form>
