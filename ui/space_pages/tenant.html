@@ -228,7 +228,7 @@ function esc(x){return String(x).replace(/[&<>"]/g,function(c){return {'&':'&amp
 var ROLES={EVP:'Executive sponsor',DT:'Deal team',IL:'IMO lead',MA:'Migration Analyst',VS:'Validation Specialist',PA:'Platform Admin',CR:'Compliance reviewer'};
 var PEOPLE={EVP:'Jordan Hale',DT:'Sam Rivera',IL:'Avery Chen',MA:'Priya Nair',VS:'Marcus Webb',PA:'Platform Admin',CR:'Dana Ortiz'};
 var ACCESS={deal:['EVP','DT','IL','CR'],dm:['MA','VS','IL','PA','CR'],gov:['EVP','IL','CR','PA']};
-var ROLEINFO={EVP:'Approves the deal brief and the go / no-go. Co-signs cutover readiness.',DT:'Researches the target and reviews the recommendation.',IL:'Creates and configures migration workspaces. Owns the estimate and cutover readiness. No access to platform configuration.',MA:'Works the pipeline stages and owns gates 01 to 04. Co-signs the load.',VS:'Owns data-level validation: creates and generates validation rules. Owns reconciliation and co-signs the load.',PA:'Sets up the platform: identity, compute, zones, connectors and runtime. No access to migration workspaces.',CR:'Reads evidence and the audit trail across spaces. Read-only.'};
+var ROLEINFO={EVP:'Approves the deal brief and the go / no-go. Co-signs cutover readiness.',DT:'Researches the target and reviews the recommendation.',IL:'Creates and configures migration workspaces. Owns the estimate and cutover readiness. No access to platform configuration.',MA:'Works the pipeline stages and owns gates 01 to 06. Co-signs the ADF execution.',VS:'Owns data-level validation: creates and generates validation rules. Owns target validation and co-signs the ADF execution.',PA:'Sets up the platform: identity, compute, zones, connectors and runtime. No access to migration workspaces.',CR:'Reads evidence and the audit trail across spaces. Read-only.'};
 var SPACES={deal:{name:'Deal Room',href:'deal-room.html',cls:'deal'},dm:{name:'Data Migration',href:'data-migration.html',cls:'dm'},gov:{name:'Governance',href:'governance.html',cls:'gov'}};
 
 /* ---------- gate chain ---------- */
@@ -242,32 +242,34 @@ function freshGates(){return [
  G('M2','dm','02 Discovery',['MA'],'Entity profiles and gap analysis',{zone:'Staged'}),
  G('M3','dm','03 Business Rules',['MA'],'Rule IDs and skill pack versions',{zone:'Staged'}),
  G('M4','dm','04 Schema Mapper',['MA'],'Mapping version and exception list',{zone:'Transformed'}),
- G('M5','dm','05 Execution',['MA','VS'],'Run IDs and load logs',{zone:'Transformed',dual:true}),
- G('M6','dm','06 Reconciliation',['VS'],'Tolerances and break report',{zone:'Transformed'}),
+ G('M5','dm','05 Mapping Validation Review',['MA'],'Canonical coverage and exception list',{zone:'Transformed'}),
+ G('M6','dm','06 Transformation SQL',['MA'],'Transformation SQL and target mapping version',{zone:'Transformed'}),
+ G('M7','dm','07 ADF Execution',['MA','VS'],'Run IDs and load logs',{zone:'Transformed',dual:true}),
+ G('M8','dm','08 Target validation',['VS'],'Target checks, custom cases and break report',{zone:'Transformed'}),
  G('C1','gov','Cutover readiness',['IL','EVP'],'Readiness checklist and rollback plan',{dual:true}),
  G('C2','gov','Hypercare close-out',['IL'],'Close-out report')]}
 var ST;
-/* Data Migration. Control plane: stages 01 to 04 set the migration up from metadata and sample files and end in one artifact bundle (SQL, ADF pipeline, Python). Data plane: stages 05 and 06 are runs of that bundle on the real data, each followed by the validation agent. */
-function isDP(g){return g.id=='M5'||g.id=='M6'}
+/* Data Migration. Control plane: stages 01 to 06 set the migration up from metadata and sample files and end in one artifact bundle (SQL, ADF pipeline, Python). Data plane: stages 07 and 08 are runs of that bundle on the real data, each followed by the validation agent. */
+function isDP(g){return g.id=='M7'||g.id=='M8'}
 function ph(g){if(!(g.sp=='dm'&&isDP(g)))return g.st;if(g.ph)return g.ph;return g.st=='approved'?'done':g.st=='review'?'results':g.st=='running'?'run':'none'}
 function stateLabel(g){
  if(g.sp!='dm')return ({approved:'Approved',review:'Needs review',queued:'Not open',running:'Agent running'})[g.st];
- if(!isDP(g)){if(g.id=='M4'&&g.st=='approved')return 'Bundle published';return ({queued:'Not started',running:'Control plane working',review:'Needs review',approved:'Approved'})[g.st]}
- var p=ph(g);if(g.id=='M5')return ({none:'Waits for the bundle',ready:'Ready to run',run:'Running on the data plane',results:'Run to review',done:'Approved'})[p];
+ if(!isDP(g)){if(g.id=='M6'&&g.st=='approved')return 'Bundle published';return ({queued:'Not started',running:'Control plane working',review:'Needs review',approved:'Approved'})[g.st]}
+ var p=ph(g);if(g.id=='M7')return ({none:'Waits for the bundle',ready:'Ready to run',run:'Running on the data plane',results:'Run to review',done:'Approved'})[p];
  return ({none:'Waits for the run review',results:'Validation to review',done:'Approved'})[p]}
 function setScenario(n){
- ST={v:3,scn:n,gates:freshGates(),log:[],bundle:{v:1,pub:false},runs:[]};
- var ap=n=='early'?['D1','D2']:n=='run'?['D1','D2','D3','D4','M1','M2','M3','M4']:['D1','D2','D3','D4','M1','M2'];
+ ST={v:4,scn:n,gates:freshGates(),log:[],bundle:{v:1,pub:false},runs:[]};
+ var ap=n=='early'?['D1','D2']:n=='run'?['D1','D2','D3','D4','M1','M2','M3','M4','M5','M6']:['D1','D2','D3','D4','M1','M2'];
  ST.gates.forEach(function(g){if(ap.indexOf(g.id)>-1){g.st='approved';g.by=g.own.slice();if(g.sp=='dm'&&isDP(g))g.ph='done'}});
  var deal=[{sp:'deal',t:'Deal brief accepted',w:'Executive sponsor'},{sp:'deal',t:'Integration estimate approved',w:'IMO lead'}];
  if(n=='early'){gate('D3').st='review';ST.log=deal}
  else if(n=='run'){ST.bundle={v:2,pub:true};ST.runs=[{n:1,id:'RUN-0201',ver:1,st:'rejected',at:'Oct 29 · 09:14'},{n:2,id:'RUN-0202',ver:2,st:'done',at:'Oct 30 · 10:02'}];
-  var m5=gate('M5');m5.st='review';m5.ph='results';
-  ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 to 04 approved, artifact bundle v1 published',w:'Migration Analyst'},{sp:'dm',t:'RUN-0201 rejected: 14 positions had no security identifier',w:'Migration Analyst'},{sp:'dm',t:'Artifact bundle v2 published',w:'Control plane'},{sp:'dm',t:'RUN-0202 finished, validation agent complete, telemetry received',w:'Data plane'}]}
+  var m7=gate('M7');m7.st='review';m7.ph='results';
+  ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 to 06 approved, artifact bundle v1 published',w:'Migration Analyst'},{sp:'dm',t:'RUN-0201 rejected: 14 positions had no security identifier',w:'Migration Analyst'},{sp:'dm',t:'Artifact bundle v2 published',w:'Control plane'},{sp:'dm',t:'RUN-0202 finished, validation agent complete, telemetry received',w:'Data plane'}]}
  else{gate('M3').st='review';gate('M4').st='running';ST.log=[{sp:'deal',t:'Go / no-go decision signed',w:'Executive sponsor'},{sp:'dm',t:'01 Loader & Inspector approved',w:'Migration Analyst'},{sp:'dm',t:'02 Discovery approved',w:'Migration Analyst'},{sp:'dm',t:'03 Business Rules proposed',w:'Control plane'},{sp:'dm',t:'04 Schema Mapper started',w:'Control plane'}]}
  save()}
 function gate(id){return ST.gates.filter(function(g){return g.id==id})[0]}
-function load(){var j=sget('xodus.state');if(j){try{ST=JSON.parse(j);if(ST&&ST.v===3&&ST.gates&&ST.gates.length==12)return;var keep=ST&&ST.scn}catch(e){}}setScenario(keep||'mid')}
+function load(){var j=sget('xodus.state');if(j){try{ST=JSON.parse(j);if(ST&&ST.v===4&&ST.gates&&ST.gates.length==14)return;var keep=ST&&ST.scn}catch(e){}}setScenario(keep||'mid')}
 function save(){sset('xodus.state',JSON.stringify(ST))}
 function idx(g){return ST.gates.indexOf(g)}
 function nextOf(g){return ST.gates[idx(g)+1]}
@@ -282,36 +284,36 @@ function approve(id,role){
  g.by.push(role);
  if(g.own.every(function(r){return g.by.indexOf(r)>-1})){
   g.st='approved';if(g.sp=='dm'&&isDP(g))g.ph='done';
-  if(g.id=='M4'){ST.bundle.pub=true;logit('dm','04 Schema Mapper approved. Artifact bundle v'+ST.bundle.v+' published to the data plane',ROLES[role]);var m5=gate('M5');m5.st='running';m5.ph='ready';save();return{ok:true,msg:'Bundle v'+ST.bundle.v+' published to the data plane.'}}
+  if(g.id=='M6'){ST.bundle.pub=true;logit('dm','06 Transformation SQL approved. Artifact bundle v'+ST.bundle.v+' published to the data plane',ROLES[role]);var m7=gate('M7');m7.st='running';m7.ph='ready';save();return{ok:true,msg:'Bundle v'+ST.bundle.v+' published to the data plane.'}}
   logit(g.sp,g.name+' approved',ROLES[role]);
-  if(g.id=='M5'){var m6=gate('M6');m6.st='review';m6.ph='results'}
-  else if(g.id=='M6'){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='accepted'}
+  if(g.id=='M7'){var m8=gate('M8');m8.st='review';m8.ph='results'}
+  else if(g.id=='M8'){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='accepted'}
   else{var n=nextOf(g);if(n&&n.st=='queued'){n.st=(n.sp=='dm')?'running':'review';if(g.id=='D4')logit('dm','Data Migration workspace created from the decision','Xodus')}}
   save();return{ok:true,msg:g.name+' approved.'}}
  logit(g.sp,g.name+' signed by '+ROLES[role],'Waiting for the other approver');save();
  return{ok:true,msg:'Signed. Waiting for the other approver.'}}
 function finish(id){var g=gate(id);if(!g||g.st!='running')return;
- if(g.id=='M5'){if(ph(g)!='run')return;g.st='review';g.ph='results';var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='done';logit('dm',(lr?lr.id:'Run')+' finished. Validation agent complete. Telemetry received','Data plane');save();return}
+ if(g.id=='M7'){if(ph(g)!='run')return;g.st='review';g.ph='results';var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='done';logit('dm',(lr?lr.id:'Run')+' finished. Validation agent complete. Telemetry received','Data plane');save();return}
  g.st='review';logit(g.sp,g.name+(g.sp=='dm'?': control plane output ready for review':' finished, waiting for review'),g.sp=='dm'?'Control plane':'Agent run');save()}
 function changes(id,role){var g=gate(id);if(!g||g.st!='review')return;
- if(g.sp=='dm'&&isDP(g)){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='rejected';var m5=gate('M5'),m6=gate('M6');m5.st='running';m5.ph='ready';m5.by=[];m6.st='queued';m6.ph='none';m6.by=[];logit('dm',(lr?lr.id:'Run')+' rejected at '+g.name,ROLES[role]);save();return}
+ if(g.sp=='dm'&&isDP(g)){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='rejected';var m7=gate('M7'),m8=gate('M8');m7.st='running';m7.ph='ready';m7.by=[];m8.st='queued';m8.ph='none';m8.by=[];logit('dm',(lr?lr.id:'Run')+' rejected at '+g.name,ROLES[role]);save();return}
  g.st=g.sp=='dm'?'running':'review';g.by=[];logit(g.sp,'Changes requested on '+g.name,ROLES[role]);save()}
-function startRun(role){var m5=gate('M5'),m6=gate('M6');
+function startRun(role){var m7=gate('M7'),m8=gate('M8');
  if(role!='MA')return{ok:false,msg:'Only the Migration Analyst starts a run.'};
  if(!ST.bundle.pub)return{ok:false,msg:'There is no published artifact bundle yet.'};
- if(m5.st=='running'&&m5.ph=='run')return{ok:false,msg:'A run is already in progress.'};
+ if(m7.st=='running'&&m7.ph=='run')return{ok:false,msg:'A run is already in progress.'};
  var last=ST.runs[ST.runs.length-1];if(last&&last.st=='done')last.st='superseded';
  var n=ST.runs.length+1,t=new Date();
  ST.runs.push({n:n,id:'RUN-'+('0000'+(200+n)).slice(-4),ver:ST.bundle.v,st:'running',at:'Today · '+t.toTimeString().slice(0,5)});
- m5.st='running';m5.ph='run';m5.by=[];m6.st='queued';m6.ph='none';m6.by=[];
+ m7.st='running';m7.ph='run';m7.by=[];m8.st='queued';m8.ph='none';m8.by=[];
  logit('dm','RUN-'+('0000'+(200+n)).slice(-4)+' started on the data plane with bundle v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Run started on the data plane.'}}
-function reviseBundle(role){var m4=gate('M4'),m5=gate('M5'),m6=gate('M6');
+function reviseBundle(role){var m6=gate('M6'),m7=gate('M7'),m8=gate('M8');
  if(role!='MA')return{ok:false,msg:'Only the Migration Analyst revises the bundle.'};
  if(!ST.bundle.pub)return{ok:false,msg:'The bundle is not published yet.'};
- if(m5.st=='running'&&m5.ph=='run')return{ok:false,msg:'Wait for the current run to finish.'};
+ if(m7.st=='running'&&m7.ph=='run')return{ok:false,msg:'Wait for the current run to finish.'};
  var lr=ST.runs[ST.runs.length-1];if(lr&&lr.st=='done')lr.st='rejected';
  ST.bundle={v:ST.bundle.v+1,pub:false};
- m4.st='running';m4.by=[];[m5,m6].forEach(function(x){x.st='queued';x.ph='none';x.by=[]});
+ m6.st='running';m6.by=[];[m7,m8].forEach(function(x){x.st='queued';x.ph='none';x.by=[]});
  logit('dm','Back to the control plane. Revising the artifact bundle to v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Control plane reopened for bundle v'+ST.bundle.v+'.'}}
 function bypass(id){var g=gate(id),b=blocker(g);if(b)return{ok:false,msg:'Blocked. '+b.id+' '+b.name+' is not approved, so '+g.id+' cannot be opened.'};if(g.st=='approved')return{ok:true,msg:g.id+' is already approved, and every gate before it is approved.'};return{ok:true,msg:g.id+' is open. Every gate before it is approved, so its owner can approve it.'}}
 function hitl(){try{var c=JSON.parse(sget('xodus.dm.cfg2')||'null');return c&&c.platform&&c.platform.ai?c.platform.ai.hitlPolicy:'all-gates'}catch(e){return 'all-gates'}}
@@ -325,8 +327,8 @@ function checks(){
  out.push({n:'Every approval has evidence attached',d:'Evidence is stored with the run.',ok:!bad.length,x:bad.join(', ')});
  bad=ST.gates.filter(function(g){return !g.own.length}).map(function(g){return g.id});
  out.push({n:'Every gate has an owner role',d:'No gate is left without an approver.',ok:!bad.length,x:bad.join(', ')});
- bad=[];if(ST.bundle.pub!=(gate('M4').st=='approved'))bad.push('M4');if((ST.runs.length||['run','results','done'].indexOf(ph(gate('M5')))>-1)&&!ST.bundle.pub)bad.push('M5');
- out.push({n:'Nothing runs on the data plane without a published bundle',d:'The bundle is published only when the Schema Mapper gate is approved, and every run uses it.',ok:!bad.length,x:bad.join(', ')});
+ bad=[];if(ST.bundle.pub!=(gate('M6').st=='approved'))bad.push('M6');if((ST.runs.length||['run','results','done'].indexOf(ph(gate('M7')))>-1)&&!ST.bundle.pub)bad.push('M7');
+ out.push({n:'Nothing runs on the data plane without a published bundle',d:'The bundle is published only when the Transformation SQL gate is approved, and every run uses it.',ok:!bad.length,x:bad.join(', ')});
  var h=hitl();
  out.push({n:'Human-in-the-loop policy meets the platform floor',d:'The floor is every stage gated.',ok:h=='all-gates',x:h=='all-gates'?'':'Policy is set to '+h+' in Data Migration setup'});
  return out}
