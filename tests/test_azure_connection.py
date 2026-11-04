@@ -110,3 +110,9 @@ def test_source_container_is_optional_but_validated_and_old_tables_gain_the_colu
     import pytest
     with pytest.raises(ValueError):
         az.validate({**base, "source_container": "bad container!"})
+
+
+def test_column_migration_uses_the_portable_helper_not_sqlite_pragma():
+    import pathlib
+    src = pathlib.Path(az.__file__).read_text()
+    assert "PRAGMA" not in src and "table_columns(" in src  # the live app runs on Postgres, where PRAGMA is a syntax error

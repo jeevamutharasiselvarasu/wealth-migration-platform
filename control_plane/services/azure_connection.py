@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 import httpx
+from control_plane.db import table_columns
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS azure_connection_config (
@@ -38,8 +39,7 @@ API = "2018-06-01"
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(azure_connection_config)").fetchall()}
-    if "source_container" not in cols:  # tables created before the source container existed
+    if "source_container" not in table_columns(conn, "azure_connection_config"):  # works on SQLite and Postgres; tables created before the source container existed
         conn.execute("ALTER TABLE azure_connection_config ADD COLUMN source_container TEXT NOT NULL DEFAULT ''")
 
 
