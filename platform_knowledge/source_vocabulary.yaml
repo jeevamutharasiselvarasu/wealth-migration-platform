@@ -61,6 +61,7 @@ tokens:
   titling: [registration]
   form: [type]
 # What a value looks like for fields about a concept. shape names are detected from sample values.
+  outside: [account]
 shapes:
   postal: zip
   tax_id: ssn

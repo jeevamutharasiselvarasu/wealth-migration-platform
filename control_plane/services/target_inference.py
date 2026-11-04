@@ -115,7 +115,9 @@ def infer(schema: Dict[str, Any], canonical: Dict[str, Dict[str, str]], scope_ta
         for e in ENTITIES:
             if e in canonical:
                 assigned = _assign(t, e, canonical)
-                per[e] = sum(p["score"] for p in assigned.values())
+                # a table named for an entity (ORION_MCL_HOUSEHOLD, SIMP_CUSTOMER) is strong evidence for that entity
+                name_bonus = 1.0 if e.lower() in concepts(t["name"]) else 0.0
+                per[e] = sum(p["score"] for p in assigned.values()) + name_bonus
         scores[t["name"]] = per
     # surrogate-key families: tables sharing a generated key belong together
     key_tables: Dict[str, List[str]] = {}
