@@ -165,3 +165,29 @@ def write_stage_run(container: str, run_id: str, outputs: Dict[str, List[Dict[st
         cc.upload_blob(folder + f"_run/{name}.json", json.dumps(doc, indent=2, default=str).encode("utf-8"), overwrite=True)
         written.append({"name": f"_run/{name}.json", "rows": None})
     return {"written": True, "container": container, "path": folder, "files": written}
+
+
+def promote_to_curated(container: str, run_id: str, approver: str, review_summary: Dict[str, Any], conn_str: Optional[str] = None) -> Dict[str, Any]:
+    """Copy one run's transformed tables from stage/run-<id>/ to curated/ (latest approved version per table) and write curated/_lineage/<run>.json.
+    Reads only the run's own stage folder; never touches raw/. The caller has already applied the approval gate."""
+    import csv
+    import hashlib
+    import io
+    import json
+    from datetime import datetime, timezone
+    folder = f"stage/{run_id.lower()}/"
+    cc = _service(conn_str).get_container_client(container)
+    tables = [b.name for b in cc.list_blobs(name_starts_with=folder) if b.name.endswith(".csv") and "/_run/" not in b.name]
+    if not tables:
+        raise ValueError("This run has no transformed tables in stage to curate.")
+    files = []
+    for name in sorted(tables):
+        data = cc.download_blob(name).readall()
+        target = "curated/" + name.rsplit("/", 1)[-1]
+        cc.upload_blob(target, data, overwrite=True)
+        rows = max(0, len(list(csv.reader(io.StringIO(data.decode("utf-8"))))) - 1)
+        files.append({"name": target, "rows": rows, "sha256": hashlib.sha256(data).hexdigest(), "from": name})
+    when = datetime.now(timezone.utc).isoformat()
+    lineage = {"run_id": run_id, "promoted_by": approver, "promoted_utc": when, "reviews": review_summary, "files": files}
+    cc.upload_blob(f"curated/_lineage/{run_id.lower()}.json", json.dumps(lineage, indent=2).encode("utf-8"), overwrite=True)
+    return {"promoted": True, "container": container, "path": "curated/", "files": files, "by": approver, "utc": when}

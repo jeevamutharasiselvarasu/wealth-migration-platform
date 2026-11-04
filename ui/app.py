@@ -1673,6 +1673,32 @@ async def bulk_review_execution_failures(request: Request, run_id: str):
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/api/execution/runs/{run_id}/promote")
+async def promote_run_to_curated(request: Request, run_id: str):
+    """Copy a reviewed run's stage tables to curated/ (Analyst/Admin). The gate is deterministic; the approver comes from the session."""
+    user = get_current_user(request)
+    def back(key: str, msg: str):
+        return RedirectResponse(url=f"/execution?{key}=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
+    conn = get_db_connection()
+    try:
+        gate = execution_simulator.curation_gate(conn, run_id)
+        if not gate["ok"]:
+            return back("error", "Not curated: " + " ".join(gate["reasons"]))
+        panel = _blob_panel(with_files=False)
+        if not (panel["reachable"] and panel["layout_ready"]):
+            return back("error", "Blob storage is unreachable or the folder structure is not created yet.")
+        try:
+            res = blob_source.promote_to_curated(panel["container"], run_id, user["name"], gate["reviews"])
+        except Exception as exc:
+            return back("error", f"Could not write to curated: {type(exc).__name__}: {str(exc)[:120]}")
+        execution_simulator.attach_curated(conn, run_id, res)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("EXECUTION_RUN_CURATED", user, {"run_id": run_id, "files": len(res["files"])})
+    return back("notice", f"{run_id} curated: {len(res['files'])} table(s) written to {res['container']}/curated/.")
+
+
 @app.post("/api/execution/run")
 async def run_simulated_execution(request: Request, outage: str = Form(""), retry_of: str = Form("")):
     """Run the latest deployment package through the SIMULATED data plane and record telemetry. Nothing leaves this platform."""

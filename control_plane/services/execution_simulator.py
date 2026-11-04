@@ -165,6 +165,45 @@ def attach_stage(conn: sqlite3.Connection, run_id: str, stage: Dict[str, Any]) -
     conn.execute("UPDATE execution_runs SET telemetry_json = ? WHERE run_id = ?", (json.dumps(telemetry), run_id))
 
 
+def attach_curated(conn: sqlite3.Connection, run_id: str, curated: Dict[str, Any]) -> None:
+    """Record that a run was promoted to curated (who, when, which files). No record values."""
+    import json
+    row = conn.execute("SELECT telemetry_json FROM execution_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if not row:
+        return
+    telemetry = json.loads(row["telemetry_json"] if hasattr(row, "keys") else row[0])
+    telemetry["curated"] = curated
+    conn.execute("UPDATE execution_runs SET telemetry_json = ? WHERE run_id = ?", (json.dumps(telemetry), run_id))
+
+
+def curation_gate(conn: sqlite3.Connection, run_id: str) -> Dict[str, Any]:
+    """Deterministic check before a run may be promoted to curated. Returns {ok, reasons, reviews}."""
+    import json
+    ensure_table(conn)
+    row = conn.execute("SELECT telemetry_json FROM execution_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if not row:
+        return {"ok": False, "reasons": ["Run not found."], "reviews": {}}
+    t = json.loads(row["telemetry_json"])
+    reasons: List[str] = []
+    if not (t.get("stage") or {}).get("written"):
+        reasons.append("The run has no stage output to curate.")
+    if t.get("status") not in ("SUCCEEDED", "PARTIAL_SUCCESS"):
+        reasons.append(f"Run status is {t.get('status')}; only SUCCEEDED or PARTIAL_SUCCESS runs can be curated.")
+    if (t.get("curated") or {}).get("promoted"):
+        reasons.append("This run is already curated.")
+    failed = [c.get("scenario_id") for c in t.get("post_checks", []) if c.get("status") == "FAIL"]
+    if failed:
+        reasons.append(f"{len(failed)} target validation check(s) failed: {', '.join(map(str, failed))}.")
+    reviews = {r["failure_idx"]: r["status"] for r in conn.execute("SELECT failure_idx, status FROM execution_failure_reviews WHERE run_id = ?", (run_id,)).fetchall()}
+    open_n = len(t.get("failures", [])) - len(reviews)
+    if open_n > 0:
+        reasons.append(f"{open_n} problem(s) have not been reviewed yet.")
+    counts: Dict[str, int] = {}
+    for v in reviews.values():
+        counts[v] = counts.get(v, 0) + 1
+    return {"ok": not reasons, "reasons": reasons, "reviews": counts}
+
+
 def list_runs(conn: sqlite3.Connection, migration_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     import json
     ensure_table(conn)

@@ -111,7 +111,7 @@ def test_strict_value_map_counts_blank_and_unlisted_rows_as_failed_not_skipped()
 
 def test_bulk_review_routes_are_approval_roles_only():
     from ui.role_policy import allowed_roles_for
-    for path in ("/api/execution/runs/RUN-1/failures/bulk-review", "/api/execution/recommendations/bulk-decide"):
+    for path in ("/api/execution/runs/RUN-1/failures/bulk-review", "/api/execution/recommendations/bulk-decide", "/api/execution/runs/RUN-1/promote"):
         assert allowed_roles_for("POST", path) == {"Platform Admin", "Migration Analyst"}
 
 

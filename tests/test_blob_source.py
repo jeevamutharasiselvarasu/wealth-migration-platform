@@ -54,6 +54,9 @@ class _FakeContainer:
     def create_container(self): self.exists_flag = True
     def upload_blob(self, name, data, overwrite=True): self.blobs[name] = data
     def delete_blob(self, name): del self.blobs[name]
+    def download_blob(self, name):
+        from types import SimpleNamespace
+        return SimpleNamespace(readall=lambda: self.blobs[name])
 
     def list_blobs(self, name_starts_with=None):
         from types import SimpleNamespace
@@ -133,3 +136,39 @@ def test_container_name_is_published_so_it_survives_a_restart():
     app = pathlib.Path(__file__).resolve().parent.parent.joinpath("ui/app.py").read_text()
     body = app[app.index("async def create_blob_layout"):app.index("async def load_blob_source_files")]
     assert 'setup["blob_container"] = container' in body and 'publish_event("MIGRATION_CONTEXT_UPDATED"' in body
+
+
+def test_promote_copies_only_the_runs_tables_to_curated_and_writes_lineage(monkeypatch):
+    import json
+    fc = _fake_service(monkeypatch)
+    bs.ensure_layout("lake", "CoreCap")
+    bs.write_stage_run("lake", "RUN-A", {"T1": [{"A": "1"}, {"A": "2"}]}, {"run": {"status": "SUCCEEDED"}})
+    bs.write_stage_run("lake", "RUN-B", {"T1": [{"A": "9"}]}, {})
+    res = bs.promote_to_curated("lake", "RUN-A", "Analyst One", {"ACKNOWLEDGED": 1})
+    assert fc.blobs["curated/T1.csv"].decode() == "A\n1\n2\n" and res["files"][0]["rows"] == 2
+    lin = json.loads(fc.blobs["curated/_lineage/run-a.json"])
+    assert lin["promoted_by"] == "Analyst One" and lin["files"][0]["from"] == "stage/run-a/T1.csv"
+    assert not any(k.startswith("curated/") and "run-b" in k for k in fc.blobs)
+    with pytest.raises(ValueError):
+        bs.promote_to_curated("lake", "RUN-NONE", "x", {})
+
+
+def test_curation_gate_needs_reviewed_problems_and_passing_checks():
+    import json, sqlite3
+    from control_plane.services import execution_simulator as ex
+    conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row
+    ex.ensure_table(conn)
+    pkg = {"meta": {"package_id": "P", "package_version": 1}}
+    tele = {"status": "PARTIAL_SUCCESS", "failures": [{"entity": "E", "table": "T", "column": "C", "rule": "R", "rows": 1}], "post_checks": [{"scenario_id": "S1", "status": "PASS"}],
+            "totals": {}, "entities": {}, "stage": {"written": True}}
+    from datetime import datetime, timezone
+    rid = ex.record_run(conn, "MIG", pkg, "a", tele, datetime.now(timezone.utc), 1)
+    g = ex.curation_gate(conn, rid)
+    assert not g["ok"] and "1 problem(s) have not been reviewed" in g["reasons"][0]
+    ex.review_failure(conn, rid, 0, "ACKNOWLEDGED", "ok", "a")
+    assert ex.curation_gate(conn, rid)["ok"]
+    tele["post_checks"] = [{"scenario_id": "S1", "status": "FAIL"}]
+    conn.execute("UPDATE execution_runs SET telemetry_json=?", (json.dumps(tele),))
+    assert "target validation" in ex.curation_gate(conn, rid)["reasons"][0]
+    ex.attach_curated(conn, rid, {"promoted": True})
+    assert any("already curated" in r for r in ex.curation_gate(conn, rid)["reasons"])
