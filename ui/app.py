@@ -3468,6 +3468,11 @@ async def create_blob_layout(request: Request, container: str = Form("")):
     except Exception as exc:
         return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
     setup["blob_container"] = container
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    # Published like the other setup fields so the container name survives a restart (state is rebuilt from these events).
+    publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, {
+        "migration_id": migration_id, "firm_name": setup.get("migration_name", ""), "migration_name": setup.get("migration_name", ""),
+        "source_systems": setup.get("source_details", ""), "target_system": setup.get("target_system", ""), "migration_setup": setup}, user["name"])
     state_store.audit_log.append({"event": "BLOB_LAYOUT_CREATED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                   "details": {"container": container, "folders_created": res["folders_created"]}})
     made = ", ".join(res["folders_created"]) or "nothing new (already in place)"
