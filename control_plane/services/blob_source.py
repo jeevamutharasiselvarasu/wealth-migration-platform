@@ -103,7 +103,10 @@ def tree(container: str, conn_str: Optional[str] = None) -> List[Dict[str, Any]]
             entries.setdefault(path, {"path": path, "name": parts[i - 1], "kind": "folder", "depth": i - 1, "size": 0})
         if parts[-1] != MARKER:
             entries[b.name] = {"path": b.name, "name": parts[-1], "kind": "file", "depth": len(parts) - 1, "size": int(b.size or 0)}
-    return [entries[k] for k in sorted(entries)]
+    def order(path: str):  # data lake zones in pipeline order (raw, stage, curated), anything else after, alphabetical inside
+        parts = path.rstrip("/").split("/")
+        return (ZONES.index(parts[0]) if parts[0] in ZONES else len(ZONES), parts)
+    return [entries[k] for k in sorted(entries, key=order)]
 
 
 def list_source_blobs(container: str, conn_str: Optional[str] = None, prefix: str = "") -> List[Dict[str, Any]]:

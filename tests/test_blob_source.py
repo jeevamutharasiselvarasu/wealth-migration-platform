@@ -86,6 +86,8 @@ def test_tree_shows_folders_hides_markers_and_source_list_reads_only_the_firm_fo
     paths = [(r["path"], r["kind"]) for r in rows]
     assert ("raw/", "folder") in paths and ("stage/", "folder") in paths and ("curated/", "folder") in paths
     assert ("raw/corecap/accounts.csv", "file") in paths and not any(p.endswith(bs.MARKER) for p, _ in paths)
+    tops = [p for p, k in paths if k == "folder" and p.count("/") == 1]
+    assert tops[:3] == ["raw/", "stage/", "curated/"]  # pipeline order, not alphabetical
     names = [b["name"] for b in bs.list_source_blobs("lake", prefix="raw/corecap/")]
     assert names == ["raw/corecap/accounts.csv"]
 
