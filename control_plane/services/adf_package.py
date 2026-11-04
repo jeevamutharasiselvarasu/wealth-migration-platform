@@ -47,7 +47,7 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]]) -> s
     if kind == "VALUE_MAP":
         key = f"upper(trim({col}))" if p["case_insensitive"] else f"trim({col})"
         pairs = ", ".join(f"{_lit(k)}, {_lit(v)}" for k, v in p["map"].items())
-        body = f"case({key}, {pairs}, {col})"
+        body = f"case({key}, {pairs}, {'toString(null())' if p.get('strict') else col})"
     elif kind == "DATE_FORMAT":
         parsed = ", ".join(f"toDate(trim({col}), {_lit(ADF_DATE[f])})" for f in p["input_formats"])
         body = f"toString(coalesce({parsed}), 'yyyy-MM-dd')"

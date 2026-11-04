@@ -85,27 +85,31 @@ def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, A
             counts = {"read": len(rows), "loaded": 0, "skipped": 0, "failed": 0}
             for row in rows:
                 out: Dict[str, Any] = {}
-                warned = blank_required = False
+                warned = blank_required = hard_fail = False
                 for m in maps:
                     value = row.get(m["canonical_field"])
                     expr = m["transformation"]
                     if expr != "DIRECT_COPY":
                         rule = rules[expr]
                         value, warning = tr.apply_rule(rule["rule_type"], rule["params"], value, row)
+                        strict_hit = bool(warning) and tr.is_strict(rule["rule_type"], rule["params"])
                         if warning:
                             warned = True
+                            hard_fail = hard_fail or strict_hit
                             key = (entity, table, m["target_column"], expr, _sanitise(warning))
                             f = failures.setdefault(key, {"entity": entity, "table": table, "column": m["target_column"], "rule": expr,
                                                           "reason": _sanitise(warning), "rows": 0})
                             f["rows"] += 1
                     out[m["canonical_field"]] = value
-                    if m["required"] and (value is None or str(value).strip() == ""):
+                    if m["required"] and not (expr != "DIRECT_COPY" and strict_hit) and (value is None or str(value).strip() == ""):
                         blank_required = True
                         key = (entity, table, m["target_column"], "REQUIRED_BLANK", "required value blank after transformation")
                         f = failures.setdefault(key, {"entity": entity, "table": table, "column": m["target_column"], "rule": m["transformation"],
                                                       "reason": "required value blank after transformation", "rows": 0})
                         f["rows"] += 1
-                if blank_required:
+                if hard_fail:
+                    counts["failed"] += 1
+                elif blank_required:
                     counts["skipped"] += 1
                 elif warned:
                     counts["failed"] += 1

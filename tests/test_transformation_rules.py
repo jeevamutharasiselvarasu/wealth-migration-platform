@@ -287,3 +287,11 @@ def test_notice_text_is_cut_at_a_word_boundary():
     out = _shorten(long, 60)
     assert out.endswith("…") and len(out) <= 61 and not out.rstrip("…").endswith(("Migratio", "bus"))
     assert _shorten("short text", 60) == "short text"
+
+
+def test_strict_value_map_fails_blank_and_unlisted_values():
+    params = tr.validate_params("VALUE_MAP", {"map": {"ira": "IRA"}, "strict": True})
+    assert _run("VALUE_MAP", params, "Ira") == ("IRA", None)
+    assert _run("VALUE_MAP", params, "Estate")[0] is None and "unmapped value" in _run("VALUE_MAP", params, "Estate")[1]
+    assert _run("VALUE_MAP", params, "")[0] is None and "blank" in _run("VALUE_MAP", params, "  ")[1]
+    assert tr.is_strict("VALUE_MAP", params) and not tr.is_strict("VALUE_MAP", {"map": {"A": "B"}, "case_insensitive": True})

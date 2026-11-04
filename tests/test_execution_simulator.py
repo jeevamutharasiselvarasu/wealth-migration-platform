@@ -97,3 +97,13 @@ def test_a_run_that_read_no_rows_is_not_reported_as_succeeded():
     assert ex.simulate(_package(), {})["status"] == "NO_DATA"
     assert ex.simulate(_package(), {"Account": []})["status"] == "NO_DATA"
     assert ex.simulate(_package(), ROWS)["status"] in ("PARTIAL_SUCCESS", "SUCCEEDED")
+
+
+def test_strict_value_map_counts_blank_and_unlisted_rows_as_failed_not_skipped():
+    pkg = _package()
+    pkg["transformation_rules"][0]["params"] = {"map": {"SCH": "SCHWAB"}, "case_insensitive": True, "strict": True}
+    pkg["canonical_to_target"][1]["required"] = True
+    rows = {"Account": [{"ACCT_NUM": "A1", "CUSTODIAN_CODE": "SCH"}, {"ACCT_NUM": "A2", "CUSTODIAN_CODE": "ZZZ"}, {"ACCT_NUM": "A3", "CUSTODIAN_CODE": ""}]}
+    t = ex.simulate(pkg, rows)
+    assert t["totals"] == {"read": 3, "loaded": 1, "skipped": 0, "failed": 2}
+    assert not any(f["reason"] == "required value blank after transformation" for f in t["failures"])

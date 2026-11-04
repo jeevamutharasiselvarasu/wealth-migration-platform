@@ -26,7 +26,7 @@ NUMBER_STRIP_ALLOWED = set("$,£€ %")
 MAX_MAP_ENTRIES = 500
 
 RULE_TYPES: Dict[str, Dict[str, str]] = {
-    "VALUE_MAP": {"label": "Value map (lookup)", "help": "Map coded source values to canonical values. Unlisted values pass through unchanged and are reported.",
+    "VALUE_MAP": {"label": "Value map (lookup)", "help": "Map coded source values to canonical values. Unlisted values pass through unchanged and are reported; set strict to true to fail the record instead (blank and unlisted values yield no value).",
                   "example": '{"map": {"SCH": "SCHWAB"}, "case_insensitive": true}'},
     "DATE_FORMAT": {"label": "Date to ISO", "help": "Parse one or more declared source date formats to YYYY-MM-DD.",
                     "example": '{"input_formats": ["MM/DD/YYYY", "YYYYMMDD"]}'},
@@ -94,7 +94,10 @@ def validate_params(rule_type: str, params: Any) -> Dict[str, Any]:
             if k in norm and norm[k] != _text(val):
                 raise ValueError(f"VALUE_MAP has conflicting targets for '{k}'.")
             norm[k] = _text(val)
-        return {"map": norm, "case_insensitive": ci}
+        out = {"map": norm, "case_insensitive": ci}
+        if params.get("strict"):
+            out["strict"] = True
+        return out
     if rule_type == "DATE_FORMAT":
         formats = params.get("input_formats")
         if not isinstance(formats, list) or not formats:
@@ -142,9 +145,22 @@ def validate_params(rule_type: str, params: Any) -> Dict[str, Any]:
             "else": None if else_val is None else _text(else_val)}
 
 
+def is_strict(rule_type: str, params: Dict[str, Any]) -> bool:
+    """A strict VALUE_MAP fails the record when the value is blank or has no code."""
+    return rule_type == "VALUE_MAP" and bool(params.get("strict"))
+
+
 def apply_rule(rule_type: str, params: Dict[str, Any], value: Any, record: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[str]]:
     """Apply a validated rule. Returns (new_value, warning). Never raises on bad data: it warns and keeps the value."""
     blank = value is None or _text(value).strip() == ""
+    if rule_type == "VALUE_MAP" and params.get("strict"):
+        key = _text(value).strip()
+        key = key.upper() if params["case_insensitive"] else key
+        if blank:
+            return None, "blank value has no code"
+        if key not in params["map"]:
+            return None, f"unmapped value '{_text(value)}'"
+        return params["map"][key], None
     if rule_type == "DEFAULT_IF_BLANK":
         return (params["default"], None) if blank else (value, None)
     if rule_type == "CONCAT":
