@@ -7,13 +7,14 @@
   <div class="ph">
     <div>
       <div class="ey dm">Stage 03 · Control plane · governed rules</div>
-      <h1>Transformation Rules</h1>
+      <h1>Business rules</h1>
       <p>Rules are declarative, parameterized and versioned. Nothing here runs as code. A new version is a draft until a Migration Analyst or Platform Admin approves it; a mapping then pins an exact version (<span class="font-mono">RULE:ID@version</span>) so lineage stays reproducible. Apply an approved rule from the Mapping page when you approve a mapping.</p>
     </div>
     {% set _appr = rules|selectattr('status','equalto','APPROVED')|list|length %}{% set _draft = rules|selectattr('status','equalto','DRAFT')|list|length %}
     <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip {{ 'g' if rules and not _draft else 'ex' }}">{{ 'Approved' if rules and not _draft else 'Needs review' }}</span></div>
   </div>
   <div class="ins"><b>Control plane.</b> The governed business rules, from the registered knowledge and the source data. Rules are declarative; nothing here runs as code and no production data is touched.</div>
+  <div class="ins"><b>Where rules come from.</b> A rule reaches this page in one of three ways: <i>inferred</i> from a business-rule document (only the sentences XODUS recognised; the rest are listed as not recognised), <i>suggested</i> from patterns in your source data, or <i>created</i> by hand. Whatever the origin, every saved rule appears in <a href="#rule-versions" class="font-bold text-blue-700">Rule versions</a> below as a DRAFT until an Analyst or Admin approves it. The first three boxes are workspaces for creating drafts; Rule versions is the full register.</div>
   <section class="kpis" aria-label="Rule summary">
     <div class="kpi"><small>Rules registered</small><b>{{ rules|length }}</b><span>all versions</span></div>
     <div class="kpi"><small>Approved</small><b>{{ _appr }}</b><span>usable in mappings</span></div>
@@ -114,7 +115,7 @@
     </form>
   </section>
 
-  <section class="card">
+  <section class="card" id="rule-versions">
     <h3 style="font-size:16px">Rule versions <span class="font-mono text-[10px] text-[#8A97B2]">{{ rules|length }}</span></h3>
     {% if not rules %}<p class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center text-xs text-[#5A6A88]">No governed rules yet. Create the first one above.</p>{% endif %}
     <div class="mt-3 space-y-3">

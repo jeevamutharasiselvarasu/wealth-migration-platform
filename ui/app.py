@@ -150,7 +150,7 @@ def workflow_progress() -> dict:
     elif files_total == 0:
         nxt = {"label": "Add source files", "detail": "Upload CoreCap files or load the demo data set.", "href": "/entity-sample-files", "step": "discover"}
     elif files_pending:
-        nxt = {"label": f"Confirm {files_pending} source file{'s' if files_pending != 1 else ''}", "detail": "Review the inferred entity for each file.", "href": "/entity-sample-files", "step": "discover"}
+        nxt = {"label": f"Confirm {files_pending} source file{'s' if files_pending != 1 else ''}", "detail": "Review the inferred entity for each file.", "href": "/discovery", "step": "discover"}
     elif proposals_pending:
         nxt = {"label": f"Review {proposals_pending} mapping proposal{'s' if proposals_pending != 1 else ''}", "detail": "Approve or reject the suggested source-to-canonical mappings.", "href": "/agent-pipeline", "step": "map"}
     elif mappings_approved == 0:
@@ -1001,12 +1001,12 @@ async def review_relationship_candidate(request: Request, child: str = Form(...)
         try:
             cross_file.review_relationship(conn, migration_id, child, parent, decision, reason, user["name"])
         except ValueError as exc:
-            return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(str(exc)) + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
+            return RedirectResponse(url="/discovery?error=" + quote_plus(str(exc)) + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("RELATIONSHIP_" + decision.strip().upper(), user, {"child": child, "parent": parent})
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Relationship {child} -> {parent} {decision.strip().lower()}.") + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/discovery?notice=" + quote_plus(f"Relationship {child} -> {parent} {decision.strip().lower()}.") + "#cross-file-analysis", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/agent-studio", response_class=HTMLResponse)
@@ -1052,7 +1052,7 @@ async def analyze_source_file_with_agents(request: Request, file_id: str):
         "details": {"file_id": file_id, "filename": record["filename"],
                     "scope": selected, "classification_status": analysis["classification"].get("status")},
     })
-    return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/discovery", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout")
@@ -1124,6 +1124,17 @@ async def entity_selection_view(request: Request):
 
 @app.get("/entity-sample-files", response_class=HTMLResponse)
 async def entity_sample_files_view(request: Request, uploaded: str = "", notice: str = "", error: str = ""):
+    """Stage 01 Loader & Inspector: source connection, file loading and the loaded-file list."""
+    return _source_stage_page(request, "load", uploaded, notice, error)
+
+
+@app.get("/discovery", response_class=HTMLResponse)
+async def discovery_view(request: Request, uploaded: str = "", notice: str = "", error: str = ""):
+    """Stage 02 Discovery: inferred entities and their review, cross-file analysis, knowledge assets."""
+    return _source_stage_page(request, "discover", uploaded, notice, error)
+
+
+def _source_stage_page(request: Request, stage_view: str, uploaded: str, notice: str, error: str):
     user = get_current_user(request)
     source_uploads = []
     migration_setup = state_store.questionnaire_data.get("migration_setup", {})
@@ -1159,7 +1170,12 @@ async def entity_sample_files_view(request: Request, uploaded: str = "", notice:
         request=request,
         template_name="entity_sample_files.html",
         extra_context={
-            "page_title": "Source Discovery & Entity Inference",
+            "page_title": "Loader & Inspector" if stage_view == "load" else "Discovery",
+            "stage_view": stage_view,
+            "stage_tab_key": stage_view,
+            "setup": migration_setup,
+            "loaded_rows": sum(int(i.get("row_count") or 0) for i in source_uploads),
+            "loaded_kb": sum(int(i.get("size_bytes") or 0) for i in source_uploads) / 1024,
             "can_discover": user["role"] in DISCOVERY_ROLES,
             "user_name": user["name"],
             "user_role": user["role"],
@@ -2058,7 +2074,7 @@ CHANGE_DECISIONS = {"APPROVED", "REJECTED", "DEFERRED"}
 # ---------------------------------------------------------------------------
 def _typed_rule_ok(expression: str) -> bool:
     """A rule a reviewer picked or typed must be exactly a built-in transformation or an APPROVED pinned rule version.
-    Free text is never executed: anything else has to be authored and approved on the Transformation Rules page."""
+    Free text is never executed: anything else has to be authored and approved on the Business rules page."""
     expr = str(expression or "").strip().upper()
     if transformation_rules.parse_expression(expr):
         return transformation_rules.approved_rule_for_expression(expr) is not None
@@ -2066,7 +2082,7 @@ def _typed_rule_ok(expression: str) -> bool:
 
 
 _RULE_NOT_REGISTERED = ("'{rule}' is not a registered transformation. Pick one from the list, or author and approve it first on the "
-                        "Transformation Rules page; typed text is never executed.")
+                        "Business rules page; typed text is never executed.")
 
 
 def _canonical_field_lists() -> Dict[str, List[str]]:
@@ -2922,7 +2938,7 @@ def _rules_page(request: Request, notice: str = "", error: str = "", inferred=No
         if item.get("recognised"):
             item["params_text"] = json.dumps(item["params"], sort_keys=True)
     return render_template_with_context(request, "transformation_rules.html", {
-        "page_title": "Transformation Rules", "user_name": user["name"], "user_role": user["role"],
+        "page_title": "Business rules", "user_name": user["name"], "user_role": user["role"],
         "rules": rules, "rule_types": transformation_rules.RULE_TYPES,
         "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
         "date_formats": list(transformation_rules.DATE_FORMATS),
@@ -3355,7 +3371,7 @@ async def upload_entity_sample_file(
     if failed: summary.append(f"{len(failed)} failed validation ({'; '.join(failed)})")
     if duplicates: summary.append(f"{len(duplicates)} identical re-uploads recognized; existing records preserved ({', '.join(duplicates)})")
     notice = ". ".join(summary) + ". Files are retained even when out of scope or awaiting clarification. Re-uploading identical content is idempotent; same-name files with different content remain separate."
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(notice) + "#loaded-files", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/confirm-entity")
@@ -3366,7 +3382,7 @@ async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(..
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
     entity_files = state_store.entity_source_files.get(entity_name, {})
     if not entity_files:
-        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"No source files are registered for {entity_name}.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/discovery?notice=" + quote_plus(f"No source files are registered for {entity_name}.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
     blockers = []
     for record in entity_files.values():
         inference = record.get("inference") or {}
@@ -3377,7 +3393,7 @@ async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(..
             blockers.append(record.get("filename", "Unnamed file"))
     if blockers:
         message = "Entity-level approval blocked. Review these files individually first: " + ", ".join(blockers) + "."
-        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(message) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/discovery?notice=" + quote_plus(message) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
     now = datetime.now(timezone.utc).isoformat()
     approved_files = []
     for record in entity_files.values():
@@ -3405,7 +3421,7 @@ async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(..
         "details": {"entity": entity_name, "files": approved_files, "comments": comments.strip()},
     })
     message = f"Approved {entity_name} entity scope and {len(approved_files)} file(s): " + ", ".join(approved_files)
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(message) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/discovery?notice=" + quote_plus(message) + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/confirm-inference")
@@ -3432,9 +3448,9 @@ async def review_selected_source_files(request: Request):
     ids = [str(i) for i in form.getlist("files")]
     decision = str(form.get("decision", "")).strip().upper()
     if decision not in {"APPROVE", "REJECT"}:
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Choose confirm or reject."), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/discovery?error=" + quote_plus("Choose confirm or reject."), status_code=status.HTTP_303_SEE_OTHER)
     if not ids:
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Tick at least one file first."), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/discovery?error=" + quote_plus("Tick at least one file first."), status_code=status.HTTP_303_SEE_OTHER)
     common = str(form.get("common_note", "")).strip()
     done, failed = 0, []
     for fid in ids:
@@ -3458,15 +3474,15 @@ async def review_selected_source_files(request: Request):
         else:
             done += 1
     kind, msg = _bulk_summary(done, failed, "confirmed" if decision == "APPROVE" else "rejected")
-    return RedirectResponse(url=f"/entity-sample-files?{kind}=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/discovery?{kind}=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _apply_inference_review(user: Dict[str, Any], file_id: str, entity_name: str, decision: str, comments: str, target_entity: str):
     normalized_decision = decision.strip().upper()
     if normalized_decision not in {"APPROVE", "REJECT"}:
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Choose Confirm classification or Reject file.") + "", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/discovery?error=" + quote_plus("Choose Confirm classification or Reject file.") + "", status_code=status.HTTP_303_SEE_OTHER)
     if normalized_decision == "REJECT" and not comments.strip():
-        return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a rejection reason before rejecting this file.") + "", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/discovery?error=" + quote_plus("Enter a rejection reason before rejecting this file.") + "", status_code=status.HTTP_303_SEE_OTHER)
 
     record = None
     current_entity = None
@@ -3499,7 +3515,7 @@ def _apply_inference_review(user: Dict[str, Any], file_id: str, entity_name: str
         if selected_entity == "RELATIONSHIP_DEFERRED":
             # Link/bridge files are relationship artifacts; P0 has no relationship entity, so record an explicit disposition.
             if not comments.strip():
-                return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Enter a note explaining the relationship disposition (what the link joins and why it is deferred).") + "", status_code=status.HTTP_303_SEE_OTHER)
+                return RedirectResponse(url="/discovery?error=" + quote_plus("Enter a note explaining the relationship disposition (what the link joins and why it is deferred).") + "", status_code=status.HTTP_303_SEE_OTHER)
             record["inferred_entity"] = "Relationship (deferred)"
             record["inference"]["entity"] = "Relationship (deferred)"
             record["inference"]["status"] = "RELATIONSHIP_DEFERRED"
@@ -3576,7 +3592,7 @@ def _apply_inference_review(user: Dict[str, Any], file_id: str, entity_name: str
     })
     outcome = "rejected" if normalized_decision == "REJECT" else "confirmed as " + str(reviewed_entity)
     notice = quote_plus(str(record.get("filename", "File")) + " " + outcome + ".")
-    return RedirectResponse(url=f"/entity-sample-files?notice={notice}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/discovery?notice={notice}", status_code=status.HTTP_303_SEE_OTHER)
 
 def _preview_only_mapping(mapping_res: Dict[str, Any]) -> Dict[str, Any]:
     """Strip row-level canonical output and raw samples from all preview API responses."""
@@ -3938,7 +3954,7 @@ async def map_all_approved_source_files(request: Request):
         destination = "/agent-pipeline?notice=" + quote_plus(message) + "#pending-mappings"
     else:
         message = "No mapping proposals generated. " + " | ".join(failures)
-        destination = "/entity-sample-files?notice=" + quote_plus(message) + "#discovered-source-inventory"
+        destination = "/discovery?notice=" + quote_plus(message) + "#discovered-source-inventory"
     state_store.audit_log.append({"event":"BATCH_SOURCE_MAPPING_PROPOSED","actor":user.get("name","Unknown reviewer"),"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"completed_files":completed,"failures":failures}})
     return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
 

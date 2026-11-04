@@ -73,7 +73,7 @@
     <div class="zg landing"><i></i>Landing</div>
     {{ stage('01', 'Loader & Inspector', '/entity-sample-files', 'discover', 'MA', path in ('/entity-sample-files', '/entity-selection')) }}
     <div class="zg staged"><i></i>Staged</div>
-    {{ stage('02', 'Discovery', '/entity-sample-files#discovered-source-inventory', 'discover', 'MA', false) }}
+    {{ stage('02', 'Discovery', '/discovery', 'discover', 'MA', path == '/discovery') }}
     {{ stage('03', 'Business Rules', '/transformation-rules', 'map', 'MA', path == '/transformation-rules') }}
     <div class="zg transformed"><i></i>Transformed</div>
     {{ stage('04', 'Schema Mapper', '/agent-pipeline', 'map', 'MA', path == '/agent-pipeline') }}

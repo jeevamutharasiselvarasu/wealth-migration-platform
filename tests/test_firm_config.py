@@ -741,7 +741,7 @@ def test_source_files_are_confirmed_as_a_table_and_errors_name_the_file(tmp_path
                               files=[("files", ("accounts.csv", acct, "text/csv")), ("files", ("households.csv", hh, "text/csv")),
                                      ("files", ("links.csv", link, "text/csv"))])
             ids = {r["filename"]: r["file_id"] for fs in state.entity_source_files.values() for r in fs.values()}
-            page = (await client.get("/entity-sample-files")).text
+            page = (await client.get("/discovery")).text
 
             async def post(data, role="Migration Analyst"):
                 app_module.session_mgr.active_sessions[session_id]["role"] = role

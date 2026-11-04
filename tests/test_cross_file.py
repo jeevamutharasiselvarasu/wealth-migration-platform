@@ -50,9 +50,13 @@ def test_discovery_page_shows_cross_file_analysis_for_two_or_more_files(tmp_path
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
             return await client.get(path)
 
-    page = asyncio.run(get("/entity-sample-files")).text
+    page = asyncio.run(get("/discovery")).text
     assert "Cross-file analysis" in page and "Conflicting values across files" in page and "1 of 3" in page
     assert "IRA" not in page.split("Cross-file analysis")[1].split("Approve all files")[0]
+    assert "Add source files" not in page and "Knowledge assets registered" in page  # stage 02 reviews; it does not load
+    loader = asyncio.run(get("/entity-sample-files")).text
+    assert "Loaded files" in loader and "Source connection" in loader and "Add source files" in loader
+    assert "Cross-file analysis" not in loader and "Agent evidence" not in loader and "Continue to Discovery" in loader  # stage 01 loads; it does not interpret
 
 
 def test_relationship_decisions_are_validated_persisted_and_attached(tmp_path):
