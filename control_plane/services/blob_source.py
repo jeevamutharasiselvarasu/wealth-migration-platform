@@ -70,13 +70,16 @@ def read_blob(container: str, name: str, conn_str: Optional[str] = None) -> byte
 
 
 def seed(container: str, files: Dict[str, bytes], conn_str: Optional[str] = None) -> int:
-    """Create the container if needed and upload files. Only allowed against the emulator."""
+    """Create the container if needed, make it hold exactly these files, upload them. Only allowed against the emulator."""
     cs = conn_str if conn_str is not None else connection_string()
     if not is_emulator(cs):
         raise ValueError("Seeding sample files is only allowed against the local blob emulator.")
     cc = _service(cs).get_container_client(container)
     if not cc.exists():
         cc.create_container()
+    for existing in [b.name for b in cc.list_blobs()]:  # the emulator container is reset to exactly this set
+        if existing not in files:
+            cc.delete_blob(existing)
     for name, data in files.items():
         cc.upload_blob(name, data, overwrite=True)
     return len(files)

@@ -3433,17 +3433,14 @@ async def load_blob_source_files(request: Request):
 async def seed_blob_with_demo_files(request: Request):
     """Local emulator only: put the demo source files into the source container so the Azure path can be tried without Azure."""
     get_current_user(request)
-    manifest = json.loads((Path(root_dir) / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
-    files = {}
-    for item in manifest.get("source_files", []):
-        path = (Path(root_dir) / item["path"]).resolve()
-        if path.is_relative_to(Path(root_dir).resolve()) and path.is_file():
-            files[path.name] = path.read_bytes()
+    # The CoreCap files are the POC's source firm; they are what the Orion migration loads.
+    folder = (Path(root_dir) / "demo_data" / "corecap_source_files").resolve()
+    files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in blob_source.SOURCE_SUFFIXES}
     try:
         n = blob_source.seed(_blob_container(), files)
     except Exception as exc:
         return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Seeded {n} demo files into the local blob container."), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus(f"Local blob container now holds the {n} CoreCap sample files."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/upload-sample-file")
