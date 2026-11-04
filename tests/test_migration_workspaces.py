@@ -212,3 +212,63 @@ def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_p
     assert 'id="validation-results"' in recon and 'id="validation-scenarios"' not in recon and 'id="execution"' not in recon
     for page in (rules, execution, recon):
         assert "05 Execution" in page and "06 Validation rules" in page and "07 Reconciliation" in page
+
+
+def _seed_approved_mapping(app_module, migration_id):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    conn = app_module.get_db_connection()
+    try:
+        conn.execute("INSERT INTO canonical_mappings (mapping_id, migration_id, entity_name, source_field, canonical_field, mapping_type, transformation_expression, confidence_score, is_confirmed, created_by, updated_utc) VALUES (?, ?, 'Account', 'CustodianName', 'CUSTODIAN_NAME', 'APPROVED_ALIAS', 'DIRECT_COPY', 0.85, 1, 'Seed', ?)",
+                     (f"MAP-{migration_id}-Account-CustodianName", migration_id, now))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _row(app_module, sql, args=()):
+    conn = app_module.get_db_connection()
+    try:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def test_an_approved_mapping_can_be_reopened_changed_and_approved_again(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "reopen-map")
+    assert _post_setup(app_module, sid).status_code == 303
+    mid = state.questionnaire_data["migration_id"]
+    _seed_approved_mapping(app_module, mid)
+    form = [("entity_name", "Account"), ("source_field", "CustodianName")]
+
+    short = _call(app_module, sid, "POST", "/api/mappings/reopen", form + [("reason", "too short")])
+    assert "error=" in short.headers["location"]
+    assert _call(app_module, sid, "POST", "/api/mappings/reopen", [("entity_name", "Account"), ("source_field", "Nope"), ("reason", "A real reason here")]).status_code == 404
+
+    done = _call(app_module, sid, "POST", "/api/mappings/reopen", form + [("reason", "Target takes the plain custodian name")])
+    assert done.status_code == 303 and "notice=" in done.headers["location"]
+    assert _row(app_module, "SELECT is_confirmed FROM canonical_mappings WHERE migration_id = ?", (mid,))[0]["is_confirmed"] == 0  # no longer approved
+    pending = _row(app_module, "SELECT * FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (mid,))
+    assert len(pending) == 1 and pending[0]["canonical_field"] == "CUSTODIAN_NAME" and "Reopened by" in pending[0]["review_comments"]
+    assert _row(app_module, "SELECT decision FROM approvals WHERE stage = 'SOURCE_TO_CANONICAL_MAPPING'")[0]["decision"] == "REOPENED"  # earlier decision stays on record
+    assert _call(app_module, sid, "POST", "/api/mappings/reopen", form + [("reason", "Second reason here too")]).status_code == 404  # already reopened
+
+    page = _call(app_module, sid, "GET", "/agent-pipeline").text
+    assert 'id="approved-mappings"' in page
+    # The normal review changes the canonical field and approves it again.
+    approved = _call(app_module, sid, "POST", f"/api/mapping-suggestions/{pending[0]['suggestion_id']}/review",
+                     [("decision", "APPROVED"), ("reviewer", "x"), ("canonical_override", "CUSTODIAN_CODE"), ("comments", "plain name")])
+    assert approved.status_code in (200, 303)
+    row = _row(app_module, "SELECT canonical_field, is_confirmed FROM canonical_mappings WHERE migration_id = ?", (mid,))[0]
+    assert row == {"canonical_field": "CUSTODIAN_CODE", "is_confirmed": 1}
+
+
+def test_only_approvers_may_reopen_an_approved_mapping(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "reopen-role")
+    assert _post_setup(app_module, sid).status_code == 303
+    mid = state.questionnaire_data["migration_id"]
+    _seed_approved_mapping(app_module, mid)
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, sid, {"email": "t@example.invalid", "name": "Reader", "role": "Validation Specialist"})
+    denied = _call(app_module, sid, "POST", "/api/mappings/reopen", [("entity_name", "Account"), ("source_field", "CustodianName"), ("reason", "A real reason here")])
+    assert denied.status_code in (303, 403)
+    assert _row(app_module, "SELECT is_confirmed FROM canonical_mappings WHERE migration_id = ?", (mid,))[0]["is_confirmed"] == 1

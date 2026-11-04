@@ -56,6 +56,7 @@ POST_POLICY = [
     (r"^/api/entities/(confirm-(entity|inference)|review-selected)$", SCOPE_REVIEW_ROLES),
     (r"^/api/mapping-gaps/[^/]+/response$", DEFINITION_ROLES),
     (r"^/api/mapping-suggestions/(approve-entity|review-selected|[^/]+/review)$", APPROVAL_ROLES),
+    (r"^/api/mappings/reopen$", APPROVAL_ROLES),
     (r"^/api/pipeline/override-agent$", APPROVAL_ROLES),
     (r"^/api/hitl/(approve|reject)$", APPROVAL_ROLES),
     (r"^/api/waves/evaluate-record$", VALIDATION_ROLES),

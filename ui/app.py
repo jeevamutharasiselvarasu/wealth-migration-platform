@@ -1128,6 +1128,10 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             (active_migration_id, *selected_scope),
         ).fetchall()
         mapping_suggestions = [dict(row) for row in rows]
+        approved_source_mappings = [dict(row) for row in conn.execute(
+            """SELECT entity_name, source_field, canonical_field, transformation_expression, created_by AS reviewer
+               FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1 ORDER BY entity_name, source_field""",
+            (active_migration_id,)).fetchall()]
     finally:
         conn.close()
 
@@ -1150,6 +1154,8 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "can_review_mappings": user["role"] in MAPPING_REVIEW_ROLES,
             "can_discover": user["role"] in DISCOVERY_ROLES,
             "can_answer_rfi": user["role"] in DEFINITION_ROLES,
+            "can_reopen_mappings": user["role"] in APPROVAL_ROLES,
+            "approved_source_mappings": approved_source_mappings,
             "approved_rules": transformation_rules.approved_rules(),
             "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
             "canonical_fields": _canonical_field_lists(),
@@ -4000,6 +4006,61 @@ async def review_source_mapping_suggestion(
         raise HTTPException(status_code=500, detail="Could not persist mapping review decision.") from exc
     finally:
         conn.close()
+
+
+@app.post("/api/mappings/reopen")
+async def reopen_approved_mapping(request: Request, entity_name: str = Form(...), source_field: str = Form(...), reason: str = Form("")):
+    """Reopen one approved source-to-canonical mapping for a new decision. The mapping stops counting as approved, the earlier
+    decision stays on record, and a pending proposal (same field and rule) is created so the normal review can change the canonical
+    field or rule. Nothing is changed in place: approval is still a separate human decision."""
+    user = get_current_user(request)
+    reason = reason.strip()
+    if len(reason) < MIN_STALE_REASON:
+        return RedirectResponse(url="/agent-pipeline?error=" + quote_plus(f"Give a reason of at least {MIN_STALE_REASON} characters to reopen an approved mapping.") + "#approved-mappings",
+                                status_code=status.HTTP_303_SEE_OTHER)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        current = conn.execute(
+            "SELECT * FROM canonical_mappings WHERE migration_id = ? AND entity_name = ? AND source_field = ? AND is_confirmed = 1",
+            (migration_id, entity_name, source_field)).fetchone()
+        if current is None:
+            conn.rollback()
+            raise HTTPException(status_code=404, detail="No approved mapping for that source field in this migration.")
+        if conn.execute("SELECT 1 FROM mapping_suggestions WHERE migration_id = ? AND entity_name = ? AND source_field = ? AND status = 'PENDING'",
+                        (migration_id, entity_name, source_field)).fetchone():
+            conn.rollback()
+            raise HTTPException(status_code=409, detail="A proposal for that source field is already waiting for a decision.")
+        earlier = conn.execute(
+            "SELECT run_id FROM mapping_suggestions WHERE migration_id = ? AND entity_name = ? AND source_field = ? ORDER BY created_utc DESC LIMIT 1",
+            (migration_id, entity_name, source_field)).fetchone()
+        run_id = earlier["run_id"] if earlier else f"REVISION-{migration_id}"
+        suggestion_id = f"MAPSUG-REV-{uuid.uuid4().hex[:12]}"
+        conn.execute("UPDATE canonical_mappings SET is_confirmed = 0, updated_utc = ? WHERE mapping_id = ?", (now, current["mapping_id"]))
+        conn.execute(
+            """INSERT INTO mapping_suggestions (suggestion_id, run_id, migration_id, entity_name, source_field, canonical_field, proposed_rule,
+                   confidence_score, status, reviewer, review_comments, created_utc, reviewed_utc)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NULL, ?, ?, NULL)""",
+            (suggestion_id, run_id, migration_id, entity_name, source_field, current["canonical_field"],
+             current["transformation_expression"] or "DIRECT_COPY", float(current["confidence_score"] or 0.0),
+             f"Reopened by {user['name']}: {reason}", now))
+        conn.execute(
+            "INSERT INTO approvals (id, run_id, artifact_id, stage, decision, reviewer, comments, created_utc) VALUES (?, ?, ?, 'SOURCE_TO_CANONICAL_MAPPING', 'REOPENED', ?, ?, ?)",
+            (f"APR-{uuid.uuid4().hex}", run_id, suggestion_id, user["name"], reason, now))
+        conn.commit()
+    except HTTPException:
+        raise
+    finally:
+        conn.close()
+    _sync_mapping_information_requests(migration_id)
+    _target_setup_audit("SOURCE_MAPPING_REOPENED", user, {"entity": entity_name, "source_field": source_field, "was": current["canonical_field"],
+                                                          "rule": current["transformation_expression"], "reason": reason[:200]})
+    publish_event("MAPPING_REOPENED", migration_id, "mapping_suggestion", suggestion_id,
+                  {"entity": entity_name, "source_field": source_field, "canonical_field": current["canonical_field"], "reason": reason[:200]}, user["name"])
+    return RedirectResponse(url="/agent-pipeline?notice=" + quote_plus(f"{entity_name}.{source_field} reopened. Change the canonical field or rule in the pending list, then approve it again.") + "#pending-mappings",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/mapping-suggestions/approve-entity")
