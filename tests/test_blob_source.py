@@ -220,3 +220,19 @@ def test_committed_scenarios_match_the_generator():
     spec = importlib.util.spec_from_file_location("gen_scn", p); g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
     hh, con, acc = g.build("gaps_b", 45, True)
     assert [r["Id"] for r in _scenario("gaps_b")["corecap_households.csv"]] == [r["Id"] for r in hh]
+
+
+def test_seed_route_places_the_chosen_scenario(monkeypatch):
+    from ui import app as app_module
+    fc = _fake_service(monkeypatch)
+    monkeypatch.setenv(bs.ENV_VAR, EMU)
+    app_module.session_mgr.active_sessions["sid"] = {"role": "Platform Admin", "name": "Pat", "email": "p@b.c"}
+
+    async def go(scn):
+        t = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=t, base_url="http://testserver", cookies={"session_id": "sid"}) as c:
+            return await c.post("/api/blob/seed-demo", data={"scenario": scn}, follow_redirects=False)
+    r = asyncio.run(go("clean"))
+    assert r.status_code == 303 and "notice=" in r.headers["location"], r.headers["location"]
+    assert b"20000000" in fc.blobs["raw/corecap/corecap_accounts.csv"] or any(k.startswith("raw/") and k.endswith("corecap_accounts.csv") for k in fc.blobs)
+    assert "error=" in asyncio.run(go("nope")).headers["location"]

@@ -3551,6 +3551,8 @@ async def seed_blob_with_demo_files(request: Request, scenario: str = Form("defa
         return RedirectResponse(url="/azure-setup?error=" + quote_plus("Unknown sample scenario."), status_code=status.HTTP_303_SEE_OTHER)
     sub, label = DEMO_SCENARIOS[scenario]
     folder = (Path(root_dir) / "demo_data" / sub).resolve()
+    if not folder.is_dir():
+        return RedirectResponse(url="/azure-setup?error=" + quote_plus("The sample files for that scenario are not in this running copy of the platform. Rebuild or recreate the container."), status_code=status.HTTP_303_SEE_OTHER)
     files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in blob_source.SOURCE_SUFFIXES}
     firm = _source_firm()
     try:
