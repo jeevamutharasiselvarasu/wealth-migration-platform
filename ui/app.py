@@ -3536,18 +3536,28 @@ async def load_blob_source_files(request: Request):
     return await upload_entity_sample_file(request, files=files, source_role="ENTITY_MASTER", source_context="", data_dictionary_notes="")
 
 
+DEMO_SCENARIOS = {
+    "default": ("corecap_source_files", "the original CoreCap sample files"),
+    "clean": ("scenarios/clean", "the clean scenario (complete, consistent data)"),
+    "gaps_b": ("scenarios/gaps_b", "the second gaps scenario (different problems from the original)"),
+}
+
+
 @app.post("/api/blob/seed-demo")
-async def seed_blob_with_demo_files(request: Request):
-    """Local emulator only: create the folders and put the CoreCap sample files in raw/<source firm>/ (that folder is reset; others are untouched)."""
+async def seed_blob_with_demo_files(request: Request, scenario: str = Form("default")):
+    """Local emulator only: create the folders and put one demo scenario's CoreCap files in raw/<source firm>/ (that folder is reset; others are untouched)."""
     get_current_user(request)
-    folder = (Path(root_dir) / "demo_data" / "corecap_source_files").resolve()
+    if scenario not in DEMO_SCENARIOS:
+        return RedirectResponse(url="/azure-setup?error=" + quote_plus("Unknown sample scenario."), status_code=status.HTTP_303_SEE_OTHER)
+    sub, label = DEMO_SCENARIOS[scenario]
+    folder = (Path(root_dir) / "demo_data" / sub).resolve()
     files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in blob_source.SOURCE_SUFFIXES}
     firm = _source_firm()
     try:
         n = blob_source.seed(_blob_container(), files, prefix=blob_source.source_prefix(firm), source_firm=firm)
     except Exception as exc:
         return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"{n} CoreCap sample files placed in {blob_source.source_prefix(firm)}."), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"{n} files from {label} placed in {blob_source.source_prefix(firm)}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/upload-sample-file")

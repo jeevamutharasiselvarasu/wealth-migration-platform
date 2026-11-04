@@ -184,3 +184,39 @@ def test_preview_shows_the_start_of_text_files_only(monkeypatch):
     for bad in ("raw/x.xlsx", "raw/.xodus-folder", "../x.csv"):
         with pytest.raises(ValueError):
             bs.preview("lake", bad)
+
+
+def _scenario(name):
+    import csv
+    from pathlib import Path
+    d = Path(__file__).resolve().parents[1] / "demo_data" / "scenarios" / name
+    return {f: list(csv.DictReader(open(d / f, newline=""))) for f in ("corecap_households.csv", "corecap_household_contacts.csv", "corecap_accounts.csv", "corecap_advisors.csv")}
+
+
+def test_clean_scenario_has_no_gaps_the_rules_would_report():
+    s = _scenario("clean")
+    hh = {r["Id"]: r for r in s["corecap_households.csv"]}
+    adv = {r["Id"] for r in s["corecap_advisors.csv"]}
+    assert "" not in hh and all("," in r["HouseholdName"] and r["AdvisorId"] in adv for r in hh.values())
+    assert all(a["HouseholdId"] in hh and a["RegistrationType"] in ("IRA", "Rollover IRA") and a["AccountNumber"] and a["CustodianName"] for a in s["corecap_accounts.csv"])
+    assert all(c["HouseholdId"] in hh and all(c[k] for k in ("Address1", "City", "State", "Zip")) for c in s["corecap_household_contacts.csv"])
+    assert len({a["AccountId"] for a in s["corecap_accounts.csv"]}) == len(s["corecap_accounts.csv"])
+
+
+def test_gaps_b_scenario_contains_each_kind_of_gap():
+    s = _scenario("gaps_b")
+    hh = {r["Id"] for r in s["corecap_households.csv"]}
+    adv = {r["Id"] for r in s["corecap_advisors.csv"]}
+    accs, houses, cons = s["corecap_accounts.csv"], s["corecap_households.csv"], s["corecap_household_contacts.csv"]
+    assert any(a["HouseholdId"] not in hh for a in accs) and any(a["RegistrationType"] not in ("IRA", "Rollover IRA") for a in accs)
+    assert any("," not in r["HouseholdName"] for r in houses) and any(not r["Id"] for r in houses) and any(r["AdvisorId"] not in adv for r in houses)
+    assert any(not c["Zip"] for c in cons) and any(c["HouseholdId"] not in hh for c in cons)
+
+
+def test_committed_scenarios_match_the_generator():
+    import importlib.util
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "demo_data" / "scenarios" / "generate.py"
+    spec = importlib.util.spec_from_file_location("gen_scn", p); g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+    hh, con, acc = g.build("gaps_b", 45, True)
+    assert [r["Id"] for r in _scenario("gaps_b")["corecap_households.csv"]] == [r["Id"] for r in hh]

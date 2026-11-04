@@ -28,7 +28,10 @@
     </fieldset></form>
     {% if blob.reachable and blob.container_exists %}<h3 style="margin-top:14px">What is in the container now</h3>{% include "_blob_tree.html" %}{% endif %}
     {% if preview %}<div id="preview" class="mt-2" data-testid="blob-preview"><h3>Preview <span class="font-mono">{{ preview.name }}</span></h3>{% if preview.error %}<p class="fh" style="color:var(--bad)">{{ preview.error }}</p>{% else %}<p class="fh">Read-only. {{ preview.shown_lines }} line(s) of {{ '%.1f'|format(preview.size / 1024) }} KB{% if preview.truncated %} (start of the file){% endif %}.</p><pre class="font-mono" style="font-size:11px;overflow-x:auto;background:#f6f8fc;border:1px solid #dbe3f0;border-radius:6px;padding:8px;white-space:pre">{{ preview.text }}</pre>{% endif %}<p class="fh"><a href="/azure-setup#blob-storage" class="text-blue-700">Close preview</a></p></div>{% endif %}
-    {% if blob.emulator and can_seed_blob and blob.reachable %}<form action="/api/blob/seed-demo" method="POST" class="mt-2"><button class="btn g sm">Put the CoreCap sample files in {{ blob.firm_folder }}</button><span class="fh"> Local emulator only. Resets that one folder.</span></form>{% endif %}
+    {% if blob.emulator and can_seed_blob and blob.reachable %}<form action="/api/blob/seed-demo" method="POST" class="mt-2" data-testid="seed-demo"><span class="fh">Sample sets (local emulator only; each replaces just {{ blob.firm_folder }}):</span>
+      <button class="btn g sm" name="scenario" value="default">Original CoreCap files</button>
+      <button class="btn g sm" name="scenario" value="clean">Clean scenario</button>
+      <button class="btn g sm" name="scenario" value="gaps_b">Gaps scenario B</button></form>{% endif %}
   </section>
   {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the Azure connection.</p>{% endif %}
   <form action="/api/azure/connection" method="POST" class="card"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
