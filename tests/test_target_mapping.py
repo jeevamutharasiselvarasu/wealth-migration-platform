@@ -246,7 +246,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     page = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/preview")).text
     assert "Preview (dry run)" in page and "2 source row(s)" in page and "Files joined on ACCT_NUM" in page and "Required target fields without an approved mapping" in page
     assert "SCH" not in page.split("Preview (dry run)")[1]
-    assert "Generate and save ADF package" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Generate and save ADF package" in asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/packages/generate")).headers["location"]
     gen = asyncio.run(call("Validation Specialist", "POST", "/api/packages/generate")).headers["location"]
     assert "notice=" in gen and "generated+against+the+DRAFT+contract" in gen
@@ -267,7 +267,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     tampered["environment"]["values"]["password"] = "x"
     with pytest.raises(ValueError, match="secret-like"):
         pc.validate_text(_y.safe_dump(tampered))
-    assert "Download YAML" in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert "Download YAML" in asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
     assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/execution/run")).headers["location"]
     ran = asyncio.run(call("Validation Specialist", "POST", "/api/execution/run")).headers["location"]
     assert "SIMULATED+run+RUN-" in ran and "No+data+left" in ran
@@ -284,7 +284,8 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "Run simulated execution" not in asyncio.run(call("Migration Analyst", "GET", "/execution")).text
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
-    assert 'id="transformation-sql"' in cov_page and "INSERT INTO" in cov_page and "/api/target-mapping/transformation-sql" in cov_page
+    sql_page = asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
+    assert 'id="transformation-sql"' in sql_page and "INSERT INTO" in sql_page and "/api/target-mapping/transformation-sql" in sql_page and 'id="transformation-sql"' not in cov_page
     tsql = asyncio.run(call("Validation Specialist", "GET", "/api/target-mapping/transformation-sql"))
     assert tsql.status_code == 200 and "attachment" in tsql.headers["content-disposition"] and "CREATE OR ALTER PROCEDURE" in tsql.text and "INSERT INTO" in tsql.text
     assert asyncio.run(call("Domain SME", "GET", "/api/target-mapping/transformation-sql")).status_code == 403
@@ -294,20 +295,20 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # second save is v2; nothing is overwritten
     rows = app_module.artifact_store.list_artifacts(conn, conn.execute("SELECT migration_id FROM stored_artifacts LIMIT 1").fetchone()[0], "ADF_PACKAGE")
     assert [r["artifact_version"] for r in rows] == [2, 1] and all((tmp_path / "storage" / r["rel_path"]).is_file() for r in rows)
-    page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    page = asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
     assert "Saved package" in page and "adf-current" in page and "adf-stale" not in page and "approved mappings" in page
     assert "signoff-adf" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
     conn.execute("UPDATE target_mappings SET status = 'PROPOSED' WHERE target_mapping_id = (SELECT target_mapping_id FROM target_mappings WHERE status = 'APPROVED' LIMIT 1)")
     conn.commit()
-    stale = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    stale = asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
     assert "adf-stale" in stale and "approved target mappings changed" in stale and "adf-current" not in stale
     assert "STALE" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
     assert "regen-package" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
     other = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "http://evil.example/"}))
-    assert other.headers["location"].startswith("/target-mapping")  # only the fixed allow-list is honoured
+    assert other.headers["location"].startswith("/transformation-sql")  # only the fixed allow-list is honoured
     asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
     fixed = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package", {"return_to": "reconciliation"}))
-    assert fixed.headers["location"].startswith("/reconciliation?notice=ADF+package+v") and "adf-stale" not in asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
+    assert fixed.headers["location"].startswith("/reconciliation?notice=ADF+package+v") and "adf-stale" not in asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
     assert "regen-package" not in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text
     # Simulated ADF: refused for roles without execution rights, blocked until deployed, then deploy and trigger the pipeline.
     assert "may+not+perform" in asyncio.run(call("Migration Analyst", "POST", "/api/adf/simulated-deploy")).headers["location"]

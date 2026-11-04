@@ -583,7 +583,7 @@ async def models_page(request: Request):
         conn.close()
     target, target_error = None, ""
     if not cfg:
-        target_error = "The target system is not set up yet (Setup → Target system, then stage 06)."
+        target_error = "The target system is not set up yet (Setup → Target system, then stage 06 Target mapping)."
     else:
         try:
             target = target_connector._http_get(cfg["endpoint"] + "/schema")
@@ -942,7 +942,7 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
                 cfg = target_connector.get_config(conn)
                 if cfg["status"] == "CONNECTED":
                     target_connector.infer_model(conn, canonical_types)
-                    target_note = " Target system connected and inferred; an admin confirms it once on Target system & mapping."
+                    target_note = " Target system connected and inferred; an admin confirms it once on Target mapping."
                 else:
                     target_note = f" Target system is not reachable ({cfg['connection_detail']}) Start it, then finish the one-time target setup."
                 target_audit = cfg["status"]
@@ -1286,13 +1286,13 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
 
 @app.get("/validation-rules", response_class=HTMLResponse)
 async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 08: the scenarios that extend the validation run, defined after the data plane has executed."""
+    """Stage 09: the scenarios that extend the validation run, defined after the data plane has executed."""
     return _validation_stage_view(request, "rules", error, notice)
 
 
 @app.get("/execution", response_class=HTMLResponse)
 async def execution_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 07: simulated data-plane execution of the deployment package."""
+    """Stage 08: simulated data-plane execution of the deployment package."""
     return _validation_stage_view(request, "execution", error, notice)
 
 
@@ -1414,7 +1414,7 @@ def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of
         pkg_row = package_contract.get_package(conn, latest[0]["package_id"]) if latest else None
         try:
             if not pkg_row:
-                raise ValueError("Generate a deployment package first (Target system & mapping).")
+                raise ValueError("Generate a deployment package first (stage 07 Transformation SQL).")
             if retry_of:
                 execution_simulator.retry_allowed(conn, retry_of)
             package = package_contract.validate_text(pkg_row["yaml_text"]).model_dump()
@@ -1531,7 +1531,7 @@ async def adf_simulated_deploy(request: Request):
     try:
         art = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
         if not art:
-            return _execution_redirect("error", "Save an ADF package first (Target system & mapping).")
+            return _execution_redirect("error", "Save an ADF package first (stage 07 Transformation SQL).")
         try:
             data = artifact_store.read(conn, art["artifact_id"])["data"]
         except ValueError as exc:
@@ -2126,7 +2126,6 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         conn.commit()
     finally:
         conn.close()
-    tsql, tsql_error = _transformation_sql(migration_id, spec, mappings, user["name"]) if user["role"] in TARGET_PREVIEW_ROLES else (None, "")
     gaps = target_mapping.gap_report(spec, _canonical_field_lists()) if spec else {"missing": [], "unused": [], "code_lists": []}
     for g in gaps["missing"]:
         existing = ccr.get((g["entity"], g["suggested_canonical_field"]))
@@ -2138,17 +2137,42 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
     if cfg and cfg.get("model"):
         inferred = target_inference.to_spec(cfg["model"], "INFERRED_CONFIRMED" if target_connector.is_confirmed(cfg) else "INFERRED_PENDING", include_rejected=True)
     return {
-        "page_title": "Target system & mapping", "user_name": user["name"], "user_role": user["role"],
+        "page_title": "Target mapping", "user_name": user["name"], "user_role": user["role"],
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
         "approved_rules": transformation_rules.approved_rules(), "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
-        "tsql": tsql, "tsql_error": tsql_error,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
         "canonical_fields": {e: sorted(fs) for e, fs in _canonical_types().items()},
         "pending_reviews": target_connector.pending_reviews(cfg["model"]) if cfg and cfg.get("model") else 0,
     }
+
+
+def _transformation_sql_context(user: Dict[str, str], notice: str = "", error: str = "") -> Dict[str, Any]:
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        cfg = target_connector.get_config(conn)
+        spec = target_connector.spec(conn)
+        mappings = target_mapping.list_mappings(conn, migration_id, spec)
+        packages = package_contract.list_packages(conn, migration_id)
+        stored_adf = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
+        adf_status = _adf_status(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    can_preview = user["role"] in TARGET_PREVIEW_ROLES
+    tsql, tsql_error = _transformation_sql(migration_id, spec, mappings, user["name"]) if can_preview else (None, "")
+    return {"page_title": "Transformation SQL", "user_name": user["name"], "user_role": user["role"], "spec": spec, "target_config": cfg,
+            "tsql": tsql, "tsql_error": tsql_error, "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
+            "can_preview": can_preview, "notice": notice, "error": error}
+
+
+@app.get("/transformation-sql", response_class=HTMLResponse)
+async def transformation_sql_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    return render_template_with_context(request, "transformation_sql.html", _transformation_sql_context(user, notice=notice, error=error))
 
 
 @app.get("/api/target-mapping/transformation-sql")
@@ -2173,6 +2197,10 @@ async def download_transformation_sql(request: Request):
     text = "\n".join(f"-- ===== {k} =====\n{files[k]}" for k in order)
     _target_setup_audit("TRANSFORMATION_SQL_DOWNLOADED", user, {"migration_id": migration_id, "files": len(order)})
     return Response(content=text, media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="transformation_{migration_id}.sql"'})
+
+
+def _sql_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/transformation-sql?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _target_redirect(key: str, message: str):
@@ -2412,13 +2440,13 @@ async def generate_deployment_package(request: Request):
     try:
         cfg_firm = load_firm_config()
     except FirmConfigError as exc:
-        return _target_redirect("error", f"Firm configuration is required: {exc}")
+        return _sql_redirect("error", f"Firm configuration is required: {exc}")
     conn = get_db_connection()
     try:
         tcfg = target_connector.get_config(conn)
         spec = target_connector.spec(conn)
         if not spec or not tcfg:
-            return _target_redirect("error", "Confirm the target system before generating a deployment package.")
+            return _sql_redirect("error", "Confirm the target system before generating a deployment package.")
         approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
         source_maps = [{"entity": r["entity_name"], "source_field": r["source_field"], "canonical_field": r["canonical_field"],
                         "transformation": r["transformation_expression"] or "DIRECT_COPY"} for r in conn.execute(
@@ -2437,14 +2465,14 @@ async def generate_deployment_package(request: Request):
                 environment=azure_simulated.simulated_environment(migration_id))
             result = package_contract.generate(conn, migration_id, user["name"], body)
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _sql_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     if result["new"]:
         _target_setup_audit("DEPLOYMENT_PACKAGE_GENERATED", user, {"package_id": result["package_id"], "version": result["package_version"], "schema": package_contract.SCHEMA_VERSION})
-        return _target_redirect("notice", f"Package v{result['package_version']} ({result['package_id']}) generated against the DRAFT contract. Download it below.")
-    return _target_redirect("notice", f"Nothing changed since package v{result['package_version']} ({result['package_id']}); no new version was created.")
+        return _sql_redirect("notice", f"Package v{result['package_version']} ({result['package_id']}) generated against the DRAFT contract. Download it below.")
+    return _sql_redirect("notice", f"Nothing changed since package v{result['package_version']} ({result['package_id']}); no new version was created.")
 
 
 @app.get("/api/packages/{package_id}/download")
@@ -2466,7 +2494,7 @@ async def download_deployment_package(request: Request, package_id: str):
 async def download_adf_package(request: Request):
     """Generate the ADF package zip from approved target mappings with simulated Azure values. Nothing is deployed."""
     user = get_current_user(request)
-    back = _validation_redirect if (await request.form()).get("return_to") == "reconciliation" else _target_redirect  # fixed allow-list, never a free URL
+    back = _validation_redirect if (await request.form()).get("return_to") == "reconciliation" else _sql_redirect  # fixed allow-list, never a free URL
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:

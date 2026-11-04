@@ -7,11 +7,11 @@
     <div class="ph">
         <div>
             {% if view == 'rules' %}
-            <div class="ey dm">Stage 08 · Validation · Target validation</div>
+            <div class="ey dm">Stage 09 · Validation · Target validation</div>
             <h1>Target validation</h1>
             <p>Checks on the populated target after the ADF run, plus the cases the Validation Specialist defines here. Today the cases are evaluated on the simulated run output, and required (nullability) values are checked during the run. Built-in schema and data-type checks against the real target SQL database come with the real ADF connection.</p>
             {% elif view == 'execution' %}
-            <div class="ey dm">Stage 07 · Data plane · ADF Execution</div>
+            <div class="ey dm">Stage 08 · Data plane · ADF Execution</div>
             <h1>ADF Execution</h1>
             <p>Run the latest deployment package through the simulated data plane and review telemetry and failures. Nothing is loaded into a target system in this POC.</p>
             {% else %}
@@ -31,7 +31,7 @@
         <div class="kpi"><small>Retired</small><b>{{ scenarios|selectattr('status','equalto','RETIRED')|list|length }}</b><span>kept for the audit trail</span></div>
     </section>
     {% elif view == 'execution' %}<section class="kpis" aria-label="Execution summary">
-        <div class="kpi"><small>Deployment package</small><b>{{ 'Ready' if has_package else 'Not built' }}</b><span>{{ 'latest stored package' if has_package else 'build one in Target mapping' }}</span></div>
+        <div class="kpi"><small>Deployment package</small><b>{{ 'Ready' if has_package else 'Not built' }}</b><span>{{ 'latest stored package' if has_package else 'build one in Transformation SQL' }}</span></div>
         <div class="kpi"><small>Runs recorded</small><b>{{ exec_runs|length }}</b><span>simulated data plane</span></div>
     </section>
     {% else %}

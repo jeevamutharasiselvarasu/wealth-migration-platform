@@ -213,7 +213,7 @@ def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_p
     assert 'id="execution"' in execution and 'id="validation-scenarios"' not in execution
     assert 'id="validation-results"' in recon and 'id="validation-scenarios"' not in recon and 'id="execution"' not in recon
     for page in (rules, execution, recon):
-        assert "05 Mapping Validation Review" in page and "06 Transformation SQL" in page and "07 ADF Execution" in page and "08 Target validation" in page
+        assert "05 Mapping Validation Review" in page and "06 Target mapping" in page and "07 Transformation SQL" in page and "08 ADF Execution" in page and "09 Target validation" in page
 
 
 def _seed_approved_mapping(app_module, migration_id):

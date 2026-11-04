@@ -1,8 +1,9 @@
 <nav aria-label="Migration stage navigation" class="tabs">
     <a href="/agent-pipeline" class="tab">← Mapping &amp; approvals</a>
     <a href="/reconciliation" class="tab {% if stage_tab == 'review' %}on{% endif %}" {% if stage_tab == 'review' %}aria-current="page"{% endif %}>05 Mapping Validation Review</a>
-    <a href="/target-mapping" class="tab {% if stage_tab == 'sql' %}on{% endif %}" {% if stage_tab == 'sql' %}aria-current="page"{% endif %}>06 Transformation SQL</a>
-    <a href="/execution" class="tab {% if stage_tab == 'adf' %}on{% endif %}" {% if stage_tab == 'adf' %}aria-current="page"{% endif %}>07 ADF Execution</a>
-    <a href="/validation-rules" class="tab {% if stage_tab == 'rules' %}on{% endif %}" {% if stage_tab == 'rules' %}aria-current="page"{% endif %}>08 Target validation</a>
+    <a href="/target-mapping" class="tab {% if stage_tab == 'map' %}on{% endif %}" {% if stage_tab == 'map' %}aria-current="page"{% endif %}>06 Target mapping</a>
+    <a href="/transformation-sql" class="tab {% if stage_tab == 'sql' %}on{% endif %}" {% if stage_tab == 'sql' %}aria-current="page"{% endif %}>07 Transformation SQL</a>
+    <a href="/execution" class="tab {% if stage_tab == 'adf' %}on{% endif %}" {% if stage_tab == 'adf' %}aria-current="page"{% endif %}>08 ADF Execution</a>
+    <a href="/validation-rules" class="tab {% if stage_tab == 'rules' %}on{% endif %}" {% if stage_tab == 'rules' %}aria-current="page"{% endif %}>09 Target validation</a>
     <a href="/hitl" class="tab">Open review queue</a>
 </nav>
