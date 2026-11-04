@@ -45,7 +45,8 @@
       {% set ns = namespace(current_entity='') %}
       {% for suggestion in mapping_suggestions %}
       {% if ns.current_entity != suggestion.entity_name %}
-      {% if ns.current_entity %}</tbody></table></div>{% endif %}
+      {% if ns.current_entity %}</tbody></table></div></details>{% endif %}
+      <details class="entity-fold" open style="margin-top:14px"><summary class="cursor-pointer" style="list-style:revert"><b class="text-sm text-[#152C6B]">{{ suggestion.entity_name }}</b> <span class="text-[11px] text-[#5A6A88]">· {{ mapping_suggestions|selectattr('entity_name','equalto',suggestion.entity_name)|list|length }} pending proposals</span></summary>
       <div class="ins" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:18px;border-left-color:var(--blue)">
         <div><div class="font-mono text-[9px] uppercase tracking-wider text-blue-700">Entity review queue</div><h3 class="mt-1 text-sm font-bold text-[#152C6B]">{{ suggestion.entity_name }}</h3><p class="mt-1 text-[10px] text-[#5A6A88]">Bulk approval succeeds only if every pending mapping for this entity passes validation.</p></div>
         <div class="flex flex-wrap items-center gap-2">
@@ -76,7 +77,7 @@
         <td><input form="src-review" name="note::{{ suggestion.suggestion_id }}" data-row-input placeholder="Comment" aria-label="Note for {{ suggestion.source_field }}" class="input w-48"></td>{% endif %}
       </tr>
       {% endfor %}
-      </tbody></table></div>
+      </tbody></table></div></details>
     </div>
     <datalist id="rule-options">{% for b in builtin_rules %}<option value="{{ b }}">built-in</option>{% endfor %}{% for r in approved_rules %}<option value="{{ r.expression }}">{{ r.description|default('approved rule')|truncate(60) }}</option>{% endfor %}</datalist>
     {% if can_review_mappings %}<form id="src-review" action="/api/mapping-suggestions/review-selected" method="post" data-bulk-bar class="gate" style="margin-top:12px"><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="input w-64"><button name="decision" value="APPROVED" data-needs-selection class="btn ok sm">Approve selected</button><button name="decision" value="REJECTED" data-needs-selection class="btn g sm">Reject selected</button><span class="text-[10px] text-[#8A97B2]">A rejection reason is required: add it on the row or in the shared note. Tick the header box to select every pending row in an entity.</span></form>{% else %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects these proposals.</p>{% endif %}

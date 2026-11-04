@@ -258,7 +258,7 @@ function approve(id,role){
  g.by.push(role);
  if(g.own.every(function(r){return g.by.indexOf(r)>-1})){
   g.st='approved';if(g.sp=='dm'&&isDP(g))g.ph='done';
-  if(g.id=='M7'){ST.bundle.pub=true;logit('dm','07 Transformation SQL approved. Artifact bundle v'+ST.bundle.v+' published to the data plane',ROLES[role]);var m8=gate('M8');m8.st='running';m8.ph='ready';save();return{ok:true,msg:'Bundle v'+ST.bundle.v+' published to the data plane.'}}
+  if(g.id=='M6'){ST.bundle.pub=true;var m7=gate('M7');m7.st='approved';m7.by=[];logit('dm','06 Target mapping approved. Transformation SQL generated; artifact bundle v'+ST.bundle.v+' published to the data plane',ROLES[role]);var m8=gate('M8');m8.st='running';m8.ph='ready';save();return{ok:true,msg:'Bundle v'+ST.bundle.v+' published to the data plane.'}}
   logit(g.sp,g.name+' approved',ROLES[role]);
   if(g.id=='M8'){var m9=gate('M9');m9.st='review';m9.ph='results'}
   else if(g.id=='M9'){var lr=ST.runs[ST.runs.length-1];if(lr)lr.st='accepted'}
@@ -281,13 +281,13 @@ function startRun(role){var m8=gate('M8'),m9=gate('M9');
  ST.runs.push({n:n,id:'RUN-'+('0000'+(200+n)).slice(-4),ver:ST.bundle.v,st:'running',at:'Today · '+t.toTimeString().slice(0,5)});
  m8.st='running';m8.ph='run';m8.by=[];m9.st='queued';m9.ph='none';m9.by=[];
  logit('dm','RUN-'+('0000'+(200+n)).slice(-4)+' started on the data plane with bundle v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Run started on the data plane.'}}
-function reviseBundle(role){var m7=gate('M7'),m8=gate('M8'),m9=gate('M9');
+function reviseBundle(role){var m6=gate('M6'),m7=gate('M7'),m8=gate('M8'),m9=gate('M9');
  if(role!='MA')return{ok:false,msg:'Only the Migration Analyst revises the bundle.'};
  if(!ST.bundle.pub)return{ok:false,msg:'The bundle is not published yet.'};
  if(m8.st=='running'&&m8.ph=='run')return{ok:false,msg:'Wait for the current run to finish.'};
  var lr=ST.runs[ST.runs.length-1];if(lr&&lr.st=='done')lr.st='rejected';
  ST.bundle={v:ST.bundle.v+1,pub:false};
- m7.st='running';m7.by=[];[m8,m9].forEach(function(x){x.st='queued';x.ph='none';x.by=[]});
+ m6.st='running';m6.by=[];m7.st='queued';m7.by=[];[m8,m9].forEach(function(x){x.st='queued';x.ph='none';x.by=[]});
  logit('dm','Back to the control plane. Revising the artifact bundle to v'+ST.bundle.v,ROLES[role]);save();return{ok:true,msg:'Control plane reopened for bundle v'+ST.bundle.v+'.'}}
 function bypass(id){var g=gate(id),b=blocker(g);if(b)return{ok:false,msg:'Blocked. '+b.id+' '+b.name+' is not approved, so '+g.id+' cannot be opened.'};if(g.st=='approved')return{ok:true,msg:g.id+' is already approved, and every gate before it is approved.'};return{ok:true,msg:g.id+' is open. Every gate before it is approved, so its owner can approve it.'}}
 function hitl(){try{var c=JSON.parse(sget('xodus.dm.cfg2')||'null');return c&&c.platform&&c.platform.ai?c.platform.ai.hitlPolicy:'all-gates'}catch(e){return 'all-gates'}}
