@@ -583,7 +583,7 @@ async def models_page(request: Request):
         conn.close()
     target, target_error = None, ""
     if not cfg:
-        target_error = "The target system is not set up yet (Setup → Target mapping)."
+        target_error = "The target system is not set up yet (Setup → Target system, then stage 06)."
     else:
         try:
             target = target_connector._http_get(cfg["endpoint"] + "/schema")
@@ -1286,13 +1286,13 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
 
 @app.get("/validation-rules", response_class=HTMLResponse)
 async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 07: the scenarios that extend the validation run, defined after the data plane has executed."""
+    """Stage 08: the scenarios that extend the validation run, defined after the data plane has executed."""
     return _validation_stage_view(request, "rules", error, notice)
 
 
 @app.get("/execution", response_class=HTMLResponse)
 async def execution_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 06: simulated data-plane execution of the deployment package."""
+    """Stage 07: simulated data-plane execution of the deployment package."""
     return _validation_stage_view(request, "execution", error, notice)
 
 
@@ -1384,7 +1384,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         request=request,
         template_name="reconciliation.html",
         extra_context={
-            "page_title": {"rules": "Validation rules", "execution": "Execution"}.get(view, "Mapping Validation Review"),
+            "page_title": {"rules": "Validation rules", "execution": "ADF Execution"}.get(view, "Mapping Validation Review"),
             "view": view,
             "user_name": user["name"],
             "user_role": user["role"],

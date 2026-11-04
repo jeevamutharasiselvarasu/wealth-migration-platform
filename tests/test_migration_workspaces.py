@@ -195,10 +195,12 @@ def test_setup_button_opens_an_earlier_migration_on_the_setup_hub_and_ignores_fr
     assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id), ("next", "/setup")]).headers["location"] == "/setup"
     assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id), ("next", "https://evil.example/")]).headers["location"] == "/"
     hub = _call(app_module, sid, "GET", "/setup").text
-    for href in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
+    for href in ("/migration-setup", "/target-mapping#target-system", "/firm-knowledge"):
         assert f'href="{href}"' in hub
-    for path in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
+    for path in ("/migration-setup", "/firm-knowledge"):
         assert 'aria-label="Setup navigation"' in _call(app_module, sid, "GET", path).text
+    target_page = _call(app_module, sid, "GET", "/target-mapping").text     # stage 06 now, not a Setup tab
+    assert 'aria-label="Migration stage navigation"' in target_page and 'aria-label="Setup navigation"' not in target_page
 
 
 def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_path, monkeypatch):
@@ -211,7 +213,7 @@ def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_p
     assert 'id="execution"' in execution and 'id="validation-scenarios"' not in execution
     assert 'id="validation-results"' in recon and 'id="validation-scenarios"' not in recon and 'id="execution"' not in recon
     for page in (rules, execution, recon):
-        assert "05 Mapping Validation Review" in page and "06 Execution" in page and "07 Validation rules" in page
+        assert "05 Mapping Validation Review" in page and "06 Transformation SQL" in page and "07 ADF Execution" in page and "08 Validation rules" in page
 
 
 def _seed_approved_mapping(app_module, migration_id):

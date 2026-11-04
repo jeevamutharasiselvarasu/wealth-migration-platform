@@ -552,13 +552,13 @@ def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/migrations"' in base  # the top-bar Data Migration tab opens the workspaces list
     assert 'href="/setup"' in base  # setup inputs sit behind one Setup item in the Data Migration rail
     tabs = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "_setup_tabs.html").read_text(encoding="utf-8")
-    for href in ("/migration-setup", "/target-mapping", "/firm-knowledge"):
+    for href in ("/migration-setup", "/target-mapping#target-system", "/firm-knowledge"):
         assert f'href="{href}"' in tabs  # the three setup pages share one tab strip
-    for href in ("/validation-rules", "/execution", "/reconciliation"):
+    for href in ("/validation-rules", "/execution", "/reconciliation", "/target-mapping"):
         assert f"'{href}'" in base  # stages 05, 06 and 07 (mapping validation review, execution, validation rules)
     rail = base[base.index('<aside class="side"'):base.index("</aside>")]
     assert "/canonical-changes" not in rail and "/admin/users" not in rail  # moved to Governance and Tenant settings, not duplicated
-    for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Mapping Validation Review", "Execution", "Validation rules"):
+    for stage in ("Loader & Inspector", "Discovery", "Business Rules", "Schema Mapper", "Mapping Validation Review", "Transformation SQL", "ADF Execution", "Validation rules"):
         assert stage in base
     for asset in ("suite.css", "dm.css", "xodus.css", "legacy.css"):
         assert (root / "static" / asset).is_file()
