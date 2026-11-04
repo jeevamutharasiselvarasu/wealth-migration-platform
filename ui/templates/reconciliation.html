@@ -141,7 +141,7 @@
             </div>
             {% if can_run_validation %}
             {% if has_package %}<form action="/api/execution/run" method="post" class="flex items-center gap-3"><label class="flex items-center gap-1 text-[11px] text-[#41506B]"><input type="checkbox" name="outage"> Simulate an infrastructure outage</label><button class="btn p sm">Run simulated execution</button></form>
-            {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Target system &amp; mapping first.</span>{% endif %}
+            {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Transformation SQL first.</span>{% endif %}
             {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
         </div>
         <div class="ins inl" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim">
@@ -150,7 +150,7 @@
                 {% if can_run_validation and adf_status %}<div class="flex gap-2">
                     <form action="/api/adf/simulated-deploy" method="post"><button class="btn g sm" data-testid="adf-deploy">Deploy stored package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}</button></form>
                     <form action="/api/adf/simulated-trigger" method="post"><button class="btn p sm" data-testid="adf-trigger" {% if adf_trigger_blocker %}disabled title="{{ adf_trigger_blocker }}"{% endif %}>Trigger pipeline (simulated)</button></form>
-                </div>{% elif not adf_status %}<span class="text-[10px] text-[#5A6A88]">Save an ADF package on Target system &amp; mapping first.</span>{% endif %}
+                </div>{% elif not adf_status %}<span class="text-[10px] text-[#5A6A88]">Save an ADF package on Transformation SQL first.</span>{% endif %}
             </div>
             {% if adf_deployment %}<div class="mt-3 text-[11px] text-[#41506B]" data-testid="adf-deployment">
                 <span class="font-mono font-bold">{{ adf_deployment.deployment_id }}</span> &middot; package {{ adf_deployment.artifact_id }} v{{ adf_deployment.artifact_version }} &middot; factory <span class="font-mono">{{ adf_deployment.factory_name }}</span> &middot; <b>{{ adf_deployment.status }}</b> by {{ adf_deployment.deployed_by }} &middot; {{ adf_deployment.deployed_utc }}
