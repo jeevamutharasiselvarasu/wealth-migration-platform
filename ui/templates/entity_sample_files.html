@@ -41,17 +41,17 @@
 
   {% if stage_view == 'load' %}
   <section class="card" id="source-connection">
-    <h3 style="font-size:16px">Source connection <span class="font-mono text-[10px] font-normal text-[#8A97B2]">from Setup</span></h3>
+    <h3 style="font-size:16px">Source connection <span class="font-mono text-[10px] font-normal text-[#8A97B2]">from Azure connection</span></h3>
     {% if acquisition_method == 'AZURE_CONNECTION' %}
     <div class="tw"><table><tbody>
       <tr><th style="width:220px">Source</th><td>Azure Blob / ADLS storage</td></tr>
-      <tr><th>Storage account</th><td class="font-mono">{{ setup.get('azure_storage_account') or 'not set' }}</td></tr>
-      <tr><th>Container</th><td class="font-mono">{{ setup.get('azure_container') or 'not set' }}</td></tr>
-      <tr><th>Access method</th><td>{{ (setup.get('azure_access_method') or 'not set')|replace('_',' ')|lower }}</td></tr>
-      <tr><th>Connection status</th><td><span class="chip ex">Recorded, not verified</span> a live connection test and file listing are not built yet; load files below until then.</td></tr>
+      <tr><th>Storage account</th><td class="font-mono">{{ (azure_cfg and azure_cfg.storage_account) or 'not set' }}</td></tr>
+      <tr><th>Source container</th><td class="font-mono">{{ (azure_cfg and azure_cfg.source_container) or 'not set' }}</td></tr>
+      <tr><th>Access method</th><td>Service principal (secret read from the server)</td></tr>
+      <tr><th>Connection status</th><td><span class="chip ex">{% if azure_cfg and azure_cfg.status == 'CONNECTED' %}Connected{% elif azure_cfg %}Recorded, not verified{% else %}Not set up{% endif %}</span> a file listing is not built yet; load files below until then. <a href="/azure-setup" class="font-mono text-blue-700">Edit on Azure connection →</a></td></tr>
     </tbody></table></div>
     {% else %}
-    <p class="d" style="margin:6px 0 0">Source files are uploaded directly (representative sample files). To read from Azure Blob storage instead, choose the Azure connection in Setup and enter the storage account and container.</p>
+    <p class="d" style="margin:6px 0 0">Source files are uploaded directly (representative sample files). To read from Azure Blob storage instead, choose Azure source storage in Setup; you then enter the details on the Azure connection page.</p>
     {% endif %}
     <p class="mt-3"><a href="/migration-setup" class="btn g sm">Change source connection in Setup →</a></p>
   </section>

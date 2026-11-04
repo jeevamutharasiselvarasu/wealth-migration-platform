@@ -92,11 +92,11 @@ def test_login_has_no_role_field_and_persona_is_chosen_from_the_top_bar_selector
 
 def test_migration_setup_collects_target_azure_knowledge_and_source_before_discovery():
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
-    for token in ("Target system and canonical contract", "Azure environment and access",
+    for token in ("Target system and canonical contract",
                   "Knowledge and mapping evidence", "Source acquisition method",
                   "SAMPLE_FILES", "AZURE_CONNECTION", "Account", "Household", "Client"):
         assert token in setup
-    assert "Do not paste secrets" in setup
+    assert "Azure environment and access" not in setup  # Azure details are entered on the Azure connection page only
     assert "target loading" in setup.lower()
 
 
@@ -131,12 +131,15 @@ def test_target_contract_is_a_required_prerequisite_for_migration_setup():
 def test_azure_connection_requires_environment_identifiers_without_collecting_secrets():
     app = (ROOT / "ui" / "app.py").read_text()
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
-    assert 'setup["source_acquisition"] == "AZURE_CONNECTION"' in app
-    for field in ("azure_tenant_id", "azure_subscription_id", "azure_resource_group",
-                  "azure_storage_account", "azure_container"):
-        assert field in app
-        assert field in setup
-    assert "Do not paste secrets" in setup
+    azure_page = (ROOT / "ui" / "templates" / "azure_setup.html").read_text()
+    # Azure details are entered once, on the Azure connection page; Setup only redirects there.
+    assert 'setup["source_acquisition"] == "AZURE_CONNECTION"' in app and "/azure-setup" in app
+    for field in ("azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"):
+        assert field not in setup
+    for field in ("tenant_id", "subscription_id", "resource_group", "storage_account", "source_container"):
+        assert f'name="{field}"' in azure_page
+    assert 'name="file"' not in setup  # knowledge upload lives on Firm knowledge only
+    assert "never type the secret" in azure_page.lower() or "never typed" in azure_page.lower()
 
 
 def test_top_bar_selector_shows_the_active_role():
@@ -182,7 +185,7 @@ def test_migration_setup_persists_explicit_entity_scope_selection():
     assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"' in app
     assert 'name="entities"' in setup
     assert "Unselected entities are excluded" in setup
-    assert 'href="/firm-knowledge"' not in setup
+    assert 'href="/firm-knowledge"' in setup  # knowledge assets are uploaded and listed there, not duplicated in Setup
 
 
 def test_inferred_entity_requires_human_approval_before_mapping():
@@ -267,7 +270,7 @@ def test_demo_manifest_includes_multiple_files_for_each_supported_entity():
 def test_setup_forms_are_not_nested_and_demo_load_lands_in_discovery():
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
     app = (ROOT / "ui" / "app.py").read_text()
-    assert 'id="knowledge-upload-form"' in setup
+    assert 'id="knowledge-upload-form"' not in setup
     assert 'id="migration-setup-form"' in setup
     assert 'form="migration-setup-form"' in setup
     assert 'url="/entity-sample-files?notice="' in app
@@ -488,7 +491,7 @@ def test_ui_walk_fixes_labels_and_no_raw_none_in_templates():
 def test_setup_upload_row_grid_cannot_overflow_the_viewport():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
-    assert "minmax(0,1fr) minmax(0,2fr) auto" in src and "[1fr_2fr_auto]" not in src  # a file input must not widen the page
+    assert "[1fr_2fr_auto]" not in src and 'type="file"' not in src  # the upload row moved to Firm knowledge
 
 
 def test_compact_workflow_bar_and_my_queue_are_in_templates():

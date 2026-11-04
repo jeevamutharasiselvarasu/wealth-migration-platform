@@ -107,11 +107,11 @@
     <div class="kpis">
       <div class="kpi"><small>Migration</small><b style="font-size:16px">{{ migration_setup.get("migration_name", dashboard.firm_name) }}</b><span class="mono">{{ migration_id }}</span></div>
       <div class="kpi"><small>Target contract</small><b style="font-size:16px">{{ migration_setup.get("target_system", "Not configured") }}</b><span>Canonical version: {{ migration_setup.get("canonical_version", "Not specified") }}</span></div>
-      <div class="kpi"><small>Source acquisition</small><b style="font-size:16px">{{ migration_setup.get("source_acquisition", "SAMPLE_FILES")|replace("_", " ") }}</b><span>Connection: {{ migration_setup.get("azure_access_method", "PENDING")|replace("_", " ") }}</span></div>
+      <div class="kpi"><small>Source acquisition</small><b style="font-size:16px">{{ migration_setup.get("source_acquisition", "SAMPLE_FILES")|replace("_", " ") }}</b><span>Azure connection: {{ azure_cfg.status|title if azure_cfg else "Not set up" }}</span></div>
       <div class="kpi"><small>Knowledge &amp; scope</small><b style="font-size:16px">{{ knowledge_docs_count|default(0) }} registered assets</b><span>{{ (in_scope_entities|default([]))|join(" · ") if in_scope_entities|default([]) else "No entities selected" }}</span></div>
     </div>
     <div class="two" style="margin-top:12px;grid-template-columns:1fr 1fr">
-      <div class="ins"><b>Azure environment</b>Subscription: {{ migration_setup.get("azure_subscription_id") or "Not configured" }} · Resource group: {{ migration_setup.get("azure_resource_group") or "Not configured" }}<br><small>Storage: {{ migration_setup.get("azure_storage_account") or "Not configured" }} / {{ migration_setup.get("azure_container") or "Not configured" }}</small></div>
+      <div class="ins"><b>Azure environment</b>Subscription: {{ (azure_cfg and azure_cfg.subscription_id) or "Not configured" }} · Resource group: {{ (azure_cfg and azure_cfg.resource_group) or "Not configured" }}<br><small>Storage: {{ (azure_cfg and azure_cfg.storage_account) or "Not configured" }} / {{ (azure_cfg and azure_cfg.source_container) or "Not configured" }} · <a href="/azure-setup" class="font-mono text-blue-700">Azure connection</a></small></div>
       <div class="ins"><b>Knowledge references</b>Data dictionary: {{ migration_setup.get("knowledge_schema_ref") or "Not provided" }}<br><small>Business rules: {{ migration_setup.get("knowledge_rules_ref") or "Not provided" }} · SME: {{ migration_setup.get("knowledge_sme") or "Not assigned" }}</small></div>
     </div>
   </details>

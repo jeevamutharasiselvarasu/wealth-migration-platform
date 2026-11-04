@@ -28,9 +28,11 @@
       <div class="field"><label for="a-env">Secret environment variable</label><input id="a-env" class="input" name="secret_env_var" value="{{ cfg.secret_env_var|default(default_secret_env) }}" pattern="AZURE_[A-Z0-9_]+" required>
         <span class="fh">Name only, starting with AZURE_. Put the secret value in the server's .env, never here.</span></div>
     </div>
-    <h3 style="margin-top:14px">Staging and target resources</h3>
+    <h3 style="margin-top:14px">Source, staging and target resources</h3>
     <div class="two">
       <div class="field"><label for="a-sa">Storage account</label><input id="a-sa" class="input" name="storage_account" value="{{ cfg.storage_account|default('') }}" required></div>
+      <div class="field"><label for="a-src">Source container <span class="fh">(optional)</span></label><input id="a-src" class="input" name="source_container" value="{{ cfg.source_container|default('') }}">
+        <span class="fh">Where the CoreCap source files are read from, when the migration uses Azure source storage.</span></div>
       <div class="field"><label for="a-ct">Staging container</label><input id="a-ct" class="input" name="staging_container" value="{{ cfg.staging_container|default('') }}" required></div>
       <div class="field"><label for="a-sql">SQL server</label><input id="a-sql" class="input" name="sql_server" value="{{ cfg.sql_server|default('') }}" placeholder="myserver.database.windows.net" required></div>
       <div class="field"><label for="a-db">SQL database</label><input id="a-db" class="input" name="sql_database" value="{{ cfg.sql_database|default('') }}" required></div>

@@ -95,3 +95,18 @@ def test_setup_page_and_routes_are_admin_only_and_never_echo_the_secret(tmp_path
     assert page.status_code == 200 and "super-secret" not in page.text and "Present" in page.text and 'name="tenant_id"' in page.text
     viewer = asyncio.run(call("an", "GET", "/azure-setup"))
     assert viewer.status_code == 200 and "Read-only for Migration Analyst" in viewer.text
+
+
+def test_source_container_is_optional_but_validated_and_old_tables_gain_the_column():
+    import sqlite3
+    c = sqlite3.connect(":memory:"); c.row_factory = sqlite3.Row
+    c.execute("CREATE TABLE azure_connection_config (config_id INTEGER PRIMARY KEY, tenant_id TEXT)")
+    az.ensure_table(c)  # table already exists without the new column
+    assert "source_container" in {r[1] for r in c.execute("PRAGMA table_info(azure_connection_config)")}
+    base = {k: "x" for k in az.FIELDS}
+    base.update(GOOD) if isinstance(GOOD, dict) else None
+    assert az.validate({**base, "source_container": ""})["source_container"] == ""
+    assert az.validate({**base, "source_container": "corecap-src"})["source_container"] == "corecap-src"
+    import pytest
+    with pytest.raises(ValueError):
+        az.validate({**base, "source_container": "bad container!"})

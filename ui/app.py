@@ -276,6 +276,17 @@ def build_workflow_view(p: dict, setup: dict, migration_id: str) -> dict:
     return {"steps": steps, "step_tasks": tasks, "current_step": current, "status_chip": {"label": chip[0], "tone": chip[1]}, "facts": facts}
 
 
+def _azure_cfg_for_display():
+    """The single Azure connection record (identifiers only, no secret) for pages that show where source data lives."""
+    conn = get_db_connection()
+    try:
+        return azure_connection.get_config(conn)
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
         "request": request,
@@ -762,12 +773,6 @@ async def save_migration_setup(request: Request):
         "target_system": str(form.get("target_system", "")).strip(),
         "canonical_version": str(form.get("canonical_version", "")).strip(),
         "target_owner": str(form.get("target_owner", "")).strip(),
-        "azure_tenant_id": str(form.get("azure_tenant_id", "")).strip(),
-        "azure_subscription_id": str(form.get("azure_subscription_id", "")).strip(),
-        "azure_resource_group": str(form.get("azure_resource_group", "")).strip(),
-        "azure_storage_account": str(form.get("azure_storage_account", "")).strip(),
-        "azure_container": str(form.get("azure_container", "")).strip(),
-        "azure_access_method": str(form.get("azure_access_method", "PENDING")).strip(),
         "knowledge_schema_ref": str(form.get("knowledge_schema_ref", "")).strip(),
         "knowledge_rules_ref": str(form.get("knowledge_rules_ref", "")).strip(),
         "knowledge_sme": str(form.get("knowledge_sme", "")).strip(),
@@ -791,11 +796,6 @@ async def save_migration_setup(request: Request):
     setup["firm_config_version"] = firm_config.version_id
     if (state_store.questionnaire_data.get("migration_template") or {}).get("template_migration_id"):
         setup["template_migration_id"] = state_store.questionnaire_data["migration_template"]["template_migration_id"]
-    if setup["source_acquisition"] == "AZURE_CONNECTION":
-        required_azure = ["azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"]
-        missing_azure = [field for field in required_azure if not setup.get(field)]
-        if missing_azure:
-            raise HTTPException(status_code=400, detail="Azure connection mode requires: " + ", ".join(missing_azure) + ".")
     # Configuration metadata only: never store secrets or claim a live Azure connection.
     current_migration_id = str(state_store.questionnaire_data.get("migration_id", ""))
     if not current_migration_id or current_migration_id == "MIG-UNCONFIGURED":
@@ -826,6 +826,8 @@ async def save_migration_setup(request: Request):
         user["name"],
     )
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
+    if setup["source_acquisition"] == "AZURE_CONNECTION":
+        return RedirectResponse(url="/azure-setup?notice=" + quote_plus("Setup saved. Enter the Azure connection details here; they are kept in one place."), status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1120,6 +1122,7 @@ async def dashboard_overview(request: Request):
             "user_role": user["role"],
             "dashboard": state_store.generated_dashboard,
             "migration_setup": state_store.questionnaire_data.get("migration_setup", {}),
+            "azure_cfg": _azure_cfg_for_display(),
             "knowledge_docs_count": len(state_store.firm_knowledge_docs),
             "in_scope_entities": [entity for entity in ("Account", "Household", "Client") if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])],
             "wave_conditions": CohortConditionEngine.get_condition_catalog(),
@@ -1212,6 +1215,7 @@ def _source_stage_page(request: Request, stage_view: str, uploaded: str, notice:
             "stage_view": stage_view,
             "stage_tab_key": stage_view,
             "setup": migration_setup,
+            "azure_cfg": _azure_cfg_for_display(),
             "loaded_rows": sum(int(i.get("row_count") or 0) for i in source_uploads),
             "loaded_kb": sum(int(i.get("size_bytes") or 0) for i in source_uploads) / 1024,
             "can_discover": user["role"] in DISCOVERY_ROLES,
