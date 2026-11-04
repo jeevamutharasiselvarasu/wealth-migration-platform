@@ -215,3 +215,33 @@ def infer_source_mappings(entity: str, rows: List[Dict[str, Any]], canonical: Op
     for provider in providers or [HeuristicProvider()]:
         proposals.extend(provider.propose(entity, columns, canonical))
     return gate(entity, proposals, columns, canonical)
+
+
+def context_name_targets(source_name: str, columns: List[str], canonical_fields: List[str]) -> Dict[str, str]:
+    """A bare 'Name' column in a file about something (corecap_advisors.csv) means that thing's name (ADVISOR_NAME).
+
+    The file name supplies the qualifier through the platform vocabulary (advisor, rep, broker -> representative).
+    A column is only redirected when exactly one canonical field is made of that qualifier plus 'name'; otherwise nothing
+    is guessed and the column keeps the mapping it would have had.
+    """
+    from control_plane.services.target_inference import concepts
+    stem = re.sub(r"\.[A-Za-z0-9]+$", "", str(source_name or "").split("/")[-1])
+    qualifier: set = set()
+    for word in re.split(r"[^A-Za-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", stem)):
+        for w in {word.lower(), word.lower().rstrip("s")}:
+            if w:
+                qualifier |= set(concepts(w))
+    out: Dict[str, str] = {}
+    bare = [c for c in columns if re.sub(r"[^a-z]", "", c.lower()) == "name"]
+    if not bare:
+        return out
+    matches = []
+    for field in canonical_fields:
+        cs = set(concepts(field))
+        rest = cs - {"name"}
+        if "name" in cs and rest and rest <= qualifier and not rest <= {"household", "client", "account"}:
+            matches.append(field)
+    if len(matches) == 1:
+        for c in bare:
+            out[c] = matches[0]
+    return out
