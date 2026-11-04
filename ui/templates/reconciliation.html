@@ -143,8 +143,9 @@
             {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Transformation SQL first.</span>{% endif %}
             {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
         </div>
-        <div class="ins inl" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim">
-            <div class="flex flex-wrap items-center justify-between gap-3">
+        <details class="ins inl" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim" {% if not adf_deployment %}open{% endif %}>
+            <summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Simulated Azure Data Factory <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED, no Azure call</span>{% if adf_deployment %} <span class="font-normal text-[#5A6A88]">· {{ adf_deployment.deployment_id }} · {{ adf_deployment.status }}</span>{% endif %}</summary>
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
                 <div class="text-xs text-[#41506B]"><b class="text-[#152C6B]">Simulated Azure Data Factory</b> <span class="font-mono text-[10px] text-amber-800">SIMULATED, no Azure call</span><br>Deploys the latest <b>stored</b> ADF package into a fictitious factory (broken references, clear-text secrets and non-simulated packages are rejected), then triggers its pipeline on the simulated data plane. A real ADF client would replace this step.</div>
                 {% if can_run_validation and adf_status %}<div class="flex gap-2">
                     <form action="/api/adf/simulated-deploy" method="post"><button class="btn g sm" data-testid="adf-deploy">Deploy stored package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}</button></form>
@@ -158,15 +159,14 @@
                 {% if adf_deployment.last_adf_run_id %}<div class="mt-1">Last trigger: <span class="font-mono">{{ adf_deployment.last_adf_run_id }}</span> by {{ adf_deployment.last_triggered_by }} &middot; {{ adf_deployment.last_triggered_utc }}</div>{% endif %}
                 {% if adf_trigger_blocker %}<div class="mt-1 text-amber-900">Trigger unavailable: {{ adf_trigger_blocker }}</div>{% endif %}
             </div>{% endif %}
-        </div>
+        </details>
         {% for r in exec_runs %}{% set t = r.telemetry %}
-        <article class="mt-4 rounded-xl border border-[#D9E3F5] p-4">
-            <div class="flex flex-wrap items-center gap-2 text-[11px]">
+        <details class="mt-3 rounded-xl border border-[#D9E3F5] p-3" {% if loop.first %}open{% endif %}>
+            <summary class="cursor-pointer"><span class="inline-flex flex-wrap items-center gap-2 text-[11px]">
                 <span class="font-mono font-bold text-[#152C6B]">{{ r.run_id }}</span>
                 <span class="pill {% if r.status == 'SUCCEEDED' %}approved{% elif r.status == 'FAILED' %}failed{% else %}review{% endif %}">{{ r.status }}</span>
                 <span class="pill border-amber-200 bg-amber-50 text-amber-800">{{ r.mode }}</span>
-                <span class="text-[#5A6A88]">package v{{ r.package_version }} · {{ r.triggered_by }} · {{ r.started_utc[:19] }} · {{ r.duration_ms }} ms{% if r.retry_of %} · retry of {{ r.retry_of }}{% endif %}</span>
-            </div>
+                <span class="text-[#5A6A88]">package v{{ r.package_version }} · {{ r.triggered_by }} · {{ r.started_utc[:19] }} · {{ r.duration_ms }} ms{% if r.retry_of %} · retry of {{ r.retry_of }}{% endif %}</span>{% if not t.error %}<span class="text-[#41506B]">· {{ t.totals.read }} read / {{ t.totals.loaded }} loaded / {{ t.totals.failed }} failed</span>{% endif %}{% if loop.first %}<span class="pill approved">latest</span>{% endif %}</span></summary>
             {% if t.error %}<p class="mt-2 text-xs text-rose-800">{{ t.error }}</p>
               {% if can_run_validation and r.status == 'FAILED' and t.retryable %}<form action="/api/execution/run" method="post" class="mt-2"><input type="hidden" name="retry_of" value="{{ r.run_id }}"><button class="btn g sm">Retry run</button></form>{% endif %}
             {% else %}
@@ -174,11 +174,11 @@
             {% set empty_entities = t.entities.values()|selectattr('source_rows','equalto',0)|list %}{% if empty_entities %}<p class="mt-1 text-xs text-amber-800">{{ empty_entities|length }} entity group(s) had no source rows: their mappings are in the package but nothing was exercised. Approve and map the source files for those entities first.</p>{% endif %}
             <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr><th>Entity</th><th>Table</th><th>Read</th><th>Loaded</th><th>Skipped</th><th>Failed</th><th>Reconciled</th></tr></thead><tbody>
               {% for ename, e in t.entities.items() %}{% for tname, c in e.tables.items() %}<tr><td>{{ ename }}</td><td class="font-mono">{{ tname }}</td><td>{{ c.read }}</td><td>{{ c.loaded }}</td><td>{{ c.skipped }}</td><td>{{ c.failed }}</td><td>{% if c.read == 0 %}<span class="text-amber-800">no source rows</span>{% else %}{{ 'yes' if c.balanced else 'NO' }}{% endif %}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
-            {% if t.failures %}<h3 class="mt-3 text-xs font-bold text-rose-800">Problems linked to mappings and rules</h3>
+            {% if t.failures %}{% set open_f = t.failures|length - r.reviews|length %}<details class="mt-3" {% if loop.first and open_f > 0 %}open{% endif %}><summary class="cursor-pointer text-xs font-bold text-rose-800">Problems linked to mappings and rules <span class="pill review">{{ t.failures|length }}</span></summary>
             <ul class="mt-1 space-y-1 text-xs">{% for f in t.failures %}{% set rv = r.reviews.get(loop.index0) %}<li>{{ f.rows }} row(s) · {{ f.entity }}.{{ f.table }}.{{ f.column }} · {{ f.reason }} · {% if f.rule.startswith('RULE:') %}<a href="/transformation-rules" class="font-mono text-blue-700">{{ f.rule }}</a>{% else %}<a href="/target-mapping" class="font-mono text-blue-700">{{ f.rule }}</a>{% endif %}
               {% if rv %}<span class="pill {% if rv.status == 'RESOLVED' %}approved{% else %}review{% endif %}">{{ rv.status }}</span> <span class="text-[#5A6A88]">{{ rv.reviewer }} · {{ rv.reason }}</span>{% endif %}
-              {% if can_review_failures and not (rv and rv.status == 'RESOLVED') %}<form action="/api/execution/runs/{{ r.run_id }}/failures/{{ loop.index0 }}/review" method="post" class="mt-1 flex flex-wrap gap-1"><input name="reason" required placeholder="Reason" aria-label="Reason" class="input"><button name="decision" value="ACKNOWLEDGED" class="btn g sm">Acknowledge</button><button name="decision" value="RESOLVED" class="btn g sm">Mark resolved</button></form>{% endif %}</li>{% endfor %}</ul>{% endif %}
-            {% set recs = recs_by_run.get(r.run_id, []) %}{% if recs %}<h3 class="mt-3 text-xs font-bold text-[#152C6B]">Recommendations for gaps in the sample data <span class="pill review">{{ recs|length }}</span></h3>
+              {% if can_review_failures and not (rv and rv.status == 'RESOLVED') %}<form action="/api/execution/runs/{{ r.run_id }}/failures/{{ loop.index0 }}/review" method="post" class="mt-1 flex flex-wrap gap-1"><input name="reason" required placeholder="Reason" aria-label="Reason" class="input"><button name="decision" value="ACKNOWLEDGED" class="btn g sm">Acknowledge</button><button name="decision" value="RESOLVED" class="btn g sm">Mark resolved</button></form>{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+            {% set recs = recs_by_run.get(r.run_id, []) %}{% if recs %}{% set open_r = recs|selectattr('status','equalto','OPEN')|list|length %}<details class="mt-3" {% if loop.first and open_r > 0 %}open{% endif %}><summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Recommendations for gaps in the sample data <span class="pill review">{{ recs|length }}</span>{% if open_r %} <span class="font-normal text-[#5A6A88]">· {{ open_r }} awaiting a decision</span>{% endif %}</summary>
             <p class="mt-1 text-[11px] text-[#5A6A88]">Worked out from the problems above and your source files with plain checks (no AI model). Nothing here changes a rule or mapping: accepting a proposal that carries a rule only creates a draft that still needs approval.</p>
             <ul class="mt-1 space-y-2 text-xs">{% for g in recs %}<li class="border-t pt-2"><span class="pill review">{{ g.kind }}</span> <strong>{{ g.title }}</strong> <span class="text-[#5A6A88]">· {{ g.rows }} row(s)</span>
               {% for e in g.evidence %}<div class="text-[#41506B]">{{ e }}</div>{% endfor %}
@@ -186,11 +186,11 @@
               {% if g.vendor_note %}<details class="mt-1"><summary class="cursor-pointer text-[11px] text-blue-700">Note for the data provider</summary><div class="mt-1 text-[11px]">{{ g.vendor_note }}</div></details>{% endif %}
               {% if g.rule_draft %}<div class="text-[11px]">Proposed draft rule: <span class="font-mono">{{ g.rule_draft.rule_type }}</span> on <span class="font-mono">{{ g.rule_draft.rule_id }}</span> (needs approval)</div>{% endif %}
               {% if g.status != 'OPEN' %}<div class="mt-1"><span class="pill {% if g.status == 'DISMISSED' %}review{% else %}approved{% endif %}">{{ g.status }}</span> <span class="text-[#5A6A88]">{{ g.reviewer }} · {{ g.decision_reason }}{% if g.created_draft %} · draft {{ g.created_draft }}{% endif %}</span></div>
-              {% elif can_review_failures %}<form action="/api/execution/recommendations/{{ g.rec_id }}/decide" method="post" class="mt-1 flex flex-wrap gap-1"><input name="reason" placeholder="Reason (required to dismiss)" aria-label="Reason" class="input"><button name="decision" value="ACCEPTED" class="btn g sm">{{ 'Accept as draft rule' if g.rule_draft else 'Accept for follow-up' }}</button>{% if g.vendor_note %}<button name="decision" value="VENDOR_REQUESTED" class="btn g sm">Request from data provider</button>{% endif %}<button name="decision" value="DISMISSED" class="btn g sm">Dismiss</button></form>{% endif %}</li>{% endfor %}</ul>{% endif %}
-            {% if t.post_checks %}<h3 class="mt-3 text-xs font-bold text-[#152C6B]">Post-execution validation scenarios</h3>
-            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul>{% endif %}
+              {% elif can_review_failures %}<form action="/api/execution/recommendations/{{ g.rec_id }}/decide" method="post" class="mt-1 flex flex-wrap gap-1"><input name="reason" placeholder="Reason (required to dismiss)" aria-label="Reason" class="input"><button name="decision" value="ACCEPTED" class="btn g sm">{{ 'Accept as draft rule' if g.rule_draft else 'Accept for follow-up' }}</button>{% if g.vendor_note %}<button name="decision" value="VENDOR_REQUESTED" class="btn g sm">Request from data provider</button>{% endif %}<button name="decision" value="DISMISSED" class="btn g sm">Dismiss</button></form>{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+            {% if t.post_checks %}<details class="mt-3"><summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Post-execution validation scenarios <span class="pill review">{{ t.post_checks|length }}</span></summary>
+            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul></details>{% endif %}
             {% endif %}
-        </article>
+        </details>
         {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No executions yet.</p>{% endfor %}
     </section>
     {% endif %}
