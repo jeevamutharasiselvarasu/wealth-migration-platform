@@ -287,7 +287,8 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
         cands = [(len(t["rows"]), n, t["lineage"][cf]) for n, t in sorted(tables.items()) if t.get("entity") == entity and cf in t.get("lineage", {})]
         home = (lambda c: (c[1], c[2]))(max(cands, key=lambda c: c[0])) if cands else None
         where = f"{entity}.{column}"
-        affected = sum(x["rows"] for x in group)
+        affected = max(x["rows"] for x in group)  # the reasons often hit the same rows, so they are not added up
+        keyless = len(canonical_rows.get(entity, [])) - len(ent_rows)
         # ---- value-level gaps
         if bad_vals and rtype == "VALUE_MAP":
             have = {k.upper() if rule["params"].get("case_insensitive", True) else k for k in rule["params"]["map"]}
@@ -370,7 +371,7 @@ def recommend(migration_id: str, failures: List[Dict[str, Any]], mappings: List[
                              "If the full export has the same gap, only the provider can fix it.",
                              vendor_note=f"{src} is blank for {blank_in} of {total_rows} rows in the migration sample. {where} cannot be populated for them. "
                                          f"Please confirm whether the full export has values and send a corrected file."))
-        elif not (blank_in or bad_vals) and affected:
+        elif not (blank_in or bad_vals) and affected and affected > keyless:  # rows without the entity key are reported once as ROWS_WITHOUT_KEY
             recs.append(_rec(migration_id, "SOURCE_REQUEST", entity, table, column, f"{where}: {affected} row(s) failed with no pattern the recommender could analyse",
                              [f["reason"] for f in group][:3], affected, "No remedy was derived from the data; review the problem manually."))
     uniq, seen = [], set()

@@ -132,3 +132,26 @@ def test_home_file_is_the_one_with_most_rows_and_repeated_titles_are_dropped():
     recs = _run(rows=[{"OWNER": ""}] * 6, tables=t)
     src = [r for r in recs if r["kind"] == "SOURCE_REQUEST"]
     assert len(src) == 1 and "big.csv.Own" in src[0]["title"]
+
+
+def test_two_target_columns_fed_by_one_blank_source_column_give_one_provider_request():
+    ms = [{"entity": "H", "target_table": "T", "target_column": c, "canonical_field": "NAME", "transformation": "DIRECT_COPY", "required": True} for c in ("FIRST", "LAST")]
+    f = [{"entity": "H", "table": "T", "column": c, "rule": "DIRECT_COPY", "reason": "required value blank after transformation", "rows": 4} for c in ("FIRST", "LAST")]
+    t = {"a.csv": {"entity": "H", "rows": [{"Nm": ""}] * 6, "lineage": {"NAME": "Nm"}}}
+    recs = gr.recommend("M", f, ms, {}, {"H": [{"NAME": ""}] * 6}, t, {}, {"entity_keys": {}})
+    req = [r for r in recs if r["kind"] == "SOURCE_REQUEST"]
+    assert len(req) == 1 and "a.csv.Nm" in req[0]["title"]          # the same file and column is asked for once
+    assert len([r for r in recs if r["kind"] == "RELAX_REQUIREMENT"]) == 2  # each target field is still its own decision
+    assert len({r["rec_id"] for r in recs}) == len(recs)
+
+
+def test_failures_that_only_hit_rows_without_the_key_are_not_reported_again_as_unexplained():
+    rows = [{"ID": f"K{i}", "OWNER": "S1"} for i in range(4)] + [{"ID": "", "OWNER": ""}] * 6
+    f = [{"entity": "Case", "table": "T", "column": "OWNER_NAME", "rule": "DIRECT_COPY", "reason": "required value blank after transformation", "rows": 6},
+         {"entity": "Case", "table": "T", "column": "OWNER_NAME", "rule": "DIRECT_COPY", "reason": "blank lookup key", "rows": 6}]
+    recs = _run(rows=rows, failures=f, keys={"Case": "ID"})
+    assert not [r for r in recs if "no pattern" in r["title"]]
+    assert [r for r in recs if r["kind"] == "ROWS_WITHOUT_KEY"]
+    other = _run(rows=rows, failures=[{**f[0], "rows": 9}], keys={"Case": "ID"})  # more failures than keyless rows: not explained by them
+    (rec,) = [r for r in other if "no pattern" in r["title"]]
+    assert "9 row(s)" in rec["title"]
