@@ -18,6 +18,13 @@ CANON_TYPES = {"Account": {"ACCT_NUM": "string", "CUSTODIAN_CODE": "string", "RE
                "Household": {"HH_ID": "string", "HH_NAME": "string", "REP_CODE": "string"}}
 
 
+@pytest.fixture(autouse=True)
+def demo_target_seed(monkeypatch):
+    """These tests describe the invented Simplicity demo target; the shipped seed is built from the supplied Orion/SPARC workbook."""
+    import simulated_target_service.database as tdb
+    monkeypatch.setattr(tdb, "SEED_PATH", tdb.SEED_PATH.with_name("seed_demo.yaml"))
+
+
 @pytest.fixture()
 def target_service(tmp_path, monkeypatch):
     """The standalone simulated target service's own code, reached through the connector's HTTP seam."""

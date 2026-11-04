@@ -571,6 +571,42 @@ async def test_azure_connection(request: Request):
     return RedirectResponse(url="/azure-setup?" + urlencode({key: cfg["check_detail"]}), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.get("/models", response_class=HTMLResponse)
+async def models_page(request: Request):
+    """Read-only side-by-side view: the supplied target system as it is, and the canonical model the platform maps into."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        cfg = target_connector.get_config(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    target, target_error = None, ""
+    if not cfg:
+        target_error = "The target system is not set up yet (Setup → Target mapping)."
+    else:
+        try:
+            target = target_connector._http_get(cfg["endpoint"] + "/schema")
+        except Exception as exc:  # shown to the reader, not raised
+            target_error = f"Could not read the target system: {exc}"
+    canonical = []
+    try:
+        firm = load_firm_config()
+        for name, entity in firm.entities.items():
+            added = canonical_overlay.active_added_fields(name)
+            fields = [{"name": f.name, "type": f.type, "required": not f.nullable, "key": f.is_key, "sensitive": f.sensitive,
+                       "description": f.description, "added": False} for f in entity.fields]
+            fields += [{"name": n, "type": "", "required": False, "key": False, "sensitive": False, "description": "Added by an approved change request", "added": True}
+                       for n in added if n not in {f["name"] for f in fields}]
+            canonical.append({"name": name, "grain": entity.grain, "fields": fields})
+    except FirmConfigError as exc:
+        target_error = target_error or f"Canonical model unavailable: {exc}"
+    return render_template_with_context(request, "models.html", {
+        "page_title": "Target and canonical models", "user_name": user["name"], "user_role": user["role"],
+        "target": target, "target_error": target_error, "canonical": canonical, "target_status": (cfg or {}).get("status", ""),
+    })
+
+
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_hub(request: Request):
     """One place for the inputs a migration needs before data moves: configuration, target mapping, firm knowledge."""

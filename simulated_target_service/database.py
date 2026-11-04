@@ -39,7 +39,7 @@ def bootstrap(path: Path | None = None) -> bool:
         conn.execute("CREATE TABLE TABLE_DICTIONARY (TABLE_NAME TEXT PRIMARY KEY, DESCRIPTION TEXT)")
         for name, codes in (seed.get("code_lists") or {}).items():
             conn.execute(f"CREATE TABLE {_ident(name)} (CODE TEXT PRIMARY KEY)")
-            conn.executemany(f"INSERT INTO {name} VALUES (?)", [(_ident(str(c)),) for c in codes])
+            conn.executemany(f"INSERT INTO {name} VALUES (?)", [(str(c),) for c in codes])
         for table, body in seed["tables"].items():
             cols = []
             for c in body["columns"]:
