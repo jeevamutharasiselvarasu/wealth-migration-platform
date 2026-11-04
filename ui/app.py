@@ -18,7 +18,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection
+from control_plane.services import gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1365,6 +1365,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
         scenarios = validation_scenarios.list_scenarios(conn, migration_id)
         runs = execution_simulator.list_runs(conn, migration_id)
+        recs_by_run = {r["run_id"]: gap_recommender.list_for_run(conn, migration_id, r["run_id"]) for r in runs}
         has_package = bool(package_contract.list_packages(conn, migration_id))
         stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
         adf_status = _adf_status(conn, migration_id)
@@ -1397,7 +1398,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
-            "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "has_package": has_package,
+            "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
         }
@@ -1434,7 +1435,74 @@ def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of
         conn.commit()
     finally:
         conn.close()
+    if outage != "on" and telemetry.get("failures"):
+        _store_gap_recommendations(migration_id, rid, package, telemetry, rows, lookups)
     return rid, telemetry, package
+
+
+def _store_gap_recommendations(migration_id: str, run_id: str, package: Dict[str, Any], telemetry: Dict[str, Any], canonical_rows, lookups) -> None:
+    """Best-effort: look at the problems of a run and the source files and store recommendations. A failure here never fails the run."""
+    try:
+        try:
+            key_cfg = load_firm_config()
+        except FirmConfigError:
+            key_cfg = None
+        tables: Dict[str, Dict[str, Any]] = {}
+        for entity, group in state_store.entity_source_files.items():
+            if entity not in target_mapping.ENTITIES:
+                continue
+            rules = _get_approved_mapping_rules(migration_id, entity)
+            mapper = SchemaMapperAgent(
+                custom_catalog={**schema_mapper.catalog, **{src: r["canonical_field"] for src, r in rules.items()}},
+                approved_transformations={src: r["transformation_expression"] for src, r in rules.items()})
+            for rec in group.values():
+                stored = rec.get("stored_path")
+                if rec.get("inference_approval_status") != "APPROVED" or not stored or not file_store.is_file(stored):
+                    continue
+                records = read_source_records(rec.get("filename", "source.csv"), file_store.read_bytes(stored))
+                lineage = {l["canonical_field"]: l["source_field"] for l in mapper.map_source_to_canonical(entity, records[:200]).get("field_lineages", []) if l.get("canonical_field")}
+                tables[str(rec.get("filename", "source.csv"))] = {"entity": entity, "rows": records, "lineage": lineage}
+        keys = {}
+        if key_cfg:
+            for e in target_mapping.ENTITIES:
+                if e in key_cfg.entities:
+                    k = next((f.name for f in key_cfg.entities[e].fields if f.is_key), None)
+                    if k:
+                        keys[e] = k
+        rules_by_expr = {r["expression"]: r for r in package["transformation_rules"]}
+        recs = gap_recommender.recommend(migration_id, telemetry["failures"], package["canonical_to_target"], rules_by_expr, canonical_rows, tables,
+                                         lookups, {"entity_keys": keys})
+        conn = get_db_connection()
+        try:
+            gap_recommender.save(conn, migration_id, run_id, recs)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:  # recommendations are advisory; never block a run
+        state_store.audit_log.append({"event": "GAP_RECOMMENDER_FAILED", "actor": "system", "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                      "details": {"run_id": run_id, "error": type(exc).__name__}})
+
+
+@app.post("/api/execution/recommendations/{rec_id}/decide")
+async def decide_gap_recommendation(request: Request, rec_id: str, decision: str = Form(...), reason: str = Form("")):
+    """Accept (creates a DRAFT rule when the proposal has one), dismiss, or send a data-provider request. Recorded with the session's reviewer."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            res = gap_recommender.decide(conn, migration_id, rec_id, decision, reason, user["name"])
+        except ValueError as exc:
+            return RedirectResponse(url="/execution?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    r = res["rec"]
+    _target_setup_audit("GAP_RECOMMENDATION_" + res["status"], user, {"rec_id": rec_id, "kind": r["kind"], "entity": r["entity"], "column": r["column"], "draft": res["draft"]})
+    msg = f"Recommendation {rec_id} marked {res['status'].lower().replace('_', ' ')}."
+    if res["draft"]:
+        msg += f" Draft rule {res['draft']} created; it needs approval on Business Rules before any mapping can use it."
+    return RedirectResponse(url="/execution?notice=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/execution/run")

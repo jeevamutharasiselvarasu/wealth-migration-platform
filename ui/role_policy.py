@@ -65,6 +65,7 @@ POST_POLICY = [
     (r"^/api/execution/run$", VALIDATION_ROLES),
     (r"^/api/adf/simulated-(deploy|trigger)$", VALIDATION_ROLES),
     (r"^/api/execution/runs/[^/]+/failures/[^/]+/review$", APPROVAL_ROLES),
+    (r"^/api/execution/recommendations/[^/]+/decide$", APPROVAL_ROLES),
     (r"^/api/validation/scenarios$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/(suggest|[^/]+/adopt)$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/[^/]+/retire$", VALIDATION_ROLES),
