@@ -331,5 +331,5 @@ def test_rail_progress_counts_the_nine_stages_and_names_the_first_unfinished_one
     v = build_stage_view(p, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=0)
     assert len(v["stages"]) == 9
     states = [s["state"] for s in v["stages"]]
-    assert states == ["done", "done", "done", "done", "current", "done", "done", "todo", "todo"]
-    assert v["stages_done"] == 6 and v["stage_current"] == "05 Mapping Validation Review"
+    assert states == ["done", "done", "done", "done", "current", "todo", "todo", "todo", "todo"]
+    assert v["stages_done"] == 4 and v["stage_current"] == "05 Mapping Validation Review"

@@ -183,7 +183,7 @@ def workflow_progress() -> dict:
 
 def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_approved: int, sql_ready: bool, runs_n: int) -> dict:
     """The nine pipeline stages in order, each done / current / todo, so the rail counts the same stages it lists.
-    A stage is done when its own work exists; the first unfinished stage is the current one."""
+    A stage is done when its own work exists and every earlier stage is done; the first unfinished stage is the current one."""
     mapped = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0
     done_flags = [
         ("01", "Loader & Inspector", p["files_total"] > 0),
@@ -198,12 +198,12 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
     ]
     stages, current_seen = [], False
     for num, title, ok in done_flags:
-        if ok:
+        if current_seen:
+            state = "todo"  # nothing after the first unfinished stage counts as started
+        elif ok:
             state = "done"
-        elif not current_seen:
-            state, current_seen = "current", True
         else:
-            state = "todo"
+            state, current_seen = "current", True
         stages.append({"number": num, "title": title, "state": state})
     cur = next((s for s in stages if s["state"] == "current"), None)
     return {"stages": stages, "stages_done": sum(1 for s in stages if s["state"] == "done"),
