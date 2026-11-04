@@ -191,3 +191,14 @@ def promote_to_curated(container: str, run_id: str, approver: str, review_summar
     lineage = {"run_id": run_id, "promoted_by": approver, "promoted_utc": when, "reviews": review_summary, "files": files}
     cc.upload_blob(f"curated/_lineage/{run_id.lower()}.json", json.dumps(lineage, indent=2).encode("utf-8"), overwrite=True)
     return {"promoted": True, "container": container, "path": "curated/", "files": files, "by": approver, "utc": when}
+
+
+def preview(container: str, name: str, max_lines: int = 25, max_bytes: int = 65536, conn_str: Optional[str] = None) -> Dict[str, Any]:
+    """Read-only look at the start of one text file (CSV/JSON/TSV/TXT) in the container. Hidden marker blobs are refused."""
+    if name.endswith(MARKER) or not name.lower().endswith((".csv", ".tsv", ".json", ".txt")):
+        raise ValueError("Only CSV, TSV, JSON and text files can be previewed.")
+    data = read_blob(container, name, conn_str)
+    text = data[:max_bytes].decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    shown = lines[:max_lines]
+    return {"name": name, "size": len(data), "text": "\n".join(shown), "truncated": len(data) > max_bytes or len(lines) > max_lines, "shown_lines": len(shown)}

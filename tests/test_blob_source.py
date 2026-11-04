@@ -172,3 +172,15 @@ def test_curation_gate_needs_reviewed_problems_and_passing_checks():
     assert "target validation" in ex.curation_gate(conn, rid)["reasons"][0]
     ex.attach_curated(conn, rid, {"promoted": True})
     assert any("already curated" in r for r in ex.curation_gate(conn, rid)["reasons"])
+
+
+def test_preview_shows_the_start_of_text_files_only(monkeypatch):
+    fc = _fake_service(monkeypatch)
+    fc.blobs["curated/T.csv"] = ("h\n" + "\n".join(str(i) for i in range(100))).encode()
+    fc.blobs["raw/x.xlsx"] = b"PK"
+    fc.blobs["raw/.xodus-folder"] = b""
+    p = bs.preview("lake", "curated/T.csv", max_lines=5)
+    assert p["shown_lines"] == 5 and p["truncated"] and p["text"].startswith("h\n0")
+    for bad in ("raw/x.xlsx", "raw/.xodus-folder", "../x.csv"):
+        with pytest.raises(ValueError):
+            bs.preview("lake", bad)
