@@ -284,6 +284,10 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "Run simulated execution" not in asyncio.run(call("Migration Analyst", "GET", "/execution")).text
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
+    assert 'id="transformation-sql"' in cov_page and "INSERT INTO" in cov_page and "/api/target-mapping/transformation-sql" in cov_page
+    tsql = asyncio.run(call("Validation Specialist", "GET", "/api/target-mapping/transformation-sql"))
+    assert tsql.status_code == 200 and "attachment" in tsql.headers["content-disposition"] and "CREATE OR ALTER PROCEDURE" in tsql.text and "INSERT INTO" in tsql.text
+    assert asyncio.run(call("Domain SME", "GET", "/api/target-mapping/transformation-sql")).status_code == 403
     assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/adf-package")).headers["location"]
     saved = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
     assert saved.status_code == 303 and "saved+with+this+migration" in saved.headers["location"]
@@ -584,32 +588,18 @@ def test_adf_package_from_approved_mappings_only_and_simulated():
     m = pkg["manifest"]
     assert m["simulated"] is True and m["deployed"] is False and m["entities"]["Account"]["approvedMappings"] == 2
     assert any("T.REP_ID" in w for w in m["warnings"])  # required field without an approved mapping is reported
-    flow = json.loads(pkg["files"]["dataflow/DF_Account_T.json"])["properties"]["typeProperties"]["scriptLines"]
-    script = "\n".join(flow)
-    assert "ACCT_NO = ACCT_NUM" in script and "toDate(trim(OPEN_DATE), 'MM/dd/yyyy')" in script and "REG_CD" not in script
+    sql = pkg["files"]["sql/Account_T.sql"]
+    assert "s.[ACCT_NUM] AS [ACCT_NO]" in sql and "TRY_CONVERT(date, LTRIM(RTRIM(s.[OPEN_DATE])), 101)" in sql and "REG_CD" not in sql
+    acts = json.loads(pkg["files"]["pipeline/PL_XODUS_MIG_1.json"])["properties"]["activities"]
+    assert [a["type"] for a in acts] == ["Script", "Copy", "Script"] and "dataflow" not in " ".join(pkg["files"]).lower()  # ADF only orchestrates the SQL
+    assert acts[-1]["typeProperties"]["scripts"][0]["text"] == "EXEC [dbo].[usp_xodus_load_all];" and acts[1]["dependsOn"][0]["activity"] == "Prepare_SQL"
     zf = zipfile.ZipFile(io.BytesIO(adf_package.to_zip(pkg)))
     names = set(zf.namelist())
-    assert {"manifest.json", "arm/ARMTemplateForFactory.json", "pipeline/PL_XODUS_MIG_1.json", "linkedService/LS_SQL_Target_Sim.json", "README_SIMULATED.txt"} <= names
+    assert {"manifest.json", "arm/ARMTemplateForFactory.json", "pipeline/PL_XODUS_MIG_1.json", "linkedService/LS_SQL_Target_Sim.json", "README_SIMULATED.txt",
+            "sql/00_staging_tables.sql", "sql/Account_T.sql", "sql/usp_load_all.sql", "dataset/DS_Staging_Account.json", "dataset/DS_StagingSql_Account.json"} <= names
     blob = "".join(zf.read(n).decode() for n in names).lower()
     assert "accountkey" not in blob and "password" not in blob and "00000000-0000-0000-0000-000000000000" in blob
     assert "AzureKeyVaultSecret" in zf.read("linkedService/LS_SQL_Target_Sim.json").decode()
-
-
-def test_adf_translate_each_rule_and_refuses_unregistered():
-    import pytest
-    from control_plane.services import adf_package as a
-    assert a.translate("RULE:V@1", "REG", _adf_rule("VALUE_MAP", {"map": {"IND'V": "X"}})) == \
-        "iif(isNull(REG) || trim(REG) == '', REG, case(upper(trim(REG)), 'IND\\'V', 'X', REG))"
-    assert "toDecimal" in a.translate("R", "AMT", _adf_rule("NUMBER_CLEAN", {"strip_chars": "$,", "decimals": 2}))
-    assert "concatWS(' ', trim(A), trim(B))" in a.translate("R", "A", _adf_rule("CONCAT", {"sources": ["A", "B"]}))
-    assert "[2]" in a.translate("R", "A", _adf_rule("SPLIT_PART", {"delimiter": " ", "index": 1}))
-    assert a.translate("R", "A", _adf_rule("DEFAULT_IF_BLANK", {"default": "UNKNOWN"})).startswith("iif(")
-    assert "'N/A'" in a.translate("R", "A", _adf_rule("IF_EQUALS", {"when_equals": "N/A", "then": ""}))
-    for bad in (None, _adf_rule("VALUE_MAP", {"map": {"A": "B"}}, status="DRAFT")):
-        with pytest.raises(ValueError, match="approved, registered"):
-            a.translate("RULE:X@1", "A", bad)
-    with pytest.raises(ValueError, match="safe column name"):
-        a.translate("DIRECT_COPY", "A; DROP", None)
 
 
 def test_adf_package_needs_an_approved_mapping():
@@ -664,8 +654,10 @@ def _mini_package(**over):
         "arm/ARMTemplateForFactory.json": {"resources": []},
         "linkedService/LS_A.json": {"name": "LS_A", "properties": {"type": "AzureSqlDatabase"}},
         "dataset/DS_A.json": {"name": "DS_A", "properties": {"linkedServiceName": {"referenceName": "LS_A"}}},
-        "dataflow/DF_A.json": {"name": "DF_A", "properties": {"typeProperties": {"sources": [{"dataset": {"referenceName": "DS_A"}}], "sinks": [{"dataset": {"referenceName": "DS_A"}}]}}},
-        "pipeline/PL.json": {"name": "PL", "properties": {"activities": [{"name": "Load", "typeProperties": {"dataflow": {"referenceName": "DF_A"}}}]}},
+        "pipeline/PL.json": {"name": "PL", "properties": {"activities": [
+            {"name": "Copy_A", "type": "Copy", "inputs": [{"referenceName": "DS_A"}], "outputs": [{"referenceName": "DS_A"}]},
+            {"name": "Run", "type": "Script", "linkedServiceName": {"referenceName": "LS_A"}, "dependsOn": [{"activity": "Copy_A"}],
+             "typeProperties": {"scripts": [{"type": "NonQuery", "text": "EXEC dbo.usp;"}]}}]}},
     }
     files.update(over)
     buf = io.BytesIO()
@@ -679,13 +671,19 @@ def _mini_package(**over):
 def test_simulated_adf_rejects_what_a_real_deployment_would_reject():
     from control_plane.services import adf_simulator as sim
     ok = sim.inspect(_mini_package())
-    assert ok["errors"] == [] and ok["pipeline"] == "PL" and ok["factory"] == "adf-sim" and {r["kind"] for r in ok["resources"]} == {"LinkedService", "Dataset", "DataFlow", "Pipeline"}
+    assert ok["errors"] == [] and ok["pipeline"] == "PL" and ok["factory"] == "adf-sim" and {r["kind"] for r in ok["resources"]} == {"LinkedService", "Dataset", "Pipeline"}
     dangling = sim.inspect(_mini_package(**{"dataset/DS_A.json": {"name": "DS_A", "properties": {"linkedServiceName": {"referenceName": "LS_MISSING"}}}}))
     assert any("missing linked service LS_MISSING" in e for e in dangling["errors"])
     assert any("missing dataset DS_A" in e for e in sim.inspect(_mini_package(**{"dataset/DS_A.json": None}))["errors"])
     assert any("clear text" in e for e in sim.inspect(_mini_package(**{"linkedService/LS_A.json": '{"name": "LS_A", "properties": {"cs": "Server=x;Password=hunter2;"}}'}))["errors"])
     assert any("not marked simulated" in e for e in sim.inspect(_mini_package(**{"manifest.json": {"simulated": False}}))["errors"])
     assert any("no pipeline" in e for e in sim.inspect(_mini_package(**{"pipeline/PL.json": None}))["errors"])
+    flow = sim.inspect(_mini_package(**{"pipeline/PL.json": {"name": "PL", "properties": {"activities": [{"name": "F", "type": "ExecuteDataFlow"}]}}}))
+    assert any("unsupported type ExecuteDataFlow" in e for e in flow["errors"])  # the transformation is SQL, not a data flow
+    assert any("depends on missing activity Nope" in e for e in sim.inspect(_mini_package(**{"pipeline/PL.json": {"name": "PL", "properties": {"activities": [
+        {"name": "Run", "type": "Script", "linkedServiceName": {"referenceName": "LS_A"}, "dependsOn": [{"activity": "Nope"}], "typeProperties": {"scripts": [{"text": "x"}]}}]}}}))["errors"])
+    assert any("no SQL to run" in e for e in sim.inspect(_mini_package(**{"pipeline/PL.json": {"name": "PL", "properties": {"activities": [
+        {"name": "Run", "type": "Script", "linkedServiceName": {"referenceName": "LS_A"}, "typeProperties": {"scripts": []}}]}}}))["errors"])
     assert sim.inspect(b"nope")["errors"] == ["The stored file is not a valid zip."]
     ls_ok = sim.inspect(_mini_package(**{"linkedService/LS_A.json": '{"name": "LS_A", "properties": {"password": {"type": "AzureKeyVaultSecret"}}}'}))
     assert ls_ok["errors"] == []  # a Key Vault reference is not a secret

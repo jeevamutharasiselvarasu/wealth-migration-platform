@@ -82,7 +82,7 @@
     <div class="zg dplane"><i></i>Data plane</div>
     {{ stage('07', 'ADF Execution', '/execution', 'validate', 'VS', path == '/execution') }}
     <div class="zg rules"><i></i>Validation</div>
-    {{ stage('08', 'Validation rules', '/validation-rules', 'validate', 'VS', path == '/validation-rules') }}
+    {{ stage('08', 'Target validation', '/validation-rules', 'validate', 'VS', path == '/validation-rules') }}
     {% endif %}
     <div class="sh">Workspace views</div>
     <a href="/migration-workspaces?view=command" class="nv">Command center</a>

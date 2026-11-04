@@ -18,7 +18,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection
+from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -1384,7 +1384,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         request=request,
         template_name="reconciliation.html",
         extra_context={
-            "page_title": {"rules": "Validation rules", "execution": "ADF Execution"}.get(view, "Mapping Validation Review"),
+            "page_title": {"rules": "Target validation", "execution": "ADF Execution"}.get(view, "Mapping Validation Review"),
             "view": view,
             "user_name": user["name"],
             "user_role": user["role"],
@@ -2092,6 +2092,22 @@ def _canonical_types() -> Dict[str, Dict[str, str]]:
     return out
 
 
+def _transformation_sql(migration_id: str, spec, mappings, generated_by: str):
+    """Transformation SQL built from the APPROVED target mappings and approved rules. Returns (package or None, message)."""
+    approved = [m for m in mappings if m["status"] == "APPROVED"]
+    if not spec or not approved:
+        return None, ""
+    rules: Dict[str, Any] = {}
+    for m in approved:
+        expr = m["transformation_expression"]
+        if expr != "DIRECT_COPY" and expr not in rules:
+            rules[expr] = transformation_rules.approved_rule_for_expression(expr)
+    try:
+        return sql_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), generated_by), ""
+    except ValueError as exc:
+        return None, str(exc)
+
+
 def _target_mapping_context(request: Request, user: Dict[str, str], preview_result=None, notice: str = "", error: str = "") -> Dict[str, Any]:
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
@@ -2110,6 +2126,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         conn.commit()
     finally:
         conn.close()
+    tsql, tsql_error = _transformation_sql(migration_id, spec, mappings, user["name"]) if user["role"] in TARGET_PREVIEW_ROLES else (None, "")
     gaps = target_mapping.gap_report(spec, _canonical_field_lists()) if spec else {"missing": [], "unused": [], "code_lists": []}
     for g in gaps["missing"]:
         existing = ccr.get((g["entity"], g["suggested_canonical_field"]))
@@ -2125,12 +2142,37 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "spec": spec, "target_config": cfg, "inferred": inferred, "gaps": gaps,
         "can_raise_change": user["role"] in CHANGE_REQUEST_ROLES, "grouped": grouped, "has_mappings": bool(mappings), "approved_source_mappings": approved_src,
         "approved_rules": transformation_rules.approved_rules(), "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
+        "tsql": tsql, "tsql_error": tsql_error,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
         "canonical_fields": {e: sorted(fs) for e, fs in _canonical_types().items()},
         "pending_reviews": target_connector.pending_reviews(cfg["model"]) if cfg and cfg.get("model") else 0,
     }
+
+
+@app.get("/api/target-mapping/transformation-sql")
+async def download_transformation_sql(request: Request):
+    """The transformation SQL as one script: staging tables, one INSERT per target table, then the load procedure."""
+    user = get_current_user(request)
+    if user["role"] not in TARGET_PREVIEW_ROLES:
+        raise HTTPException(status_code=403, detail="Your role cannot generate the transformation SQL.")
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        mappings = target_mapping.list_mappings(conn, migration_id, spec)
+        conn.commit()
+    finally:
+        conn.close()
+    package, message = _transformation_sql(migration_id, spec, mappings, user["name"])
+    if not package:
+        raise HTTPException(status_code=409, detail=message or "Approve at least one target mapping first.")
+    files = package["files"]
+    order = ["sql/00_staging_tables.sql"] + sorted(k for k in files if k.startswith("sql/") and k not in ("sql/00_staging_tables.sql", "sql/usp_load_all.sql")) + ["sql/usp_load_all.sql"]
+    text = "\n".join(f"-- ===== {k} =====\n{files[k]}" for k in order)
+    _target_setup_audit("TRANSFORMATION_SQL_DOWNLOADED", user, {"migration_id": migration_id, "files": len(order)})
+    return Response(content=text, media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="transformation_{migration_id}.sql"'})
 
 
 def _target_redirect(key: str, message: str):

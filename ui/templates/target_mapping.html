@@ -12,7 +12,7 @@
       <p>Map each canonical field to a Simplicity target field. Proposals come from the target specification; a Migration Analyst or Platform Admin approves each one and may apply an approved <a href="/transformation-rules" class="text-blue-700">transformation rule</a>. The preview is a read-only dry run that reports counts and findings, never record values.</p>
     </div>
   </div>
-  <div class="ins"><b>This stage.</b> Runs after the source→canonical mapping has been validated (stage 05): canonical → target mapping and the approved rules, which become the transformation package for the ADF run in stage 07. Writing the approved rules out as SQL is the next step to be built; today the package carries them as data flow expressions.</div>
+  <div class="ins"><b>This stage.</b> Runs after the source→canonical mapping has been validated (stage 05): canonical → target mapping and the approved rules, which become the transformation package for the ADF run in stage 07. The approved mappings and rules are written out as SQL below: the pipeline reads the source files from Azure Blob storage into staging tables, runs this SQL and fills the target SQL database.</div>
   <div class="exc"><b>Simulated target system.</b> It runs as its own service and database, separate from this platform. The platform learns its structure by inspecting it after a one-time setup; nothing is ever loaded into it.</div>
   <p class="d" style="margin:0">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
 
@@ -131,9 +131,25 @@
   {% if can_review %}<form id="tm-review" action="/api/target-mapping/review-selected" method="post" data-bulk-bar class="flex flex-wrap items-center gap-2 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3 shadow-sm"><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="input w-64"><button name="decision" value="APPROVED" data-needs-selection class="btn ok sm">Approve selected</button><button name="decision" value="REJECTED" data-needs-selection class="btn g sm">Reject selected</button><button type="submit" formaction="/api/target-mapping/revise-selected" data-needs-selection class="btn g sm">Reopen selected for a new decision</button><span class="text-[10px] text-[#8A97B2]">Reopening an approved or rejected mapping needs a reason; the earlier decision stays on record.</span><span class="text-[10px] text-[#8A97B2]">A rejection reason is required: add it on the row or in the shared note. Tick the header box to select every pending row in an entity.</span></form>{% endif %}
 
   {% if can_preview and spec %}
+  <section class="card" id="transformation-sql">
+    <h3 style="font-size:16px">Transformation SQL <span class="font-mono text-[10px] font-normal text-[#5A6A88]">T-SQL &middot; not executed here</span></h3>
+    <p class="mt-1 text-xs text-[#5A6A88]">Generated from the <b>approved</b> target mappings and approved rules only; nothing else is ever written into it. The ADF run (stage 07) copies the source files from Azure Blob storage into the staging tables, then runs these statements against the target SQL database.</p>
+    {% if tsql %}
+    <div class="kpis" style="margin-top:10px"><div class="kpi"><small>Target tables</small><b>{{ tsql.manifest.entities.values()|map(attribute='tables')|map('length')|sum }}</b><span>one INSERT each</span></div><div class="kpi"><small>Staging tables</small><b>{{ tsql.manifest.stagingTables|length }}</b><span>filled from Blob files</span></div><div class="kpi"><small>Warnings</small><b>{{ tsql.manifest.warnings|length }}</b><span>required fields not mapped</span></div></div>
+    {% for w in tsql.manifest.warnings %}<div class="exc" style="margin-top:8px">{{ w }}</div>{% endfor %}
+    <details class="mt-3"><summary class="cursor-pointer text-xs font-bold text-blue-700">View the SQL</summary>
+      {% for path, body in tsql.files.items() if path.startswith('sql/') and path != 'sql/usp_load_all.sql' %}<p class="mt-2 font-mono text-[10px] text-[#5A6A88]">{{ path }}</p><pre class="tree" style="margin:0;white-space:pre-wrap">{{ body }}</pre>{% endfor %}
+    </details>
+    <p class="mt-3"><a href="/api/target-mapping/transformation-sql" class="btn g sm">Download transformation SQL (.sql)</a></p>
+    {% elif tsql_error %}<div class="exc" style="margin-top:10px">{{ tsql_error }}</div>
+    {% else %}<div class="empty" style="margin-top:10px">Approve at least one target mapping to generate the SQL.</div>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if can_preview and spec %}
   <section class="card" id="adf-package">
     <h3 style="font-size:16px">Azure Data Factory package <span class="font-mono text-[10px] font-normal text-amber-800">simulated Azure values</span></h3>
-    <p class="mt-1 text-xs text-[#5A6A88]">Builds an ADF package and <b>saves it with this migration</b> (linked services, datasets, mapping data flows, pipeline and ARM template) from the <b>approved</b> target mappings only. Subscription, factory, storage, SQL and Key Vault values are fictitious and no secrets are included. Nothing is deployed or sent to Azure.</p>
+    <p class="mt-1 text-xs text-[#5A6A88]">Builds an ADF package and <b>saves it with this migration</b> (linked services, datasets, a pipeline that copies the Azure Blob files into staging tables and runs the transformation SQL, and the ARM template) from the <b>approved</b> target mappings only. Subscription, factory, storage, SQL and Key Vault values are fictitious and no secrets are included. Nothing is deployed or sent to Azure.</p>
     <form action="/api/target-mapping/adf-package" method="post" class="mt-3"><button class="btn g sm">Generate and save ADF package (.zip)</button></form>
     {% if stored_adf %}
     {% if adf_status and adf_status.stale_reasons %}<div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" data-testid="adf-stale"><b>STALE</b> &middot; the latest package ({{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}) no longer reflects the current approved state. Generate a new package before it is used for a sign-off.<ul class="mt-1 list-disc pl-5">{% for r in adf_status.stale_reasons %}<li>{{ r }}</li>{% endfor %}</ul></div>

@@ -14,7 +14,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-KINDS = {"linkedService": "LinkedService", "dataset": "Dataset", "dataflow": "DataFlow", "pipeline": "Pipeline"}
+KINDS = {"linkedService": "LinkedService", "dataset": "Dataset", "pipeline": "Pipeline"}
 _SECRET = re.compile(r"(AccountKey|SharedAccessSignature|Password|Pwd)\s*=\s*[^;\"\s]+|\"(password|accountKey|sasToken)\"\s*:\s*\"(?!@)", re.I)
 
 _DDL = """CREATE TABLE IF NOT EXISTS adf_simulated_deployments (
@@ -59,7 +59,7 @@ def inspect(zip_bytes: bytes) -> Dict[str, Any]:
         folder = path.split("/")[0]
         if folder in KINDS:
             by_kind[folder][doc.get("name", path)] = doc
-    ls, ds, df, pl = (by_kind[k] for k in ("linkedService", "dataset", "dataflow", "pipeline"))
+    ls, ds, pl = (by_kind[k] for k in ("linkedService", "dataset", "pipeline"))
     problems: Dict[tuple, List[str]] = {}
 
     def bad(kind: str, name: str, msg: str):
@@ -69,22 +69,29 @@ def inspect(zip_bytes: bytes) -> Dict[str, Any]:
         ref = ((d.get("properties") or {}).get("linkedServiceName") or {}).get("referenceName")
         if ref not in ls:
             bad("dataset", name, f"references missing linked service {ref}.")
-    for name, d in df.items():
-        tp = (d.get("properties") or {}).get("typeProperties") or {}
-        for side in (tp.get("sources") or []) + (tp.get("sinks") or []):
-            ref = (side.get("dataset") or {}).get("referenceName")
-            if ref not in ds:
-                bad("dataflow", name, f"references missing dataset {ref}.")
     pipeline_name = None
     for name, d in pl.items():
         pipeline_name = name
         acts = (d.get("properties") or {}).get("activities") or []
         if not acts:
             bad("pipeline", name, "has no activities.")
+        names = {a.get("name") for a in acts}
         for a in acts:
-            ref = ((a.get("typeProperties") or {}).get("dataflow") or {}).get("referenceName")
-            if ref not in df:
-                bad("pipeline", name, f"activity {a.get('name')} references missing data flow {ref}.")
+            an, kind = a.get("name"), a.get("type")
+            if kind == "Copy":
+                for side in (a.get("inputs") or []) + (a.get("outputs") or []):
+                    if side.get("referenceName") not in ds:
+                        bad("pipeline", name, f"activity {an} references missing dataset {side.get('referenceName')}.")
+            elif kind == "Script":
+                if (a.get("linkedServiceName") or {}).get("referenceName") not in ls:
+                    bad("pipeline", name, f"activity {an} references missing linked service {(a.get('linkedServiceName') or {}).get('referenceName')}.")
+                if not any((s or {}).get("text") for s in (a.get("typeProperties") or {}).get("scripts") or []):
+                    bad("pipeline", name, f"activity {an} has no SQL to run.")
+            else:
+                bad("pipeline", name, f"activity {an} has the unsupported type {kind}; only Copy and Script activities are allowed.")
+            for dep in a.get("dependsOn") or []:
+                if dep.get("activity") not in names:
+                    bad("pipeline", name, f"activity {an} depends on missing activity {dep.get('activity')}.")
     if not pl:
         errors.append("The package has no pipeline.")
     for folder, label in KINDS.items():

@@ -2,14 +2,14 @@
 
 {% block content %}
 <div class="page" style="padding-block:0">
-    {% set vtitle = {"rules": "Validation rules", "execution": "Execution"}.get(view, "Mapping Validation Review") %}
+    {% set vtitle = {"rules": "Target validation", "execution": "ADF Execution"}.get(view, "Mapping Validation Review") %}
     {% set stage_tab = {'reconcile': 'review', 'execution': 'adf', 'rules': 'rules'}.get(view) %}{% include "_stage_tabs.html" %}
     <div class="ph">
         <div>
             {% if view == 'rules' %}
-            <div class="ey dm">Stage 08 · Validation · Validation rules</div>
-            <h1>Validation rules</h1>
-            <p>Checks that run on the loaded target after the ADF run: the standard checks (schema, data types, nullability) plus the cases the Validation Specialist defines here. Rules are drafted or adopted here and are evaluated with each validation run.</p>
+            <div class="ey dm">Stage 08 · Validation · Target validation</div>
+            <h1>Target validation</h1>
+            <p>Checks on the populated target after the ADF run, plus the cases the Validation Specialist defines here. Today the cases are evaluated on the simulated run output, and required (nullability) values are checked during the run. Built-in schema and data-type checks against the real target SQL database come with the real ADF connection.</p>
             {% elif view == 'execution' %}
             <div class="ey dm">Stage 07 · Data plane · ADF Execution</div>
             <h1>ADF Execution</h1>
@@ -22,7 +22,7 @@
         </div>
         <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">{{ {'rules': 'Validation', 'reconcile': 'Transformed'}.get(view, 'Data plane') }}</span></div>
     </div>
-    {% if view == 'rules' %}<div class="ins"><b>Validation.</b> Rules are defined after execution and check the data that was run. Post-execution checks use the Execution results; adopting or retiring a rule is recorded in the audit log.</div>
+    {% if view == 'rules' %}<div class="ins"><b>Target validation.</b> Rules are defined after execution and check the data that was run. Post-execution checks use the Execution results; adopting or retiring a rule is recorded in the audit log.</div>
     {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> Executes the deployment package as many times as needed. Each run records counts, duration and the mapping or rule behind each problem.</div>
     {% else %}<div class="ins"><b>Validation.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>{% endif %}
     {% if view == 'rules' %}<section class="kpis" aria-label="Validation rules summary">
@@ -154,7 +154,7 @@
             </div>
             {% if adf_deployment %}<div class="mt-3 text-[11px] text-[#41506B]" data-testid="adf-deployment">
                 <span class="font-mono font-bold">{{ adf_deployment.deployment_id }}</span> &middot; package {{ adf_deployment.artifact_id }} v{{ adf_deployment.artifact_version }} &middot; factory <span class="font-mono">{{ adf_deployment.factory_name }}</span> &middot; <b>{{ adf_deployment.status }}</b> by {{ adf_deployment.deployed_by }} &middot; {{ adf_deployment.deployed_utc }}
-                <div class="mt-1">{% for kind in ['LinkedService','Dataset','DataFlow','Pipeline'] %}{{ kind }}: {{ adf_deployment.resources|selectattr('kind','equalto',kind)|list|length }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
+                <div class="mt-1">{% for kind in ['LinkedService','Dataset','Pipeline'] %}{{ kind }}: {{ adf_deployment.resources|selectattr('kind','equalto',kind)|list|length }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
                 {% if adf_deployment.errors %}<ul class="mt-1 list-disc pl-5 text-rose-800">{% for e in adf_deployment.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
                 {% if adf_deployment.last_adf_run_id %}<div class="mt-1">Last trigger: <span class="font-mono">{{ adf_deployment.last_adf_run_id }}</span> by {{ adf_deployment.last_triggered_by }} &middot; {{ adf_deployment.last_triggered_utc }}</div>{% endif %}
                 {% if adf_trigger_blocker %}<div class="mt-1 text-amber-900">Trigger unavailable: {{ adf_trigger_blocker }}</div>{% endif %}

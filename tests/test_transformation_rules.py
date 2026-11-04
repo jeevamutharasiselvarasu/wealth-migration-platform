@@ -303,10 +303,10 @@ def test_if_blank_derives_a_status_from_whether_a_field_is_filled():
     assert _run("IF_BLANK", params, "2024-01-31") == ("Closed", None)
     with pytest.raises(ValueError):
         tr.validate_params("IF_BLANK", {"when_blank": "Open"})
-    from control_plane.services import adf_package
+    from control_plane.services import sql_package
     rule = {"status": "APPROVED", "rule_type": "IF_BLANK", "params": params}
-    expr = adf_package.translate("RULE:X@1", "CLOSED_DATE", rule)
-    assert expr == "iif(isNull(CLOSED_DATE) || trim(CLOSED_DATE) == '', 'Open', 'Closed')"
+    expr = sql_package.translate("RULE:X@1", "CLOSED_DATE", rule)
+    assert expr == "CASE WHEN NULLIF(LTRIM(RTRIM(s.[CLOSED_DATE])), N'') IS NULL THEN N'Open' ELSE N'Closed' END"
 
 
 def test_lookup_returns_the_parent_value_and_reports_misses():
@@ -325,8 +325,8 @@ def test_lookup_needs_file_key_and_column():
         tr.validate_params("LOOKUP", {"parent_file": "advisors.csv", "parent_key": "Id"})
 
 
-def test_lookup_translates_to_a_cached_lookup_expression():
-    from control_plane.services import adf_package
+def test_lookup_translates_to_a_staging_table_lookup():
+    from control_plane.services import sql_package
     rule = {"status": "APPROVED", "rule_type": "LOOKUP", "params": {"parent_file": "advisors.csv", "parent_key": "Id", "return_column": "Name"}}
-    expr = adf_package.translate("RULE:X@1", "ADVISOR_ID", rule)
-    assert "lkp_advisors#lookup(trim(ADVISOR_ID)).Name" in expr
+    expr = sql_package.translate("RULE:X@1", "ADVISOR_ID", rule)
+    assert "FROM [staging].[lkp_advisors] AS l" in expr and "l.[Name]" in expr and "l.[Id]" in expr
