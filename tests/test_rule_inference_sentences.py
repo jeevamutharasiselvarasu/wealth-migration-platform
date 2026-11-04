@@ -36,3 +36,18 @@ def test_split_wordings(text, delim, index):
 
 def test_unrelated_sentence_is_still_not_recognised():
     assert not _one("Custodian and Account Number are copied as-is")["recognised"]
+
+
+_REL = [{"child": "Households.AdvisorId", "parent": "Advisors.Id"}]
+_SENTENCE = "Representative Name is the Name column of the Advisors file, joined through AdvisorId"
+
+
+def test_lookup_sentence_uses_the_confirmed_relationship():
+    (res,) = rule_inference.infer(_SENTENCE, _REL)
+    assert res["recognised"] and res["rule_type"] == "LOOKUP"
+    assert res["params"] == {"parent_file": "Advisors", "parent_key": "Id", "return_column": "Name"}
+
+
+def test_lookup_sentence_is_not_recognised_without_a_confirmed_relationship():
+    assert not rule_inference.infer(_SENTENCE, [])[0]["recognised"]
+    assert not rule_inference.infer(_SENTENCE, [{"child": "Households.OtherId", "parent": "Advisors.Id"}])[0]["recognised"]

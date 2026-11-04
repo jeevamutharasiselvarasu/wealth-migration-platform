@@ -40,6 +40,8 @@ RULE_TYPES: Dict[str, Dict[str, str]] = {
                          "example": '{"default": "UNKNOWN"}'},
     "IF_BLANK": {"label": "Blank test", "help": "Return one value when the source is blank and another when it is filled (for example Open when ClosedDate is blank, otherwise Closed).",
                  "example": '{"when_blank": "Open", "when_filled": "Closed"}'},
+    "LOOKUP": {"label": "Lookup from another file", "help": "Use the mapped value as a key and return a column from the matching row of another source file (a confirmed relationship, for example Households.AdvisorId to Advisors.Id). No match is reported.",
+               "example": '{"parent_file": "advisors.csv", "parent_key": "Id", "return_column": "Name"}'},
     "IF_EQUALS": {"label": "Conditional replace", "help": "Replace a value when it equals a given value; otherwise keep it (or use the else value).",
                   "example": '{"when_equals": "N/A", "then": "", "else": null}'},
 }
@@ -144,6 +146,19 @@ def validate_params(rule_type: str, params: Any) -> Dict[str, Any]:
         if not blank_v or not filled_v:
             raise ValueError("IF_BLANK needs non-empty 'when_blank' and 'when_filled' values.")
         return {"when_blank": blank_v, "when_filled": filled_v}
+    if rule_type == "LOOKUP":
+        out = {}
+        for k in ("parent_file", "parent_key", "return_column"):
+            v = _text(params.get(k)).strip()
+            if not v or len(v) > 120:
+                raise ValueError(f"LOOKUP needs '{k}'.")
+            out[k] = v
+        if not re.match(r"^[A-Za-z0-9_.\- ]+$", out["parent_file"]):
+            raise ValueError("parent_file must be a file name.")
+        for k in ("parent_key", "return_column"):
+            if not re.match(r"^[A-Za-z0-9_ .\-]+$", out[k]):
+                raise ValueError(f"{k} must be a column name.")
+        return out
     # IF_EQUALS
     if "when_equals" not in params or "then" not in params:
         raise ValueError("IF_EQUALS needs 'when_equals' and 'then'.")
@@ -157,9 +172,34 @@ def is_strict(rule_type: str, params: Dict[str, Any]) -> bool:
     return rule_type == "VALUE_MAP" and bool(params.get("strict"))
 
 
-def apply_rule(rule_type: str, params: Dict[str, Any], value: Any, record: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[str]]:
+def lookup_key(params: Dict[str, Any]) -> Tuple[str, str, str]:
+    return (params["parent_file"].strip().lower(), params["parent_key"].strip().lower(), params["return_column"].strip().lower())
+
+
+def build_lookup(records: List[Dict[str, Any]], params: Dict[str, Any]) -> Dict[str, Any]:
+    """Key -> returned value from the parent file's records (first non-blank value wins; column names compared case-insensitively)."""
+    table: Dict[str, Any] = {}
+    kc, rc = params["parent_key"].strip().lower(), params["return_column"].strip().lower()
+    for rec in records:
+        low = {str(k).strip().lower(): v for k, v in rec.items()}
+        key = _text(low.get(kc)).strip().upper()
+        if key and key not in table and _text(low.get(rc)).strip():
+            table[key] = low[rc]
+    return table
+
+
+def apply_rule(rule_type: str, params: Dict[str, Any], value: Any, record: Optional[Dict[str, Any]] = None,
+               lookups: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None) -> Tuple[Any, Optional[str]]:
     """Apply a validated rule. Returns (new_value, warning). Never raises on bad data: it warns and keeps the value."""
     blank = value is None or _text(value).strip() == ""
+    if rule_type == "LOOKUP":
+        if blank:
+            return None, "blank lookup key"
+        table = (lookups or {}).get(lookup_key(params))
+        if table is None:
+            return None, "lookup file not available"
+        found = table.get(_text(value).strip().upper())
+        return (found, None) if found is not None else (None, "no matching row in the lookup file")
     if rule_type == "VALUE_MAP" and params.get("strict"):
         key = _text(value).strip()
         key = key.upper() if params["case_insensitive"] else key

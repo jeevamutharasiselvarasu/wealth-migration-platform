@@ -65,7 +65,8 @@ def _sanitise(message: str) -> str:
     return re.sub(r"'[^']*'", "'…'", message)
 
 
-def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, Any]]], outage: bool = False) -> Dict[str, Any]:
+def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, Any]]], outage: bool = False,
+             lookups: Dict[Any, Dict[str, Any]] = None) -> Dict[str, Any]:
     """Return telemetry for one simulated run of the package. Pure and deterministic."""
     if outage:
         return {"status": "FAILED", "error": OUTAGE_MESSAGE, "retryable": True, "entities": {}, "failures": [], "post_checks": [],
@@ -91,7 +92,7 @@ def simulate(package: Dict[str, Any], canonical_rows: Dict[str, List[Dict[str, A
                     expr = m["transformation"]
                     if expr != "DIRECT_COPY":
                         rule = rules[expr]
-                        value, warning = tr.apply_rule(rule["rule_type"], rule["params"], value, row)
+                        value, warning = tr.apply_rule(rule["rule_type"], rule["params"], value, row, lookups)
                         strict_hit = bool(warning) and tr.is_strict(rule["rule_type"], rule["params"])
                         if warning:
                             warned = True

@@ -139,6 +139,33 @@ def _split_words(s: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _stem(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"\.[A-Za-z0-9]+$", "", str(name)).lower())
+
+
+def _lookup(s: str, relationships: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
+    """'<Target> is the <Col> of the <File> file, joined through <ChildCol>'. The parent file and key come only from a CONFIRMED
+    relationship (each item has child and parent as 'file.column'); with none that matches, the sentence is not recognised."""
+    cue = re.search(r"\b(?:look\s*up|lookup|joined?\s+(?:through|via|on|using)|taken\s+from|comes?\s+from|fetch(?:ed)?)\b", s, re.I)
+    col = re.search(r"\bthe\s+([A-Za-z][\w ]*?)\s+(?:column\s+)?(?:of|from|in)\s+(?:the\s+)?(\w+)\s+(?:file|table)", s, re.I)
+    if not cue or not col or not relationships:
+        return None
+    ret = col.group(1).strip()
+    want = _stem(col.group(2))
+    via = re.search(r"\b(?:through|via|on|using)\s+(?:the\s+)?(\w+)", s, re.I)
+    via_stem = _stem(via.group(1)) if via else ""
+    for rel in relationships:
+        pfile, _, pcol = str(rel["parent"]).rpartition(".")
+        ccol = str(rel["child"]).rpartition(".")[2]
+        pst = _stem(pfile)
+        if not (pst == want or pst.rstrip("s") == want.rstrip("s")):
+            continue
+        if via_stem and via_stem != _stem(ccol):
+            continue
+        return {"type": "LOOKUP", "params": {"parent_file": pfile, "parent_key": pcol, "return_column": ret}}
+    return None
+
+
 _MATCHERS = (_default, _if_blank, _concat, _split, _split_words, _date, _number, _if_equals, _value_map)
 
 
@@ -160,15 +187,17 @@ def meaning(rule_type: str, p: Dict[str, Any]) -> str:
         return f"Uses '{p['default']}' only when the source value is empty."
     if rule_type == "IF_BLANK":
         return f"Writes '{p['when_blank']}' when the source value is empty, otherwise '{p['when_filled']}'."
+    if rule_type == "LOOKUP":
+        return f"Uses the mapped value as the key and returns {p['return_column']} from {p['parent_file']} where {p['parent_key']} matches. No match, or a blank key, is reported."
     return f"Replaces '{p['when_equals']}' with '{p['then']}'; other values are kept."
 
 
-def infer(text: str) -> List[Dict[str, Any]]:
+def infer(text: str, relationships: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
     """One result per statement: a validated proposal or an explicit 'not recognised'."""
     results = []
     for stmt in split_statements(text):
-        hit = None
-        for matcher in _MATCHERS:
+        hit = _lookup(stmt, relationships or [])
+        for matcher in (() if hit else _MATCHERS):
             hit = matcher(stmt)
             if hit:
                 break
@@ -191,10 +220,10 @@ def rule_id_for(rule_type: str, params: Dict[str, Any]) -> str:
     return f"INF_{rule_type}_{digest}"[:41]
 
 
-def save_drafts(conn: sqlite3.Connection, text: str, actor: str, source_label: str = "") -> Dict[str, Any]:
+def save_drafts(conn: sqlite3.Connection, text: str, actor: str, source_label: str = "", relationships: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     """Create DRAFT rule versions for recognised statements. Identical live rules are not duplicated."""
     created, skipped, unrecognised = [], [], []
-    for r in infer(text):
+    for r in infer(text, relationships):
         if not r["recognised"]:
             unrecognised.append(r)
             continue

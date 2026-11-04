@@ -307,3 +307,26 @@ def test_if_blank_derives_a_status_from_whether_a_field_is_filled():
     rule = {"status": "APPROVED", "rule_type": "IF_BLANK", "params": params}
     expr = adf_package.translate("RULE:X@1", "CLOSED_DATE", rule)
     assert expr == "iif(isNull(CLOSED_DATE) || trim(CLOSED_DATE) == '', 'Open', 'Closed')"
+
+
+def test_lookup_returns_the_parent_value_and_reports_misses():
+    params = tr.validate_params("LOOKUP", {"parent_file": "advisors.csv", "parent_key": "Id", "return_column": "Name"})
+    table = tr.build_lookup([{"ID": "a1", "name": "Pat"}, {"ID": "a2", "name": ""}], params)
+    ctx = {tr.lookup_key(params): table}
+    assert tr.apply_rule("LOOKUP", params, " A1 ", None, ctx) == ("Pat", None)
+    assert tr.apply_rule("LOOKUP", params, "zz", None, ctx) == (None, "no matching row in the lookup file")
+    assert tr.apply_rule("LOOKUP", params, "a2", None, ctx)[0] is None
+    assert tr.apply_rule("LOOKUP", params, "", None, ctx) == (None, "blank lookup key")
+    assert tr.apply_rule("LOOKUP", params, "a1", None, {}) == (None, "lookup file not available")
+
+
+def test_lookup_needs_file_key_and_column():
+    with pytest.raises(ValueError):
+        tr.validate_params("LOOKUP", {"parent_file": "advisors.csv", "parent_key": "Id"})
+
+
+def test_lookup_translates_to_a_cached_lookup_expression():
+    from control_plane.services import adf_package
+    rule = {"status": "APPROVED", "rule_type": "LOOKUP", "params": {"parent_file": "advisors.csv", "parent_key": "Id", "return_column": "Name"}}
+    expr = adf_package.translate("RULE:X@1", "ADVISOR_ID", rule)
+    assert "lkp_advisors#lookup(trim(ADVISOR_ID)).Name" in expr

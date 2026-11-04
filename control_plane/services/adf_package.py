@@ -40,6 +40,10 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]]) -> s
     p = tr.validate_params(rule["rule_type"], rule["params"])
     kind = rule["rule_type"]
     blank = f"isNull({col}) || trim({col}) == ''"
+    if kind == "LOOKUP":
+        cache = "lkp_" + re.sub(r"[^A-Za-z0-9]", "_", re.sub(r"\.[A-Za-z0-9]+$", "", p["parent_file"]))
+        ret = _ident(re.sub(r"[^A-Za-z0-9_]", "_", p["return_column"]))
+        return f"iif({blank}, {col}, toString({cache}#lookup(trim({col})).{ret}))"
     if kind == "DEFAULT_IF_BLANK":
         return f"iif({blank}, {_lit(p['default'])}, {col})"
     if kind == "IF_BLANK":
@@ -90,7 +94,13 @@ def _table_flow(entity: str, table: str, fields: Dict[str, Dict[str, Any]], mapp
         targets.append(tgt)
     src_cols = ",\n\t\t".join(f"{c} as string" for c in sorted(cols))
     node = f"{entity}_{table}"
-    return (
+    caches = ""
+    for cache in sorted(set(re.findall(r"\b(lkp_[A-Za-z0-9_]+)#lookup", " ".join(derived)))):
+        rets = sorted(set(re.findall(rf"{cache}#lookup\(trim\([A-Za-z0-9_]+\)\)\.([A-Za-z0-9_]+)", " ".join(derived))))
+        caches += (f"source(output(\n\t\tKey as string,\n\t\t" + ",\n\t\t".join(f"{r} as string" for r in rets) +
+                   f"\n\t),\n\tallowSchemaDrift: false,\n\tvalidateSchema: false) ~> src_{cache}\n"
+                   f"src_{cache} sink(store: 'cache',\n\tformat: 'inline',\n\tkeys: ['Key'],\n\tsaveOrder: 1) ~> {cache}\n")
+    return caches + (
         f"source(output(\n\t\t{src_cols}\n\t),\n\tallowSchemaDrift: false,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> src_{node}\n"
         f"src_{node} derive(" + ",\n\t".join(derived) + f") ~> derive_{node}\n"
         f"derive_{node} select(mapColumn(" + ", ".join(targets) + f")) ~> project_{node}\n"

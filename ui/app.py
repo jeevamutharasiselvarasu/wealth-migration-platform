@@ -1424,8 +1424,9 @@ def _run_simulated_execution(user, migration_id: str, outage: str = "", retry_of
         conn.close()
     started = datetime.now(timezone.utc)
     t0 = _time.perf_counter()
-    rows = {} if outage == "on" else _canonical_rows_for_migration(migration_id)[0]
-    telemetry = execution_simulator.simulate(package, rows, outage == "on")
+    lookups, lookup_files = _lookup_context(package)
+    rows = {} if outage == "on" else _canonical_rows_for_migration(migration_id, lookup_files)[0]
+    telemetry = execution_simulator.simulate(package, rows, outage == "on", lookups)
     duration = int((_time.perf_counter() - t0) * 1000)
     conn = get_db_connection()
     try:
@@ -2435,7 +2436,43 @@ async def download_stored_artifact(artifact_id: str, request: Request):
     return Response(content=rec["data"], media_type=rec["media_type"], headers={"Content-Disposition": f'attachment; filename="{rec["filename"]}"'})
 
 
-def _canonical_rows_for_migration(migration_id: str):
+def _confirmed_relationships(conn=None) -> List[Dict[str, str]]:
+    """Human-confirmed file relationships of the active migration (child and parent as file.column)."""
+    own = conn is None
+    conn = conn or get_db_connection()
+    try:
+        cross_file._DDL and conn.execute(cross_file._DDL)
+        mid = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+        rows = conn.execute("SELECT child, parent FROM relationship_reviews WHERE migration_id = ? AND status = 'CONFIRMED'", (mid,)).fetchall()
+        return [{"child": r["child"], "parent": r["parent"]} for r in rows]
+    finally:
+        if own:
+            conn.close()
+
+
+def _lookup_context(package: Dict[str, Any]):
+    """Lookup tables for the package's LOOKUP rules, built from the migration's approved source files. Returns (tables, parent file names)."""
+    wanted = {transformation_rules.lookup_key(r["params"]): r["params"] for r in package.get("transformation_rules", []) if r.get("rule_type") == "LOOKUP"}
+    if not wanted:
+        return {}, set()
+    by_name: Dict[str, List[Dict[str, Any]]] = {}
+    for group in state_store.entity_source_files.values():
+        for rec in group.values():
+            stored = rec.get("stored_path")
+            if not stored or not file_store.is_file(stored):
+                continue
+            try:
+                by_name.setdefault(str(rec.get("filename", "")).strip().lower(), read_source_records(rec.get("filename", "source.csv"), file_store.read_bytes(stored)))
+            except (OSError, ValueError):
+                continue
+    tables = {}
+    for key, params in wanted.items():
+        if key[0] in by_name:
+            tables[key] = transformation_rules.build_lookup(by_name[key[0]], params)
+    return tables, {k[0] for k in wanted}
+
+
+def _canonical_rows_for_migration(migration_id: str, skip_files=()):
     """Canonical-shaped rows per entity, derived in memory from approved source files and mappings (files joined on the entity key)."""
     canonical_rows: Dict[str, List[Dict[str, Any]]] = {}
     join_info: Dict[str, Dict[str, int]] = {}
@@ -2454,6 +2491,8 @@ def _canonical_rows_for_migration(migration_id: str):
         for rec in group.values():
             stored = rec.get("stored_path")
             if rec.get("inference_approval_status") != "APPROVED" or not stored or not file_store.is_file(stored):
+                continue
+            if str(rec.get("filename", "")).strip().lower() in skip_files:
                 continue
             try:
                 records = read_source_records(rec.get("filename", "source.csv"), file_store.read_bytes(stored))
@@ -2781,7 +2820,7 @@ async def preview_inferred_rules(request: Request, rule_text: str = Form(""), as
     text, label, err = _rule_text_and_label(rule_text, asset_id)
     if err:
         return _rules_page(request, error=err)
-    return _rules_page(request, inferred=rule_inference.infer(text), inferred_label=label or "pasted text",
+    return _rules_page(request, inferred=rule_inference.infer(text, _confirmed_relationships()), inferred_label=label or "pasted text",
                        inferred_source={"asset_id": asset_id, "text": "" if asset_id else rule_text})
 
 
@@ -2847,7 +2886,7 @@ async def infer_transformation_rules(request: Request, rule_text: str = Form("")
         return _rules_redirect("error", err)
     conn = get_db_connection()
     try:
-        result = rule_inference.save_drafts(conn, rule_text, user["name"], label)
+        result = rule_inference.save_drafts(conn, rule_text, user["name"], label, _confirmed_relationships(conn))
         conn.commit()
     finally:
         conn.close()
