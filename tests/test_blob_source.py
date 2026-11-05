@@ -259,3 +259,15 @@ def test_account_name_is_read_from_the_connection_string_without_the_key(monkeyp
     monkeypatch.setattr(bs, "_service", lambda *a, **k: (_ for _ in ()).throw(ConnectionError("offline")))  # no real network in tests
     out = bs.status("lake", conn_str=cs)
     assert out["account"] == "afswstorage" and "SECRET" not in str(out)
+
+
+def test_project_csv_keeps_only_staging_columns_matches_by_name_and_keeps_quoted_json():
+    import pytest
+    from control_plane.services import blob_source as b
+    raw = ('\ufeffId,Name,Designations,RepCodes\n'
+           'A1,Ann,,"[{""RepCode"":""1"",""Custodian"":""Schwab""}]"\n').encode("utf-8")
+    out = b.project_csv(raw, ["Id", "RepCodes", "name"]).decode()
+    assert out.splitlines()[0] == "Id,RepCodes,name" and "Designations" not in out
+    assert out.splitlines()[1] == 'A1,"[{""RepCode"":""1"",""Custodian"":""Schwab""}]",Ann'
+    with pytest.raises(ValueError, match="no column named Email"):
+        b.project_csv(raw, ["Id", "Email"])

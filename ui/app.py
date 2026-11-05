@@ -3025,7 +3025,10 @@ def _write_canonical_stage(migration_id: str):
                 data = blob_source.read_blob(_blob_container(), blob_source.source_prefix(_source_firm()) + name)
             except Exception:
                 return None, f"The lookup file {name} was not found in the migration files or in raw storage.", rec
-        lookups[t[4:]] = data
+        try:
+            lookups[t[4:]] = blob_source.project_csv(data, cols[t])  # only the columns the staging table holds
+        except ValueError as exc:
+            return None, f"The lookup file {name}: {exc}", rec
     try:
         return blob_source.write_canonical_stage(_blob_container(), env["stagingFolder"], tables, lookups), None, rec
     except Exception as exc:

@@ -208,6 +208,20 @@ def canonical_csv(columns: List[str], rows: List[Dict[str, Any]]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
+def project_csv(data: bytes, columns: List[str]) -> bytes:
+    """A lookup file cut to exactly the staging table's columns (matched by name, ignoring case and a leading BOM). The staging table only
+    holds the columns the rules read, and the copy fails on any other column, so the file must not carry them."""
+    import csv
+    import io
+    text = data.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    by_lower = {str(h).strip().lower(): h for h in (reader.fieldnames or [])}
+    missing = [c for c in columns if c.lower() not in by_lower]
+    if missing:
+        raise ValueError("The lookup file has no column named " + ", ".join(missing) + ".")
+    return canonical_csv(columns, [{c: row.get(by_lower[c.lower()]) for c in columns} for row in reader])
+
+
 def write_canonical_stage(container: str, folder: str, tables: Dict[str, Any], lookups: Dict[str, bytes], conn_str: Optional[str] = None) -> Dict[str, Any]:
     """Write the raw files, mapped to canonical names, under stage/<folder>/: <Entity>.csv per entity (tables = {name: (columns, rows)})
     and lookups/<name>.csv copied as they are. Only stage/ is written; raw/ and curated/ are never touched."""
