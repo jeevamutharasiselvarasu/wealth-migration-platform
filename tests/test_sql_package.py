@@ -29,7 +29,7 @@ RULES = {"RULE:D@1": _rule("DATE_FORMAT", {"input_formats": ["MM/DD/YYYY", "YYYY
 def test_build_emits_staging_tables_one_insert_per_target_table_and_a_procedure():
     pkg = sp.build("MIG-1", _spec(), _maps(**{"T.REG_CD": "PROPOSED"}), RULES, azure_simulated.simulated_environment("MIG-1"), "Ann")
     files, m = pkg["files"], pkg["manifest"]
-    assert set(files) == {"sql/00_staging_tables.sql", "sql/Account_T.sql", "sql/usp_load_all.sql", "manifest.json"}
+    assert set(files) == {"sql/00_staging_tables.sql", "sql/01_target_tables.sql", "sql/Account_T.sql", "sql/usp_load_all.sql", "manifest.json"}
     sql = files["sql/Account_T.sql"]
     assert "INSERT INTO [dbo].[T] ([ACCT_NO], [OPEN_DT])" in sql and "FROM [staging].[Account] AS s" in sql
     assert "s.[ACCT_NUM] AS [ACCT_NO]" in sql and "TRY_CONVERT(date, LTRIM(RTRIM(s.[OPEN_DATE])), 101)" in sql and "REG_CD" not in sql

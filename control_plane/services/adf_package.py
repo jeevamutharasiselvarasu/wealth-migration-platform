@@ -61,15 +61,21 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     real = not env.get("simulated", True)
     sfx = "" if real else "_Sim"
     ls_kv, ls_blob, ls_sql = f"LS_KeyVault{sfx}", f"LS_ADLS_Staging{sfx}", f"LS_SQL_Target{sfx}"
-    add("linkedservices", "linkedService", ls_kv, {"type": "AzureKeyVault", "typeProperties": {"baseUrl": env["keyVaultUrl"]}})
+    managed_sql = real and env.get("sqlAuth") == "managed"  # the factory's own identity signs in to Azure SQL: no Key Vault, no secret
+    if not managed_sql:
+        add("linkedservices", "linkedService", ls_kv, {"type": "AzureKeyVault", "typeProperties": {"baseUrl": env["keyVaultUrl"]}})
     if real:  # Blob storage reached with the factory's managed identity: no key or secret in the package
         add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobStorage", "typeProperties": {"serviceEndpoint": env["storageBlobUrl"], "accountKind": "StorageV2"}})
     else:
         add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobFS", "typeProperties": {"url": env["storageDfsUrl"]}})
-    add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {"connectionString": {
-        "type": "AzureKeyVaultSecret", "store": ref(ls_kv, "LinkedServiceReference"), "secretName": env["keyVaultSqlSecretName"]}}})
+    if managed_sql:
+        add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {
+            "server": env["sqlServer"], "database": env["sqlDatabase"], "authenticationType": "SystemAssignedManagedIdentity"}})
+    else:
+        add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {"connectionString": {
+            "type": "AzureKeyVaultSecret", "store": ref(ls_kv, "LinkedServiceReference"), "secretName": env["keyVaultSqlSecretName"]}}})
 
-    prepare = _batches(sql["files"]["sql/00_staging_tables.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"])
+    prepare = _batches(sql["files"]["sql/01_target_tables.sql"]) + _batches(sql["files"]["sql/00_staging_tables.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"])
     activities: List[Dict[str, Any]] = [{
         "name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
         "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}}]

@@ -127,6 +127,15 @@ def _insert(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, An
     return {"sql": sql, "columns": cols, "lookups": lookups, "target_columns": sorted(t.strip("[]") for t in targets)}
 
 
+_SQL_TYPES = {"date": "date", "datetime": "datetime2", "timestamp": "datetime2", "int": "int", "integer": "int", "bigint": "bigint",
+              "decimal": "decimal(28,8)", "number": "decimal(28,8)", "numeric": "decimal(28,8)", "float": "float", "boolean": "bit", "bool": "bit"}
+
+
+def sql_type(model_type: Any) -> str:
+    """T-SQL column type for a target field type; anything not recognised is stored as text rather than guessed."""
+    return _SQL_TYPES.get(str(model_type or "").strip().lower(), "nvarchar(4000)")
+
+
 def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
           env: Dict[str, Any], generated_by: str, provenance: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Return {'files': {path: text}, 'manifest': {...}}. Raises ValueError when there is nothing safe to generate."""
@@ -169,6 +178,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
                             "uncoveredFields": [n for n in fields if n not in mapped],
                             "reviewers": sorted({m.get("reviewer") or "" for m in rows} - {""})}
 
+    tgt = [f"IF SCHEMA_ID(N'{schema}') IS NULL EXEC(N'CREATE SCHEMA {_q(schema)}');\nGO\n"]
+    for entity in sorted(entities):
+        flds = spec["entities"][entity]["fields"]
+        for table in sorted({_ident(f["table"]) for f in flds}):
+            cols = sorted({(_ident(f["column"]), sql_type(f.get("type"))) for f in flds if f["table"] == table})
+            tgt.append(f"IF OBJECT_ID(N'{schema}.{table}', N'U') IS NULL\n    CREATE TABLE {_q(schema)}.{_q(table)} (\n        "
+                       + ",\n        ".join(f"{_q(c)} {t} NULL" for c, t in cols) + "\n    );\nGO\n")
+    files["sql/01_target_tables.sql"] = "-- Creates the target schema and tables when they do not exist yet. Never drops or alters anything.\n" + "\n".join(tgt)
     ddl = [f"IF SCHEMA_ID(N'{STAGING_SCHEMA}') IS NULL EXEC(N'CREATE SCHEMA {_q(STAGING_SCHEMA)}');\nGO\n"]
     for name, cols in sorted({**staging, **lookup_cols}.items()):
         ddl.append(f"IF OBJECT_ID(N'{STAGING_SCHEMA}.{name}', N'U') IS NULL\n    CREATE TABLE {_q(STAGING_SCHEMA)}.{_q(name)} (\n        "

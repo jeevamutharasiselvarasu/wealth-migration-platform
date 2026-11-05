@@ -16,7 +16,7 @@ CFG = {"subscription_id": "059ee846-90c3-449e-80cf-874cdaa7f8ad", "resource_grou
 def test_environment_is_real_only_with_a_saved_factory_and_a_real_storage_account():
     real = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
     assert real["simulated"] is False and real["factoryName"] == "adf-amp-xodus" and real["stagingContainer"] == "xodus-lake"
-    assert real["storageResourceId"].endswith("/providers/Microsoft.Storage/storageAccounts/afswstorage") and real["unresolved"] == ["sql", "keyVault"]
+    assert real["storageResourceId"].endswith("/providers/Microsoft.Storage/storageAccounts/afswstorage") and real["unresolved"] == ["sql"]
     for args in ((None, "afswstorage", "xodus-lake", False), (CFG, "", "xodus-lake", False), (CFG, "devstoreaccount1", "xodus-lake", True)):
         assert env_mod.resolve("MIG-1", *args[:3], emulator=args[3])["simulated"] is True
 
@@ -32,7 +32,7 @@ def test_real_package_has_a_stopped_blob_trigger_on_curated_ready_files_and_no_s
     assert trig["pipelines"][0]["pipelineReference"]["referenceName"] == man["pipeline"]
     ls = json.loads(files["linkedService/LS_ADLS_Staging.json"])["properties"]
     assert ls["type"] == "AzureBlobStorage" and ls["typeProperties"]["serviceEndpoint"] == "https://afswstorage.blob.core.windows.net"
-    assert man["simulated"] is False and man["unresolved"] == ["sql", "keyVault"] and "README.txt" in files
+    assert man["simulated"] is False and man["unresolved"] == ["sql"] and "README.txt" in files
     assert "AccountKey" not in json.dumps(files) and not any("_Sim" in n for n in files)
 
 
@@ -63,3 +63,17 @@ def test_entity_raw_file_skips_lookup_files_and_prefers_the_file_named_like_the_
 def test_entity_raw_file_when_only_the_lookup_file_is_the_sample_file_but_the_master_is_also_listed():
     got = adf_package.entity_raw_files({"Household": ["corecap_advisors.csv", "corecap_households.csv", "corecap_advisors.csv"]}, {"lkp_corecap_advisors"})
     assert got["Household"] == "corecap_households.csv"
+
+
+def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_for_sql():
+    env = env_mod.resolve("MIG-E439077124", {**CFG, "sql_server": "afswdatabase.database.windows.net", "sql_database": "simplicitydb", "sql_schema": "simplicity"},
+                          "afswstorage", "xodus-lake", emulator=False)
+    env["rawFiles"] = {"Account": "a.csv", "Client": "c.csv", "Household": "h.csv"}; env["rawFolder"] = "raw/corecap"
+    files = _package("MIG-E439077124", env)["files"]
+    ls = json.loads(files["linkedService/LS_SQL_Target.json"])["properties"]["typeProperties"]
+    assert ls == {"server": "afswdatabase.database.windows.net", "database": "simplicitydb", "authenticationType": "SystemAssignedManagedIdentity"}
+    assert "linkedService/LS_KeyVault.json" not in files and env["unresolved"] == []
+    ddl = files["sql/01_target_tables.sql"]
+    assert "CREATE SCHEMA [simplicity]" in ddl and "CREATE TABLE [simplicity].[T]" in ddl and "[OPEN_DT] date NULL" in ddl and "DROP TABLE" not in ddl.upper()
+    pipe = json.loads(files["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"][0]
+    assert "CREATE TABLE [simplicity].[T]" in json.dumps(pipe)

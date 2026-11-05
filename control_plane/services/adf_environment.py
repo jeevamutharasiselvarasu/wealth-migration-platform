@@ -19,7 +19,7 @@ def resolve(migration_id: str, azure_cfg: Optional[Dict[str, Any]], storage_acco
         return azure_simulated.simulated_environment(migration_id)
     slug = re.sub(r"[^a-z0-9]", "", migration_id.lower())[:12] or "xodus"
     sql_ok = bool(azure_cfg.get("sql_server") and azure_cfg.get("sql_database"))
-    kv_ok = bool(azure_cfg.get("key_vault_url") and azure_cfg.get("key_vault_sql_secret"))
+    kv_ok = True  # Azure SQL is reached with the factory's managed identity; Key Vault is not used
     unresolved = [x for x, ok in (("sql", sql_ok), ("keyVault", kv_ok)) if not ok]
     return {
         "simulated": False,
@@ -33,7 +33,7 @@ def resolve(migration_id: str, azure_cfg: Optional[Dict[str, Any]], storage_acco
         "stagingContainer": container, "stagingFolder": f"stage/{slug}",
         "readyContainer": container, "readyFolder": "curated", "readySuffix": ".ready",
         "sqlServer": azure_cfg.get("sql_server") or f"{PLACEHOLDER}.database.windows.net", "sqlDatabase": azure_cfg.get("sql_database") or PLACEHOLDER,
-        "sqlSchema": azure_cfg.get("sql_schema") or "dbo",
+        "sqlSchema": azure_cfg.get("sql_schema") or "simplicity", "sqlAuth": "managed",
         "keyVaultUrl": azure_cfg.get("key_vault_url") or f"https://{PLACEHOLDER.lower()}.vault.azure.net/",
         "keyVaultSqlSecretName": azure_cfg.get("key_vault_sql_secret") or PLACEHOLDER,
         "unresolved": unresolved,
