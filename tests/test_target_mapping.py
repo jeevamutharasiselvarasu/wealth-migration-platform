@@ -295,6 +295,10 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # second save is v2; nothing is overwritten
     rows = app_module.artifact_store.list_artifacts(conn, conn.execute("SELECT migration_id FROM stored_artifacts LIMIT 1").fetchone()[0], "ADF_PACKAGE")
     assert [r["artifact_version"] for r in rows] == [2, 1] and all((tmp_path / "storage" / r["rel_path"]).is_file() for r in rows)
+    cs = asyncio.run(call("Validation Specialist", "GET", "/api/target-mapping/create-scripts"))
+    assert cs.status_code == 200 and "attachment" in cs.headers["content-disposition"] and "CREATE TABLE" in cs.text and "staging" in cs.text and "DROP TABLE" not in cs.text.upper()
+    assert cs.text.index("-- Creates the target schema") < cs.text.index("-- Staging tables")  # target tables first, then staging
+    assert asyncio.run(call("Domain SME", "GET", "/api/target-mapping/create-scripts")).status_code == 403
     page = asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
     assert "Saved package" in page and "adf-current" in page and "adf-stale" not in page and "approved mappings" in page
     assert "signoff-adf" in asyncio.run(call("Validation Specialist", "GET", "/reconciliation")).text

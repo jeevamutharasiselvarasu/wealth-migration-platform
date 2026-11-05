@@ -24,7 +24,7 @@
     <details class="mt-3"><summary class="cursor-pointer text-xs font-bold text-blue-700">View the SQL</summary>
       {% for path, body in tsql.files.items() if path.startswith('sql/') and path != 'sql/usp_load_all.sql' %}<p class="mt-2 font-mono text-[10px] text-[#5A6A88]">{{ path }}</p><pre class="tree" style="margin:0;white-space:pre-wrap">{{ body }}</pre>{% endfor %}
     </details>
-    <p class="mt-3"><a href="/api/target-mapping/transformation-sql" class="btn g sm">Download transformation SQL (.sql)</a></p>
+    <p class="mt-3"><a href="/api/target-mapping/transformation-sql" class="btn g sm">Download transformation SQL (.sql)</a> <a href="/api/target-mapping/create-scripts" class="btn g sm" data-testid="create-scripts-link">Download create scripts (.sql)</a> <span class="fh">Target schema, tables and staging tables: run once by hand before the first pipeline run (from the latest ADF package).</span></p>
     {% elif tsql_error %}<div class="exc" style="margin-top:10px">{{ tsql_error }}</div>
     {% else %}<div class="empty" style="margin-top:10px">Approve at least one target mapping to generate the SQL.</div>{% endif %}
   </section>

@@ -26,6 +26,7 @@
     {% else %}
     <p class="fh">There is no ADF package for this migration yet. Build it in <a href="/transformation-sql" class="text-blue-700">07 Transformation SQL</a>.</p>
     {% endif %}
+    {% if pkg %}<p class="fh mt-2"><a href="/api/target-mapping/create-scripts" class="btn g sm" data-testid="create-scripts-link">Download create scripts (.sql)</a> Run them once against the target database before the first pipeline run; the pipeline does not create tables.</p>{% endif %}
     <form action="/api/git/publish" method="POST" class="mt-2"><fieldset {% if not (can_publish and git and git.status == 'CONNECTED' and pkg) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
       <button type="submit" class="btn p sm" data-testid="publish-button">Publish ADF package to GitHub</button>
       <span class="fh">{% if not git %} Set up the GitHub connection first.{% elif git.status != 'CONNECTED' %} Test the GitHub connection first.{% elif not can_publish %} A Migration Analyst or Platform Admin publishes.{% endif %}{% if not git or git.status != 'CONNECTED' %} <a href="/azure-setup#git" class="text-blue-700">Open Azure connection</a>.{% endif %}</span>

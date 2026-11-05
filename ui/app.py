@@ -761,6 +761,29 @@ async def publish_artifacts_page(request: Request, notice: str = "", error: str 
     })
 
 
+@app.get("/api/target-mapping/create-scripts")
+async def download_create_scripts(request: Request):
+    """One .sql file with the schema/table create scripts from the latest stored ADF package. A person runs it; the pipeline never does."""
+    user = get_current_user(request)
+    if user["role"] not in TARGET_PREVIEW_ROLES:
+        raise HTTPException(status_code=403, detail="Your role cannot download the create scripts.")
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        art = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        rec = artifact_store.read(conn, art["artifact_id"]) if art else None
+    finally:
+        conn.close()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Generate the ADF package first (07 Transformation SQL).")
+    with zipfile.ZipFile(io.BytesIO(rec["data"])) as z:
+        parts = [z.read(n).decode("utf-8") for n in ("sql/01_target_tables.sql", "sql/00_staging_tables.sql") if n in z.namelist()]
+    text = (f"-- XODUS create scripts for {migration_id} (package {art['artifact_id']} v{art['artifact_version']}).\n"
+            "-- Run once, in this order, against the target database. They only create what is missing; nothing is dropped or altered.\n"
+            "-- GO separates batches (SSMS / Azure Data Studio); in the Azure portal query editor run each batch on its own.\n\n" + "\n".join(parts))
+    return Response(content=text, media_type="application/sql", headers={"Content-Disposition": f'attachment; filename="xodus_create_{migration_id}.sql"'})
+
+
 @app.post("/api/git/publish")
 async def publish_adf_to_git(request: Request):
     """Add the latest stored ADF package to the linked GitHub repository as one commit. The factory owner links the repository in Data Factory."""
