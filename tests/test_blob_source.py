@@ -239,3 +239,14 @@ def test_blob_panel_marks_same_name_different_content_as_changed(monkeypatch):
                                                               "R2": {"filename": "b.csv", "content_sha256": hashlib.sha256(b"old").hexdigest()}}}
     states = {b["name"].split("/")[-1]: b["state"] for b in app_module._blob_panel()["blobs"]}
     assert states == {"a.csv": "loaded", "b.csv": "changed", "c.csv": "new"}
+
+
+def test_blob_errors_report_the_azure_code_and_a_hint_but_never_the_key():
+    from azure.core.exceptions import HttpResponseError
+    e = HttpResponseError(message="AccountKey=SECRETSECRET denied")
+    e.status_code, e.error_code = 403, "AuthorizationFailure"
+    msg = bs.explain_error(e)
+    assert "HTTP 403" in msg and "AuthorizationFailure" in msg and "firewall" in msg and "SECRET" not in msg
+    e.status_code, e.error_code = 403, "KeyBasedAuthenticationNotPermitted"
+    assert "key access is disabled" in bs.explain_error(e)
+    assert "could not be reached" in bs.explain_error(ConnectionError("no route"))

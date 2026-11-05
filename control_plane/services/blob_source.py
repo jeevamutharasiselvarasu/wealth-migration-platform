@@ -67,8 +67,31 @@ def status(container: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
             out["container_exists"] = svc.get_container_client(container).exists()
             out["detail"] = "" if out["container_exists"] else f"Container '{container}' does not exist yet."
     except Exception as exc:  # network, auth or SDK errors: report, do not crash the page
-        out["detail"] = f"Cannot reach blob storage: {type(exc).__name__}"
+        out["detail"] = explain_error(exc)
     return out
+
+
+_HINTS = {
+    "AuthenticationFailed": "the account key or connection string is wrong or was rotated",
+    "AuthorizationFailure": "the storage firewall (selected networks) or the permissions block this request",
+    "AuthorizationPermissionMismatch": "the identity lacks the needed blob permission",
+    "KeyBasedAuthenticationNotPermitted": "key access is disabled on the storage account, so a key or SAS cannot be used",
+    "AccountIsDisabled": "the storage account is disabled",
+    "InvalidAuthenticationInfo": "the connection string or token is malformed",
+}
+
+
+def explain_error(exc: Exception) -> str:
+    """A safe reason for a blob failure: the error type, HTTP status and Azure error code only (never the key, URL or request body)."""
+    code = str(getattr(exc, "error_code", "") or "").split(".")[-1]
+    status_code = getattr(exc, "status_code", None)
+    bits = [type(exc).__name__] + ([f"HTTP {status_code}"] if status_code else []) + ([code] if code else [])
+    hint = _HINTS.get(code, "")
+    if not hint and not status_code:
+        text = str(exc).upper()
+        hint = ("a proxy or TLS inspection is in the way: the container must trust its certificate" if "CERTIFICATE" in text or "SSL" in text
+                else "the storage endpoint could not be reached (network, DNS or the account name)")
+    return f"Cannot reach blob storage ({', '.join(bits)})" + (f": {hint}." if hint else ".")
 
 
 def ensure_layout(container: str, source_firm: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
