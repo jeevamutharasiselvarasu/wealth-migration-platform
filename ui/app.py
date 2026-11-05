@@ -854,8 +854,16 @@ async def setup_hub(request: Request):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {}) or {}
     cfg = _target_connection_status().get("config") or {}
+    conn = get_db_connection()
+    try:
+        az, gt = azure_connection.get_config(conn) or {}, git_connection.get_config(conn) or {}
+        conn.commit()
+    finally:
+        conn.close()
     return render_template_with_context(request, "setup_hub.html", {
         "page_title": "Setup", "user_name": user["name"], "user_role": user["role"],
+        "azure_status": str(az.get("status") or "not set up").lower(), "azure_factory": az.get("factory_name", ""),
+        "git_status": str(gt.get("status") or "not set up").lower(), "git_repo": gt.get("repository", ""), "git_branch": gt.get("branch", ""),
         "configured": bool(setup), "setup_entities": setup.get("entities") or [],
         "target_confirmed": cfg.get("status") == "CONFIRMED", "target_system": setup.get("target_system", ""),
         "knowledge_saved": str(state_store.questionnaire_data.get("last_updated") or "Not yet")[:10],

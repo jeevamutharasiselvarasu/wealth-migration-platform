@@ -9,24 +9,29 @@
       <p>Everything a migration needs before data moves: the workspace configuration, the one-time target system setup, and the firm knowledge the agents rely on. Canonical-to-target mapping is stage 06 and target validation is stage 10, after the ADF run.</p>
     </div>
   </div>
-  <section class="kpis" aria-label="Setup summary">
+  <section class="kpis k5" aria-label="Setup summary">
     <div class="kpi"><small>Workspace configuration</small><b>{{ 'Saved' if configured else 'Needs setup' }}</b><span>{{ setup_entities|length }} entit{{ 'y' if setup_entities|length == 1 else 'ies' }} in scope</span></div>
     <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if target_confirmed else 'Not confirmed' }}</b><span>{{ target_system or 'no target recorded' }}</span></div>
     <div class="kpi"><small>Firm knowledge</small><b>{{ knowledge_saved }}</b><span>last saved</span></div>
+    <div class="kpi"><small>Azure connection</small><b>{{ azure_status|title }}</b><span>{{ azure_factory or 'no factory saved' }}</span></div>
+    <div class="kpi"><small>GitHub</small><b>{{ git_status|title }}</b><span>{{ git_repo or 'no repository saved' }}</span></div>
   </section>
-  <div class="two">
-    <section class="card"><h3>Workspace configuration</h3>
+  <div class="hub">
+    <section class="card hcard"><div class="hh"><h3>Workspace configuration</h3><span class="pill {{ 'approved' if configured else 'review' }}">{{ 'Saved' if configured else 'Needs setup' }}</span></div>
       <p class="fh">Source firm, target system, canonical version, entities in scope and source access.</p>
       <a class="btn p sm" href="/migration-setup">Open configuration →</a></section>
-    <section class="card"><h3>Target system</h3>
+    <section class="card hcard"><div class="hh"><h3>Target system</h3><span class="pill {{ 'approved' if target_confirmed else 'review' }}">{{ 'Confirmed' if target_confirmed else 'Not confirmed' }}</span></div>
       <p class="fh">One-time step: connect, infer and confirm the target. Canonical → target mapping then happens in stage 06 Target mapping.</p>
       <a class="btn p sm" href="/target-mapping#target-system">Open target system →</a></section>
-    <section class="card"><h3>Firm knowledge</h3>
+    <section class="card hcard"><div class="hh"><h3>Firm knowledge</h3><span class="pill queued">{{ knowledge_saved }}</span></div>
       <p class="fh">Knowledge assets and the discovery form that give the agents firm context.</p>
       <a class="btn p sm" href="/firm-knowledge">Open firm knowledge →</a></section>
-    <section class="card"><h3>Azure connection</h3>
-      <p class="fh">The Azure Data Factory service principal and resources the deployment runs in. The secret stays on the server.</p>
+    <section class="card hcard"><div class="hh"><h3>Azure connection</h3><span class="pill {{ 'approved' if azure_status == 'connected' else 'review' }}">{{ azure_status|title }}</span></div>
+      <p class="fh">Data Factory service principal, source storage (Blob) and the target Azure SQL database. Secrets stay on the server.</p>
       <a class="btn p sm" href="/azure-setup">Open Azure connection →</a></section>
+    <section class="card hcard" data-testid="hub-github"><div class="hh"><h3>GitHub integration</h3><span class="pill {{ 'approved' if git_status == 'connected' else 'review' }}">{{ git_status|title }}</span></div>
+      <p class="fh">The repository the generated ADF package is published to for the factory owner. {% if git_repo %}<span class="font-mono">{{ git_repo }}</span>{% if git_branch %} · {{ git_branch }}{% endif %}{% endif %} Publishing is stage 08.</p>
+      <a class="btn p sm" href="/azure-setup#git">Open GitHub integration →</a></section>
   </div>
 </div>
 {% endblock %}

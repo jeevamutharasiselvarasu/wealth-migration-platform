@@ -137,3 +137,23 @@ body h1,body h2,body h3,body h4{font-weight:700}
 .gbar{margin-top:12px;border-radius:14px;padding:12px 14px;background:var(--tint-g);color:var(--ink-g);font-size:12.5px;font-weight:600;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
 .mab{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:1020px){.jr{grid-template-columns:1fr 1fr}}
+
+/* Setup hub and connection pages: even grids, one status per card, numbered segments */
+.kpis.k5{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.hub{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:stretch}
+.hcard{display:flex;flex-direction:column;gap:8px;min-height:168px}
+.hcard .hh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.hcard .hh h3{margin:0}
+.hcard .fh{margin:0;flex:1;font-size:12.5px;line-height:1.5}
+.hcard .hs{font-size:11.5px;color:var(--muted)}
+.hcard .btn{align-self:flex-start;margin-top:4px}
+.anav{display:flex;gap:8px;flex-wrap:wrap}
+.anav a{display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--head);font-size:12px;font-weight:700;text-decoration:none}
+.anav a:hover{background:var(--tint-b)}
+.anav a span{font:700 10px ui-monospace,Menlo,monospace;color:var(--ink-b);background:var(--tint-b);border-radius:6px;padding:2px 6px}
+.sgrp{display:flex;flex-direction:column;gap:12px;padding-top:6px;scroll-margin-top:16px}
+.sgrp+.sgrp{border-top:1px solid var(--line);padding-top:22px;margin-top:6px}
+.sgrp>.sech{margin-bottom:0}
+.sgrp .fgrid .field,.sgrp .two .field{margin-bottom:8px}
+.sgrp .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:800px){.sgrp .two{grid-template-columns:1fr}}

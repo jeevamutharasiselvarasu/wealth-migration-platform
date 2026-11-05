@@ -11,64 +11,17 @@
       <p>The Azure Data Factory the deployment is run in. The platform signs in as a service principal. Only identifiers are saved here; the client secret is never typed into the platform. It is read from a server environment variable.</p>
     </div>
   </div>
-  <section class="kpis" aria-label="Connection summary">
-    <div class="kpi"><small>Connection</small><b>{{ cfg.status|default('Not set up')|title if cfg else 'Not set up' }}</b><span>{{ cfg.check_detail|default('save settings, then test') if cfg else 'no settings saved' }}</span></div>
+  <section class="kpis k5" aria-label="Connection summary">
+    <div class="kpi"><small>Data Factory</small><b>{{ cfg.status|default('Not set up')|title if cfg else 'Not set up' }}</b><span>{{ cfg.factory_name if cfg and cfg.factory_name else 'no factory saved' }}</span></div>
+    <div class="kpi"><small>Source storage</small><b>{{ 'Reachable' if blob.reachable else 'Not reachable' }}</b><span>{{ blob.container }}{% if blob.layout_ready %} · folders in place{% endif %}</span></div>
+    <div class="kpi"><small>Target database</small><b>{{ sqlt.status|default('Not set up')|title if sqlt else 'Not set up' }}</b><span>{{ sqlt.database_name if sqlt and sqlt.database_name else 'no database saved' }}</span></div>
+    <div class="kpi"><small>GitHub</small><b>{{ git.status|default('Not set up')|title if git else 'Not set up' }}</b><span>{{ git.repository if git and git.repository else 'no repository saved' }}</span></div>
     <div class="kpi"><small>Client secret</small><b>{{ 'Present' if cfg and cfg.secret_present else 'Missing' }}</b><span>{{ cfg.secret_env_var if cfg else default_secret_env }} on the server</span></div>
-    <div class="kpi"><small>Last tested</small><b>{{ (cfg.checked_utc or 'Never')[:19] if cfg else 'Never' }}</b><span>{{ ('by ' ~ cfg.configured_by) if cfg else '' }}</span></div>
   </section>
-  <section class="card" id="blob-storage" data-testid="blob-storage">
-    <h3>Source storage (Blob) {% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
-    <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the source files), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Source files are dropped in <span class="font-mono">{{ blob.firm_folder }}</span>; discovery then works from there. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
-    {% if blob.account %}<p class="fh" data-testid="blob-endpoint">Storage account <span class="font-mono">{{ blob.account }}</span> (from the server's connection string) · container <span class="font-mono">{{ blob.container }}</span>{% if not blob.emulator %} · <span class="font-mono">https://{{ blob.account }}.blob.core.windows.net/{{ blob.container }}</span>{% endif %}</p>{% endif %}
-    {% if not blob.configured %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>
-    {% elif not blob.reachable %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>{% endif %}
-    <form action="/api/blob/layout" method="POST" class="flex flex-wrap items-end gap-2 mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-      <div class="field" style="min-width:260px"><label for="b-container">Container</label><input id="b-container" class="input" name="container" value="{{ blob.container }}" pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]" required></div>
-      <button class="btn p sm">Save container &amp; create folders</button>
-      <span class="fh">{% if blob.reachable %}<span class="chip ok">Reachable</span>{% endif %} {% if blob.layout_ready %}<span class="chip ok">Folders in place</span>{% elif blob.container_exists %}<span class="chip ex">Folders missing</span>{% else %}<span class="chip ex">Container not created</span>{% endif %}</span>
-    </fieldset></form>
-    {% if blob.reachable and blob.container_exists %}<h3 style="margin-top:14px">What is in the container now</h3>{% include "_blob_tree.html" %}{% endif %}
-    {% if preview %}<div id="preview" class="mt-2" data-testid="blob-preview"><h3>Preview <span class="font-mono">{{ preview.name }}</span></h3>{% if preview.error %}<p class="fh" style="color:var(--bad)">{{ preview.error }}</p>{% else %}<p class="fh">Read-only. {{ preview.shown_lines }} line(s) of {{ '%.1f'|format(preview.size / 1024) }} KB{% if preview.truncated %} (start of the file) · <a href="/azure-setup?preview={{ preview.name|urlencode }}&lines=500#preview" class="text-blue-700">show up to 500 lines</a>{% endif %}.</p><pre class="font-mono" style="font-size:11px;overflow-x:auto;background:#f6f8fc;border:1px solid #dbe3f0;border-radius:6px;padding:8px;white-space:pre">{{ preview.text }}</pre>{% endif %}<p class="fh"><a href="/azure-setup#blob-storage" class="text-blue-700">Close preview</a></p></div>{% endif %}
-    {% if blob.emulator and can_seed_blob and blob.reachable %}<form action="/api/blob/seed-demo" method="POST" class="mt-2"><button class="btn g sm">Put the CoreCap sample files in {{ blob.firm_folder }}</button><span class="fh"> Local emulator only. Resets that one folder.</span></form>{% endif %}
-  </section>
-  <section class="card" id="sqlt" data-testid="sql-target">
-    <h3>Target database (Azure SQL) <span class="chip {{ 'ok' if sqlt.status == 'CONNECTED' else 'ex' }}">{{ sqlt.status|default('Not set up') }}</span></h3>
-    <p class="fh">Read-only check that the target schema and tables exist. The create scripts in the ADF package are run by a person; this page never creates or changes anything.</p>
-    {% if sqlt %}<p class="fh">Password <span class="font-mono">{{ sqlt.password_env_var }}</span>: <strong>{{ 'present on the server' if sqlt.password_present else 'missing on the server' }}</strong> · user <strong>{{ sqlt.username_effective or 'not set' }}</strong>{% if sqlt.checked_utc %} · last tested {{ sqlt.checked_utc[:19] }} — {{ sqlt.check_detail }}{% endif %}</p>{% endif %}
-    <form action="/api/sql-target" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
-      <div class="grid">
-        <div class="field"><label for="s-srv">Server</label><input id="s-srv" class="input" name="server" value="{{ sqlt.server|default('') }}" placeholder="myserver.database.windows.net" required></div>
-        <div class="field"><label for="s-db">Database</label><input id="s-db" class="input" name="database_name" value="{{ sqlt.database_name|default('') }}" required></div>
-        <div class="field"><label for="s-usr">User name</label><input id="s-usr" class="input" name="username" value="{{ sqlt.username|default('') }}" autocomplete="off" placeholder="blank = SQL_TARGET_USERNAME from .env"></div>
-        <div class="field"><label for="s-sch">Target schema</label><input id="s-sch" class="input" name="schema_name" value="{{ sqlt.schema_name|default(sqlt_default_schema) }}" required></div>
-        <div class="field"><label for="s-env">Password environment variable</label><input id="s-env" class="input" name="password_env_var" value="{{ sqlt.password_env_var|default(sqlt_default_env) }}" pattern="SQL_[A-Z0-9_]+" required><span class="fh">Name only. Put the password in the server's .env, never here.</span></div>
-      </div>
-      <button type="submit" class="btn p sm" style="margin-top:10px">Save SQL settings</button>
-    </fieldset></form>
-    {% if sqlt %}
-    <form action="/api/sql-target/test" method="POST" class="mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button type="submit" class="btn g sm">Test SQL connection</button><span class="fh"> Signs in and reads the catalog; changes nothing.</span></fieldset></form>
-    {% endif %}
-  </section>
-
-  <section class="card" id="git" data-testid="git-connection">
-    <h3>Source control (GitHub) <span class="chip {{ 'ok' if git.status == 'CONNECTED' else 'ex' }}">{{ git.status|default('Not set up') }}</span></h3>
-    <p class="fh">Hands the generated ADF artifacts to the data factory owner without an Azure sign-in. XODUS adds one commit with the stored package to this repository; the factory owner links the repository in Data Factory (Manage, Git configuration) and publishes from there. The token is read from a server environment variable and is never typed here. XODUS only adds commits to the branch below: no force push, no deletes, no other branches.</p>
-    {% if git %}<p class="fh">Token <span class="font-mono">{{ git.token_env_var }}</span>: <strong>{{ 'present on the server' if git.token_present else 'missing on the server' }}</strong>{% if git.checked_utc %} · last tested {{ git.checked_utc[:19] }}{% endif %}{% if git.last_commit_sha %} · last published {{ git.last_published_utc[:19] }} by {{ git.last_published_by }} (commit <span class="font-mono">{{ git.last_commit_sha[:7] }}</span>){% endif %}</p>{% endif %}
-    <form action="/api/git/connection" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
-      <div class="two">
-        <div class="field"><label for="g-repo">Repository</label><input id="g-repo" class="input" name="repository" value="{{ git.repository|default('') }}" placeholder="owner/xodus-adf-artifacts" required></div>
-        <div class="field"><label for="g-branch">Branch</label><input id="g-branch" class="input" name="branch" value="{{ git.branch|default(git_default_branch) }}" required></div>
-        <div class="field"><label for="g-folder">ADF root folder</label><input id="g-folder" class="input" name="adf_folder" value="{{ git.adf_folder|default(git_default_folder) }}" required><span class="fh">Use this as the root folder when the factory owner links the repository.</span></div>
-        <div class="field"><label for="g-env">Token environment variable</label><input id="g-env" class="input" name="token_env_var" value="{{ git.token_env_var|default(git_default_env) }}" pattern="GIT(HUB)?_[A-Z0-9_]+" required><span class="fh">Name only. Put the token value in the server's .env, never here.</span></div>
-      </div>
-      <button type="submit" class="btn p sm" style="margin-top:10px">Save GitHub settings</button>
-    </fieldset></form>
-    {% if git %}
-    <form action="/api/git/connection/test" method="POST" class="mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button type="submit" class="btn g sm">Test GitHub connection</button><span class="fh"> Reads the repository and branch; changes nothing.</span></fieldset></form>
-    <p class="fh mt-2">Publishing the ADF package to this repository is stage <a href="/publish-artifacts" class="text-blue-700">08 Publish artifacts</a>.</p>
-    {% endif %}
-  </section>
+  <nav class="anav" aria-label="Sections on this page"><a href="#adf"><span>1</span>Data Factory</a><a href="#blob-storage"><span>2</span>Source storage</a><a href="#sqlt"><span>3</span>Target database</a><a href="#git"><span>4</span>GitHub</a></nav>
   {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the Azure connection.</p>{% endif %}
+  <div class="sgrp" id="adf">
+    <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Azure Data Factory</h2><p>The factory the deployment runs in. The platform signs in as a service principal; only identifiers are saved, and the client secret is read from a server environment variable.</p></div></div>
   <form action="/api/azure/connection" method="POST" class="card"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
     <h3>Service principal and factory</h3>
     <div class="two">
@@ -99,5 +52,67 @@
     <button type="submit" class="btn g sm">Test connection</button>
   </fieldset></form>
   {% endif %}
+  </div>
+  <div class="sgrp" id="storage">
+    <div class="sech"><div><span class="num">02</span><h2 style="font-size:18px">Source storage (Blob)</h2><p>Where the raw, stage and curated folders live. Source files are dropped under raw/; XODUS writes canonical files to stage/ and the ready marker to curated/.</p></div></div>
+  <section class="card" id="blob-storage" data-testid="blob-storage">
+    <h3>Source storage (Blob) {% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
+    <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the source files), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Source files are dropped in <span class="font-mono">{{ blob.firm_folder }}</span>; discovery then works from there. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
+    {% if blob.account %}<p class="fh" data-testid="blob-endpoint">Storage account <span class="font-mono">{{ blob.account }}</span> (from the server's connection string) · container <span class="font-mono">{{ blob.container }}</span>{% if not blob.emulator %} · <span class="font-mono">https://{{ blob.account }}.blob.core.windows.net/{{ blob.container }}</span>{% endif %}</p>{% endif %}
+    {% if not blob.configured %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>
+    {% elif not blob.reachable %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>{% endif %}
+    <form action="/api/blob/layout" method="POST" class="flex flex-wrap items-end gap-2 mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="min-width:260px"><label for="b-container">Container</label><input id="b-container" class="input" name="container" value="{{ blob.container }}" pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]" required></div>
+      <button class="btn p sm">Save container &amp; create folders</button>
+      <span class="fh">{% if blob.reachable %}<span class="chip ok">Reachable</span>{% endif %} {% if blob.layout_ready %}<span class="chip ok">Folders in place</span>{% elif blob.container_exists %}<span class="chip ex">Folders missing</span>{% else %}<span class="chip ex">Container not created</span>{% endif %}</span>
+    </fieldset></form>
+    {% if blob.reachable and blob.container_exists %}<h3 style="margin-top:14px">What is in the container now</h3>{% include "_blob_tree.html" %}{% endif %}
+    {% if preview %}<div id="preview" class="mt-2" data-testid="blob-preview"><h3>Preview <span class="font-mono">{{ preview.name }}</span></h3>{% if preview.error %}<p class="fh" style="color:var(--bad)">{{ preview.error }}</p>{% else %}<p class="fh">Read-only. {{ preview.shown_lines }} line(s) of {{ '%.1f'|format(preview.size / 1024) }} KB{% if preview.truncated %} (start of the file) · <a href="/azure-setup?preview={{ preview.name|urlencode }}&lines=500#preview" class="text-blue-700">show up to 500 lines</a>{% endif %}.</p><pre class="font-mono" style="font-size:11px;overflow-x:auto;background:#f6f8fc;border:1px solid #dbe3f0;border-radius:6px;padding:8px;white-space:pre">{{ preview.text }}</pre>{% endif %}<p class="fh"><a href="/azure-setup#blob-storage" class="text-blue-700">Close preview</a></p></div>{% endif %}
+    {% if blob.emulator and can_seed_blob and blob.reachable %}<form action="/api/blob/seed-demo" method="POST" class="mt-2"><button class="btn g sm">Put the CoreCap sample files in {{ blob.firm_folder }}</button><span class="fh"> Local emulator only. Resets that one folder.</span></form>{% endif %}
+  </section>
+  </div>
+  <div class="sgrp" id="target-db">
+    <div class="sech"><div><span class="num">03</span><h2 style="font-size:18px">Target database (Azure SQL)</h2><p>The database the pipeline loads into. The platform only reads its table and column list; a person runs the create scripts.</p></div></div>
+  <section class="card" id="sqlt" data-testid="sql-target">
+    <h3>Target database (Azure SQL) <span class="chip {{ 'ok' if sqlt.status == 'CONNECTED' else 'ex' }}">{{ sqlt.status|default('Not set up') }}</span></h3>
+    <p class="fh">Read-only check that the target schema and tables exist. The create scripts in the ADF package are run by a person; this page never creates or changes anything.</p>
+    {% if sqlt %}<p class="fh">Password <span class="font-mono">{{ sqlt.password_env_var }}</span>: <strong>{{ 'present on the server' if sqlt.password_present else 'missing on the server' }}</strong> · user <strong>{{ sqlt.username_effective or 'not set' }}</strong>{% if sqlt.checked_utc %} · last tested {{ sqlt.checked_utc[:19] }} — {{ sqlt.check_detail }}{% endif %}</p>{% endif %}
+    <form action="/api/sql-target" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+      <div class="fgrid">
+        <div class="field"><label for="s-srv">Server</label><input id="s-srv" class="input" name="server" value="{{ sqlt.server|default('') }}" placeholder="myserver.database.windows.net" required></div>
+        <div class="field"><label for="s-db">Database</label><input id="s-db" class="input" name="database_name" value="{{ sqlt.database_name|default('') }}" required></div>
+        <div class="field"><label for="s-usr">User name</label><input id="s-usr" class="input" name="username" value="{{ sqlt.username|default('') }}" autocomplete="off" placeholder="blank = SQL_TARGET_USERNAME from .env"></div>
+        <div class="field"><label for="s-sch">Target schema</label><input id="s-sch" class="input" name="schema_name" value="{{ sqlt.schema_name|default(sqlt_default_schema) }}" required></div>
+        <div class="field"><label for="s-env">Password environment variable</label><input id="s-env" class="input" name="password_env_var" value="{{ sqlt.password_env_var|default(sqlt_default_env) }}" pattern="SQL_[A-Z0-9_]+" required><span class="fh">Name only. Put the password in the server's .env, never here.</span></div>
+      </div>
+      <button type="submit" class="btn p sm" style="margin-top:10px">Save SQL settings</button>
+    </fieldset></form>
+    {% if sqlt %}
+    <form action="/api/sql-target/test" method="POST" class="mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button type="submit" class="btn g sm">Test SQL connection</button><span class="fh"> Signs in and reads the catalog; changes nothing.</span></fieldset></form>
+    {% endif %}
+  </section>
+
+  </div>
+  <div class="sgrp" id="source-control">
+    <div class="sech"><div><span class="num">04</span><h2 style="font-size:18px">Source control (GitHub)</h2><p>Where the generated ADF package is published so the factory owner can take it into Data Factory.</p></div></div>
+  <section class="card" id="git" data-testid="git-connection">
+    <h3>Source control (GitHub) <span class="chip {{ 'ok' if git.status == 'CONNECTED' else 'ex' }}">{{ git.status|default('Not set up') }}</span></h3>
+    <p class="fh">Hands the generated ADF artifacts to the data factory owner without an Azure sign-in. XODUS adds one commit with the stored package to this repository; the factory owner links the repository in Data Factory (Manage, Git configuration) and publishes from there. The token is read from a server environment variable and is never typed here. XODUS only adds commits to the branch below: no force push, no deletes, no other branches.</p>
+    {% if git %}<p class="fh">Token <span class="font-mono">{{ git.token_env_var }}</span>: <strong>{{ 'present on the server' if git.token_present else 'missing on the server' }}</strong>{% if git.checked_utc %} · last tested {{ git.checked_utc[:19] }}{% endif %}{% if git.last_commit_sha %} · last published {{ git.last_published_utc[:19] }} by {{ git.last_published_by }} (commit <span class="font-mono">{{ git.last_commit_sha[:7] }}</span>){% endif %}</p>{% endif %}
+    <form action="/api/git/connection" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+      <div class="two">
+        <div class="field"><label for="g-repo">Repository</label><input id="g-repo" class="input" name="repository" value="{{ git.repository|default('') }}" placeholder="owner/xodus-adf-artifacts" required></div>
+        <div class="field"><label for="g-branch">Branch</label><input id="g-branch" class="input" name="branch" value="{{ git.branch|default(git_default_branch) }}" required></div>
+        <div class="field"><label for="g-folder">ADF root folder</label><input id="g-folder" class="input" name="adf_folder" value="{{ git.adf_folder|default(git_default_folder) }}" required><span class="fh">Use this as the root folder when the factory owner links the repository.</span></div>
+        <div class="field"><label for="g-env">Token environment variable</label><input id="g-env" class="input" name="token_env_var" value="{{ git.token_env_var|default(git_default_env) }}" pattern="GIT(HUB)?_[A-Z0-9_]+" required><span class="fh">Name only. Put the token value in the server's .env, never here.</span></div>
+      </div>
+      <button type="submit" class="btn p sm" style="margin-top:10px">Save GitHub settings</button>
+    </fieldset></form>
+    {% if git %}
+    <form action="/api/git/connection/test" method="POST" class="mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button type="submit" class="btn g sm">Test GitHub connection</button><span class="fh"> Reads the repository and branch; changes nothing.</span></fieldset></form>
+    <p class="fh mt-2">Publishing the ADF package to this repository is stage <a href="/publish-artifacts" class="text-blue-700">08 Publish artifacts</a>.</p>
+    {% endif %}
+  </section>
+  </div>
 </div>
 {% endblock %}
