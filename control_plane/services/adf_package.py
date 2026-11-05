@@ -143,7 +143,10 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         location = ({"type": "AzureBlobStorageLocation", "container": env["stagingContainer"], "folderPath": folder, **({"fileName": file_name} if file_name else {})} if real
                     else {"type": "AzureBlobFSLocation", "fileSystem": env["stagingContainer"], "folderPath": folder})
         add("datasets", "dataset", ds_blob, {"type": "DelimitedText", "linkedServiceName": ref(ls_blob, "LinkedServiceReference"),
-            "typeProperties": {"location": location, "columnDelimiter": ",", "firstRowAsHeader": True}})
+            "typeProperties": {"location": location, "columnDelimiter": ",", "firstRowAsHeader": True,
+                                              # real files are standard CSV: a quote inside a quoted value is written as two quotes (the JSON in advisors.RepCodes);
+                                              # Data Factory's default escape character is a backslash, which splits those rows into extra columns
+                                              **({"quoteChar": "\"", "escapeChar": "\""} if real else {})}})
         add("datasets", "dataset", ds_sql, {"type": "AzureSqlTable", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
             "typeProperties": {"schema": sql_package.STAGING_SCHEMA, "table": table}})
         activities.append({"name": f"Copy_{table}", "type": "Copy",

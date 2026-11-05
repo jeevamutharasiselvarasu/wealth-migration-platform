@@ -34,6 +34,7 @@ def test_real_package_has_a_stopped_blob_trigger_on_curated_ready_files_and_no_s
     assert not any(n.startswith("linkedService/") for n in files)  # linked services are created and tested by hand in Data Factory
     blob_ds = [json.loads(v)["properties"] for n, v in files.items() if n.startswith("dataset/") and json.loads(v)["properties"]["type"] == "DelimitedText"]
     assert blob_ds and all(d["linkedServiceName"]["referenceName"] == "LS_BLOB" for d in blob_ds)
+    assert all(d["typeProperties"]["quoteChar"] == '"' and d["typeProperties"]["escapeChar"] == '"' for d in blob_ds)  # standard CSV: doubled quotes, not backslash escapes
     assert man["simulated"] is False and man["unresolved"] == ["sql"] and "README.txt" in files
     assert "AccountKey" not in json.dumps(files) and not any("_Sim" in n for n in files)
 
