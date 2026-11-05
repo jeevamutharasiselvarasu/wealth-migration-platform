@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins" role="status">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Stage 08 · Data plane · Publish artifacts</div>
+      <h1>Publish artifacts</h1>
+      <p>Publishing the artifacts: the stored ADF package goes to the linked GitHub repository as one commit. The owner of the data factory links that repository in Data Factory and takes the artifacts from there, so no Azure sign-in is needed from this platform to hand them over.</p>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">Data plane</span></div>
+  </div>
+  <div class="ins"><b>This stage.</b> Follows 07 Transformation SQL, which builds the ADF package. Publishing adds a commit to the configured branch only: it never force-pushes, deletes files or touches other branches. Pulling the published artifacts into Data Factory from this platform is the next piece of work and is not part of this stage yet.</div>
+  <section class="kpis" aria-label="Publishing summary">
+    <div class="kpi"><small>ADF package</small><b>{% if pkg %}v{{ pkg.artifact_version }}{% else %}None{% endif %}</b><span>{% if pkg %}{{ pkg.artifact_id }} · {{ pkg.generated_utc[:19] }}{% else %}build it in 07 Transformation SQL{% endif %}</span></div>
+    <div class="kpi"><small>GitHub</small><b>{{ git.status|default('Not set up')|title if git else 'Not set up' }}</b><span>{% if git %}{{ git.repository }} · {{ git.branch }}{% else %}set up in Azure connection{% endif %}</span></div>
+    <div class="kpi"><small>Published</small><b>{{ 'Yes' if published else 'No' }}</b><span>{% if git and git.last_published_utc %}last {{ git.last_published_utc[:19] }} by {{ git.last_published_by }}{% else %}nothing published yet{% endif %}</span></div>
+  </section>
+  <section class="card" data-testid="publish-card">
+    <h3>Publish the ADF package</h3>
+    {% if pkg %}
+    <p class="fh">Latest stored package <span class="font-mono">{{ pkg.artifact_id }}</span> (v{{ pkg.artifact_version }}). {% if simulated %}<strong>It carries simulated Azure values</strong> (a fictitious Key Vault, storage account and SQL server). The factory owner must replace them before publishing from Data Factory; the commit message says so.{% endif %}</p>
+    {% if published %}<p class="fh" data-testid="published-note">This package is already published{% if git.last_commit_sha %}: commit <a class="text-blue-700 font-mono" href="https://github.com/{{ git.repository }}/commit/{{ git.last_commit_sha }}">{{ git.last_commit_sha[:7] }}</a>{% endif %}. Publishing again adds another commit.</p>{% endif %}
+    {% if placed %}<details><summary class="fh">Files that will be added to {{ git.repository if git else 'the repository' }} ({{ placed|length }})</summary><ul class="font-mono" style="font-size:11px;margin:6px 0 0 16px">{% for f in placed %}<li>{{ f }}</li>{% endfor %}</ul><p class="fh">Data Factory reads the files under <span class="font-mono">{{ git.adf_folder if git else 'adf' }}/</span> (set that as the root folder when linking the repository).</p></details>{% endif %}
+    {% else %}
+    <p class="fh">There is no ADF package for this migration yet. Build it in <a href="/transformation-sql" class="text-blue-700">07 Transformation SQL</a>.</p>
+    {% endif %}
+    <form action="/api/git/publish" method="POST" class="mt-2"><fieldset {% if not (can_publish and git and git.status == 'CONNECTED' and pkg) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+      <button type="submit" class="btn p sm" data-testid="publish-button">Publish ADF package to GitHub</button>
+      <span class="fh">{% if not git %} Set up the GitHub connection first.{% elif git.status != 'CONNECTED' %} Test the GitHub connection first.{% elif not can_publish %} A Migration Analyst or Platform Admin publishes.{% endif %}{% if not git or git.status != 'CONNECTED' %} <a href="/azure-setup#git" class="text-blue-700">Open Azure connection</a>.{% endif %}</span>
+    </fieldset></form>
+  </section>
+</div>
+{% endblock %}

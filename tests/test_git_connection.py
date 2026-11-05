@@ -125,3 +125,39 @@ def test_git_routes_are_role_gated_and_the_save_route_rejects_a_bad_repository()
 
     r = asyncio.run(call({"repository": "not a repo", "branch": "main", "adf_folder": "adf", "token_env_var": "GITHUB_ADF_TOKEN"}))
     assert r.status_code == 303 and "error=Repository+must+look+like" in r.headers["location"] and r.headers["location"].endswith("#git")
+
+
+def test_publish_records_the_artifact_so_the_stage_knows_which_package_went_out(conn, monkeypatch):
+    monkeypatch.setenv("GITHUB_ADF_TOKEN", "tok")
+    gc.save(conn, "Ann", GOOD)
+    gc.test_connection(conn, _api())
+    assert gc.get_config(conn)["last_artifact_id"] is None
+    gc.publish(conn, "Ann", "MIG-1", PKG, "msg", _api(), artifact_id="ART-1")
+    assert gc.get_config(conn)["last_artifact_id"] == "ART-1"
+
+
+def test_rail_has_a_publish_stage_between_the_sql_and_the_adf_run():
+    from ui.app import build_stage_view
+    p = {"files_total": 3, "files_pending": 0, "mappings_approved": 38, "proposals_pending": 0, "rfi_open": 0,
+         "validation_status": "PASS", "target_provisioned": True, "target_pending": 0}
+    v = build_stage_view(p, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=1)
+    assert [s["number"] + " " + s["title"] for s in v["stages"][6:]] == ["07 Transformation SQL", "08 Publish artifacts", "09 ADF Execution", "10 Target validation"]
+    assert v["stage_current"] == "08 Publish artifacts"  # not published yet, so the run and the validation after it are not started
+    v = build_stage_view(p, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=1, published=True)
+    assert v["stages_done"] == 10
+
+
+def test_publish_stage_page_renders_with_the_button_disabled_until_a_package_and_connection_exist():
+    import asyncio
+    from ui import app as app_module
+    sessions = app_module.session_mgr.active_sessions
+    sessions["sid"] = dict(sessions.get("sid", {}), role="Migration Analyst", name="Ann")
+
+    async def get():
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
+            return await client.get("/publish-artifacts")
+
+    r = asyncio.run(get())
+    assert r.status_code == 200 and "Stage 08 · Data plane · Publish artifacts" in r.text and 'data-testid="publish-button"' in r.text
+    assert "<fieldset disabled" in r.text.split('data-testid="publish-card"')[1]  # nothing to publish and no tested connection in a fresh test database

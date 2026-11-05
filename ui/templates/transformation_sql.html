@@ -17,7 +17,7 @@
   {% if can_preview and spec %}
   <section class="card" id="transformation-sql">
     <h3 style="font-size:16px">Transformation SQL <span class="font-mono text-[10px] font-normal text-[#5A6A88]">T-SQL &middot; not executed here</span></h3>
-    <p class="mt-1 text-xs text-[#5A6A88]">Generated from the <b>approved</b> target mappings and approved rules only; nothing else is ever written into it. The ADF run (stage 08) copies the source files from Azure Blob storage into the staging tables, then runs these statements against the target SQL database.</p>
+    <p class="mt-1 text-xs text-[#5A6A88]">Generated from the <b>approved</b> target mappings and approved rules only; nothing else is ever written into it. The ADF run (stage 09) copies the source files from Azure Blob storage into the staging tables, then runs these statements against the target SQL database.</p>
     {% if tsql %}
     <div class="kpis" style="margin-top:10px"><div class="kpi"><small>Target tables</small><b>{{ tsql.manifest.entities.values()|map(attribute='tables')|map('length')|sum }}</b><span>one INSERT each</span></div><div class="kpi"><small>Staging tables</small><b>{{ tsql.manifest.stagingTables|length }}</b><span>filled from Blob files</span></div><div class="kpi"><small>Warnings</small><b>{{ tsql.manifest.warnings|length }}</b><span>required fields not mapped</span></div></div>
     {% for w in tsql.manifest.warnings %}<div class="exc" style="margin-top:8px">{{ w }}</div>{% endfor %}

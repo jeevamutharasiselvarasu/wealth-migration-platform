@@ -115,7 +115,7 @@ def workflow_progress() -> dict:
     target_provisioned = False
     validation_status = validation_when = ""
     rules_approved = rules_draft = target_approved = runs_n = 0
-    sql_ready = False
+    sql_ready = published = False
     conn = get_db_connection()
     try:
         _rules = transformation_rules.list_rules(conn)
@@ -123,6 +123,8 @@ def workflow_progress() -> dict:
         rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
         sql_ready = bool(package_contract.list_packages(conn, migration_id))
         runs_n = len(execution_simulator.list_runs(conn, migration_id))
+        _git, _pkg = git_connection.get_config(conn), artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        published = bool(_git and _pkg and _git.get("last_artifact_id") == _pkg["artifact_id"])  # the latest package is the one that was published
         proposals_pending = conn.execute(
             "SELECT COUNT(*) FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (migration_id,)).fetchone()[0]
         mappings_approved = conn.execute(
@@ -179,13 +181,13 @@ def workflow_progress() -> dict:
         "validation_status": validation_status, "validation_when": validation_when,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
-    progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n))
+    progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n, published))
     progress["activity"] = activity_feed.recent_activity(migration_id)
     return progress
 
 
-def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_approved: int, sql_ready: bool, runs_n: int) -> dict:
-    """The nine pipeline stages in order, each done / current / todo, so the rail counts the same stages it lists.
+def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_approved: int, sql_ready: bool, runs_n: int, published: bool = False) -> dict:
+    """The ten pipeline stages in order, each done / current / todo, so the rail counts the same stages it lists.
     A stage is done when its own work exists and every earlier stage is done; the first unfinished stage is the current one."""
     mapped = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0
     done_flags = [
@@ -196,8 +198,9 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
         ("05", "Mapping Validation Review", p["validation_status"] == "PASS"),
         ("06", "Target mapping", p["target_provisioned"] and target_approved > 0 and p["target_pending"] == 0),
         ("07", "Transformation SQL", sql_ready),
-        ("08", "ADF Execution", runs_n > 0),
-        ("09", "Target validation", runs_n > 0 and p["validation_status"] == "PASS"),
+        ("08", "Publish artifacts", published),
+        ("09", "ADF Execution", runs_n > 0),
+        ("10", "Target validation", runs_n > 0 and p["validation_status"] == "PASS"),
     ]
     stages, current_seen = [], False
     for num, title, ok in done_flags:
@@ -584,13 +587,12 @@ def _azure_page(request: Request, user, notice: str = "", error: str = "", previ
     try:
         cfg = azure_connection.get_config(conn)
         git_cfg = git_connection.get_config(conn)
-        pkg = artifact_store.latest(conn, str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")), "ADF_PACKAGE")
         conn.commit()
     finally:
         conn.close()
     return render_template_with_context(request, "azure_setup.html", {
         "git": git_cfg or {}, "git_default_env": git_connection.DEFAULT_TOKEN_ENV, "git_default_folder": git_connection.DEFAULT_FOLDER,
-        "git_default_branch": git_connection.DEFAULT_BRANCH, "adf_pkg": pkg, "can_publish_git": user["role"] in APPROVAL_ROLES,
+        "git_default_branch": git_connection.DEFAULT_BRANCH,
         "page_title": "Azure connection", "user_name": user["name"], "user_role": user["role"], "cfg": cfg or {},
         "fields": azure_connection.FIELDS, "can_edit_azure": user["role"] in PLATFORM_ROLES,
         "default_secret_env": azure_connection.DEFAULT_SECRET_ENV, "notice": notice, "error": error,
@@ -685,6 +687,40 @@ async def test_git_connection(request: Request):
     return _git_back("notice" if cfg["status"] == "CONNECTED" else "error", cfg["check_detail"])
 
 
+def _publish_back(key: str, msg: str):
+    return RedirectResponse(url="/publish-artifacts?" + urlencode({key: msg}), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/publish-artifacts", response_class=HTMLResponse)
+async def publish_artifacts_page(request: Request, notice: str = "", error: str = ""):
+    """Stage 08: hand the stored ADF package to the data factory owner through the linked GitHub repository."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        git_cfg = git_connection.get_config(conn)
+        pkg = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        placed, simulated = [], False
+        if pkg:
+            try:
+                rec = artifact_store.read(conn, pkg["artifact_id"])
+                with zipfile.ZipFile(io.BytesIO(rec["data"])) as z:
+                    names = [n for n in z.namelist() if not n.endswith("/")]
+                    simulated = '"simulated": true' in z.read("manifest.json").decode("utf-8") if "manifest.json" in names else False
+                placed = sorted(git_connection.layout({"adf_folder": (git_cfg or {}).get("adf_folder") or git_connection.DEFAULT_FOLDER}, migration_id, {n: "" for n in names}))
+            except (ValueError, zipfile.BadZipFile) as exc:
+                error = error or str(exc)
+        conn.commit()
+    finally:
+        conn.close()
+    published = bool(git_cfg and pkg and git_cfg.get("last_artifact_id") == pkg["artifact_id"])
+    return render_template_with_context(request, "publish_artifacts.html", {
+        "page_title": "Publish artifacts", "user_name": user["name"], "user_role": user["role"], "notice": notice, "error": error,
+        "git": git_cfg or {}, "pkg": pkg, "placed": placed, "simulated": simulated, "published": published,
+        "can_publish": user["role"] in APPROVAL_ROLES,
+    })
+
+
 @app.post("/api/git/publish")
 async def publish_adf_to_git(request: Request):
     """Add the latest stored ADF package to the linked GitHub repository as one commit. The factory owner links the repository in Data Factory."""
@@ -701,15 +737,16 @@ async def publish_adf_to_git(request: Request):
                 files = {n: z.read(n).decode("utf-8") for n in z.namelist() if not n.endswith("/")}
             note = " (simulated Azure values)" if '"simulated": true' in files.get("manifest.json", "") else ""
             result = git_connection.publish(conn, user["name"], migration_id, files,
-                                            f"XODUS ADF package {art['artifact_id']} v{art['artifact_version']} for {migration_id}{note}, published by {user['name']}")
+                                            f"XODUS ADF package {art['artifact_id']} v{art['artifact_version']} for {migration_id}{note}, published by {user['name']}",
+                                            artifact_id=art["artifact_id"])
         except (ValueError, zipfile.BadZipFile) as exc:
-            return _git_back("error", str(exc))
+            return _publish_back("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("ADF_PACKAGE_PUBLISHED_TO_GIT", user, {"artifact_id": art["artifact_id"], "commit": result["commit_sha"], "files": result["files"],
                                                               "repository": result["repository"], "branch": result["branch"]})
-    return _git_back("notice", f"Published {result['files']} file(s) from {art['artifact_id']} to {result['repository']} ({result['branch']}), commit {result['commit_sha'][:7]}.")
+    return _publish_back("notice", f"Published {result['files']} file(s) from {art['artifact_id']} to {result['repository']} ({result['branch']}), commit {result['commit_sha'][:7]}.")
 
 
 @app.get("/models", response_class=HTMLResponse)
@@ -1437,13 +1474,13 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
 
 @app.get("/validation-rules", response_class=HTMLResponse)
 async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 09: the scenarios that extend the validation run, defined after the data plane has executed."""
+    """Stage 10: the scenarios that extend the validation run, defined after the data plane has executed."""
     return _validation_stage_view(request, "rules", error, notice)
 
 
 @app.get("/execution", response_class=HTMLResponse)
 async def execution_page(request: Request, error: str = "", notice: str = ""):
-    """Stage 08: simulated data-plane execution of the deployment package."""
+    """Stage 09: simulated data-plane execution of the deployment package."""
     return _validation_stage_view(request, "execution", error, notice)
 
 

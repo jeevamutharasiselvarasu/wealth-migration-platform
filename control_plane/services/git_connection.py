@@ -14,13 +14,14 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 import httpx
+from control_plane.db import table_columns
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS git_connection_config (
     config_id INTEGER PRIMARY KEY CHECK (config_id = 1),
     repository TEXT NOT NULL, branch TEXT NOT NULL, adf_folder TEXT NOT NULL, token_env_var TEXT NOT NULL,
     status TEXT NOT NULL, checked_utc TEXT, check_detail TEXT, configured_by TEXT NOT NULL, configured_utc TEXT NOT NULL,
-    last_commit_sha TEXT, last_published_utc TEXT, last_published_by TEXT
+    last_commit_sha TEXT, last_published_utc TEXT, last_published_by TEXT, last_artifact_id TEXT
 )
 """
 FIELDS = ("repository", "branch", "adf_folder", "token_env_var")
@@ -38,6 +39,8 @@ API = "https://api.github.com"
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
+    if "last_artifact_id" not in table_columns(conn, "git_connection_config"):  # tables created before the publish stage existed
+        conn.execute("ALTER TABLE git_connection_config ADD COLUMN last_artifact_id TEXT")
 
 
 def _now() -> str:
@@ -152,7 +155,7 @@ def layout(cfg: Dict[str, Any], migration_id: str, package_files: Dict[str, str]
 
 
 def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_files: Dict[str, str], message: str,
-            http: Callable[..., httpx.Response] = _default_http) -> Dict[str, Any]:
+            http: Callable[..., httpx.Response] = _default_http, artifact_id: str = "") -> Dict[str, Any]:
     """Add one commit with the package files to the configured branch (Git Data API). Never forces, deletes or touches other branches."""
     cfg = get_config(conn)
     if not cfg:
@@ -183,7 +186,7 @@ def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_fil
         call("PATCH", f"/git/refs/heads/{cfg['branch']}", json={"sha": commit["sha"], "force": False})
     except httpx.HTTPError as exc:
         raise ValueError(_unreachable(exc))
-    conn.execute("UPDATE git_connection_config SET last_commit_sha = ?, last_published_utc = ?, last_published_by = ? WHERE config_id = 1",
-                 (commit["sha"], _now(), actor))
+    conn.execute("UPDATE git_connection_config SET last_commit_sha = ?, last_published_utc = ?, last_published_by = ?, last_artifact_id = ? WHERE config_id = 1",
+                 (commit["sha"], _now(), actor, artifact_id or None))
     return {"commit_sha": commit["sha"], "files": len(files), "branch": cfg["branch"], "repository": cfg["repository"],
             "url": f"https://github.com/{cfg['repository']}/commit/{commit['sha']}"}

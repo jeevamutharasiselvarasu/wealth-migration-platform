@@ -45,10 +45,7 @@
     </fieldset></form>
     {% if git %}
     <form action="/api/git/connection/test" method="POST" class="mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button type="submit" class="btn g sm">Test GitHub connection</button><span class="fh"> Reads the repository and branch; changes nothing.</span></fieldset></form>
-    <form action="/api/git/publish" method="POST" class="mt-2" data-testid="git-publish"><fieldset {% if not (can_publish_git and git.status == 'CONNECTED' and adf_pkg) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
-      <button type="submit" class="btn p sm">Publish ADF package to GitHub</button>
-      <span class="fh"> {% if adf_pkg %}Latest stored package {{ adf_pkg.artifact_id }} v{{ adf_pkg.artifact_version }}{% if adf_pkg.provenance %}{% endif %}. It currently carries the simulated Azure values; the factory owner must replace them before publishing from Data Factory.{% else %}No ADF package stored for this migration yet (07 Transformation SQL).{% endif %}{% if git.status != 'CONNECTED' %} Test the connection first.{% endif %}{% if not can_publish_git %} A Migration Analyst or Platform Admin publishes.{% endif %}</span>
-    </fieldset></form>
+    <p class="fh mt-2">Publishing the ADF package to this repository is stage <a href="/publish-artifacts" class="text-blue-700">08 Publish artifacts</a>.</p>
     {% endif %}
   </section>
   {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the Azure connection.</p>{% endif %}

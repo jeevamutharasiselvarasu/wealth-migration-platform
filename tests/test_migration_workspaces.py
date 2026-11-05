@@ -213,7 +213,7 @@ def test_validation_rules_execution_and_reconciliation_are_separate_stages(tmp_p
     assert 'id="execution"' in execution and 'id="validation-scenarios"' not in execution
     assert 'id="validation-results"' in recon and 'id="validation-scenarios"' not in recon and 'id="execution"' not in recon
     for page in (rules, execution, recon):
-        assert all(name in page for name in ("Mapping Validation Review", "Target mapping", "Transformation SQL", "ADF Execution", "Target validation")) and "Migration stage navigation" not in page
+        assert all(name in page for name in ("Mapping Validation Review", "Target mapping", "Transformation SQL", "Publish artifacts", "ADF Execution", "Target validation")) and "Migration stage navigation" not in page
 
 
 def _seed_approved_mapping(app_module, migration_id):
@@ -324,12 +324,12 @@ def test_only_approvers_may_reopen_a_rejected_mapping(tmp_path, monkeypatch):
     assert not _row(app_module, "SELECT 1 FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (mid,))
 
 
-def test_rail_progress_counts_the_nine_stages_and_names_the_first_unfinished_one():
+def test_rail_progress_counts_the_ten_stages_and_names_the_first_unfinished_one():
     from ui.app import build_stage_view
     p = {"files_total": 3, "files_pending": 0, "mappings_approved": 38, "proposals_pending": 0, "rfi_open": 0,
          "validation_status": "", "target_provisioned": True, "target_pending": 0}
     v = build_stage_view(p, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=0)
-    assert len(v["stages"]) == 9
+    assert len(v["stages"]) == 10
     states = [s["state"] for s in v["stages"]]
-    assert states == ["done", "done", "done", "done", "current", "todo", "todo", "todo", "todo"]
+    assert states == ["done", "done", "done", "done", "current", "todo", "todo", "todo", "todo", "todo"]
     assert v["stages_done"] == 4 and v["stage_current"] == "05 Mapping Validation Review"
