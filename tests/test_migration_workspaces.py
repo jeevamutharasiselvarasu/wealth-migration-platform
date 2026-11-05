@@ -333,3 +333,21 @@ def test_rail_progress_counts_the_ten_stages_and_names_the_first_unfinished_one(
     states = [s["state"] for s in v["stages"]]
     assert states == ["done", "done", "done", "done", "current", "todo", "todo", "todo", "todo", "todo"]
     assert v["stages_done"] == 4 and v["stage_current"] == "05 Mapping Validation Review"
+
+
+def test_archiving_hides_a_workspace_but_never_the_active_one(tmp_path, monkeypatch):
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "arch")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    assert _second_setup(app_module, sid).status_code == 303
+    second_id = state.questionnaire_data["migration_id"]
+    assert second_id != first_id
+
+    # The active workspace cannot be archived.
+    assert _call(app_module, sid, "POST", "/api/migration/archive", [("migration_id", second_id)]).status_code == 400
+    done = _call(app_module, sid, "POST", "/api/migration/archive", [("migration_id", first_id)])
+    assert done.status_code == 303
+    page = _call(app_module, sid, "GET", "/migrations").text
+    assert "Harbor RIA to Simplicity" in page and "CoreCap to Simplicity" not in page
+    assert _call(app_module, sid, "POST", "/api/migration/archive", [("migration_id", "MIG-NOPE")]).status_code == 404

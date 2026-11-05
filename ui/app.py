@@ -554,11 +554,20 @@ async def governance_page(request: Request):
         conn.commit()
     finally:
         conn.close()
-    access = f'<a href="/admin/users" style="color:#64D8EF">Users &amp; access{f" ({waiting} waiting)" if waiting else ""} &rarr;</a>' if get_current_user(request)["role"] in PLATFORM_ROLES else ""
-    note = ('<div style="background:#0B1F33;color:#fff;font:600 12.5px Inter,system-ui,sans-serif;padding:9px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
-            '<span style="opacity:.8">Live in this build:</span><a href="/canonical-changes" style="color:#64D8EF">Canonical change requests &rarr;</a>' + access +
-            '<span style="opacity:.6">The gate chain, integrity checks and audit trail below are the template preview.</span></div>')
-    return _space_page(request, "governance.html", note)
+    is_platform = get_current_user(request)["role"] in PLATFORM_ROLES
+    items = [{"href": "/canonical-changes", "title": "Canonical change requests",
+              "text": "Proposed changes to the canonical model, reviewed and approved before they take effect.", "badge": ""}]
+    if is_platform:
+        items.append({"href": "/admin/users", "title": "Users & access",
+                      "text": "Who can sign in and which personas they hold. Sign-in requests are approved here.",
+                      "badge": f"{waiting} waiting" if waiting else ""})
+    # The two live governance areas sit in the page itself, above the gate overview, not in a banner.
+    panel = ("var XLIVE=" + json.dumps(items) + ";function liveCard(){return '<div class=\"card\" style=\"margin-bottom:16px\"><h3>Governance administration</h3>"
+             "<p class=\"d\">Live in this build. The gate chain, integrity checks and audit trail below are the template preview.</p>"
+             "<div style=\"display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px\">'+XLIVE.map(function(i){return '<a href=\"'+i.href+'\" class=\"pol\" style=\"text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;padding:12px 14px\"><div><b>'+i.title+'</b><span>'+i.text+'</span></div>'+(i.badge?'<span class=\"pill queued\">'+i.badge+'</span>':'<span class=\"chip g\">Open</span>')+'</a>'}).join('')+'</div></div>'}\n")
+    patches = (("function render(){\n XS.top('gov'", panel + "function render(){\n XS.top('gov'"),
+               ("Oversight view</span></div>'\n +'<div class=\"kpis\">", "Oversight view</span></div>'+liveCard()\n +'<div class=\"kpis\">"))
+    return _space_page(request, "governance.html", "", patches=patches)
 
 
 @app.get("/suite", response_class=HTMLResponse)
@@ -962,6 +971,25 @@ async def start_new_migration(request: Request):
         {"scopes": {entity: "OUT_OF_SCOPE" for entity in ("Account", "Household", "Client")}}, user["name"],
     )
     return RedirectResponse(url="/migration-setup?new_migration=1" + ("&from_template=1" if prefill else ""), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/migration/archive")
+async def archive_migration_workspace(request: Request):
+    """Retire a workspace from the list. The active workspace cannot be archived; its records stay in the event log."""
+    user = get_current_user(request)
+    form = await request.form()
+    target_id = str(form.get("migration_id", "")).strip()
+    if not target_id or target_id == str(state_store.questionnaire_data.get("migration_id", "")):
+        raise HTTPException(status_code=400, detail="Open a different workspace first: the active workspace cannot be archived.")
+    conn = get_db_connection()
+    try:
+        known = {m["id"] for m in migration_registry.list_migrations(conn, "")}
+    finally:
+        conn.close()
+    if target_id not in known:
+        raise HTTPException(status_code=404, detail="That workspace is not in the list.")
+    publish_event("MIGRATION_WORKSPACE_ARCHIVED", target_id, "migration", target_id, {"archived_by": user["name"]}, user["name"])
+    return RedirectResponse(url="/migrations?notice=Workspace+archived", status_code=303)
 
 
 @app.post("/api/migration/open")

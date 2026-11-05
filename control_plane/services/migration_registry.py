@@ -26,12 +26,19 @@ def _events(conn) -> List[Dict[str, Any]]:
     return out
 
 
+def archived_ids(conn) -> set:
+    """Workspaces the firm retired from the list. The event log keeps every record; archiving only hides the workspace."""
+    rows = conn.execute("SELECT DISTINCT migration_id FROM workflow_events WHERE event_type = 'MIGRATION_WORKSPACE_ARCHIVED'").fetchall()
+    return {str(r["migration_id"]) for r in rows}
+
+
 def list_migrations(conn, active_id: str = "") -> List[Dict[str, Any]]:
-    """Newest first. One row per migration, taken from its latest saved setup."""
+    """Newest first. One row per migration, taken from its latest saved setup. Archived workspaces are left out."""
     found: Dict[str, Dict[str, Any]] = {}
+    hidden = archived_ids(conn) - {active_id}
     for ev in _events(conn):
         mid = ev["id"]
-        if not mid or mid == "MIG-UNCONFIGURED":
+        if not mid or mid == "MIG-UNCONFIGURED" or mid in hidden:
             continue
         row = found.setdefault(mid, {"id": mid, "created_utc": ev["when"], "created_by": ev["actor"], "setup": {}, "name": ""})
         setup = ev["payload"].get("migration_setup") or {}
