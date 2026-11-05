@@ -82,3 +82,15 @@ def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_fo
     assert "AS [OPEN_DT]" in merge and "AS [ACCT_NO]" in merge  # the inner select names every column the outer select reads
     assert acts[-1]["name"] == "Merge_Into_Target" and "MERGE [simplicity].[T] AS t" in merge and "WHEN NOT MATCHED BY TARGET THEN INSERT" in merge
     assert "ON t.[ACCT_NO] = src.[ACCT_NO]" in merge and "ROW_NUMBER()" in merge and "EXEC " not in merge and "sql/usp_load_all.sql" not in files
+
+
+def test_merge_key_is_an_identifier_field_and_a_table_without_one_inserts_missing_rows_only():
+    from control_plane.services import sql_package as sp
+    assert sp._is_key_field("ACCT_NUM") and sp._is_key_field("HH_ID") and not sp._is_key_field("TAX_ID") and not sp._is_key_field("ADVISOR_ID")
+    fields = {"T.A": {"table": "T", "column": "A", "name": "T.A"}, "T.B": {"table": "T", "column": "B", "name": "T.B"}}
+    maps = lambda c: [{"target_field": "T.A", "canonical_field": c, "transformation_expression": "DIRECT_COPY"},
+                      {"target_field": "T.B", "canonical_field": "FIRST_NAME", "transformation_expression": "DIRECT_COPY"}]
+    keyed = sp._merge("simplicity", "Client", "T", fields, maps("CLIENT_ID"), {})["sql"]
+    assert "MERGE on A" in keyed and "WHEN MATCHED THEN UPDATE SET t.[B] = src.[B]" in keyed
+    keyless = sp._merge("simplicity", "Client", "T", fields, maps("TAX_ID"), {})["sql"]
+    assert "insert-if-missing" in keyless and "WHEN MATCHED" not in keyless and "IS NULL AND src.[A] IS NULL" in keyless

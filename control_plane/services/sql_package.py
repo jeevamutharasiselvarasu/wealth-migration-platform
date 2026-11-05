@@ -106,9 +106,11 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alia
     return f"CASE WHEN {blank} THEN {col} ELSE {body} END"
 
 
+KEY_FIELDS = {"ACCT_NUM", "ACCOUNT_ID", "HH_ID", "CLIENT_ID", "CONTACT_ID"}  # identifiers of the thing a row represents (not TAX_ID, ADVISOR_ID, ...)
+
+
 def _is_key_field(canonical: str) -> bool:
-    c = (canonical or "").upper()
-    return c in ("ACCT_NUM", "HH_ID") or c.endswith("_ID")
+    return (canonical or "").upper() in KEY_FIELDS
 
 
 def _merge(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, Any]], mappings: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -117,19 +119,20 @@ def _merge(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, Any
     rows = sorted(mappings, key=lambda r: r["target_field"])
     cols = [_ident(fields[m["target_field"]]["column"]) for m in rows]
     keys = [c for c, m in zip(cols, rows) if _is_key_field(m["canonical_field"] or "")]
-    if not keys:
-        raise ValueError(f"{entity} / {table}: no approved mapping is an ID-like field (ACCT_NUM, HH_ID or *_ID), so there is no key to merge on.")
+    insert_only = not keys  # no identifier is mapped: add rows that are not already there, never update
+    if insert_only:
+        keys = list(cols)
     exprs = [e.rsplit(" AS ", 1)[0] for e in built["exprs"]]
     aliased = built["exprs"]
     sel = ",\n        ".join(aliased)
-    part = ", ".join(f"x.{_q(k)}" for k in keys)
     others = [c for c in cols if c not in keys]
-    sql = (f"-- {entity} -> {schema}.{table}: MERGE on {', '.join(keys)} ({len(mappings)} approved mapping(s))\n"
+    mode = "MERGE on " + ", ".join(keys) if not insert_only else "insert-if-missing on all mapped columns (no identifier is mapped; nothing is updated)"
+    sql = (f"-- {entity} -> {schema}.{table}: {mode} ({len(mappings)} approved mapping(s))\n"
            f"MERGE {_q(schema)}.{_q(table)} AS t\nUSING (\n    SELECT {', '.join('x.' + _q(c) for c in cols)} FROM (\n"
            f"        SELECT\n        {sel},\n        ROW_NUMBER() OVER (PARTITION BY {', '.join('(' + e + ')' for e, c in zip(exprs, cols) if c in keys)} ORDER BY (SELECT NULL)) AS rn\n"
            f"        FROM {_q(STAGING_SCHEMA)}.{_q(entity)} AS s\n    ) AS x WHERE x.rn = 1\n) AS src\n"
-           f"ON " + " AND ".join(f"t.{_q(k)} = src.{_q(k)}" for k in keys) + "\n"
-           + (f"WHEN MATCHED THEN UPDATE SET " + ", ".join(f"t.{_q(c)} = src.{_q(c)}" for c in others) + "\n" if others else "")
+           f"ON " + " AND ".join((f"(t.{_q(k)} = src.{_q(k)} OR (t.{_q(k)} IS NULL AND src.{_q(k)} IS NULL))" if insert_only else f"t.{_q(k)} = src.{_q(k)}") for k in keys) + "\n"
+           + (f"WHEN MATCHED THEN UPDATE SET " + ", ".join(f"t.{_q(c)} = src.{_q(c)}" for c in others) + "\n" if others and not insert_only else "")
            + f"WHEN NOT MATCHED BY TARGET THEN INSERT ({', '.join(_q(c) for c in cols)})\n    VALUES ({', '.join('src.' + _q(c) for c in cols)});\n")
     return {**built, "sql": sql}
 
