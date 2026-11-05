@@ -105,3 +105,10 @@ def test_canonical_stage_files_have_exactly_the_staging_columns_and_only_go_unde
         blob_source.write_canonical_stage("c", "raw/corecap", {}, {})
     with pytest.raises(ValueError, match="under stage/"):
         blob_source.write_canonical_stage("c", "stage/../raw", {}, {})
+
+
+def test_ready_marker_goes_under_curated_only_and_ends_with_ready():
+    from control_plane.services import blob_source
+    for bad in ("stage/x.ready", "curated/x.csv", "curated/../raw/x.ready", "raw/curated/x.ready"):
+        with pytest.raises(ValueError, match="curated/"):
+            blob_source.write_ready_marker("c", bad, {})

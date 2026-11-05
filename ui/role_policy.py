@@ -75,6 +75,7 @@ POST_POLICY = [
     (r"^/api/execution/recommendations/bulk-decide$", APPROVAL_ROLES),
     (r"^/api/execution/runs/[^/]+/failures/bulk-review$", APPROVAL_ROLES),
     (r"^/api/execution/runs/[^/]+/promote$", APPROVAL_ROLES),
+    (r"^/api/execution/start-pipeline$", APPROVAL_ROLES),
     (r"^/api/validation/scenarios$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/(suggest|[^/]+/adopt)$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/[^/]+/retire$", VALIDATION_ROLES),

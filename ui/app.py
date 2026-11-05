@@ -2940,43 +2940,36 @@ async def download_adf_package(request: Request):
     return back("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, {'simulated Azure values' if package['manifest']['simulated'] else 'configured Azure environment'}, not deployed).")
 
 
-@app.post("/api/target-mapping/stage-canonical")
-async def stage_canonical_files(request: Request):
-    """Map the raw source files to canonical names with the approved source mappings and write them under stage/ for the ADF pipeline."""
+def _write_canonical_stage(migration_id: str):
+    """Map the raw files to canonical names with the approved source mappings and write them under stage/ for the ADF pipeline.
+    Returns (result, error, package_record); exactly one of result/error is set."""
     import io
     import zipfile
-    user = get_current_user(request)
-    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
         stored = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
         rec = artifact_store.read(conn, stored["artifact_id"]) if stored else None
         conn.commit()
     except ValueError as exc:
-        return _sql_redirect("error", str(exc))
+        return None, str(exc), None
     finally:
         conn.close()
     if not rec:
-        return _sql_redirect("error", "Generate the ADF package first: it lists the staging columns the canonical files must have.")
+        return None, "Generate the ADF package first: it lists the staging columns the canonical files must have.", None
     manifest = json.loads(zipfile.ZipFile(io.BytesIO(rec["data"])).read("manifest.json"))
     env = manifest.get("environment", {})
     if manifest.get("simulated") or not env.get("stagingFolder"):
-        return _sql_redirect("error", "The latest ADF package uses the simulated environment; there is no real stage folder to write.")
+        return None, "The latest ADF package uses the simulated environment; there is no real stage folder to write.", rec
     cols = manifest.get("stagingColumns") or {}
     lookup_tables = {t for t in cols if t.startswith("lkp_")}
-    lookup_files = {t[4:] + ".csv" for t in lookup_tables}
-    rows, _ = _canonical_rows_for_migration(migration_id, lookup_files)
-    tables = {}
-    for entity in manifest.get("entities", []):
-        if entity in cols:
-            tables[entity] = (cols[entity], rows.get(entity, []))
+    rows, _ = _canonical_rows_for_migration(migration_id, {t[4:] + ".csv" for t in lookup_tables})
+    tables = {e: (cols[e], rows.get(e, [])) for e in manifest.get("entities", []) if e in cols}
     empty = [e for e, (_, r) in tables.items() if not r]
     if not tables or empty:
-        return _sql_redirect("error", "No canonical rows could be built for " + (", ".join(empty) if empty else "any entity") + ". Check that the source files are approved and mapped.")
+        return None, "No canonical rows could be built for " + (", ".join(empty) if empty else "any entity") + ". Check that the source files are approved and mapped.", rec
     lookups: Dict[str, bytes] = {}
     for t in sorted(lookup_tables):
-        name = t[4:] + ".csv"
-        data = None
+        name, data = t[4:] + ".csv", None
         for group in state_store.entity_source_files.values():
             for r in group.values():
                 if str(r.get("filename", "")).strip().lower() == name and r.get("stored_path") and file_store.is_file(r["stored_path"]):
@@ -2985,15 +2978,71 @@ async def stage_canonical_files(request: Request):
             try:
                 data = blob_source.read_blob(_blob_container(), blob_source.source_prefix(_source_firm()) + name)
             except Exception:
-                return _sql_redirect("error", f"The lookup file {name} was not found in the migration files or in raw storage.")
+                return None, f"The lookup file {name} was not found in the migration files or in raw storage.", rec
         lookups[t[4:]] = data
     try:
-        result = blob_source.write_canonical_stage(_blob_container(), env["stagingFolder"], tables, lookups)
+        return blob_source.write_canonical_stage(_blob_container(), env["stagingFolder"], tables, lookups), None, rec
     except Exception as exc:
-        return _sql_redirect("error", f"Could not write to blob storage: {type(exc).__name__}")
+        return None, f"Could not write to blob storage: {type(exc).__name__}", rec
+
+
+def _stage_summary(result) -> str:
+    return ", ".join(f"{f['name']} ({f['rows']} rows)" if f["rows"] is not None else f["name"] for f in result["files"])
+
+
+@app.post("/api/target-mapping/stage-canonical")
+async def stage_canonical_files(request: Request):
+    """Write the canonical files to stage/ on their own (the stage-09 start action does this too, behind its gate)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    result, error, _ = _write_canonical_stage(migration_id)
+    if error:
+        return _sql_redirect("error", error)
     _target_setup_audit("CANONICAL_STAGE_WRITTEN", user, {"migration_id": migration_id, "path": result["path"], "files": [f["name"] for f in result["files"]],
                                                           "rows": {f["name"]: f["rows"] for f in result["files"] if f["rows"] is not None}})
-    return _sql_redirect("notice", f"Canonical files written to {result['path']}: " + ", ".join(f"{f['name']} ({f['rows']} rows)" if f["rows"] is not None else f["name"] for f in result["files"]) + ".")
+    return _sql_redirect("notice", f"Canonical files written to {result['path']}: " + _stage_summary(result) + ".")
+
+
+@app.post("/api/execution/start-pipeline")
+async def start_adf_pipeline(request: Request):
+    """Stage 09 gate (approver): the package must be real and current and mapping validation must pass; then the canonical files are written to
+    stage/ and a .ready marker is placed in curated/, which fires the factory's blob-event trigger. The approver comes from the session."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    def back(key: str, msg: str):
+        return RedirectResponse(url=f"/execution?{key}=" + quote_plus(msg), status_code=status.HTTP_303_SEE_OTHER)
+    conn = get_db_connection()
+    try:
+        status_info = _adf_status(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    reasons = []
+    if not status_info:
+        reasons.append("There is no ADF package: generate one in stage 07.")
+    elif status_info["stale_reasons"]:
+        reasons.append("The ADF package is stale (" + " ".join(status_info["stale_reasons"]) + ") Generate a new one in stage 07 and publish it.")
+    if workflow_progress().get("validation_status") != "PASS":
+        reasons.append("Mapping validation has not passed (stage 05).")
+    if reasons:
+        return back("error", "Not started: " + " ".join(reasons))
+    result, error, rec = _write_canonical_stage(migration_id)
+    if error:
+        return back("error", "Not started: " + error)
+    panel = _blob_panel(with_files=False)
+    if not (panel["reachable"] and panel["layout_ready"]):
+        return back("error", "Blob storage is unreachable or the folder structure is not created yet.")
+    now = datetime.now(timezone.utc)
+    name = f"curated/{now.strftime('%Y%m%dT%H%M%SZ')}-{re.sub(r'[^a-z0-9]', '', migration_id.lower())[:12]}.ready"
+    marker = {"migration_id": migration_id, "approved_by": user["name"], "approved_utc": now.isoformat(), "adf_package": rec["artifact_id"],
+              "adf_package_version": rec["artifact_version"], "adf_package_sha256": rec["content_sha256"], "stage_path": result["path"],
+              "files": [{"name": f["name"], "rows": f["rows"]} for f in result["files"]]}
+    try:
+        blob_source.write_ready_marker(panel["container"], name, marker)
+    except Exception as exc:
+        return back("error", f"Canonical files were written but the ready marker could not be: {type(exc).__name__}. Nothing was started.")
+    _target_setup_audit("ADF_PIPELINE_STARTED", user, {"migration_id": migration_id, "ready_file": name, "adf_package": rec["artifact_id"], "stage_path": result["path"]})
+    return back("notice", f"Canonical files written ({_stage_summary(result)}) and {name} placed. The factory trigger starts the pipeline; check its run in Data Factory.")
 
 
 @app.post("/api/validation/signoff-evidence/save")

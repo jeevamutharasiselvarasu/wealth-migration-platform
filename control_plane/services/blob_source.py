@@ -224,6 +224,14 @@ def write_canonical_stage(container: str, folder: str, tables: Dict[str, Any], l
     return {"container": container, "path": folder + "/", "files": written}
 
 
+def write_ready_marker(container: str, name: str, marker: Dict[str, Any], conn_str: Optional[str] = None) -> None:
+    """Place the .ready marker under curated/ that starts the pipeline. Never overwrites an earlier marker."""
+    import json
+    if not re.fullmatch(r"curated/[A-Za-z0-9_.\-]+\.ready", name):
+        raise ValueError("The ready marker goes under curated/ and ends with .ready.")
+    _service(conn_str).get_container_client(container).upload_blob(name, json.dumps(marker, indent=2, default=str).encode("utf-8"), overwrite=False)
+
+
 def promote_to_curated(container: str, run_id: str, approver: str, review_summary: Dict[str, Any], conn_str: Optional[str] = None) -> Dict[str, Any]:
     """Copy one run's transformed tables from stage/run-<id>/ to curated/ (latest approved version per table) and write curated/_lineage/<run>.json.
     Reads only the run's own stage folder; never touches raw/. The caller has already applied the approval gate."""
