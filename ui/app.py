@@ -1598,8 +1598,29 @@ def _target_validation_entities(migration_id: str) -> Dict[str, Dict[str, Any]]:
         conn.close()
     if not spec:
         return {}
-    rows, _ = _canonical_rows_for_migration(migration_id)
+    # The same rows the stage writer sent: lookup files (advisors) are not part of an entity's own file.
+    conn = get_db_connection()
+    try:
+        pkg = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        rec = artifact_store.read(conn, pkg["artifact_id"]) if pkg else None
+        conn.commit()
+    finally:
+        conn.close()
+    lookup_files: set = set()
+    if rec:
+        try:
+            man = json.loads(zipfile.ZipFile(io.BytesIO(rec["data"])).read("manifest.json"))
+            lookup_files = {t[4:] + ".csv" for t in (man.get("stagingColumns") or {}) if t.startswith("lkp_")}
+        except (KeyError, ValueError, zipfile.BadZipFile):
+            pass
+    rows, _ = _canonical_rows_for_migration(migration_id, lookup_files)
     out: Dict[str, Dict[str, Any]] = {}
+    # A target column counts as required when the target model says so, or when its canonical field is non-nullable in the firm contract
+    # or is required for the Orion MCL target. Blanks there are findings; they are never defaulted.
+    required_canon: Dict[str, set] = {}
+    if cfg_firm:
+        for e_name, e_def in cfg_firm.entities.items():
+            required_canon[e_name] = {f.name for f in e_def.fields if not f.nullable or any(str(t).startswith("ORION_MCL") for t in f.required_for_targets)}
     for entity, body in spec["entities"].items():
         fields = {f["name"]: f for f in body["fields"]}
         mine = [m for m in approved if m["entity_name"] == entity and m["target_field"] in fields and m.get("canonical_field")]
@@ -1611,7 +1632,7 @@ def _target_validation_entities(migration_id: str) -> Dict[str, Dict[str, Any]]:
             f = fields[m["target_field"]]
             t = tables.setdefault(f["table"], {"columns": {}, "required": []})
             t["columns"][m["canonical_field"]] = f["column"]
-            if f.get("required"):
+            if f.get("required") or m["canonical_field"] in required_canon.get(entity, set()):
                 t["required"].append(f["column"])
         mapped = {m["target_field"] for m in approved if m["entity_name"] == entity}
         out[entity] = {"staging_table": entity, "expected_rows": len(rows.get(entity, [])) if entity in rows else None, "key": key, "tables": tables,

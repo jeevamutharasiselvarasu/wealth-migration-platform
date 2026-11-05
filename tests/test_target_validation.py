@@ -127,3 +127,16 @@ def test_routes_are_role_gated_like_mapping_validation():
     assert allowed_roles_for("POST", "/api/target-validation/run") == allowed_roles_for("POST", "/api/validation/run")
     assert allowed_roles_for("POST", "/api/target-validation/exceptions") == allowed_roles_for("POST", "/api/validation/exceptions")
     assert allowed_roles_for("POST", "/api/target-validation/exceptions/EXC-1/decision") == allowed_roles_for("POST", "/api/validation/exceptions/EXC-1/decision")
+
+
+def test_entity_without_a_mapped_key_column_is_compared_by_row_count():
+    ent = {"Client": {"staging_table": "Client", "expected_rows": 40, "key": "CLIENT_ID", "unmapped_required": [],
+                      "tables": {"ORION_MCL_CLIENT": {"columns": {"CITY": "CITY"}, "required": []}}}}
+    p = tv.build_plan(schema="simplicity", staging_schema="staging", entities=ent)
+    assert not any(c["check"] == "KEYS_LOADED" for c in p)
+    ok = tv.evaluate(p, lambda q: 40, None)
+    assert [c["status"] for c in ok if c["check"] == "ROWS_LOADED"] == ["PASS"]
+    short = tv.evaluate(p, lambda q: 39 if "ORION_MCL_CLIENT" in q else 40, None)
+    assert [c["status"] for c in short if c["check"] == "ROWS_LOADED"] == ["FAIL"]
+    none = {"Client": {**ent["Client"], "expected_rows": None}}
+    assert [c["status"] for c in tv.evaluate(tv.build_plan(schema="simplicity", staging_schema="staging", entities=none), lambda q: 5, None) if c["check"] == "ROWS_LOADED"] == ["WARN"]

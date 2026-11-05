@@ -58,8 +58,9 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
                     f"(SELECT 1 FROM {tgt} t WHERE t.{_id(key_col)} = s.{_id(e['key'])})", "zero")
                 add("TARGET_KEY_UNIQUE", entity, table, key_col,
                     f"SELECT COUNT(*) - COUNT(DISTINCT {_id(key_col)}) FROM {tgt} WHERE {_id(key_col)} IS NOT NULL", "zero")
-            else:
-                add("KEYS_LOADED", entity, table, e.get("key") or "", None, "static", detail=f"The key field {e.get('key') or ''} is not mapped to a column of {table}, so keys cannot be compared.")
+            else:  # no target column holds the business key, so rows cannot be matched one by one: compare the loaded row count instead
+                add("ROWS_LOADED", entity, table, "", f"SELECT COUNT(*) FROM {tgt}", "at_least", e.get("expected_rows"),
+                    detail=f"The key field {e.get('key') or ''} is not mapped to a column of {table}, so rows are compared by count.")
             for col in sorted(set(t.get("required", []))):
                 add("REQUIRED_NOT_BLANK", entity, table, col,
                     f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NULL OR LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))) = ''", "zero")
@@ -103,6 +104,14 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
                 ok = n == p["expected"]
                 checks.append({**base, "status": "PASS" if ok else "FAIL",
                                "detail": f"Staging holds {n} row(s); the platform wrote {p['expected']} to the canonical file." + ("" if ok else " They should match.")})
+        elif p["check"] == "ROWS_LOADED":
+            if p["expected"] is None:
+                checks.append({**base, "status": "WARN", "detail": f"The target table holds {n} row(s); the platform has no expected count to compare."})
+            else:
+                ok = n >= p["expected"]
+                checks.append({**base, "status": "PASS" if ok else "FAIL",
+                               "detail": f"The target table holds {n} row(s); the platform sent {p['expected']}. " + ("(No business key is mapped here, so rows are compared by count.)" if ok
+                                                                                                               else "It should hold at least that many.")})
         elif p["check"] == "KEYS_LOADED":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": "Every staging key is present in the target." if n == 0 else f"{n} staging key(s) are missing from the target table."})
