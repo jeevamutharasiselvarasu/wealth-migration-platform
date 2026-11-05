@@ -8,7 +8,7 @@
             {% if view == 'rules' %}
             <div class="ey dm">Stage 10 · Validation · Target validation</div>
             <h1>Target validation</h1>
-            <p>Checks on the populated target after the ADF run, plus the cases the Validation Specialist defines here. Today the cases are evaluated on the simulated run output, and required (nullability) values are checked during the run. Built-in schema and data-type checks against the real target SQL database come with the real ADF connection.</p>
+            <p>Predefined checks on the data the pipeline actually loaded into the target database (counts only, read-only), plus extra cases the Validation Specialist defines below. Findings are accepted only through an exception that a different approver decides.</p>
             {% elif view == 'execution' %}
             <div class="ey dm">Stage 09 · Data plane · ADF Execution</div>
             <h1>ADF Execution</h1>
@@ -191,6 +191,46 @@
     })();
     </script>
     <form id="rm-actions" class="hidden mt-2" action="/api/target-mapping/stage-canonical" method="post"><input type="hidden" name="return_to" value="execution"><button class="btn p sm" data-testid="rm-rewrite">Rewrite canonical files to stage/</button> <span class="text-[11px] text-[#41506B]">Then run the pipeline again in Data Factory.</span></form>
+    {% endif %}
+    {% if view == 'rules' %}
+    <section id="target-validation" class="card" data-testid="target-validation">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h3 style="font-size:16px">Predefined checks on the loaded target <span class="font-mono text-[10px] font-normal text-sky-800">READ-ONLY · COUNTS ONLY</span></h3>
+                <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">Run after the pipeline succeeds. Each check is one count query against the real database, built from the approved mappings: staging row counts match what the platform wrote, every staging key reached the target, target keys are unique, required columns are filled, no account or client points at a missing household, and the latest pipeline run succeeded. No values are read back or shown, and nothing is changed.</p>
+            </div>
+            {% if can_run_validation %}<form action="/api/target-validation/run" method="post"><button class="btn p sm" data-testid="run-target-validation">Run target validation</button></form>
+            {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs it.</span>{% endif %}
+        </div>
+        {% if tval %}
+        <p class="mt-3 text-xs text-[#41506B]">Run <span class="font-mono">{{ tval.run_id }}</span> by {{ tval.executed_by }} · {{ tval.executed_utc[:19] }} · result <span class="pill {% if tval.effective_status == 'PASS' %}approved{% elif tval.effective_status == 'FAIL' %}failed{% else %}review{% endif %}" data-testid="tval-status">{{ tval.effective_status }}</span>
+          <span class="text-[#5A6A88]">({{ tval.summary.PASS }} passed · {{ tval.summary.FAIL }} failed · {{ tval.summary.WARN + tval.summary.NOT_EVALUATED }} to review)</span></p>
+        <table class="mt-2 w-full text-left text-xs">
+            <thead><tr>{% for h in ['Check', 'Entity', 'Table', 'Field', 'Status', 'Finding', 'Exception'] %}<th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">{{ h }}</th>{% endfor %}</tr></thead>
+            <tbody>
+            {% for c in tval.checks %}{% set ex = tval_exceptions.get(c.ref) %}
+            <tr data-testid="tval-row">
+                <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ c.check }}</td><td class="border-b border-[#EEF2FA] p-2">{{ c.entity }}</td>
+                <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ c.table }}</td><td class="border-b border-[#EEF2FA] p-2 font-mono">{{ c.field }}</td>
+                <td class="border-b border-[#EEF2FA] p-2"><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span></td>
+                <td class="border-b border-[#EEF2FA] p-2">{{ c.detail }}</td>
+                <td class="border-b border-[#EEF2FA] p-2">
+                {% if c.status != 'PASS' %}
+                  {% if ex %}<span class="pill {% if ex.status == 'APPROVED' %}approved{% elif ex.status == 'REJECTED' %}failed{% else %}review{% endif %}">{{ ex.status }}</span> <span class="text-[10px] text-[#5A6A88]">{{ ex.proposed_by }}: {{ ex.reason }}</span>
+                    {% if ex.status == 'PROPOSED' and can_decide_exception and ex.proposed_by != current_user_name %}
+                    <form action="/api/target-validation/exceptions/{{ ex.exception_id }}/decision" method="post" class="mt-1 flex gap-1"><input name="comments" placeholder="Comment (required to reject)" aria-label="Comment" class="input"><button name="decision" value="APPROVED" class="btn ok sm">Accept</button><button name="decision" value="REJECTED" class="btn g sm">Reject</button></form>
+                    {% elif ex.status == 'PROPOSED' %}<div class="text-[10px] text-[#5A6A88]">Waiting for a different approver.</div>{% endif %}
+                  {% elif can_run_validation %}
+                    <form action="/api/target-validation/exceptions" method="post" class="flex gap-1"><input type="hidden" name="run_id" value="{{ tval.run_id }}"><input type="hidden" name="check_ref" value="{{ c.ref }}"><input name="reason" required placeholder="Reason to accept" aria-label="Reason" class="input"><button class="btn g sm">Propose exception</button></form>
+                  {% endif %}
+                {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}<p class="mt-3 text-xs text-[#5A6A88]">Not run yet for this migration.</p>{% endif %}
+    </section>
     {% endif %}
     {% if view == 'rules' %}
     <section id="validation-scenarios" class="card">

@@ -23,7 +23,7 @@ from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
 from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment
 from control_plane.services import sql_target
-from control_plane.services import canonical_derivations, run_monitor
+from control_plane.services import canonical_derivations, run_monitor, target_validation
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -125,6 +125,7 @@ def workflow_progress() -> dict:
     proposals_pending = mappings_approved = changes_open = rfi_open = target_pending = 0
     target_provisioned = False
     validation_status = validation_when = ""
+    target_validation_status = ""
     rules_approved = rules_draft = target_approved = runs_n = 0
     sql_ready = published = False
     conn = get_db_connection()
@@ -133,7 +134,12 @@ def workflow_progress() -> dict:
         rules_approved = sum(1 for r in _rules if r["status"] == "APPROVED")
         rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
         sql_ready = bool(package_contract.list_packages(conn, migration_id))
-        runs_n = 1 if run_monitor.succeeded(conn, migration_id) else 0  # stage 09 is done when the real run's log shows the pipeline succeeded
+        runs_n = 1 if run_monitor.succeeded(conn, migration_id) else 0
+        _tv = target_validation.latest(conn, migration_id)
+        target_validation_status = ""
+        if _tv:
+            target_validation_status = validation_scenarios.effective_status(
+                _tv["checks"], validation_scenarios.list_exceptions(conn, migration_id, _tv["run_id"]))  # stage 09 is done when the real run's log shows the pipeline succeeded
         _git, _pkg = git_connection.get_config(conn), artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
         published = bool(_git and _pkg and _git.get("last_artifact_id") == _pkg["artifact_id"])  # the latest package is the one that was published
         proposals_pending = conn.execute(
@@ -189,7 +195,7 @@ def workflow_progress() -> dict:
         "scope": scope, "files_total": files_total, "files_confirmed": files_confirmed, "files_pending": files_pending,
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
         "changes_open": changes_open, "next": nxt, "target_provisioned": target_provisioned, "target_pending": target_pending,
-        "validation_status": validation_status, "validation_when": validation_when,
+        "validation_status": validation_status, "validation_when": validation_when, "target_validation_status": target_validation_status,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
     progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n, published))
@@ -211,7 +217,7 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
         ("07", "Transformation SQL", sql_ready),
         ("08", "Publish artifacts", published),
         ("09", "ADF Execution", runs_n > 0),
-        ("10", "Target validation", runs_n > 0 and p["validation_status"] == "PASS"),
+        ("10", "Target validation", runs_n > 0 and p.get("target_validation_status") == "PASS"),
     ]
     stages, current_seen = [], False
     for num, title, ok in done_flags:
@@ -1577,6 +1583,105 @@ async def reconciliation_dashboard(request: Request, error: str = "", notice: st
     return _validation_stage_view(request, "reconcile", error, notice)
 
 
+def _target_validation_entities(migration_id: str) -> Dict[str, Dict[str, Any]]:
+    """What the predefined target checks need, from approved target mappings, the confirmed target model and the canonical rows."""
+    try:
+        cfg_firm = load_firm_config()
+    except FirmConfigError:
+        cfg_firm = None
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"] if spec else []
+        conn.commit()
+    finally:
+        conn.close()
+    if not spec:
+        return {}
+    rows, _ = _canonical_rows_for_migration(migration_id)
+    out: Dict[str, Dict[str, Any]] = {}
+    for entity, body in spec["entities"].items():
+        fields = {f["name"]: f for f in body["fields"]}
+        mine = [m for m in approved if m["entity_name"] == entity and m["target_field"] in fields and m.get("canonical_field")]
+        if not mine:
+            continue
+        key = next((f.name for f in cfg_firm.entities[entity].fields if f.is_key), None) if cfg_firm and entity in cfg_firm.entities else None
+        tables: Dict[str, Dict[str, Any]] = {}
+        for m in mine:
+            f = fields[m["target_field"]]
+            t = tables.setdefault(f["table"], {"columns": {}, "required": []})
+            t["columns"][m["canonical_field"]] = f["column"]
+            if f.get("required"):
+                t["required"].append(f["column"])
+        mapped = {m["target_field"] for m in approved if m["entity_name"] == entity}
+        out[entity] = {"staging_table": entity, "expected_rows": len(rows.get(entity, [])) if entity in rows else None, "key": key, "tables": tables,
+                       "unmapped_required": sorted(n for n, f in fields.items() if f.get("required") and n not in mapped)}
+    return out
+
+
+@app.post("/api/target-validation/run")
+async def run_target_validation(request: Request):
+    """Run the predefined checks against the loaded target database (read-only, counts only)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    entities = _target_validation_entities(migration_id)
+    if not entities:
+        return _tv_redirect("error", "Approve target mappings and confirm the target system first.")
+    conn = get_db_connection()
+    try:
+        try:
+            result = target_validation.run(conn, migration_id, user["name"], entities)
+        except ValueError as exc:
+            return _tv_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_VALIDATION_RUN", user, {"run_id": result["run_id"], "status": result["status"], "summary": result["summary"]})
+    return _tv_redirect("notice", f"Target validation {result['run_id']}: {result['status']} ({result['summary']['PASS']} passed, {result['summary']['FAIL']} failed, "
+                                  f"{result['summary']['WARN'] + result['summary']['NOT_EVALUATED']} to review).")
+
+
+def _tv_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/validation-rules?{key}=" + quote_plus(message) + "#target-validation", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/target-validation/exceptions")
+async def propose_target_validation_exception(request: Request, run_id: str = Form(...), check_ref: str = Form(...), reason: str = Form("")):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            target_validation.ensure_table(conn)
+            run = conn.execute("SELECT results_json FROM target_validation_runs WHERE run_id = ? AND migration_id = ?", (run_id, migration_id)).fetchone()
+            if not run or not any(c.get("ref") == check_ref and c["status"] in ("FAIL", "WARN", "NOT_EVALUATED") for c in json.loads(run["results_json"])["checks"]):
+                raise ValueError("That finding does not exist in the run, or it passed.")
+            eid = validation_scenarios.propose_exception(conn, migration_id, run_id, check_ref, reason, user["name"])
+        except ValueError as exc:
+            return _tv_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_VALIDATION_EXCEPTION_PROPOSED", user, {"exception_id": eid, "run_id": run_id, "check_ref": check_ref})
+    return _tv_redirect("notice", f"Exception {eid} proposed. A Migration Analyst or Platform Admin must decide it.")
+
+
+@app.post("/api/target-validation/exceptions/{exception_id}/decision")
+async def decide_target_validation_exception(request: Request, exception_id: str, decision: str = Form(...), comments: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            row = validation_scenarios.decide_exception(conn, exception_id, decision.upper(), user["name"], comments)
+        except ValueError as exc:
+            return _tv_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_VALIDATION_EXCEPTION_" + row["status"], user, {"exception_id": exception_id, "check_ref": row["check_ref"]})
+    return _tv_redirect("notice", f"Exception {exception_id} {row['status'].lower()}.")
+
+
 @app.get("/validation-rules", response_class=HTMLResponse)
 async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
     """Stage 10: the scenarios that extend the validation run, defined after the data plane has executed."""
@@ -1663,6 +1768,10 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
         adf_status = _adf_status(conn, migration_id)
         run_status = run_monitor.stored(conn, migration_id)
+        tval = target_validation.latest(conn, migration_id)
+        tval_exceptions = validation_scenarios.list_exceptions(conn, migration_id, tval["run_id"]) if tval else []
+        if tval:
+            tval["effective_status"] = validation_scenarios.effective_status(tval["checks"], tval_exceptions)
         adf_deployment = adf_simulator.latest(conn, migration_id)
         adf_trigger_blocker = adf_simulator.trigger_blocker(adf_deployment, adf_status["stale_reasons"] if adf_status else None, adf_status["latest"]["artifact_id"] if adf_status else None)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
@@ -1689,7 +1798,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "run_status": run_status, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
+            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "run_status": run_status, "tval": tval, "tval_exceptions": {e["check_ref"]: e for e in tval_exceptions}, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,

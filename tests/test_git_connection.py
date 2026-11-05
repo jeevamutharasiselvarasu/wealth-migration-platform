@@ -150,6 +150,8 @@ def test_rail_has_a_publish_stage_between_the_sql_and_the_adf_run():
     assert [s["number"] + " " + s["title"] for s in v["stages"][6:]] == ["07 Transformation SQL", "08 Publish artifacts", "09 ADF Execution", "10 Target validation"]
     assert v["stage_current"] == "08 Publish artifacts"  # not published yet, so the run and the validation after it are not started
     v = build_stage_view(p, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=1, published=True)
+    assert v["stages_done"] == 9 and v["stage_current"] == "10 Target validation"  # the run succeeded; the loaded data is not validated yet
+    v = build_stage_view({**p, "target_validation_status": "PASS"}, rules_approved=8, rules_draft=0, target_approved=5, sql_ready=True, runs_n=1, published=True)
     assert v["stages_done"] == 10
 
 
