@@ -12,7 +12,7 @@
             {% elif view == 'execution' %}
             <div class="ey dm">Stage 09 · Data plane · ADF Execution</div>
             <h1>ADF Execution</h1>
-            <p>Run the latest deployment package through the simulated data plane and review telemetry and failures. Nothing is loaded into a target system in this POC.</p>
+            <p>Run the pipeline by hand in Data Factory and follow it here. Nothing is loaded into a target system in this POC.</p>
             {% else %}
             <div class="ey dm">Stage 05 · Transformed · Mapping Validation Review</div>
             <h1>Mapping Validation Review</h1>
@@ -22,7 +22,7 @@
         <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">{{ {'rules': 'Validation', 'reconcile': 'Transformed'}.get(view, 'Data plane') }}</span></div>
     </div>
     {% if view == 'rules' %}<div class="ins"><b>Target validation.</b> Rules are defined after execution and check the data that was run. Post-execution checks use the Execution results; adopting or retiring a rule is recorded in the audit log.</div>
-    {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> Executes the deployment package as many times as needed. Each run records counts, duration and the mapping or rule behind each problem.</div>
+    {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> Manual run in ADF for now. The platform writes the canonical files, you start the pipeline in Data Factory, and the platform reads the pipeline's run log to see the result.</div>
     {% else %}<div class="ins"><b>Validation.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>{% endif %}
     {% if view == 'rules' %}<section class="kpis" aria-label="Validation rules summary">
         <div class="kpi"><small>Active rules</small><b>{{ scenarios|selectattr('status','equalto','ACTIVE')|list|length }}</b><span>run with every validation</span></div>
@@ -31,7 +31,7 @@
     </section>
     {% elif view == 'execution' %}<section class="kpis" aria-label="Execution summary">
         <div class="kpi"><small>Deployment package</small><b>{{ 'Ready' if has_package else 'Not built' }}</b><span>{{ 'latest stored package' if has_package else 'build one in Transformation SQL' }}</span></div>
-        <div class="kpi"><small>Runs recorded</small><b>{{ exec_runs|length }}</b><span>simulated data plane</span></div>
+        <div class="kpi"><small>Latest ADF run</small><b>{{ (run_status.status if run_status else 'Not checked')|replace('_', ' ')|title }}</b><span>manual run in ADF, read from the run log</span></div>
     </section>
     {% else %}
     {% if progress %}<section class="kpis" aria-label="Validation summary">
@@ -138,89 +138,59 @@
         {% if can_decide_exception %}<form action="/api/execution/start-pipeline" method="post" class="mt-2"><button class="btn p sm" data-testid="start-pipeline">Approve and start the pipeline</button></form>
         {% else %}<p class="fh">A Migration Analyst or Platform Admin approves the start.</p>{% endif %}
     </section>
-    <section id="execution" class="card">
+    <section id="execution" class="card" data-testid="run-monitor">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h3 style="font-size:16px">Execution <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED data plane</span></h3>
-                <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">Runs the latest deployment package against canonical rows in memory and records telemetry: counts, duration, and the mapping or rule behind each problem. Nothing is sent to Azure or loaded anywhere, and no record values are stored. Replace with the real ADF trigger when that integration is in scope.</p>
+                <h3 style="font-size:16px">Pipeline run <span class="font-mono text-[10px] font-normal text-sky-800" data-testid="manual-run-tag">MANUAL RUN IN ADF</span></h3>
+                <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">For now the pipeline is started by hand in Data Factory (Debug or Trigger now). The platform never signs in to Data Factory: it reads the pipeline's own run log, <span class="font-mono">xodus_run_log</span>, every 30 seconds, and tells you whether the run is running, succeeded or failed.</p>
             </div>
-            {% if can_run_validation %}
-            {% if has_package %}<form action="/api/execution/run" method="post" class="flex items-center gap-3"><label class="flex items-center gap-1 text-[11px] text-[#41506B]"><input type="checkbox" name="outage"> Simulate an infrastructure outage</label><button class="btn p sm">Run simulated execution</button></form>
-            {% else %}<span class="text-[10px] text-[#5A6A88]">Generate a deployment package on Transformation SQL first.</span>{% endif %}
-            {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs executions.</span>{% endif %}
+            <div class="flex items-center gap-2"><span id="rm-status" class="pill review" data-testid="rm-status">Checking…</span><button type="button" id="rm-now" class="btn g sm">Check now</button></div>
         </div>
-        <details class="ins inl" style="margin-top:14px;border-left-color:var(--warn)" data-testid="adf-sim" {% if not adf_deployment %}open{% endif %}>
-            <summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Simulated Azure Data Factory <span class="font-mono text-[10px] font-normal text-amber-800">SIMULATED, no Azure call</span>{% if adf_deployment %} <span class="font-normal text-[#5A6A88]">· {{ adf_deployment.deployment_id }} · {{ adf_deployment.status }}</span>{% endif %}</summary>
-            <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
-                <div class="text-xs text-[#41506B]"><b class="text-[#152C6B]">Simulated Azure Data Factory</b> <span class="font-mono text-[10px] text-amber-800">SIMULATED, no Azure call</span><br>Deploys the latest <b>stored</b> ADF package into a fictitious factory (broken references, clear-text secrets and non-simulated packages are rejected), then triggers its pipeline on the simulated data plane. A real ADF client would replace this step.</div>
-                {% if can_run_validation and adf_status %}<div class="flex gap-2">
-                    <form action="/api/adf/simulated-deploy" method="post"><button class="btn g sm" data-testid="adf-deploy">Deploy stored package {{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}</button></form>
-                    <form action="/api/adf/simulated-trigger" method="post"><button class="btn p sm" data-testid="adf-trigger" {% if adf_trigger_blocker %}disabled title="{{ adf_trigger_blocker }}"{% endif %}>Trigger pipeline (simulated)</button></form>
-                </div>{% elif not adf_status %}<span class="text-[10px] text-[#5A6A88]">Save an ADF package on Transformation SQL first.</span>{% endif %}
-            </div>
-            {% if adf_deployment %}<div class="mt-3 text-[11px] text-[#41506B]" data-testid="adf-deployment">
-                <span class="font-mono font-bold">{{ adf_deployment.deployment_id }}</span> &middot; package {{ adf_deployment.artifact_id }} v{{ adf_deployment.artifact_version }} &middot; factory <span class="font-mono">{{ adf_deployment.factory_name }}</span> &middot; <b>{{ adf_deployment.status }}</b> by {{ adf_deployment.deployed_by }} &middot; {{ adf_deployment.deployed_utc }}
-                <div class="mt-1">{% for kind in ['LinkedService','Dataset','Pipeline'] %}{{ kind }}: {{ adf_deployment.resources|selectattr('kind','equalto',kind)|list|length }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
-                {% if adf_deployment.errors %}<ul class="mt-1 list-disc pl-5 text-rose-800">{% for e in adf_deployment.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
-                {% if adf_deployment.last_adf_run_id %}<div class="mt-1">Last trigger: <span class="font-mono">{{ adf_deployment.last_adf_run_id }}</span> by {{ adf_deployment.last_triggered_by }} &middot; {{ adf_deployment.last_triggered_utc }}</div>{% endif %}
-                {% if adf_trigger_blocker %}<div class="mt-1 text-amber-900">Trigger unavailable: {{ adf_trigger_blocker }}</div>{% endif %}
-            </div>{% endif %}
-        </details>
-        {% for r in exec_runs %}{% set t = r.telemetry %}
-        <details class="mt-3 rounded-xl border border-[#D9E3F5] p-3" {% if loop.first %}open{% endif %}>
-            <summary class="cursor-pointer"><span class="inline-flex flex-wrap items-center gap-2 text-[11px]">
-                <span class="font-mono font-bold text-[#152C6B]">{{ r.run_id }}</span>
-                <span class="pill {% if r.status == 'SUCCEEDED' %}approved{% elif r.status == 'FAILED' %}failed{% else %}review{% endif %}">{{ r.status }}</span>
-                <span class="pill border-amber-200 bg-amber-50 text-amber-800">{{ r.mode }}</span>
-                <span class="text-[#5A6A88]">package v{{ r.package_version }} · {{ r.triggered_by }} · {{ r.started_utc[:19] }} · {{ r.duration_ms }} ms{% if r.retry_of %} · retry of {{ r.retry_of }}{% endif %}</span>{% if not t.error %}<span class="text-[#41506B]">· {{ t.totals.read }} read / {{ t.totals.loaded }} loaded / {{ t.totals.failed }} failed</span>{% endif %}{% if loop.first %}<span class="pill approved">latest</span>{% endif %}</span></summary>
-            {% if t.error %}<p class="mt-2 text-xs text-rose-800">{{ t.error }}</p>
-              {% if can_run_validation and r.status == 'FAILED' and t.retryable %}<form action="/api/execution/run" method="post" class="mt-2"><input type="hidden" name="retry_of" value="{{ r.run_id }}"><button class="btn g sm">Retry run</button></form>{% endif %}
-            {% else %}
-            <p class="mt-2 text-xs text-[#41506B]">{{ t.totals.read }} read · {{ t.totals.loaded }} loaded · {{ t.totals.skipped }} skipped · {{ t.totals.failed }} failed (counted per target table)</p>
-            {% set empty_entities = t.entities.values()|selectattr('source_rows','equalto',0)|list %}{% if empty_entities %}<p class="mt-1 text-xs text-amber-800">{{ empty_entities|length }} entity group(s) had no source rows: their mappings are in the package but nothing was exercised. Approve and map the source files for those entities first.</p>{% endif %}
-            <div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr><th>Entity</th><th>Table</th><th>Read</th><th>Loaded</th><th>Skipped</th><th>Failed</th><th>Reconciled</th></tr></thead><tbody>
-              {% for ename, e in t.entities.items() %}{% for tname, c in e.tables.items() %}<tr><td>{{ ename }}</td><td class="font-mono">{{ tname }}</td><td>{{ c.read }}</td><td>{{ c.loaded }}</td><td>{{ c.skipped }}</td><td>{{ c.failed }}</td><td>{% if c.read == 0 %}<span class="text-amber-800">no source rows</span>{% else %}{{ 'yes' if c.balanced else 'NO' }}{% endif %}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
-            {% if t.stage %}<p class="mt-1 text-xs {{ 'text-[#41506B]' if t.stage.written else 'text-amber-800' }}" data-testid="stage-output">{% if t.stage.written %}Stage output: <span class="font-mono">{{ t.stage.container }}/{{ t.stage.path }}</span> · {{ t.stage.files|length }} file(s) (transformed tables and the files curation needs). <a href="/azure-setup#blob-storage" class="font-mono text-blue-700">View in the container →</a>{% else %}Not written to stage: {{ t.stage.reason }}{% endif %}</p>{% endif %}
-            {% if t.stage and t.stage.written %}{% if t.curated and t.curated.promoted %}<p class="mt-1 text-xs text-[#41506B]" data-testid="curated-output">Curated: <span class="font-mono">{{ t.curated.container }}/curated/</span> · {{ t.curated.files|length }} table(s) · by {{ t.curated.by }}. <a href="/azure-setup#blob-storage" class="font-mono text-blue-700">View in the container →</a></p>
-            {% elif can_review_failures %}<form action="/api/execution/runs/{{ r.run_id }}/promote" method="post" class="mt-1" data-testid="promote-form"><button class="btn secondary" type="submit">Promote to curated</button> <span class="text-xs text-[#41506B]">Needs every problem reviewed and no failed target checks.</span></form>{% endif %}{% endif %}
-            {% if t.failures %}{% set open_f = t.failures|length - r.reviews|length %}<details class="mt-3" {% if loop.first and open_f > 0 %}open{% endif %}><summary class="cursor-pointer text-xs font-bold text-rose-800">Problems linked to mappings and rules <span class="pill review">{{ t.failures|length }}</span></summary>
-{% set can_act = can_review_failures %}
-            <form action="/api/execution/runs/{{ r.run_id }}/failures/bulk-review" method="post" class="mt-2">
-            <div class="overflow-x-auto"><table class="w-full text-left text-xs" data-testid="problems-table"><thead><tr>{% if can_act %}<th style="width:28px"><input type="checkbox" aria-label="Select all problems" onclick="this.closest('table').querySelectorAll('input[name=idx]').forEach(c=>c.checked=this.checked)"></th>{% endif %}<th>Rows</th><th>Where</th><th>Problem</th><th>Rule / mapping</th><th>Status</th>{% if can_act %}<th>Comment</th>{% endif %}</tr></thead><tbody>
-            {% for f in t.failures %}{% set rv = r.reviews.get(loop.index0) %}<tr>
-              {% if can_act %}<td>{% if not (rv and rv.status == 'RESOLVED') %}<input type="checkbox" name="idx" value="{{ loop.index0 }}" aria-label="Select problem {{ loop.index }}">{% endif %}</td>{% endif %}
-              <td>{{ f.rows }}</td><td class="font-mono" style="word-break:break-all">{{ f.entity }}.{{ f.table }}.{{ f.column }}</td><td>{{ f.reason }}</td>
-              <td>{% if f.rule.startswith('RULE:') %}<a href="/transformation-rules" class="font-mono text-blue-700">{{ f.rule }}</a>{% else %}<a href="/target-mapping" class="font-mono text-blue-700">{{ f.rule }}</a>{% endif %}</td>
-              <td>{% if rv %}<span class="pill {% if rv.status == 'RESOLVED' %}approved{% else %}review{% endif %}">{{ rv.status }}</span><div class="text-[10px] text-[#5A6A88]">{{ rv.reviewer }}{% if rv.reason %} · {{ rv.reason }}{% endif %}</div>{% else %}<span class="text-[#5A6A88]">Open</span>{% endif %}</td>
-              {% if can_act %}<td>{% if not (rv and rv.status == 'RESOLVED') %}<input name="comment_{{ loop.index0 }}" placeholder="Comment" aria-label="Comment for problem {{ loop.index }}" class="input" style="min-width:130px;width:100%">{% endif %}</td>{% endif %}</tr>{% endfor %}</tbody></table></div>
-            {% if can_act %}<div class="mt-2 flex flex-wrap items-center gap-2"><input name="reason" placeholder="Comment for all ticked rows without their own" aria-label="Shared comment" class="input" style="min-width:260px"><button name="decision" value="ACKNOWLEDGED" class="btn g sm">Acknowledge ticked</button><button name="decision" value="RESOLVED" class="btn g sm">Mark ticked resolved</button></div>{% endif %}
-            </form></details>{% endif %}
-            {% set recs = recs_by_run.get(r.run_id, []) %}{% if recs %}{% set open_r = recs|selectattr('status','equalto','OPEN')|list|length %}<details class="mt-3" {% if loop.first and open_r > 0 %}open{% endif %}><summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Recommendations for gaps in the sample data <span class="pill review">{{ recs|length }}</span>{% if open_r %} <span class="font-normal text-[#5A6A88]">· {{ open_r }} awaiting a decision</span>{% endif %}</summary>
-            <p class="mt-1 text-[11px] text-[#5A6A88]">Worked out from the problems above and your source files with plain checks (no AI model). Nothing here changes a rule or mapping: accepting a proposal that carries a rule only creates a draft that still needs approval.</p>
-
-            <form action="/api/execution/recommendations/bulk-decide" method="post" class="mt-2">
-            <div class="overflow-x-auto"><table class="w-full text-left text-xs" data-testid="recs-table"><thead><tr>{% if can_review_failures %}<th style="width:28px"><input type="checkbox" aria-label="Select all recommendations" onclick="this.closest('table').querySelectorAll('input[name=rec_id]').forEach(c=>c.checked=this.checked)"></th>{% endif %}<th>Kind</th><th>Recommendation</th><th>Rows</th><th>Status</th>{% if can_review_failures %}<th>Comment</th>{% endif %}</tr></thead><tbody>
-            {% for g in recs %}<tr class="align-top">
-              {% if can_review_failures %}<td>{% if g.status == 'OPEN' %}<input type="checkbox" name="rec_id" value="{{ g.rec_id }}" aria-label="Select recommendation {{ g.title }}">{% endif %}</td>{% endif %}
-              <td><span class="pill review">{{ g.kind }}</span></td>
-              <td><strong>{{ g.title }}</strong>
-                <details class="mt-1"><summary class="cursor-pointer text-[11px] text-blue-700">Evidence and basis</summary>
-                  {% for e in g.evidence %}<div class="text-[#41506B]">{{ e }}</div>{% endfor %}
-                  <div class="text-[11px] text-[#5A6A88]">{{ g.basis }}</div>
-                  {% if g.vendor_note %}<div class="mt-1 text-[11px]"><b>Note for the data provider:</b> {{ g.vendor_note }}</div>{% endif %}
-                  {% if g.rule_draft %}<div class="text-[11px]">Proposed draft rule: <span class="font-mono">{{ g.rule_draft.rule_type }}</span> on <span class="font-mono">{{ g.rule_draft.rule_id }}</span> (needs approval)</div>{% endif %}
-                </details></td>
-              <td>{{ g.rows }}</td>
-              <td>{% if g.status != 'OPEN' %}<span class="pill {% if g.status == 'DISMISSED' %}review{% else %}approved{% endif %}">{{ g.status }}</span><div class="text-[10px] text-[#5A6A88]">{{ g.reviewer }}{% if g.decision_reason %} · {{ g.decision_reason }}{% endif %}{% if g.created_draft %} · draft {{ g.created_draft }}{% endif %}</div>{% else %}<span class="text-[#5A6A88]">Open</span>{% endif %}</td>
-              {% if can_review_failures %}<td>{% if g.status == 'OPEN' %}<input name="comment_{{ g.rec_id }}" placeholder="Comment (required to dismiss)" aria-label="Comment for {{ g.title }}" class="input" style="min-width:130px;width:100%">{% endif %}</td>{% endif %}</tr>{% endfor %}</tbody></table></div>
-            {% if can_review_failures %}<div class="mt-2 flex flex-wrap items-center gap-2"><input name="reason" placeholder="Comment for all ticked rows without their own" aria-label="Shared comment" class="input" style="min-width:260px"><button name="decision" value="ACCEPTED" class="btn g sm">Accept ticked</button><button name="decision" value="VENDOR_REQUESTED" class="btn g sm">Request ticked from data provider</button><button name="decision" value="DISMISSED" class="btn g sm">Dismiss ticked</button></div>{% endif %}
-            </form></details>{% endif %}
-            {% if t.post_checks %}<details class="mt-3"><summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Post-execution validation scenarios <span class="pill review">{{ t.post_checks|length }}</span></summary>
-            <ul class="mt-1 space-y-1 text-xs">{% for c in t.post_checks %}<li><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span> {{ c.scenario_id }} · {{ c.entity }} · {{ c.description }}: {{ c.detail }}</li>{% endfor %}</ul></details>{% endif %}
-            {% endif %}
-        </details>
-        {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No executions yet.</p>{% endfor %}
+        <p id="rm-meta" class="mt-2 text-[11px] text-[#5A6A88]"></p>
+        <div id="rm-error" class="mt-2 hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert"></div>
+        <table id="rm-steps" class="mt-3 hidden w-full text-left text-xs"><thead><tr><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Step</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Status</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Rows read</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Rows written</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">At (UTC)</th></tr></thead><tbody></tbody></table>
+        <div id="rm-fail" class="mt-3 hidden space-y-3"></div>
+        <div id="rm-ok" class="mt-3 hidden rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">The run succeeded. Every copy and the merge into the target completed. <a href="/validation-rules" class="btn p sm ml-2" data-testid="to-target-validation">Continue to target validation →</a></div>
     </section>
+    <script>
+    (function () {
+      var timer = null, busy = false;
+      function el(id) { return document.getElementById(id); }
+      function pill(s) { return s === 'SUCCEEDED' ? 'approved' : (s === 'FAILED' || s === 'STALLED' || s === 'UNREADABLE' ? 'failed' : 'review'); }
+      function cell(tr, text, cls) { var c = tr.insertCell(); c.className = 'border-b border-[#EEF2FA] p-2 ' + (cls || ''); c.textContent = text === null || text === undefined ? '' : text; return c; }
+      function render(d) {
+        var st = el('rm-status'); var label = {NO_RUN: 'No run yet', RUNNING: 'Running', SUCCEEDED: 'Succeeded', FAILED: 'Failed', STALLED: 'Stalled', UNREADABLE: 'Cannot read log'}[d.status] || d.status;
+        st.textContent = label; st.className = 'pill ' + pill(d.status);
+        el('rm-meta').textContent = d.status === 'NO_RUN' ? 'No run in the log yet. Start the pipeline in Data Factory; this page checks again every 30 seconds.'
+          : (d.run_id ? 'Run ' + d.run_id + (d.trigger_file ? ' · file ' + d.trigger_file : '') + ' · started ' + (d.started_utc || '') + (d.finished_utc ? ' · finished ' + d.finished_utc : '') : '');
+        var err = el('rm-error'); err.classList.toggle('hidden', !d.error); err.textContent = d.error || '';
+        var tb = el('rm-steps'); var body = tb.querySelector('tbody'); body.textContent = '';
+        (d.steps || []).forEach(function (s) { var tr = body.insertRow(); cell(tr, s.step, 'font-mono'); var c = cell(tr, s.status); c.className += ' font-bold ' + (s.status === 'FAILED' ? 'text-rose-700' : (s.status === 'SUCCEEDED' ? 'text-teal-700' : '')); cell(tr, s.rows_read); cell(tr, s.rows_written); cell(tr, s.at, 'font-mono'); });
+        tb.classList.toggle('hidden', !(d.steps || []).length);
+        var f = el('rm-fail'); f.textContent = '';
+        (d.failures || []).forEach(function (x) {
+          var b = document.createElement('div'); b.className = 'rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900'; b.setAttribute('data-testid', 'rm-failure');
+          var h = document.createElement('b'); h.textContent = x.step + ': ' + x.cause; b.appendChild(h);
+          var r = document.createElement('p'); r.className = 'mt-1'; r.textContent = 'Recommended fix: ' + x.recommendation; b.appendChild(r);
+          var m = document.createElement('pre'); m.className = 'mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-white p-2 font-mono text-[10px]'; m.textContent = x.message; b.appendChild(m);
+          if (x.action === 'rewrite_stage' && el('rm-actions')) { var a = el('rm-actions').cloneNode(true); a.classList.remove('hidden'); a.removeAttribute('id'); b.appendChild(a); }
+          f.appendChild(b);
+        });
+        f.classList.toggle('hidden', !(d.failures || []).length);
+        el('rm-ok').classList.toggle('hidden', d.status !== 'SUCCEEDED');
+        if (d.status === 'SUCCEEDED' || d.status === 'FAILED' || d.status === 'STALLED') { clearInterval(timer); timer = null; }
+        else if (!timer) { timer = setInterval(check, 30000); }
+      }
+      function check() {
+        if (busy) return; busy = true;
+        fetch('/api/execution/run-status', {headers: {'Accept': 'application/json'}}).then(function (r) { return r.json(); }).then(render)
+          .catch(function () { render({status: 'UNREADABLE', error: 'The platform could not be reached.'}); }).then(function () { busy = false; });
+      }
+      el('rm-now').addEventListener('click', function () { if (!timer) { timer = setInterval(check, 30000); } check(); });
+      check();
+    })();
+    </script>
+    <form id="rm-actions" class="hidden mt-2" action="/api/target-mapping/stage-canonical" method="post"><input type="hidden" name="return_to" value="execution"><button class="btn p sm" data-testid="rm-rewrite">Rewrite canonical files to stage/</button> <span class="text-[11px] text-[#41506B]">Then run the pipeline again in Data Factory.</span></form>
     {% endif %}
     {% if view == 'rules' %}
     <section id="validation-scenarios" class="card">

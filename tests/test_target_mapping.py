@@ -280,8 +280,9 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "already+retried" in asyncio.run(call("Validation Specialist", "POST", "/api/execution/run", {"retry_of": failed_id})).headers["location"]
     exec_page = asyncio.run(call("Validation Specialist", "GET", "/execution")).text
     assert "Mark resolved" not in exec_page  # reviewing problems is not a Validation Specialist action
-    assert "SIMULATED data plane" in exec_page and "retry of " + failed_id in exec_page and "Run simulated execution" in exec_page
-    assert "Run simulated execution" not in asyncio.run(call("Migration Analyst", "GET", "/execution")).text
+    # The page no longer offers the simulated runner: it is a manual run in ADF, followed through the run log.
+    assert "MANUAL RUN IN ADF" in exec_page and "run-monitor" in exec_page and "/api/execution/run-status" in exec_page
+    assert "Run simulated execution" not in exec_page and "SIMULATED data plane" not in exec_page and "adf-sim" not in exec_page
     cov_page = asyncio.run(call("Validation Specialist", "GET", "/target-mapping")).text
     assert "Target coverage" in cov_page and "Transformation-assisted" in cov_page
     sql_page = asyncio.run(call("Validation Specialist", "GET", "/transformation-sql")).text
@@ -325,11 +326,9 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "Deploy+the+stored" in asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
     dep = asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-deploy")).headers["location"]
     assert "notice=" in dep and "SIMULATED+factory" in dep
-    page = asyncio.run(call("Validation Specialist", "GET", "/execution")).text
-    assert "adf-deployment" in page and "DEPLOYED_SIMULATED" in page and "LinkedService: 3" in page
+    assert "notice=" in dep
     trig = asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
     assert "notice=" in trig and "ADF-SIM-RUN" in trig.replace("%2D", "-") or "ADF-SIM-" in trig
-    assert "Last trigger" in asyncio.run(call("Validation Specialist", "GET", "/execution")).text
     asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # a newer package than the deployed one
     assert "newer+package" in asyncio.run(call("Validation Specialist", "POST", "/api/adf/simulated-trigger")).headers["location"]
     zipped = asyncio.run(call("Validation Specialist", "GET", f"/api/artifacts/{rows[0]['artifact_id']}/download"))

@@ -23,7 +23,7 @@ from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
 from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment
 from control_plane.services import sql_target
-from control_plane.services import canonical_derivations
+from control_plane.services import canonical_derivations, run_monitor
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -133,7 +133,7 @@ def workflow_progress() -> dict:
         rules_approved = sum(1 for r in _rules if r["status"] == "APPROVED")
         rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
         sql_ready = bool(package_contract.list_packages(conn, migration_id))
-        runs_n = len(execution_simulator.list_runs(conn, migration_id))
+        runs_n = 1 if run_monitor.succeeded(conn, migration_id) else 0  # stage 09 is done when the real run's log shows the pipeline succeeded
         _git, _pkg = git_connection.get_config(conn), artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
         published = bool(_git and _pkg and _git.get("last_artifact_id") == _pkg["artifact_id"])  # the latest package is the one that was published
         proposals_pending = conn.execute(
@@ -1662,6 +1662,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         has_package = bool(package_contract.list_packages(conn, migration_id))
         stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
         adf_status = _adf_status(conn, migration_id)
+        run_status = run_monitor.stored(conn, migration_id)
         adf_deployment = adf_simulator.latest(conn, migration_id)
         adf_trigger_blocker = adf_simulator.trigger_blocker(adf_deployment, adf_status["stale_reasons"] if adf_status else None, adf_status["latest"]["artifact_id"] if adf_status else None)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
@@ -1688,7 +1689,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "mapping_runs": mapping_runs,
             "mapping_lineage": mapping_lineage,
             "migration_id": migration_id,
-            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
+            "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "run_status": run_status, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,
@@ -3040,12 +3041,27 @@ async def stage_canonical_files(request: Request):
     """Write the canonical files to stage/ on their own (the stage-09 start action does this too, behind its gate)."""
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    back = _execution_redirect if (await request.form()).get("return_to") == "execution" else _sql_redirect  # fixed allow-list, never a free URL
     result, error, _ = _write_canonical_stage(migration_id)
     if error:
-        return _sql_redirect("error", error)
+        return back("error", error)
     _target_setup_audit("CANONICAL_STAGE_WRITTEN", user, {"migration_id": migration_id, "path": result["path"], "files": [f["name"] for f in result["files"]],
                                                           "rows": {f["name"]: f["rows"] for f in result["files"] if f["rows"] is not None}})
-    return _sql_redirect("notice", f"Canonical files written to {result['path']}: " + _stage_summary(result) + ".")
+    return back("notice", f"Canonical files written to {result['path']}: " + _stage_summary(result) + ".")
+
+
+@app.get("/api/execution/run-status")
+async def execution_run_status(request: Request):
+    """Read the pipeline's run log (read-only SQL sign-in), store the latest summary and return it. The Execution page calls this every 30 seconds."""
+    get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        summary = run_monitor.refresh(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return JSONResponse(summary)
 
 
 @app.post("/api/execution/start-pipeline")
