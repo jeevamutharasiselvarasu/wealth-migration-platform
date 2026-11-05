@@ -38,7 +38,7 @@
     {% elif can_setup_target %}
       <form action="/api/target-system/configure" method="post" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         <label class="field fl">Target system name<input name="target_name" required value="{{ c.target_name if c else 'Simplicity' }}" class="input w-full"></label>
-        <label class="field fl">Connection endpoint<input name="endpoint" required value="{{ c.endpoint if c else default_endpoint }}" class="input w-full font-mono"></label>
+        <label class="field fl">Connection endpoint<input name="endpoint" required value="{{ c.endpoint if c and c.connector_type != 'azure-sql' else default_endpoint }}" class="input w-full font-mono"></label>
         <label class="field fl">Tables to inspect <span class="font-normal text-[#8A97B2]">(optional, comma separated; blank = all)</span><input name="scope_tables" value="{{ c.scope_tables|join(', ') if c else '' }}" class="input w-full font-mono"></label>
         <label class="field fl">Target owner / SME<input name="owner" value="{{ c.owner if c else '' }}" class="input w-full"></label>
         <label class="flex items-center gap-2 text-xs font-bold text-[#41506B]"><input type="checkbox" name="include_code_lists" {% if not c or c.include_code_lists %}checked{% endif %}> Also read the target's code lists</label>
