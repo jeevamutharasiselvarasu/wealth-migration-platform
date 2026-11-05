@@ -15,3 +15,7 @@ simulated_target_service/data/
 demo_data/demo_passwords*
 demo_data/*.local.json
 demo_data/*.local.json.bak
+
+# Company root CA for the container (organisation-specific)
+certs/*.crt
+certs/*.pem

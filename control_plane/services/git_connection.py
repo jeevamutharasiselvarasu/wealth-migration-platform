@@ -124,10 +124,18 @@ def test_connection(conn: sqlite3.Connection, http: Callable[..., httpx.Response
                 status, detail = "FAILED", f"GitHub returned HTTP {br.status_code} for the branch."
     except ValueError as exc:
         status, detail = "FAILED", str(exc)
-    except httpx.HTTPError:
-        status, detail = "FAILED", "Could not reach GitHub."
+    except httpx.HTTPError as exc:
+        status, detail = "FAILED", _unreachable(exc)
     conn.execute("UPDATE git_connection_config SET status = ?, checked_utc = ?, check_detail = ? WHERE config_id = 1", (status, _now(), detail))
     return get_config(conn)
+
+
+def _unreachable(exc: Exception) -> str:
+    """A safe reason for a network failure: the error type and the low-level reason only (never headers, URLs or the token)."""
+    reason = re.sub(r"\s+", " ", str(exc))[:140]
+    hint = (" Likely a proxy or TLS inspection on this network: the container must trust the proxy certificate or use the proxy."
+            if "CERTIFICATE" in reason.upper() or "SSL" in reason.upper() else "")
+    return f"Could not reach GitHub ({type(exc).__name__}: {reason}).{hint}"
 
 
 def layout(cfg: Dict[str, Any], migration_id: str, package_files: Dict[str, str]) -> Dict[str, str]:
@@ -173,8 +181,8 @@ def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_fil
             {"path": p, "mode": "100644", "type": "blob", "content": t} for p, t in sorted(files.items())]})["sha"]
         commit = call("POST", "/git/commits", json={"message": message, "tree": tree, "parents": [head]})
         call("PATCH", f"/git/refs/heads/{cfg['branch']}", json={"sha": commit["sha"], "force": False})
-    except httpx.HTTPError:
-        raise ValueError("Could not reach GitHub.")
+    except httpx.HTTPError as exc:
+        raise ValueError(_unreachable(exc))
     conn.execute("UPDATE git_connection_config SET last_commit_sha = ?, last_published_utc = ?, last_published_by = ? WHERE config_id = 1",
                  (commit["sha"], _now(), actor))
     return {"commit_sha": commit["sha"], "files": len(files), "branch": cfg["branch"], "repository": cfg["repository"],

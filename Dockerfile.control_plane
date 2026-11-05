@@ -2,8 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Trust a company root CA (TLS inspection) when one is placed in certs/ as *.crt. With none present nothing changes.
+COPY certs/ /tmp/xodus-certs/
+RUN find /tmp/xodus-certs -name '*.crt' -exec cp {} /usr/local/share/ca-certificates/ \; && update-ca-certificates && rm -rf /tmp/xodus-certs
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Python clients (httpx) read the system bundle, which now includes the company root CA.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 COPY . .
 
