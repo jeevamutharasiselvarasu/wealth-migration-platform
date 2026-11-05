@@ -9,7 +9,7 @@ import json
 import re
 import zipfile
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from control_plane.services import sql_package
 
@@ -26,6 +26,19 @@ def _batches(script: str) -> List[str]:
     """Split a SQL script on GO lines: a Script activity runs batches, not GO."""
     out = [b.strip() for b in re.split(r"(?im)^\s*GO\s*$", script)]
     return [b for b in out if b and not all(l.strip().startswith("--") or not l.strip() for l in b.split("\n"))]
+
+
+def entity_raw_files(candidates: Dict[str, List[Optional[str]]], lookup_tables: Set[str]) -> Dict[str, str]:
+    """Entity -> the raw file that feeds its staging table. Files an approved rule reads as a lookup (advisors) are not the entity's own
+    file; a file named like the entity (households -> Household) wins, otherwise the first remaining file."""
+    out: Dict[str, str] = {}
+    for entity, names in candidates.items():
+        names = [n for n in dict.fromkeys(names) if n]
+        own = [n for n in names if sql_package.lookup_table(n) not in lookup_tables] or names
+        named = [n for n in own if re.sub(r"\.[A-Za-z0-9]+$", "", n).lower().endswith((entity.lower(), entity.lower() + "s"))]
+        if named or own:
+            out[entity] = (named or own)[0]
+    return out
 
 
 def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
@@ -61,11 +74,12 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         "name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
         "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}}]
     copies: List[str] = []
+    raw_files = env.get("rawFiles") or entity_raw_files(env.get("rawCandidates") or {}, {t for t in sm["stagingTables"] if t.startswith("lkp_")})
     for table in sm["stagingTables"]:
         _ident(table)
         folder, file_name = f"{env['stagingFolder']}/lookups/{table[4:]}" if table.startswith("lkp_") else f"{env['stagingFolder']}/{table.lower()}", None
         if real and env.get("rawFolder"):  # read the source firm's raw files in place: one file per staging table
-            file_name = (env.get("rawFiles") or {}).get(table) or (table[4:] + ".csv" if table.startswith("lkp_") else "")
+            file_name = raw_files.get(table) or (table[4:] + ".csv" if table.startswith("lkp_") else "")
             if not file_name:
                 raise ValueError(f"No raw source file is known for {table}. Classify and confirm its source file in Discovery first.")
             folder = env["rawFolder"]

@@ -51,3 +51,10 @@ def test_real_package_reads_the_raw_files_in_place():
     files = _package("MIG-E439077124", env)["files"]
     locs = {n: json.loads(t)["properties"]["typeProperties"]["location"] for n, t in files.items() if n.startswith("dataset/DS_Staging_") and "Sql" not in n}
     assert locs and all(l["container"] == "xodus-lake" and l["folderPath"] == "raw/corecap" and l["fileName"].endswith(".csv") for l in locs.values())
+
+
+def test_entity_raw_file_skips_lookup_files_and_prefers_the_file_named_like_the_entity():
+    got = adf_package.entity_raw_files({"Household": ["corecap_households.csv", "corecap_advisors.csv"], "Client": ["corecap_household_contacts.csv"],
+                                        "Account": ["corecap_accounts.csv"]}, {"lkp_corecap_advisors"})
+    assert got == {"Household": "corecap_households.csv", "Client": "corecap_household_contacts.csv", "Account": "corecap_accounts.csv"}
+    assert adf_package.entity_raw_files({"Household": ["corecap_advisors.csv", "corecap_households.csv"]}, set())["Household"] == "corecap_households.csv"
