@@ -22,6 +22,7 @@ from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
 from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment
+from control_plane.services import sql_target
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -587,10 +588,12 @@ def _azure_page(request: Request, user, notice: str = "", error: str = "", previ
     try:
         cfg = azure_connection.get_config(conn)
         git_cfg = git_connection.get_config(conn)
+        sql_cfg = sql_target.get_config(conn)
         conn.commit()
     finally:
         conn.close()
     return render_template_with_context(request, "azure_setup.html", {
+        "sqlt": sql_cfg or {}, "sqlt_default_env": sql_target.DEFAULT_ENV, "sqlt_default_schema": sql_target.DEFAULT_SCHEMA,
         "git": git_cfg or {}, "git_default_env": git_connection.DEFAULT_TOKEN_ENV, "git_default_folder": git_connection.DEFAULT_FOLDER,
         "git_default_branch": git_connection.DEFAULT_BRANCH,
         "page_title": "Azure connection", "user_name": user["name"], "user_role": user["role"], "cfg": cfg or {},
@@ -652,6 +655,43 @@ async def test_azure_connection(request: Request):
 
 def _git_back(key: str, msg: str):
     return RedirectResponse(url="/azure-setup?" + urlencode({key: msg}) + "#git", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _sqlt_back(key: str, msg: str):
+    return RedirectResponse(url="/azure-setup?" + urlencode({key: msg}) + "#sqlt", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/sql-target")
+async def save_sql_target(request: Request):
+    user = get_current_user(request)
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            sql_target.save(conn, user["name"], {k: str(form.get(k, "")) for k in sql_target.FIELDS})
+        except ValueError as exc:
+            return _sqlt_back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SQL_TARGET_SAVED", user, {"server": str(form.get("server", "")).strip()})
+    return _sqlt_back("notice", "SQL settings saved. Test the connection next.")
+
+
+@app.post("/api/sql-target/test")
+async def test_sql_target(request: Request):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = sql_target.test_connection(conn)
+        except ValueError as exc:
+            return _sqlt_back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SQL_TARGET_TESTED", user, {"status": cfg["status"]})
+    return _sqlt_back("notice" if cfg["status"] == "CONNECTED" else "error", cfg["check_detail"])
 
 
 @app.post("/api/git/connection")
