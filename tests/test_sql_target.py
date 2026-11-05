@@ -50,3 +50,14 @@ def test_test_reports_missing_schema_then_tables_and_never_returns_the_password(
     def boom(c, p): raise RuntimeError("Login failed for user; password s3cret rejected")
     cfg = st.test_connection(conn, boom)
     assert cfg["status"] == "FAILED" and "s3cret" not in str(cfg) and "***" in cfg["check_detail"]
+
+
+def test_user_name_falls_back_to_the_server_environment(conn, monkeypatch):
+    st.save(conn, "Ann", {**GOOD, "username": ""})
+    monkeypatch.setenv("SQL_TARGET_PASSWORD", "x")
+    monkeypatch.delenv("SQL_TARGET_USERNAME", raising=False)
+    assert st.test_connection(conn, lambda c, p: _Db())["status"] == "FAILED"
+    monkeypatch.setenv("SQL_TARGET_USERNAME", "loader")
+    seen = {}
+    cfg = st.test_connection(conn, lambda c, p: seen.update(user=c["username"]) or _Db())
+    assert cfg["status"] == "CONNECTED" and seen["user"] == "loader"

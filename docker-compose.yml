@@ -38,6 +38,7 @@ services:
       - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stgcorecapdata}
       - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
       - GITHUB_ADF_TOKEN=${GITHUB_ADF_TOKEN:-}
+      - SQL_TARGET_USERNAME=${SQL_TARGET_USERNAME:-}
       - SQL_TARGET_PASSWORD=${SQL_TARGET_PASSWORD:-}
       # The data lake (raw/, stage/, curated/) is in the real Azure storage account. Put its connection string in .env; it is never committed.
       - AZURE_BLOB_CONNECTION_STRING=${AZURE_BLOB_CONNECTION_STRING:?set AZURE_BLOB_CONNECTION_STRING in .env (the storage account connection string)}

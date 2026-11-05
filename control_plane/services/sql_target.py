@@ -24,6 +24,7 @@ NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,99}$")
 ENV_VAR = re.compile(r"^SQL_[A-Z0-9_]{1,50}$")
 SCHEMA = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,59}$")
 DEFAULT_ENV = "SQL_TARGET_PASSWORD"
+USERNAME_ENV = "SQL_TARGET_USERNAME"
 DEFAULT_SCHEMA = "simplicity"
 
 
@@ -44,7 +45,7 @@ def validate(values: Dict[str, str]) -> Dict[str, str]:
         raise ValueError("Server must look like name.database.windows.net.")
     if not NAME.match(v["database_name"]):
         raise ValueError("Database name is not valid.")
-    if not NAME.match(v["username"]):
+    if v["username"] and not NAME.match(v["username"]):
         raise ValueError("User name is not valid.")
     if not ENV_VAR.match(v["password_env_var"]):
         raise ValueError("The password is read from a server environment variable whose name starts with SQL_ (for example SQL_TARGET_PASSWORD). "
@@ -61,6 +62,7 @@ def get_config(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         return None
     cfg = dict(row)
     cfg["password_present"] = bool(os.environ.get(cfg["password_env_var"]))
+    cfg["username_effective"] = cfg["username"] or os.environ.get(USERNAME_ENV, "")  # blank on the page means: use SQL_TARGET_USERNAME from the server's .env
     return cfg
 
 
@@ -85,7 +87,10 @@ def test_connection(conn: sqlite3.Connection, connect: Callable[..., Any] = _def
         raise ValueError("Save the SQL settings first.")
     found = ""
     password = os.environ.get(cfg["password_env_var"], "")
-    if not password:
+    cfg["username"] = cfg["username_effective"]
+    if not cfg["username"]:
+        status, detail = "FAILED", f"No user name: enter it here or set {USERNAME_ENV} in the server's .env and restart."
+    elif not password:
         status, detail = "FAILED", f"The server has no value for {cfg['password_env_var']}. Set it in the server's .env and restart."
     else:
         try:
