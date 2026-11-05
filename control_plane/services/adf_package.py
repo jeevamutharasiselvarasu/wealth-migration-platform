@@ -28,6 +28,49 @@ def _batches(script: str) -> List[str]:
     return [b for b in out if b and not all(l.strip().startswith("--") or not l.strip() for l in b.split("\n"))]
 
 
+RUN_LOG_TABLE = "xodus_run_log"
+
+
+def run_log_ddl(schema: str) -> str:
+    """Idempotent create script for the run-log table the pipeline writes to (a person runs it once, like the other create scripts)."""
+    t = f"[{schema}].[{RUN_LOG_TABLE}]"
+    return (f"-- Run log: one row per pipeline step per run, written by the pipeline. Safe to run more than once.\n"
+            f"IF SCHEMA_ID(N'{schema}') IS NULL EXEC (N'CREATE SCHEMA [{schema}]');\nGO\n"
+            f"IF OBJECT_ID(N'{t}', N'U') IS NULL\nCREATE TABLE {t} (\n"
+            "    log_id          bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_xodus_run_log PRIMARY KEY,\n"
+            "    migration_id    nvarchar(40)   NOT NULL,\n    pipeline_run_id nvarchar(64)   NOT NULL,\n    trigger_file    nvarchar(260)  NULL,\n"
+            "    step_name       nvarchar(120)  NOT NULL,\n    status          nvarchar(20)   NOT NULL,\n    rows_read       bigint         NULL,\n"
+            "    rows_written    bigint         NULL,\n    message         nvarchar(4000) NULL,\n"
+            "    logged_utc      datetime2(3)   NOT NULL CONSTRAINT DF_xodus_run_log_utc DEFAULT SYSUTCDATETIME()\n);\nGO\n"
+            f"IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_xodus_run_log_run' AND object_id = OBJECT_ID(N'{t}'))\n"
+            f"CREATE INDEX IX_xodus_run_log_run ON {t} (migration_id, pipeline_run_id, logged_utc);\nGO\n")
+
+
+def _expr(value: str) -> Dict[str, str]:
+    return {"value": value, "type": "Expression"}
+
+
+def _log_insert(schema: str, step: str, status: str, rows_read: Optional[str] = None, rows_written: Optional[str] = None,
+                message: Optional[str] = None) -> Dict[str, Any]:
+    """A Script-activity statement that appends one row to the run log. Every value is passed as a script parameter (never spliced
+    into the SQL text), so a file name or an error message cannot change the statement."""
+    def prm(name: str, ptype: str, value: Any) -> Dict[str, Any]:
+        return {"name": name, "type": ptype, "direction": "Input", "value": value}
+    params = [prm("mig", "String", _expr("@pipeline().parameters.MigrationId")), prm("run", "String", _expr("@pipeline().RunId")),
+              prm("file", "String", _expr("@pipeline().parameters.ReadyFile")), prm("step", "String", step), prm("status", "String", status),
+              prm("rr", "Int64", _expr(rows_read or "@null")), prm("rw", "Int64", _expr(rows_written or "@null")),
+              prm("msg", "String", _expr(message or "@null"))]
+    return {"type": "NonQuery", "parameters": params,
+            "text": (f"INSERT INTO [{schema}].[{RUN_LOG_TABLE}] (migration_id, pipeline_run_id, trigger_file, step_name, status, rows_read, rows_written, message) "
+                     "VALUES (@mig, @run, NULLIF(@file, ''), @step, @status, @rr, @rw, @msg)")}
+
+
+def _error_text(activity: str) -> str:
+    """ADF expression for an activity's error message, cut to fit the log column."""
+    e = f"string(activity('{activity}').error.message)"
+    return f"@if(greater(length({e}), 3900), substring({e}, 0, 3900), {e})"
+
+
 def entity_raw_files(candidates: Dict[str, List[Optional[str]]], lookup_tables: Set[str]) -> Dict[str, str]:
     """Entity -> the raw file that feeds its staging table. Files an approved rule reads as a lookup (advisors) are not the entity's own
     file; a file named like the entity (households -> Household) wins, otherwise the first remaining file."""
@@ -85,6 +128,11 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         activities.append({"name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                            "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}})
     copies: List[str] = []
+    log_schema = _ident(str(env.get("sqlSchema") or "simplicity")) if merge else ""
+    ls_ref = ref(ls_sql, "LinkedServiceReference")
+    if merge:
+        activities.append({"name": "Log_Start", "type": "Script", "linkedServiceName": ls_ref,
+                           "typeProperties": {"scripts": [_log_insert(log_schema, "Pipeline", "STARTED")]}})
     for table in sm["stagingTables"]:
         _ident(table)
         if table.startswith("lkp_"):
@@ -98,15 +146,34 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
             "typeProperties": {"location": location, "columnDelimiter": ",", "firstRowAsHeader": True}})
         add("datasets", "dataset", ds_sql, {"type": "AzureSqlTable", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
             "typeProperties": {"schema": sql_package.STAGING_SCHEMA, "table": table}})
-        activities.append({"name": f"Copy_{table}", "type": "Copy", **({} if merge else {"dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}]}),
+        activities.append({"name": f"Copy_{table}", "type": "Copy",
+                           **({"dependsOn": [{"activity": "Log_Start", "dependencyConditions": ["Succeeded"]}]} if merge else {"dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}]}),
                            "inputs": [ref(ds_blob, "DatasetReference")], "outputs": [ref(ds_sql, "DatasetReference")],
                            "typeProperties": {"source": {"type": "DelimitedTextSource"},
                                               "sink": {"type": "AzureSqlSink", "preCopyScript": f"TRUNCATE TABLE [{sql_package.STAGING_SCHEMA}].[{table}]"}}})
         copies.append(f"Copy_{table}")
+        if merge:
+            name = f"Copy_{table}"
+            activities.append({"name": f"Log_OK_{name}", "type": "Script", "linkedServiceName": ls_ref,
+                               "dependsOn": [{"activity": name, "dependencyConditions": ["Succeeded"]}],
+                               "typeProperties": {"scripts": [_log_insert(log_schema, name, "SUCCEEDED", f"@activity('{name}').output.rowsRead",
+                                                                          f"@activity('{name}').output.rowsCopied")]}})
+            activities.append({"name": f"Log_Fail_{name}", "type": "Script", "linkedServiceName": ls_ref,
+                               "dependsOn": [{"activity": name, "dependencyConditions": ["Failed"]}],
+                               "typeProperties": {"scripts": [_log_insert(log_schema, name, "FAILED", message=_error_text(name))]}})
     run_sql = ([{"type": "NonQuery", "text": st.rstrip()} for st in sql["statements"]] if merge else [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}])
     activities.append({"name": "Run_Transformation_SQL" if not merge else "Merge_Into_Target", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                        "dependsOn": [{"activity": c, "dependencyConditions": ["Succeeded"]} for c in copies],
                        "typeProperties": {"scripts": run_sql}})
+
+    if merge:
+        merge_name = "Merge_Into_Target"
+        activities.append({"name": "Log_OK_Merge", "type": "Script", "linkedServiceName": ls_ref,
+                           "dependsOn": [{"activity": merge_name, "dependencyConditions": ["Succeeded"]}],
+                           "typeProperties": {"scripts": [_log_insert(log_schema, "Pipeline", "SUCCEEDED")]}})
+        activities.append({"name": "Log_Fail_Merge", "type": "Script", "linkedServiceName": ls_ref,
+                           "dependsOn": [{"activity": merge_name, "dependencyConditions": ["Failed"]}],
+                           "typeProperties": {"scripts": [_log_insert(log_schema, merge_name, "FAILED", message=_error_text(merge_name))]}})
 
     pipeline = f"PL_XODUS_{mig}"
     add("pipelines", "pipeline", pipeline, {"description": "Azure Blob source files to staging tables, then the transformation SQL into the target SQL database. Generated from approved mappings.",
@@ -134,6 +201,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     }
     out = {p: json.dumps(c, indent=2) for p, c in files.items()}
     out.update({p: t for p, t in sql["files"].items() if p.startswith("sql/")})
+    if merge:
+        out["sql/02_run_log.sql"] = run_log_ddl(log_schema)
     out["arm/ARMTemplateForFactory.json"] = json.dumps(arm, indent=2)
     out["manifest.json"] = json.dumps(manifest, indent=2)
     if real:
@@ -142,7 +211,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
                              f"{env['readySuffix']} file is created under {env['readyContainer']}/{env['readyFolder']}/; it is published stopped and must be started in Data Factory.\n"
                              "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n"
                              + ("\nBEFORE THE FIRST RUN, a person runs these once against the target SQL database (they are not part of the pipeline):\n"
-                                "  sql/01_target_tables.sql   creates the target schema and tables\n  sql/00_staging_tables.sql  creates the staging schema and tables\n"
+                                "  sql/01_target_tables.sql   creates the target schema and tables\n  sql/00_staging_tables.sql  creates the staging schema and tables\n  sql/02_run_log.sql         creates the run-log table the pipeline writes to\n"
                                 "The pipeline then copies the raw files into staging and runs MERGE statements (update matching rows, insert new ones) into the target tables.\n"
                                 if merge else ""))
     else:

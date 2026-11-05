@@ -81,10 +81,22 @@ def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_fo
     assert [a["type"] for a in acts] == ["Copy"] * 4 + ["Script"] or [a["type"] for a in acts].count("Copy") >= 1
     assert all(a["linkedServiceName"]["referenceName"] == "LS_SQL_Target" for a in acts if a["type"] == "Script")
     assert not any(a["name"] == "Prepare_SQL" for a in acts) and "CREATE TABLE" not in json.dumps(acts) and "CREATE SCHEMA" not in json.dumps(acts)
-    merge = json.dumps(acts[-1])
+    by = {a["name"]: a for a in acts}
+    merge = json.dumps(by["Merge_Into_Target"])
     assert "AS [OPEN_DT]" in merge and "AS [ACCT_NO]" in merge  # the inner select names every column the outer select reads
-    assert acts[-1]["name"] == "Merge_Into_Target" and "MERGE [simplicity].[T] AS t" in merge and "WHEN NOT MATCHED BY TARGET THEN INSERT" in merge
+    assert "MERGE [simplicity].[T] AS t" in merge and "WHEN NOT MATCHED BY TARGET THEN INSERT" in merge
     assert "ON t.[ACCT_NO] = src.[ACCT_NO]" in merge and "ROW_NUMBER()" in merge and "EXEC " not in merge and "sql/usp_load_all.sql" not in files
+    # run log: start, then per-copy success/failure rows, then merge success/failure; values travel as script parameters, never in the SQL text
+    assert by["Log_Start"]["typeProperties"]["scripts"][0]["parameters"][4]["value"] == "STARTED"
+    assert all(a["dependsOn"][0]["activity"] == "Log_Start" for a in acts if a["type"] == "Copy")
+    copy = next(a["name"] for a in acts if a["type"] == "Copy")
+    ok, bad = by[f"Log_OK_{copy}"], by[f"Log_Fail_{copy}"]
+    assert ok["dependsOn"][0]["dependencyConditions"] == ["Succeeded"] and bad["dependsOn"][0]["dependencyConditions"] == ["Failed"]
+    ins = ok["typeProperties"]["scripts"][0]
+    assert ins["text"].startswith("INSERT INTO [simplicity].[xodus_run_log]") and "@rr" in ins["text"] and "ReadyFile" not in ins["text"]
+    assert {p["name"]: p["value"] for p in ins["parameters"]}["rr"]["value"] == f"@activity('{copy}').output.rowsRead"
+    assert by["Log_Fail_Merge"]["dependsOn"][0]["dependencyConditions"] == ["Failed"] and by["Log_OK_Merge"]["dependsOn"][0]["activity"] == "Merge_Into_Target"
+    assert "CREATE TABLE [simplicity].[xodus_run_log]" in files["sql/02_run_log.sql"] and "IF OBJECT_ID" in files["sql/02_run_log.sql"]
 
 
 def test_merge_key_is_an_identifier_field_and_a_table_without_one_inserts_missing_rows_only():
