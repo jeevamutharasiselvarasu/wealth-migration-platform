@@ -82,29 +82,12 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         activities.append({"name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                            "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}})
     copies: List[str] = []
-    raw_files = env.get("rawFiles") or entity_raw_files(env.get("rawCandidates") or {}, {t for t in sm["stagingTables"] if t.startswith("lkp_")})
-    src_cols = env.get("sourceColumns") or {}
-
-    def translator(table: str) -> Dict[str, Any]:
-        """Raw files carry the source firm's headers; staging columns are canonical names. Map one to the other from the approved
-        source mappings. A file read as a lookup keeps its own headers."""
-        if not (real and env.get("rawFolder")) or table.startswith("lkp_"):
-            return {}
-        m = src_cols.get(table) or {}
-        missing = [c for c in sm["stagingColumns"][table] if c not in m]
-        if missing:
-            raise ValueError(f"No approved source mapping supplies staging column(s) {', '.join(missing)} for {table}.")
-        return {"translator": {"type": "TabularTranslator", "mappings": [
-            {"source": {"name": m[c]}, "sink": {"name": c}} for c in sm["stagingColumns"][table]]}}
-
     for table in sm["stagingTables"]:
         _ident(table)
-        folder, file_name = f"{env['stagingFolder']}/lookups/{table[4:]}" if table.startswith("lkp_") else f"{env['stagingFolder']}/{table.lower()}", None
-        if real and env.get("rawFolder"):  # read the source firm's raw files in place: one file per staging table
-            file_name = raw_files.get(table) or (table[4:] + ".csv" if table.startswith("lkp_") else "")
-            if not file_name:
-                raise ValueError(f"No raw source file is known for {table}. Classify and confirm its source file in Discovery first.")
-            folder = env["rawFolder"]
+        if table.startswith("lkp_"):
+            folder, file_name = (f"{env['stagingFolder']}/lookups", table[4:] + ".csv") if real else (f"{env['stagingFolder']}/lookups/{table[4:]}", None)
+        else:  # real run: XODUS wrote one canonical-named file per entity under stage/ (source columns already mapped to canonical)
+            folder, file_name = env["stagingFolder"] if real else f"{env['stagingFolder']}/{table.lower()}", (f"{table}.csv" if real else None)
         ds_blob, ds_sql = f"DS_Staging_{table}", f"DS_StagingSql_{table}"
         location = ({"type": "AzureBlobStorageLocation", "container": env["stagingContainer"], "folderPath": folder, **({"fileName": file_name} if file_name else {})} if real
                     else {"type": "AzureBlobFSLocation", "fileSystem": env["stagingContainer"], "folderPath": folder})
@@ -114,7 +97,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
             "typeProperties": {"schema": sql_package.STAGING_SCHEMA, "table": table}})
         activities.append({"name": f"Copy_{table}", "type": "Copy", **({} if merge else {"dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}]}),
                            "inputs": [ref(ds_blob, "DatasetReference")], "outputs": [ref(ds_sql, "DatasetReference")],
-                           "typeProperties": {"source": {"type": "DelimitedTextSource"}, **translator(table),
+                           "typeProperties": {"source": {"type": "DelimitedTextSource"},
                                               "sink": {"type": "AzureSqlSink", "preCopyScript": f"TRUNCATE TABLE [{sql_package.STAGING_SCHEMA}].[{table}]"}}})
         copies.append(f"Copy_{table}")
     run_sql = ([{"type": "NonQuery", "text": st.rstrip()} for st in sql["statements"]] if merge else [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}])
@@ -141,7 +124,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         "simulated": not real, "banner": env["banner"], "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by,
         "generatedUtc": datetime.now(timezone.utc).isoformat(), "targetSystem": spec.get("target_system"), "targetModelVersion": spec["spec_version"],
         "pipeline": pipeline, "environment": {k: v for k, v in env.items() if k != "banner"}, "entities": sm["entities"], "warnings": sm["warnings"],
-        "stagingTables": sm["stagingTables"], "procedure": sm["procedure"], "loadMode": "merge" if merge else "procedure",
+        "stagingTables": sm["stagingTables"], "stagingColumns": sm["stagingColumns"], "procedure": sm["procedure"], "loadMode": "merge" if merge else "procedure",
         "provenance": provenance or {}, "deployed": False, "unresolved": env.get("unresolved", []),
         "note": ("Nothing was deployed or sent to Azure. A human must review the package and replace the simulated environment values." if not real
                  else "Nothing was deployed by XODUS. Review in Data Factory; SQL and Key Vault values listed under unresolved must be set before the pipeline can run."),
@@ -152,7 +135,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     out["manifest.json"] = json.dumps(manifest, indent=2)
     if real:
         out["README.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the files from\n"
-                             f"{env['stagingContainer']}/{env.get('rawFolder') or env['stagingFolder']}/ into staging tables and runs it. TR_XODUS_Curated_Ready starts the pipeline when a\n"
+                             f"{env['stagingContainer']}/{env['stagingFolder']}/ (canonical files written by XODUS) into staging tables and runs it. TR_XODUS_Curated_Ready starts the pipeline when a\n"
                              f"{env['readySuffix']} file is created under {env['readyContainer']}/{env['readyFolder']}/; it is published stopped and must be started in Data Factory.\n"
                              "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n"
                              + ("\nBEFORE THE FIRST RUN, a person runs these once against the target SQL database (they are not part of the pipeline):\n"

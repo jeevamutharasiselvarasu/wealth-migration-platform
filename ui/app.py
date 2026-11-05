@@ -2925,21 +2925,6 @@ async def download_adf_package(request: Request):
             conn.close()
         blob = blob_source.status(_blob_container())  # account name and emulator flag only; no key is read
         env = adf_environment.resolve(migration_id, azure_cfg, blob.get("account", ""), _blob_container(), blob.get("emulator", True))
-        if not env.get("simulated"):  # real run: the pipeline reads the source firm's raw files where they were dropped
-            env["rawFolder"] = blob_source.source_prefix(_source_firm()).rstrip("/")
-            cands: Dict[str, list] = {}
-            for e, g in getattr(state_store, "entity_source_files", {}).items():
-                cands.setdefault(e, []).extend(r.get("filename") for r in g.values())
-            for e, r in getattr(state_store, "entity_sample_files", {}).items():
-                cands.setdefault(e, []).append(r.get("filename"))
-            env["rawCandidates"] = cands
-            conn = get_db_connection()
-            try:
-                env["sourceColumns"] = {}
-                for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1 ORDER BY source_field", (migration_id,)).fetchall():
-                    env["sourceColumns"].setdefault(r["entity_name"], {}).setdefault(r["canonical_field"], str(r["source_field"]).split(".")[-1] if str(r["source_field"]).count(".") > 1 else str(r["source_field"]))
-            finally:
-                conn.close()
         package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
     except ValueError as exc:
         return back("error", str(exc))
@@ -2953,6 +2938,62 @@ async def download_adf_package(request: Request):
         conn.close()
     _target_setup_audit("ADF_PACKAGE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "sha256": stored["content_sha256"]})
     return back("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, {'simulated Azure values' if package['manifest']['simulated'] else 'configured Azure environment'}, not deployed).")
+
+
+@app.post("/api/target-mapping/stage-canonical")
+async def stage_canonical_files(request: Request):
+    """Map the raw source files to canonical names with the approved source mappings and write them under stage/ for the ADF pipeline."""
+    import io
+    import zipfile
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        stored = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+        rec = artifact_store.read(conn, stored["artifact_id"]) if stored else None
+        conn.commit()
+    except ValueError as exc:
+        return _sql_redirect("error", str(exc))
+    finally:
+        conn.close()
+    if not rec:
+        return _sql_redirect("error", "Generate the ADF package first: it lists the staging columns the canonical files must have.")
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(rec["data"])).read("manifest.json"))
+    env = manifest.get("environment", {})
+    if manifest.get("simulated") or not env.get("stagingFolder"):
+        return _sql_redirect("error", "The latest ADF package uses the simulated environment; there is no real stage folder to write.")
+    cols = manifest.get("stagingColumns") or {}
+    lookup_tables = {t for t in cols if t.startswith("lkp_")}
+    lookup_files = {t[4:] + ".csv" for t in lookup_tables}
+    rows, _ = _canonical_rows_for_migration(migration_id, lookup_files)
+    tables = {}
+    for entity in manifest.get("entities", []):
+        if entity in cols:
+            tables[entity] = (cols[entity], rows.get(entity, []))
+    empty = [e for e, (_, r) in tables.items() if not r]
+    if not tables or empty:
+        return _sql_redirect("error", "No canonical rows could be built for " + (", ".join(empty) if empty else "any entity") + ". Check that the source files are approved and mapped.")
+    lookups: Dict[str, bytes] = {}
+    for t in sorted(lookup_tables):
+        name = t[4:] + ".csv"
+        data = None
+        for group in state_store.entity_source_files.values():
+            for r in group.values():
+                if str(r.get("filename", "")).strip().lower() == name and r.get("stored_path") and file_store.is_file(r["stored_path"]):
+                    data = file_store.read_bytes(r["stored_path"])
+        if data is None:
+            try:
+                data = blob_source.read_blob(_blob_container(), blob_source.source_prefix(_source_firm()) + name)
+            except Exception:
+                return _sql_redirect("error", f"The lookup file {name} was not found in the migration files or in raw storage.")
+        lookups[t[4:]] = data
+    try:
+        result = blob_source.write_canonical_stage(_blob_container(), env["stagingFolder"], tables, lookups)
+    except Exception as exc:
+        return _sql_redirect("error", f"Could not write to blob storage: {type(exc).__name__}")
+    _target_setup_audit("CANONICAL_STAGE_WRITTEN", user, {"migration_id": migration_id, "path": result["path"], "files": [f["name"] for f in result["files"]],
+                                                          "rows": {f["name"]: f["rows"] for f in result["files"] if f["rows"] is not None}})
+    return _sql_redirect("notice", f"Canonical files written to {result['path']}: " + ", ".join(f"{f['name']} ({f['rows']} rows)" if f["rows"] is not None else f["name"] for f in result["files"]) + ".")
 
 
 @app.post("/api/validation/signoff-evidence/save")

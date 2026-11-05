@@ -196,6 +196,34 @@ def write_stage_run(container: str, run_id: str, outputs: Dict[str, List[Dict[st
     return {"written": True, "container": container, "path": folder, "files": written}
 
 
+def canonical_csv(columns: List[str], rows: List[Dict[str, Any]]) -> bytes:
+    """One canonical-named CSV: exactly the staging columns in order, blanks for missing values."""
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(columns)
+    for r in rows:
+        w.writerow(["" if r.get(c) is None else r.get(c) for c in columns])
+    return buf.getvalue().encode("utf-8")
+
+
+def write_canonical_stage(container: str, folder: str, tables: Dict[str, Any], lookups: Dict[str, bytes], conn_str: Optional[str] = None) -> Dict[str, Any]:
+    """Write the raw files, mapped to canonical names, under stage/<folder>/: <Entity>.csv per entity (tables = {name: (columns, rows)})
+    and lookups/<name>.csv copied as they are. Only stage/ is written; raw/ and curated/ are never touched."""
+    if not folder.startswith("stage/") or ".." in folder:
+        raise ValueError("The canonical files go under stage/ only.")
+    cc = _service(conn_str).get_container_client(container)
+    written = []
+    for name, (columns, rows) in sorted(tables.items()):
+        cc.upload_blob(f"{folder}/{name}.csv", canonical_csv(columns, rows), overwrite=True)
+        written.append({"name": f"{name}.csv", "rows": len(rows), "columns": len(columns)})
+    for name, data in sorted(lookups.items()):
+        cc.upload_blob(f"{folder}/lookups/{name}.csv", data, overwrite=True)
+        written.append({"name": f"lookups/{name}.csv", "rows": None, "columns": None})
+    return {"container": container, "path": folder + "/", "files": written}
+
+
 def promote_to_curated(container: str, run_id: str, approver: str, review_summary: Dict[str, Any], conn_str: Optional[str] = None) -> Dict[str, Any]:
     """Copy one run's transformed tables from stage/run-<id>/ to curated/ (latest approved version per table) and write curated/_lineage/<run>.json.
     Reads only the run's own stage folder; never touches raw/. The caller has already applied the approval gate."""

@@ -42,17 +42,18 @@ def test_simulated_package_is_unchanged_and_has_no_trigger():
     assert not any(n.startswith("trigger/") for n in pkg["files"]) and json.loads(pkg["files"]["manifest.json"])["simulated"] is True
 
 
-def test_real_package_reads_the_raw_files_in_place():
+def test_real_package_reads_the_canonical_files_xodus_wrote_under_stage():
     env = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
-    env["rawFolder"] = "raw/corecap"
-    env["sourceColumns"] = {"Account": {"ACCT_NUM": "AccountNumber", "OPEN_DATE": "OpenDt", "REG_TYPE": "RegType"}}
-    import pytest
-    with pytest.raises(ValueError, match="No raw source file"):
-        _package("MIG-E439077124", env)
-    env["rawFiles"] = {"Account": "corecap_accounts.csv", "Client": "corecap_household_contacts.csv", "Household": "corecap_households.csv"}
-    files = _package("MIG-E439077124", env)["files"]
+    pkg = _package("MIG-E439077124", env)
+    files, man = pkg["files"], json.loads(pkg["files"]["manifest.json"])
     locs = {n: json.loads(t)["properties"]["typeProperties"]["location"] for n, t in files.items() if n.startswith("dataset/DS_Staging_") and "Sql" not in n}
-    assert locs and all(l["container"] == "xodus-lake" and l["folderPath"] == "raw/corecap" and l["fileName"].endswith(".csv") for l in locs.values())
+    assert locs and all(l["container"] == "xodus-lake" and l["folderPath"].startswith("stage/") and not l["folderPath"].startswith("raw") for l in locs.values())
+    entity = {n: l for n, l in locs.items() if "lkp_" not in n}
+    assert entity and all(l["folderPath"] == env["stagingFolder"] and l["fileName"] == n.split("DS_Staging_")[1].split(".")[0] + ".csv" for n, l in entity.items())
+    assert all(l["folderPath"] == env["stagingFolder"] + "/lookups" and l["fileName"].endswith(".csv") for n, l in locs.items() if "lkp_" in n)
+    acts = json.loads(files["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"]
+    assert not any("translator" in a.get("typeProperties", {}) for a in acts)  # files already carry the staging column names
+    assert set(man["stagingColumns"]) == set(man["stagingTables"]) and all(man["stagingColumns"].values())
 
 
 def test_entity_raw_file_skips_lookup_files_and_prefers_the_file_named_like_the_entity():
@@ -70,7 +71,6 @@ def test_entity_raw_file_when_only_the_lookup_file_is_the_sample_file_but_the_ma
 def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_for_sql():
     env = env_mod.resolve("MIG-E439077124", {**CFG, "sql_server": "afswdatabase.database.windows.net", "sql_database": "simplicitydb", "sql_schema": "simplicity"},
                           "afswstorage", "xodus-lake", emulator=False)
-    env["rawFiles"] = {"Account": "a.csv", "Client": "c.csv", "Household": "h.csv"}; env["rawFolder"] = "raw/corecap"; env["sourceColumns"] = {"Account": {"ACCT_NUM": "AccountNumber", "OPEN_DATE": "OpenDt", "REG_TYPE": "RegType"}}
     files = _package("MIG-E439077124", env)["files"]
     ls = json.loads(files["linkedService/LS_SQL_Target.json"])["properties"]["typeProperties"]
     assert ls == {"server": "afswdatabase.database.windows.net", "database": "simplicitydb", "authenticationType": "SystemAssignedManagedIdentity"}
@@ -98,12 +98,10 @@ def test_merge_key_is_an_identifier_field_and_a_table_without_one_inserts_missin
     assert "insert-if-missing" in keyless and "WHEN MATCHED" not in keyless and "IS NULL AND src.[A] IS NULL" in keyless
 
 
-def test_copy_maps_the_source_file_headers_to_the_staging_column_names():
-    env = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
-    env["rawFolder"], env["rawFiles"] = "raw/corecap", {"Account": "a.csv"}
-    with pytest.raises(ValueError, match="No approved source mapping supplies staging column"):
-        _package("MIG-E439077124", env)
-    env["sourceColumns"] = {"Account": {"ACCT_NUM": "AccountNumber", "OPEN_DATE": "OpenDt", "REG_TYPE": "RegType"}}
-    acts = json.loads(_package("MIG-E439077124", env)["files"]["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"]
-    copy = next(a for a in acts if a["name"] == "Copy_Account")
-    assert {m["source"]["name"]: m["sink"]["name"] for m in copy["typeProperties"]["translator"]["mappings"]} == {"AccountNumber": "ACCT_NUM", "OpenDt": "OPEN_DATE", "RegType": "REG_TYPE"}
+def test_canonical_stage_files_have_exactly_the_staging_columns_and_only_go_under_stage():
+    from control_plane.services import blob_source
+    assert blob_source.canonical_csv(["A", "B"], [{"A": 1, "B": None, "X": "ignored"}, {"A": "x,y"}]) == b'A,B\n1,\nx,y,\n'.replace(b"x,y,", b'"x,y",')
+    with pytest.raises(ValueError, match="under stage/"):
+        blob_source.write_canonical_stage("c", "raw/corecap", {}, {})
+    with pytest.raises(ValueError, match="under stage/"):
+        blob_source.write_canonical_stage("c", "stage/../raw", {}, {})

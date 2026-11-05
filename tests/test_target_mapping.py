@@ -293,6 +293,8 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     saved = asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))
     assert saved.status_code == 303 and "saved+with+this+migration" in saved.headers["location"]
     asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/adf-package"))  # second save is v2; nothing is overwritten
+    assert "may+not+perform" in asyncio.run(call("Domain SME", "POST", "/api/target-mapping/stage-canonical")).headers["location"]
+    assert "simulated+environment" in asyncio.run(call("Validation Specialist", "POST", "/api/target-mapping/stage-canonical")).headers["location"]  # nothing is written for a simulated package
     rows = app_module.artifact_store.list_artifacts(conn, conn.execute("SELECT migration_id FROM stored_artifacts LIMIT 1").fetchone()[0], "ADF_PACKAGE")
     assert [r["artifact_version"] for r in rows] == [2, 1] and all((tmp_path / "storage" / r["rel_path"]).is_file() for r in rows)
     cs = asyncio.run(call("Validation Specialist", "GET", "/api/target-mapping/create-scripts"))
