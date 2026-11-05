@@ -155,8 +155,11 @@ def layout(cfg: Dict[str, Any], migration_id: str, package_files: Dict[str, str]
 
 
 def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_files: Dict[str, str], message: str,
-            http: Callable[..., httpx.Response] = _default_http, artifact_id: str = "") -> Dict[str, Any]:
-    """Add one commit with the package files to the configured branch (Git Data API). Never forces, deletes or touches other branches."""
+            http: Callable[..., httpx.Response] = _default_http, artifact_id: str = "", replace: bool = False) -> Dict[str, Any]:
+    """Add one commit with the package files to the configured branch (Git Data API). Never forces or touches other branches.
+    With replace=True the same commit also deletes the files that earlier XODUS packages put in the repository (pipeline, dataset and
+    trigger folders under the ADF root, and the xodus/ folder) that the new package does not contain. linkedService/ and every
+    other path are never deleted; the history keeps the removed files."""
     cfg = get_config(conn)
     if not cfg:
         raise ValueError("Save the GitHub settings first.")
@@ -180,13 +183,24 @@ def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_fil
             return r.json()
         head = call("GET", f"/git/ref/heads/{cfg['branch']}")["object"]["sha"]
         base_tree = call("GET", f"/git/commits/{head}")["tree"]["sha"]
-        tree = call("POST", "/git/trees", json={"base_tree": base_tree, "tree": [
-            {"path": p, "mode": "100644", "type": "blob", "content": t} for p, t in sorted(files.items())]})["sha"]
+        entries = [{"path": p, "mode": "100644", "type": "blob", "content": t} for p, t in sorted(files.items())]
+        removed = 0
+        if replace:
+            listing = call("GET", f"/git/trees/{base_tree}?recursive=1")
+            if listing.get("truncated"):
+                raise ValueError("The repository is too large to list safely; nothing was deleted or published.")
+            clear_dirs = tuple(f"{cfg['adf_folder']}/{d}/" for d in NATIVE_DIRS if d != "linkedService") + ("xodus/",)
+            for node in listing.get("tree", []):
+                path = node.get("path", "")
+                if node.get("type") == "blob" and path.startswith(clear_dirs) and path not in files:
+                    entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+                    removed += 1
+        tree = call("POST", "/git/trees", json={"base_tree": base_tree, "tree": entries})["sha"]
         commit = call("POST", "/git/commits", json={"message": message, "tree": tree, "parents": [head]})
         call("PATCH", f"/git/refs/heads/{cfg['branch']}", json={"sha": commit["sha"], "force": False})
     except httpx.HTTPError as exc:
         raise ValueError(_unreachable(exc))
     conn.execute("UPDATE git_connection_config SET last_commit_sha = ?, last_published_utc = ?, last_published_by = ?, last_artifact_id = ? WHERE config_id = 1",
                  (commit["sha"], _now(), actor, artifact_id or None))
-    return {"commit_sha": commit["sha"], "files": len(files), "branch": cfg["branch"], "repository": cfg["repository"],
+    return {"commit_sha": commit["sha"], "files": len(files), "removed": removed, "branch": cfg["branch"], "repository": cfg["repository"],
             "url": f"https://github.com/{cfg['repository']}/commit/{commit['sha']}"}

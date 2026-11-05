@@ -813,8 +813,10 @@ async def download_create_scripts(request: Request):
 
 @app.post("/api/git/publish")
 async def publish_adf_to_git(request: Request):
-    """Add the latest stored ADF package to the linked GitHub repository as one commit. The factory owner links the repository in Data Factory."""
+    """Add the latest stored ADF package to the linked GitHub repository as one commit. The factory owner links the repository in Data Factory.
+    With replace=1 the same commit removes the files earlier XODUS packages left (never linked services)."""
     user = get_current_user(request)
+    replace = str((await request.form()).get("replace", "")) == "1"
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
@@ -828,15 +830,16 @@ async def publish_adf_to_git(request: Request):
             note = " (simulated Azure values)" if '"simulated": true' in files.get("manifest.json", "") else ""
             result = git_connection.publish(conn, user["name"], migration_id, files,
                                             f"XODUS ADF package {art['artifact_id']} v{art['artifact_version']} for {migration_id}{note}, published by {user['name']}",
-                                            artifact_id=art["artifact_id"])
+                                            artifact_id=art["artifact_id"], replace=replace)
         except (ValueError, zipfile.BadZipFile) as exc:
             return _publish_back("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("ADF_PACKAGE_PUBLISHED_TO_GIT", user, {"artifact_id": art["artifact_id"], "commit": result["commit_sha"], "files": result["files"],
-                                                              "repository": result["repository"], "branch": result["branch"]})
-    return _publish_back("notice", f"Published {result['files']} file(s) from {art['artifact_id']} to {result['repository']} ({result['branch']}), commit {result['commit_sha'][:7]}.")
+                                                              "repository": result["repository"], "branch": result["branch"], "removed": result["removed"]})
+    gone = f" and removed {result['removed']} old file(s)" if replace else ""
+    return _publish_back("notice", f"Published {result['files']} file(s) from {art['artifact_id']}{gone} to {result['repository']} ({result['branch']}), commit {result['commit_sha'][:7]}.")
 
 
 @app.get("/models", response_class=HTMLResponse)

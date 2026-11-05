@@ -51,6 +51,11 @@ def _api(push=True, branch=200, seen=None):
             return _resp(200, {"object": {"sha": "head1"}})
         if method == "GET" and "/git/commits/head1" in path:
             return _resp(200, {"tree": {"sha": "tree0"}})
+        if method == "GET" and "/git/trees/tree0" in path:
+            return _resp(200, {"truncated": False, "tree": [
+                {"path": "adf/pipeline/OLD.json", "type": "blob"}, {"path": "adf/pipeline/PL_X.json", "type": "blob"},
+                {"path": "adf/linkedService/LS_BLOB.json", "type": "blob"}, {"path": "adf/factory/f.json", "type": "blob"},
+                {"path": "xodus/MIG-0/manifest.json", "type": "blob"}, {"path": "README.md", "type": "blob"}, {"path": "adf/dataset", "type": "tree"}]})
         if method == "POST" and path.endswith("/git/trees"):
             return _resp(201, {"sha": "tree1"})
         if method == "POST" and path.endswith("/git/commits"):
@@ -161,3 +166,17 @@ def test_publish_stage_page_renders_with_the_button_disabled_until_a_package_and
     r = asyncio.run(get())
     assert r.status_code == 200 and "Stage 08 · Data plane · Publish artifacts" in r.text and 'data-testid="publish-button"' in r.text
     assert "<fieldset disabled" in r.text.split('data-testid="publish-card"')[1]  # nothing to publish and no tested connection in a fresh test database
+
+
+def test_replace_deletes_only_old_xodus_files_never_linked_services_or_other_paths(conn, monkeypatch):
+    monkeypatch.setenv("GITHUB_ADF_TOKEN", "tok")
+    gc.save(conn, "Ann", GOOD)
+    gc.test_connection(conn, _api())
+    seen = []
+    out = gc.publish(conn, "Ann", "MIG-1", PKG, "msg", _api(seen=seen), replace=True)
+    tree = [kw for m, p, kw in seen if p.endswith("/git/trees") and m == "POST"][0]["json"]["tree"]
+    deleted = sorted(e["path"] for e in tree if "sha" in e and e["sha"] is None)
+    assert deleted == ["adf/pipeline/OLD.json", "xodus/MIG-0/manifest.json"] and out["removed"] == 2
+    patch = [kw for m, p, kw in seen if m == "PATCH"][0]
+    assert patch["json"]["force"] is False
+    assert gc.publish(conn, "Ann", "MIG-1", PKG, "msg", _api())["removed"] == 0
