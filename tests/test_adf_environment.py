@@ -31,8 +31,9 @@ def test_real_package_has_a_stopped_blob_trigger_on_curated_ready_files_and_no_s
     assert trig["typeProperties"]["blobPathBeginsWith"] == "/xodus-lake/blobs/curated/" and trig["typeProperties"]["blobPathEndsWith"] == ".ready"
     assert trig["typeProperties"]["scope"] == env["storageResourceId"]
     assert trig["pipelines"][0]["pipelineReference"]["referenceName"] == man["pipeline"]
-    ls = json.loads(files["linkedService/LS_ADLS_Staging.json"])["properties"]
-    assert ls["type"] == "AzureBlobStorage" and ls["typeProperties"]["serviceEndpoint"] == "https://afswstorage.blob.core.windows.net/"
+    assert not any(n.startswith("linkedService/") for n in files)  # linked services are created and tested by hand in Data Factory
+    blob_ds = [json.loads(v)["properties"] for n, v in files.items() if n.startswith("dataset/") and json.loads(v)["properties"]["type"] == "DelimitedText"]
+    assert blob_ds and all(d["linkedServiceName"]["referenceName"] == "LS_BLOB" for d in blob_ds)
     assert man["simulated"] is False and man["unresolved"] == ["sql"] and "README.txt" in files
     assert "AccountKey" not in json.dumps(files) and not any("_Sim" in n for n in files)
 
@@ -72,14 +73,13 @@ def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_fo
     env = env_mod.resolve("MIG-E439077124", {**CFG, "sql_server": "afswdatabase.database.windows.net", "sql_database": "simplicitydb", "sql_schema": "simplicity"},
                           "afswstorage", "xodus-lake", emulator=False)
     files = _package("MIG-E439077124", env)["files"]
-    ls = json.loads(files["linkedService/LS_SQL_Target.json"])["properties"]["typeProperties"]
-    assert ls == {"connectionString": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=afswdatabase.database.windows.net;Initial Catalog=simplicitydb"}
-    assert "Password" not in json.dumps(ls) and "User ID" not in json.dumps(ls)  # the factory's identity signs in: nothing secret in the package
-    assert "linkedService/LS_KeyVault.json" not in files and env["unresolved"] == []
+    assert not any(n.startswith("linkedService/") for n in files) and env["unresolved"] == []  # the hand-made LS_SQL_Target is only referenced
+    assert "Password" not in json.dumps(files) and "User ID" not in json.dumps(files)
     ddl = files["sql/01_target_tables.sql"]
     assert "CREATE SCHEMA [simplicity]" in ddl and "CREATE TABLE [simplicity].[T]" in ddl and "[OPEN_DT] date NULL" in ddl and "DROP TABLE" not in ddl.upper()
     acts = json.loads(files["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"]
     assert [a["type"] for a in acts] == ["Copy"] * 4 + ["Script"] or [a["type"] for a in acts].count("Copy") >= 1
+    assert all(a["linkedServiceName"]["referenceName"] == "LS_SQL_Target" for a in acts if a["type"] == "Script")
     assert not any(a["name"] == "Prepare_SQL" for a in acts) and "CREATE TABLE" not in json.dumps(acts) and "CREATE SCHEMA" not in json.dumps(acts)
     merge = json.dumps(acts[-1])
     assert "AS [OPEN_DT]" in merge and "AS [ACCT_NO]" in merge  # the inner select names every column the outer select reads
