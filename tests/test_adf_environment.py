@@ -58,3 +58,8 @@ def test_entity_raw_file_skips_lookup_files_and_prefers_the_file_named_like_the_
                                         "Account": ["corecap_accounts.csv"]}, {"lkp_corecap_advisors"})
     assert got == {"Household": "corecap_households.csv", "Client": "corecap_household_contacts.csv", "Account": "corecap_accounts.csv"}
     assert adf_package.entity_raw_files({"Household": ["corecap_advisors.csv", "corecap_households.csv"]}, set())["Household"] == "corecap_households.csv"
+
+
+def test_entity_raw_file_when_only_the_lookup_file_is_the_sample_file_but_the_master_is_also_listed():
+    got = adf_package.entity_raw_files({"Household": ["corecap_advisors.csv", "corecap_households.csv", "corecap_advisors.csv"]}, {"lkp_corecap_advisors"})
+    assert got["Household"] == "corecap_households.csv"
