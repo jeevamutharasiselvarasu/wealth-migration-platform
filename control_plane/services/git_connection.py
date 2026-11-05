@@ -35,6 +35,8 @@ DEFAULT_TOKEN_ENV = "GITHUB_ADF_TOKEN"
 DEFAULT_BRANCH = "main"
 DEFAULT_FOLDER = "adf"
 API = "https://api.github.com"
+# Linked services that earlier XODUS packages generated. Hand-made ones (LS_BLOB, LS_SQL_Target, anything else) are never in this list.
+GENERATED_LINKED_SERVICES = ("LS_ADLS_Staging", "LS_ADLS_Staging_Sim", "LS_KeyVault", "LS_KeyVault_Sim", "LS_SQL_Target_Sim")
 
 
 def ensure_table(conn: sqlite3.Connection) -> None:
@@ -155,7 +157,7 @@ def layout(cfg: Dict[str, Any], migration_id: str, package_files: Dict[str, str]
 
 
 def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_files: Dict[str, str], message: str,
-            http: Callable[..., httpx.Response] = _default_http, artifact_id: str = "", replace: bool = False) -> Dict[str, Any]:
+            http: Callable[..., httpx.Response] = _default_http, artifact_id: str = "", replace: bool = False, prune_linked: bool = False) -> Dict[str, Any]:
     """Add one commit with the package files to the configured branch (Git Data API). Never forces or touches other branches.
     With replace=True the same commit also deletes the files that earlier XODUS packages put in the repository (pipeline, dataset and
     trigger folders under the ADF root, and the xodus/ folder) that the new package does not contain. linkedService/ and every
@@ -190,8 +192,13 @@ def publish(conn: sqlite3.Connection, actor: str, migration_id: str, package_fil
             if listing.get("truncated"):
                 raise ValueError("The repository is too large to list safely; nothing was deleted or published.")
             clear_dirs = tuple(f"{cfg['adf_folder']}/{d}/" for d in NATIVE_DIRS if d != "linkedService") + ("xodus/",)
+            generated = {f"{cfg['adf_folder']}/linkedService/{n}.json" for n in GENERATED_LINKED_SERVICES} if prune_linked else set()
             for node in listing.get("tree", []):
                 path = node.get("path", "")
+                if node.get("type") == "blob" and path in generated and path not in files:
+                    entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+                    removed += 1
+                    continue
                 if node.get("type") == "blob" and path.startswith(clear_dirs) and path not in files:
                     entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
                     removed += 1

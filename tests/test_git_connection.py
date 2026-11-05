@@ -54,7 +54,8 @@ def _api(push=True, branch=200, seen=None):
         if method == "GET" and "/git/trees/tree0" in path:
             return _resp(200, {"truncated": False, "tree": [
                 {"path": "adf/pipeline/OLD.json", "type": "blob"}, {"path": "adf/pipeline/PL_X.json", "type": "blob"},
-                {"path": "adf/linkedService/LS_BLOB.json", "type": "blob"}, {"path": "adf/factory/f.json", "type": "blob"},
+                {"path": "adf/linkedService/LS_BLOB.json", "type": "blob"}, {"path": "adf/linkedService/LS_ADLS_Staging.json", "type": "blob"},
+                {"path": "adf/linkedService/LS_KeyVault.json", "type": "blob"}, {"path": "adf/linkedService/LS_SQL_Target.json", "type": "blob"}, {"path": "adf/factory/f.json", "type": "blob"},
                 {"path": "xodus/MIG-0/manifest.json", "type": "blob"}, {"path": "README.md", "type": "blob"}, {"path": "adf/dataset", "type": "tree"}]})
         if method == "POST" and path.endswith("/git/trees"):
             return _resp(201, {"sha": "tree1"})
@@ -180,3 +181,15 @@ def test_replace_deletes_only_old_xodus_files_never_linked_services_or_other_pat
     patch = [kw for m, p, kw in seen if m == "PATCH"][0]
     assert patch["json"]["force"] is False
     assert gc.publish(conn, "Ann", "MIG-1", PKG, "msg", _api())["removed"] == 0
+
+
+def test_prune_linked_removes_only_generated_linked_services(conn, monkeypatch):
+    monkeypatch.setenv("GITHUB_ADF_TOKEN", "tok")
+    gc.save(conn, "Ann", GOOD)
+    gc.test_connection(conn, _api())
+    seen = []
+    out = gc.publish(conn, "Ann", "MIG-1", PKG, "msg", _api(seen=seen), replace=True, prune_linked=True)
+    tree = [kw for m, p, kw in seen if p.endswith("/git/trees") and m == "POST"][0]["json"]["tree"]
+    deleted = sorted(e["path"] for e in tree if "sha" in e and e["sha"] is None)
+    assert "adf/linkedService/LS_ADLS_Staging.json" in deleted and "adf/linkedService/LS_KeyVault.json" in deleted
+    assert not [d for d in deleted if d.endswith(("LS_BLOB.json", "LS_SQL_Target.json"))] and out["removed"] == len(deleted)

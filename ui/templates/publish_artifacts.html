@@ -32,6 +32,7 @@
       <span class="fh">{% if not git %} Set up the GitHub connection first.{% elif git.status != 'CONNECTED' %} Test the GitHub connection first.{% elif not can_publish %} A Migration Analyst or Platform Admin publishes.{% endif %}{% if not git or git.status != 'CONNECTED' %} <a href="/azure-setup#git" class="text-blue-700">Open Azure connection</a>.{% endif %}</span>
     </fieldset></form>
     <form action="/api/git/publish" method="POST" class="mt-2"><input type="hidden" name="replace" value="1"><fieldset {% if not (can_publish and git and git.status == 'CONNECTED' and pkg) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+      <label class="fh"><input type="checkbox" name="prune_linked" value="1"> Also remove the linked services XODUS generated earlier (LS_ADLS_Staging, LS_KeyVault and the _Sim ones; never LS_BLOB, LS_SQL_Target or others)</label><br>
       <button type="submit" class="btn g sm" data-testid="replace-button">Replace earlier XODUS files and publish</button>
       <span class="fh">One commit that removes the pipeline, dataset and trigger files and the xodus/ folder left by earlier packages, then adds this package. Linked services are never removed; the Git history keeps everything.</span>
     </fieldset></form>

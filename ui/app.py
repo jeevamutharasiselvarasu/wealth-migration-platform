@@ -816,7 +816,9 @@ async def publish_adf_to_git(request: Request):
     """Add the latest stored ADF package to the linked GitHub repository as one commit. The factory owner links the repository in Data Factory.
     With replace=1 the same commit removes the files earlier XODUS packages left (never linked services)."""
     user = get_current_user(request)
-    replace = str((await request.form()).get("replace", "")) == "1"
+    _form = await request.form()
+    replace = str(_form.get("replace", "")) == "1"
+    prune_linked = replace and str(_form.get("prune_linked", "")) == "1"
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
@@ -830,7 +832,7 @@ async def publish_adf_to_git(request: Request):
             note = " (simulated Azure values)" if '"simulated": true' in files.get("manifest.json", "") else ""
             result = git_connection.publish(conn, user["name"], migration_id, files,
                                             f"XODUS ADF package {art['artifact_id']} v{art['artifact_version']} for {migration_id}{note}, published by {user['name']}",
-                                            artifact_id=art["artifact_id"], replace=replace)
+                                            artifact_id=art["artifact_id"], replace=replace, prune_linked=prune_linked)
         except (ValueError, zipfile.BadZipFile) as exc:
             return _publish_back("error", str(exc))
         conn.commit()
