@@ -50,10 +50,16 @@ def _service(conn_str: Optional[str] = None):
     return BlobServiceClient.from_connection_string(cs)
 
 
+def account_name(conn_str: Optional[str]) -> str:
+    """The storage account name from a connection string (a public identifier; the key is never read or returned)."""
+    m = re.search(r"(?i)(?:^|;)AccountName=([^;]+)", conn_str or "")
+    return m.group(1).strip() if m else ""
+
+
 def status(container: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
     """Reachability and, if the container exists, how many source blobs it holds. Never raises."""
     cs = conn_str if conn_str is not None else connection_string()
-    out = {"configured": bool(cs), "emulator": is_emulator(cs), "reachable": False, "container_exists": False, "detail": ""}
+    out = {"configured": bool(cs), "emulator": is_emulator(cs), "reachable": False, "container_exists": False, "detail": "", "account": account_name(cs)}
     if not cs:
         out["detail"] = f"{ENV_VAR} is not set on the server."
         return out

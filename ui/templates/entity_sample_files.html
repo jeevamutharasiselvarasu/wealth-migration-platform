@@ -45,9 +45,9 @@
     {% if acquisition_method == 'AZURE_CONNECTION' %}
     <div class="tw"><table><tbody>
       <tr><th style="width:220px">Source</th><td>Azure Blob / ADLS storage</td></tr>
-      <tr><th>Storage account</th><td class="font-mono">{{ 'devstoreaccount1 (local emulator)' if blob and blob.emulator else ((azure_cfg and azure_cfg.storage_account) or 'set on the server') }}</td></tr>
+      <tr><th>Storage account</th><td class="font-mono">{{ (blob.account ~ ' (local emulator)' if blob.emulator else blob.account) if blob and blob.account else ((azure_cfg and azure_cfg.storage_account) or 'set on the server') }}</td></tr>
       <tr><th>Source folder</th><td class="font-mono">{{ (blob.container ~ '/' ~ blob.firm_folder) if blob else 'not set' }}</td></tr>
-      <tr><th>Access method</th><td>Service principal (secret read from the server)</td></tr>
+      <tr><th>Access method</th><td>Storage connection string (read from the server)</td></tr>
       <tr><th>Connection status</th><td>{% if blob %}<span class="chip {{ 'ok' if blob.reachable else 'ex' }}">{{ 'Reachable' if blob.reachable else 'Not reachable' }}</span> blob storage is checked each time this page loads. {% else %}<span class="chip ex">{% if azure_cfg and azure_cfg.status == 'CONNECTED' %}Connected{% elif azure_cfg %}Recorded, not verified{% else %}Not set up{% endif %}</span> {% endif %}<a href="/azure-setup" class="font-mono text-blue-700">Edit on Azure connection →</a></td></tr>
     </tbody></table></div>
     {% else %}

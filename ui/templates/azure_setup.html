@@ -19,6 +19,7 @@
   <section class="card" id="blob-storage" data-testid="blob-storage">
     <h3>Source storage (Blob) {% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
     <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the source files), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Source files are dropped in <span class="font-mono">{{ blob.firm_folder }}</span>; discovery then works from there. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
+    {% if blob.account %}<p class="fh" data-testid="blob-endpoint">Storage account <span class="font-mono">{{ blob.account }}</span> (from the server's connection string) · container <span class="font-mono">{{ blob.container }}</span>{% if not blob.emulator %} · <span class="font-mono">https://{{ blob.account }}.blob.core.windows.net/{{ blob.container }}</span>{% endif %}</p>{% endif %}
     {% if not blob.configured %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>
     {% elif not blob.reachable %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>{% endif %}
     <form action="/api/blob/layout" method="POST" class="flex flex-wrap items-end gap-2 mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">

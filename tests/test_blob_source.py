@@ -250,3 +250,11 @@ def test_blob_errors_report_the_azure_code_and_a_hint_but_never_the_key():
     e.status_code, e.error_code = 403, "KeyBasedAuthenticationNotPermitted"
     assert "key access is disabled" in bs.explain_error(e)
     assert "could not be reached" in bs.explain_error(ConnectionError("no route"))
+
+
+def test_account_name_is_read_from_the_connection_string_without_the_key(monkeypatch):
+    cs = "DefaultEndpointsProtocol=https;AccountName=afswstorage;AccountKey=SECRETSECRET;EndpointSuffix=core.windows.net"
+    assert bs.account_name(cs) == "afswstorage" and bs.account_name("") == ""
+    monkeypatch.setattr(bs, "_service", lambda *a, **k: (_ for _ in ()).throw(ConnectionError("offline")))  # no real network in tests
+    out = bs.status("lake", conn_str=cs)
+    assert out["account"] == "afswstorage" and "SECRET" not in str(out)
