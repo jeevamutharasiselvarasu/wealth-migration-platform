@@ -56,7 +56,7 @@
   <div class="sgrp" id="storage">
     <div class="sech"><div><span class="num">02</span><h2 style="font-size:18px">Source storage (Blob)</h2><p>Where the raw, stage and curated folders live. Source files are dropped under raw/; XODUS writes canonical files to stage/ and the ready marker to curated/.</p></div></div>
   <section class="card" id="blob-storage" data-testid="blob-storage">
-    <h3>Source storage (Blob) {% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
+    <h3 class="sr-chips">{% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
     <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the source files), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Source files are dropped in <span class="font-mono">{{ blob.firm_folder }}</span>; discovery then works from there. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
     {% if blob.account %}<p class="fh" data-testid="blob-endpoint">Storage account <span class="font-mono">{{ blob.account }}</span> (from the server's connection string) · container <span class="font-mono">{{ blob.container }}</span>{% if not blob.emulator %} · <span class="font-mono">https://{{ blob.account }}.blob.core.windows.net/{{ blob.container }}</span>{% endif %}</p>{% endif %}
     {% if not blob.configured %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>
@@ -74,7 +74,7 @@
   <div class="sgrp" id="target-db">
     <div class="sech"><div><span class="num">03</span><h2 style="font-size:18px">Target database (Azure SQL)</h2><p>The database the pipeline loads into. The platform only reads its table and column list; a person runs the create scripts.</p></div></div>
   <section class="card" id="sqlt" data-testid="sql-target">
-    <h3>Target database (Azure SQL) <span class="chip {{ 'ok' if sqlt.status == 'CONNECTED' else 'ex' }}">{{ sqlt.status|default('Not set up') }}</span></h3>
+    <h3 class="sr-chips"><span class="chip {{ 'ok' if sqlt.status == 'CONNECTED' else 'ex' }}">{{ sqlt.status|default('Not set up') }}</span></h3>
     <p class="fh">Read-only check that the target schema and tables exist. The create scripts in the ADF package are run by a person; this page never creates or changes anything.</p>
     {% if sqlt %}<p class="fh">Password <span class="font-mono">{{ sqlt.password_env_var }}</span>: <strong>{{ 'present on the server' if sqlt.password_present else 'missing on the server' }}</strong> · user <strong>{{ sqlt.username_effective or 'not set' }}</strong>{% if sqlt.checked_utc %} · last tested {{ sqlt.checked_utc[:19] }} — {{ sqlt.check_detail }}{% endif %}</p>{% endif %}
     <form action="/api/sql-target" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
@@ -96,7 +96,7 @@
   <div class="sgrp" id="source-control">
     <div class="sech"><div><span class="num">04</span><h2 style="font-size:18px">Source control (GitHub)</h2><p>Where the generated ADF package is published so the factory owner can take it into Data Factory.</p></div></div>
   <section class="card" id="git" data-testid="git-connection">
-    <h3>Source control (GitHub) <span class="chip {{ 'ok' if git.status == 'CONNECTED' else 'ex' }}">{{ git.status|default('Not set up') }}</span></h3>
+    <h3 class="sr-chips"><span class="chip {{ 'ok' if git.status == 'CONNECTED' else 'ex' }}">{{ git.status|default('Not set up') }}</span></h3>
     <p class="fh">Hands the generated ADF artifacts to the data factory owner without an Azure sign-in. XODUS adds one commit with the stored package to this repository; the factory owner links the repository in Data Factory (Manage, Git configuration) and publishes from there. The token is read from a server environment variable and is never typed here. XODUS only adds commits to the branch below: no force push, no deletes, no other branches.</p>
     {% if git %}<p class="fh">Token <span class="font-mono">{{ git.token_env_var }}</span>: <strong>{{ 'present on the server' if git.token_present else 'missing on the server' }}</strong>{% if git.checked_utc %} · last tested {{ git.checked_utc[:19] }}{% endif %}{% if git.last_commit_sha %} · last published {{ git.last_published_utc[:19] }} by {{ git.last_published_by }} (commit <span class="font-mono">{{ git.last_commit_sha[:7] }}</span>){% endif %}</p>{% endif %}
     <form action="/api/git/connection" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">

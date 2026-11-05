@@ -68,6 +68,15 @@ os.makedirs(templates_dir, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
+def _asset_version(name: str) -> str:
+    """Modification time of a static file, appended to its URL so an edited stylesheet is never served from the browser cache."""
+    try:
+        return str(int(os.path.getmtime(os.path.join(os.path.dirname(templates_dir), "static", name))))
+    except OSError:
+        return "0"
+
+
+templates.env.globals["asset_v"] = _asset_version
 templates.env.filters["mapping_kind"] = lambda rule, field=None: SchemaMapperAgent.mapping_kind(rule, field)
 
 schema_mapper = SchemaMapperAgent()
@@ -856,13 +865,13 @@ async def setup_hub(request: Request):
     cfg = _target_connection_status().get("config") or {}
     conn = get_db_connection()
     try:
-        az, gt = azure_connection.get_config(conn) or {}, git_connection.get_config(conn) or {}
+        az, gt, sq = azure_connection.get_config(conn) or {}, git_connection.get_config(conn) or {}, sql_target.get_config(conn) or {}
         conn.commit()
     finally:
         conn.close()
     return render_template_with_context(request, "setup_hub.html", {
         "page_title": "Setup", "user_name": user["name"], "user_role": user["role"],
-        "azure_status": str(az.get("status") or "not set up").lower(), "azure_factory": az.get("factory_name", ""),
+        "sql_status": str(sq.get("status") or "not set up").lower(), "sql_db": sq.get("database_name", ""), "azure_status": str(az.get("status") or "not set up").lower(), "azure_factory": az.get("factory_name", ""),
         "git_status": str(gt.get("status") or "not set up").lower(), "git_repo": gt.get("repository", ""), "git_branch": gt.get("branch", ""),
         "configured": bool(setup), "setup_entities": setup.get("entities") or [],
         "target_confirmed": cfg.get("status") == "CONFIRMED", "target_system": setup.get("target_system", ""),

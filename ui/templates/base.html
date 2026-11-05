@@ -8,13 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/suite.css">
-    <link rel="stylesheet" href="/static/dm.css">
-    <link rel="stylesheet" href="/static/xodus.css">
+    <link rel="stylesheet" href="/static/suite.css?v={{ asset_v('suite.css') }}">
+    <link rel="stylesheet" href="/static/dm.css?v={{ asset_v('dm.css') }}">
+    <link rel="stylesheet" href="/static/xodus.css?v={{ asset_v('xodus.css') }}">
     {# Fallback while pages are converted: Tailwind utilities and the previous xa-* styles keep unconverted markup working. #}
-    <link rel="stylesheet" href="/static/legacy.css">
+    <link rel="stylesheet" href="/static/legacy.css?v={{ asset_v('legacy.css') }}">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/assistant.css">
+    <link rel="stylesheet" href="/static/assistant.css?v={{ asset_v('assistant.css') }}">
 </head>
 <body>
 <a class="xa-skip" href="#main-content">Skip to content</a>
