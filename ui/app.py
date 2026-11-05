@@ -2842,6 +2842,9 @@ async def download_adf_package(request: Request):
             conn.close()
         blob = blob_source.status(_blob_container())  # account name and emulator flag only; no key is read
         env = adf_environment.resolve(migration_id, azure_cfg, blob.get("account", ""), _blob_container(), blob.get("emulator", True))
+        if not env.get("simulated"):  # real run: the pipeline reads the source firm's raw files where they were dropped
+            env["rawFolder"] = blob_source.source_prefix(_source_firm()).rstrip("/")
+            env["rawFiles"] = {e: str(r.get("filename")) for e, r in getattr(state_store, "entity_sample_files", {}).items() if r.get("filename")}
         package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
     except ValueError as exc:
         return back("error", str(exc))

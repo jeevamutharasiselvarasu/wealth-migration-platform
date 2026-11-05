@@ -39,3 +39,15 @@ def test_real_package_has_a_stopped_blob_trigger_on_curated_ready_files_and_no_s
 def test_simulated_package_is_unchanged_and_has_no_trigger():
     pkg = _package("MIG-1", azure_simulated.simulated_environment("MIG-1"))
     assert not any(n.startswith("trigger/") for n in pkg["files"]) and json.loads(pkg["files"]["manifest.json"])["simulated"] is True
+
+
+def test_real_package_reads_the_raw_files_in_place():
+    env = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
+    env["rawFolder"] = "raw/corecap"
+    import pytest
+    with pytest.raises(ValueError, match="No raw source file"):
+        _package("MIG-E439077124", env)
+    env["rawFiles"] = {"Account": "corecap_accounts.csv", "Client": "corecap_household_contacts.csv", "Household": "corecap_households.csv"}
+    files = _package("MIG-E439077124", env)["files"]
+    locs = {n: json.loads(t)["properties"]["typeProperties"]["location"] for n, t in files.items() if n.startswith("dataset/DS_Staging_") and "Sql" not in n}
+    assert locs and all(l["container"] == "xodus-lake" and l["folderPath"] == "raw/corecap" and l["fileName"].endswith(".csv") for l in locs.values())

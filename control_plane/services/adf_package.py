@@ -63,9 +63,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     copies: List[str] = []
     for table in sm["stagingTables"]:
         _ident(table)
-        folder = f"{env['stagingFolder']}/lookups/{table[4:]}" if table.startswith("lkp_") else f"{env['stagingFolder']}/{table.lower()}"
+        folder, file_name = f"{env['stagingFolder']}/lookups/{table[4:]}" if table.startswith("lkp_") else f"{env['stagingFolder']}/{table.lower()}", None
+        if real and env.get("rawFolder"):  # read the source firm's raw files in place: one file per staging table
+            file_name = (env.get("rawFiles") or {}).get(table) or (table[4:] + ".csv" if table.startswith("lkp_") else "")
+            if not file_name:
+                raise ValueError(f"No raw source file is known for {table}. Classify and confirm its source file in Discovery first.")
+            folder = env["rawFolder"]
         ds_blob, ds_sql = f"DS_Staging_{table}", f"DS_StagingSql_{table}"
-        location = ({"type": "AzureBlobStorageLocation", "container": env["stagingContainer"], "folderPath": folder} if real
+        location = ({"type": "AzureBlobStorageLocation", "container": env["stagingContainer"], "folderPath": folder, **({"fileName": file_name} if file_name else {})} if real
                     else {"type": "AzureBlobFSLocation", "fileSystem": env["stagingContainer"], "folderPath": folder})
         add("datasets", "dataset", ds_blob, {"type": "DelimitedText", "linkedServiceName": ref(ls_blob, "LinkedServiceReference"),
             "typeProperties": {"location": location, "columnDelimiter": ",", "firstRowAsHeader": True}})
@@ -110,7 +115,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     out["manifest.json"] = json.dumps(manifest, indent=2)
     if real:
         out["README.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the files from\n"
-                             f"{env['stagingContainer']}/{env['stagingFolder']}/ into staging tables and runs it. TR_XODUS_Curated_Ready starts the pipeline when a\n"
+                             f"{env['stagingContainer']}/{env.get('rawFolder') or env['stagingFolder']}/ into staging tables and runs it. TR_XODUS_Curated_Ready starts the pipeline when a\n"
                              f"{env['readySuffix']} file is created under {env['readyContainer']}/{env['readyFolder']}/; it is published stopped and must be started in Data Factory.\n"
                              "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n")
     else:
