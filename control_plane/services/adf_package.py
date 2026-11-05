@@ -75,10 +75,12 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {"connectionString": {
             "type": "AzureKeyVaultSecret", "store": ref(ls_kv, "LinkedServiceReference"), "secretName": env["keyVaultSqlSecretName"]}}})
 
-    prepare = _batches(sql["files"]["sql/01_target_tables.sql"]) + _batches(sql["files"]["sql/00_staging_tables.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"])
-    activities: List[Dict[str, Any]] = [{
-        "name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
-        "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}}]
+    merge = real and env.get("loadMode") == "merge"  # the create scripts (schema, tables, staging) are run by hand; the pipeline only loads
+    activities: List[Dict[str, Any]] = []
+    if not merge:
+        prepare = _batches(sql["files"]["sql/01_target_tables.sql"]) + _batches(sql["files"]["sql/00_staging_tables.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"])
+        activities.append({"name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
+                           "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}})
     copies: List[str] = []
     raw_files = env.get("rawFiles") or entity_raw_files(env.get("rawCandidates") or {}, {t for t in sm["stagingTables"] if t.startswith("lkp_")})
     for table in sm["stagingTables"]:
@@ -96,14 +98,15 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
             "typeProperties": {"location": location, "columnDelimiter": ",", "firstRowAsHeader": True}})
         add("datasets", "dataset", ds_sql, {"type": "AzureSqlTable", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
             "typeProperties": {"schema": sql_package.STAGING_SCHEMA, "table": table}})
-        activities.append({"name": f"Copy_{table}", "type": "Copy", "dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}],
+        activities.append({"name": f"Copy_{table}", "type": "Copy", **({} if merge else {"dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}]}),
                            "inputs": [ref(ds_blob, "DatasetReference")], "outputs": [ref(ds_sql, "DatasetReference")],
                            "typeProperties": {"source": {"type": "DelimitedTextSource"},
                                               "sink": {"type": "AzureSqlSink", "preCopyScript": f"TRUNCATE TABLE [{sql_package.STAGING_SCHEMA}].[{table}]"}}})
         copies.append(f"Copy_{table}")
-    activities.append({"name": "Run_Transformation_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
+    run_sql = ([{"type": "NonQuery", "text": st.rstrip()} for st in sql["statements"]] if merge else [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}])
+    activities.append({"name": "Run_Transformation_SQL" if not merge else "Merge_Into_Target", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                        "dependsOn": [{"activity": c, "dependencyConditions": ["Succeeded"]} for c in copies],
-                       "typeProperties": {"scripts": [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}]}})
+                       "typeProperties": {"scripts": run_sql}})
 
     pipeline = f"PL_XODUS_{mig}"
     add("pipelines", "pipeline", pipeline, {"description": "Azure Blob source files to staging tables, then the transformation SQL into the target SQL database. Generated from approved mappings.",
@@ -124,7 +127,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         "simulated": not real, "banner": env["banner"], "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by,
         "generatedUtc": datetime.now(timezone.utc).isoformat(), "targetSystem": spec.get("target_system"), "targetModelVersion": spec["spec_version"],
         "pipeline": pipeline, "environment": {k: v for k, v in env.items() if k != "banner"}, "entities": sm["entities"], "warnings": sm["warnings"],
-        "stagingTables": sm["stagingTables"], "procedure": sm["procedure"],
+        "stagingTables": sm["stagingTables"], "procedure": sm["procedure"], "loadMode": "merge" if merge else "procedure",
         "provenance": provenance or {}, "deployed": False, "unresolved": env.get("unresolved", []),
         "note": ("Nothing was deployed or sent to Azure. A human must review the package and replace the simulated environment values." if not real
                  else "Nothing was deployed by XODUS. Review in Data Factory; SQL and Key Vault values listed under unresolved must be set before the pipeline can run."),
@@ -137,7 +140,11 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         out["README.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the files from\n"
                              f"{env['stagingContainer']}/{env.get('rawFolder') or env['stagingFolder']}/ into staging tables and runs it. TR_XODUS_Curated_Ready starts the pipeline when a\n"
                              f"{env['readySuffix']} file is created under {env['readyContainer']}/{env['readyFolder']}/; it is published stopped and must be started in Data Factory.\n"
-                             "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n")
+                             "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n"
+                             + ("\nBEFORE THE FIRST RUN, a person runs these once against the target SQL database (they are not part of the pipeline):\n"
+                                "  sql/01_target_tables.sql   creates the target schema and tables\n  sql/00_staging_tables.sql  creates the staging schema and tables\n"
+                                "The pipeline then copies the raw files into staging and runs MERGE statements (update matching rows, insert new ones) into the target tables.\n"
+                                if merge else ""))
     else:
         out["README_SIMULATED.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the Azure Blob source files\n"
                                       "into staging tables and runs it. Every Azure value (subscription, factory, storage, SQL, Key Vault) is fictitious.\n"

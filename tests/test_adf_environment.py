@@ -75,5 +75,10 @@ def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_fo
     assert "linkedService/LS_KeyVault.json" not in files and env["unresolved"] == []
     ddl = files["sql/01_target_tables.sql"]
     assert "CREATE SCHEMA [simplicity]" in ddl and "CREATE TABLE [simplicity].[T]" in ddl and "[OPEN_DT] date NULL" in ddl and "DROP TABLE" not in ddl.upper()
-    pipe = json.loads(files["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"][0]
-    assert "CREATE TABLE [simplicity].[T]" in json.dumps(pipe)
+    acts = json.loads(files["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"]
+    assert [a["type"] for a in acts] == ["Copy"] * 4 + ["Script"] or [a["type"] for a in acts].count("Copy") >= 1
+    assert not any(a["name"] == "Prepare_SQL" for a in acts) and "CREATE TABLE" not in json.dumps(acts) and "CREATE SCHEMA" not in json.dumps(acts)
+    merge = json.dumps(acts[-1])
+    assert "AS [OPEN_DT]" in merge and "AS [ACCT_NO]" in merge  # the inner select names every column the outer select reads
+    assert acts[-1]["name"] == "Merge_Into_Target" and "MERGE [simplicity].[T] AS t" in merge and "WHEN NOT MATCHED BY TARGET THEN INSERT" in merge
+    assert "ON t.[ACCT_NO] = src.[ACCT_NO]" in merge and "ROW_NUMBER()" in merge and "EXEC " not in merge and "sql/usp_load_all.sql" not in files

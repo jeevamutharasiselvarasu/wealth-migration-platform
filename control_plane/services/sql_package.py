@@ -106,6 +106,34 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alia
     return f"CASE WHEN {blank} THEN {col} ELSE {body} END"
 
 
+def _is_key_field(canonical: str) -> bool:
+    c = (canonical or "").upper()
+    return c in ("ACCT_NUM", "HH_ID") or c.endswith("_ID")
+
+
+def _merge(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, Any]], mappings: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """MERGE (update matching rows, insert new ones) keyed on the table's approved ID-like mapped columns. One source row per key is used."""
+    built = _insert(schema, entity, table, fields, mappings, rules)
+    rows = sorted(mappings, key=lambda r: r["target_field"])
+    cols = [_ident(fields[m["target_field"]]["column"]) for m in rows]
+    keys = [c for c, m in zip(cols, rows) if _is_key_field(m["canonical_field"] or "")]
+    if not keys:
+        raise ValueError(f"{entity} / {table}: no approved mapping is an ID-like field (ACCT_NUM, HH_ID or *_ID), so there is no key to merge on.")
+    exprs = [e.rsplit(" AS ", 1)[0] for e in built["exprs"]]
+    aliased = built["exprs"]
+    sel = ",\n        ".join(aliased)
+    part = ", ".join(f"x.{_q(k)}" for k in keys)
+    others = [c for c in cols if c not in keys]
+    sql = (f"-- {entity} -> {schema}.{table}: MERGE on {', '.join(keys)} ({len(mappings)} approved mapping(s))\n"
+           f"MERGE {_q(schema)}.{_q(table)} AS t\nUSING (\n    SELECT {', '.join('x.' + _q(c) for c in cols)} FROM (\n"
+           f"        SELECT\n        {sel},\n        ROW_NUMBER() OVER (PARTITION BY {', '.join('(' + e + ')' for e, c in zip(exprs, cols) if c in keys)} ORDER BY (SELECT NULL)) AS rn\n"
+           f"        FROM {_q(STAGING_SCHEMA)}.{_q(entity)} AS s\n    ) AS x WHERE x.rn = 1\n) AS src\n"
+           f"ON " + " AND ".join(f"t.{_q(k)} = src.{_q(k)}" for k in keys) + "\n"
+           + (f"WHEN MATCHED THEN UPDATE SET " + ", ".join(f"t.{_q(c)} = src.{_q(c)}" for c in others) + "\n" if others else "")
+           + f"WHEN NOT MATCHED BY TARGET THEN INSERT ({', '.join(_q(c) for c in cols)})\n    VALUES ({', '.join('src.' + _q(c) for c in cols)});\n")
+    return {**built, "sql": sql}
+
+
 def _insert(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, Any]], mappings: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     targets: List[str] = []
     exprs: List[str] = []
@@ -124,7 +152,7 @@ def _insert(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, An
     sql = (f"-- {entity} -> {schema}.{table}: {len(mappings)} approved mapping(s)\n"
            f"INSERT INTO {_q(schema)}.{_q(table)} ({', '.join(targets)})\nSELECT\n    " + ",\n    ".join(exprs) +
            f"\nFROM {_q(STAGING_SCHEMA)}.{_q(entity)} AS s;\n")
-    return {"sql": sql, "columns": cols, "lookups": lookups, "target_columns": sorted(t.strip("[]") for t in targets)}
+    return {"sql": sql, "exprs": exprs, "columns": cols, "lookups": lookups, "target_columns": sorted(t.strip("[]") for t in targets)}
 
 
 _SQL_TYPES = {"date": "date", "datetime": "datetime2", "timestamp": "datetime2", "int": "int", "integer": "int", "bigint": "bigint",
@@ -167,7 +195,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         for table in sorted({fields[m["target_field"]]["table"] for m in rows}):
             _ident(table)
             trows = [m for m in rows if fields[m["target_field"]]["table"] == table]
-            built = _insert(schema, entity, table, fields, trows, rules)
+            built = (_merge if env.get("loadMode") == "merge" else _insert)(schema, entity, table, fields, trows, rules)
             files[f"sql/{entity}_{table}.sql"] = built["sql"]
             statements.append(built["sql"])
             staging.setdefault(entity, set()).update(built["columns"])
@@ -192,11 +220,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
                    + ",\n        ".join(f"{_q(c)} nvarchar(4000) NULL" for c in sorted(cols)) + "\n    );\nGO\n")
     files["sql/00_staging_tables.sql"] = ("-- Staging tables the pipeline fills from the Azure Blob source files (every column as text).\n" + "\n".join(ddl))
     proc = _q(schema) + "." + _q("usp_xodus_load_all")
-    files["sql/usp_load_all.sql"] = (
-        f"-- Runs every transformation statement in one transaction. Generated from approved mappings only.\n"
-        f"CREATE OR ALTER PROCEDURE {proc}\nAS\nBEGIN\n    SET NOCOUNT ON;\n    SET XACT_ABORT ON;\n    BEGIN TRY\n        BEGIN TRANSACTION;\n"
-        + "\n".join("        " + line if line else line for st in statements for line in (st.rstrip("\n").split("\n") + [""]))
-        + "\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND\nGO\n")
+    if env.get("loadMode") == "merge":  # the pipeline runs the MERGE statements itself: no procedure to create
+        proc = ""
+    else:
+        files["sql/usp_load_all.sql"] = (
+            f"-- Runs every transformation statement in one transaction. Generated from approved mappings only.\n"
+            f"CREATE OR ALTER PROCEDURE {proc}\nAS\nBEGIN\n    SET NOCOUNT ON;\n    SET XACT_ABORT ON;\n    BEGIN TRY\n        BEGIN TRANSACTION;\n"
+            + "\n".join("        " + line if line else line for st in statements for line in (st.rstrip("\n").split("\n") + [""]))
+            + "\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND\nGO\n")
     manifest = {
         "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by, "generatedUtc": datetime.now(timezone.utc).isoformat(),
         "targetSystem": spec.get("target_system"), "targetModelVersion": spec.get("spec_version"), "targetSchema": schema,
@@ -205,4 +236,4 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         "note": "Nothing was executed. The pipeline copies the Azure Blob source files into the staging tables, then runs these statements against the target SQL database.",
     }
     files["manifest.json"] = json.dumps(manifest, indent=2)
-    return {"files": files, "manifest": manifest}
+    return {"files": files, "manifest": manifest, "statements": statements}

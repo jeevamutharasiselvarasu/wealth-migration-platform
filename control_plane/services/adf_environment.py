@@ -33,7 +33,7 @@ def resolve(migration_id: str, azure_cfg: Optional[Dict[str, Any]], storage_acco
         "stagingContainer": container, "stagingFolder": f"stage/{slug}",
         "readyContainer": container, "readyFolder": "curated", "readySuffix": ".ready",
         "sqlServer": azure_cfg.get("sql_server") or f"{PLACEHOLDER}.database.windows.net", "sqlDatabase": azure_cfg.get("sql_database") or PLACEHOLDER,
-        "sqlSchema": azure_cfg.get("sql_schema") or "simplicity", "sqlAuth": "managed",
+        "sqlSchema": azure_cfg.get("sql_schema") or "simplicity", "sqlAuth": "managed", "loadMode": "merge",
         "keyVaultUrl": azure_cfg.get("key_vault_url") or f"https://{PLACEHOLDER.lower()}.vault.azure.net/",
         "keyVaultSqlSecretName": azure_cfg.get("key_vault_sql_secret") or PLACEHOLDER,
         "unresolved": unresolved,
