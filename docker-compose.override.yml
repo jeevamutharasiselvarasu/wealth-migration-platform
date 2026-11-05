@@ -14,4 +14,3 @@ services:
       - ./config:/app/config
       - ./demo_data:/app/demo_data
       - ./platform_knowledge:/app/platform_knowledge
-      - ./simulated_target_service/data:/app/simulated_target_service/data

@@ -1169,17 +1169,19 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         if target_connector.get_config(conn) is None:
-            try:
-                target_connector.configure(conn, user["name"], "Simplicity", os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"), [], True, "")
-                cfg = target_connector.get_config(conn)
-                if cfg["status"] == "CONNECTED":
-                    target_connector.infer_model(conn, canonical_types)
-                    target_note = " Target system connected and inferred; an admin confirms it once on Target mapping."
-                else:
-                    target_note = f" Target system is not reachable ({cfg['connection_detail']}) Start it, then finish the one-time target setup."
-                target_audit = cfg["status"]
-            except ValueError as exc:
-                target_note = f" Target setup needs attention: {exc}"
+            if sql_target.get_config(conn) is None:
+                target_note = " Target system: save the target database on the Azure connection page, then choose Use the Azure SQL database as the target on Target mapping."
+            else:
+                try:
+                    cfg = target_connector.configure_azure_sql(conn, user["name"], "")
+                    if cfg["status"] == "CONNECTED":
+                        target_connector.infer_model(conn, canonical_types)
+                        target_note = " Target system connected and inferred; an admin confirms it once on Target mapping."
+                    else:
+                        target_note = f" Target database is not ready ({cfg['connection_detail']}) Fix it, then finish the one-time target setup."
+                    target_audit = cfg["status"]
+                except ValueError as exc:
+                    target_note = f" Target setup needs attention: {exc}"
         conn.commit()
     finally:
         conn.close()
@@ -2527,7 +2529,6 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "approved_rules": transformation_rules.approved_rules(), "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS), "preview": preview_result, "coverage": target_mapping.coverage(spec, mappings), "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
         "can_propose": user["role"] in DISCOVERY_ROLES, "can_setup_target": user["role"] in PLATFORM_ROLES, "can_review": user["role"] in APPROVAL_ROLES,
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
-        "default_endpoint": os.environ.get("SIMULATED_TARGET_URL", "http://127.0.0.1:8100"),
         "canonical_fields": {e: sorted(fs) for e, fs in _canonical_types().items()},
         "pending_reviews": target_connector.pending_reviews(cfg["model"]) if cfg and cfg.get("model") else 0,
     }

@@ -14,7 +14,7 @@
   </div>
   <div class="ins"><b>This stage.</b> Runs after the source→canonical mapping has been validated (stage 05). Map each canonical field to a target field and approve the mappings and rules. The next stage (07 Transformation SQL) writes the approved mappings and rules out as SQL.</div>
   {% if target_config and target_config.connector_type == 'azure-sql' %}<div class="exc" data-testid="target-banner-azure"><b>Azure SQL target.</b> <span class="font-mono">{{ target_config.endpoint }}</span>. The platform learns its structure by reading the table and column list with a read-only sign-in; it never loads data into it. The ADF pipeline does the loading, and a person runs the create scripts.</div>
-  {% else %}<div class="exc"><b>Simulated target system.</b> It runs as its own service and database, separate from this platform. The platform learns its structure by inspecting it after a one-time setup; nothing is ever loaded into it. To use the Azure SQL database instead, choose "Use the Azure SQL database as the target" below.</div>{% endif %}
+  {% else %}<div class="exc"><b>Simulated target system.</b> It runs as its own service and database, separate from this platform. The platform learns its structure by inspecting it after a one-time setup; nothing is ever loaded into it.</div>{% endif %}
   <p class="d" style="margin:0">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
 
   <nav aria-label="On this page" class="flex flex-wrap gap-2 text-[11px] font-bold">
@@ -37,20 +37,12 @@
       <p class="mt-3 text-[11px] text-[#5A6A88]">{{ c.target_name }} · {{ c.endpoint }} · model {{ c.schema_hash }} · confirmed by {{ c.confirmed_by }} on {{ c.confirmed_utc[:10] }}. Setup is locked; every migration uses this target.</p>
       {% if can_setup_target %}<form action="/api/target-system/reopen" method="post" class="mt-2 flex flex-wrap items-center gap-2"><input name="reason" required maxlength="200" placeholder="Reason for reopening" aria-label="Reason for reopening the target setup" class="input"><button type="submit" class="btn g sm">Reopen setup to reconfigure</button><span class="text-[10px] text-[#5A6A88]">Pauses target mapping until you confirm again. Recorded in the audit log.</span></form>{% endif %}
     {% elif can_setup_target %}
-      <form action="/api/target-system/configure" method="post" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <label class="field fl">Target system name<input name="target_name" required value="{{ c.target_name if c else 'Simplicity' }}" class="input w-full"></label>
-        <label class="field fl">Connection endpoint<input name="endpoint" required value="{{ c.endpoint if c and c.connector_type != 'azure-sql' else default_endpoint }}" class="input w-full font-mono"></label>
-        <label class="field fl">Tables to inspect <span class="font-normal text-[#8A97B2]">(optional, comma separated; blank = all)</span><input name="scope_tables" value="{{ c.scope_tables|join(', ') if c else '' }}" class="input w-full font-mono"></label>
-        <label class="field fl">Target owner / SME<input name="owner" value="{{ c.owner if c else '' }}" class="input w-full"></label>
-        <label class="flex items-center gap-2 text-xs font-bold text-[#41506B]"><input type="checkbox" name="include_code_lists" {% if not c or c.include_code_lists %}checked{% endif %}> Also read the target's code lists</label>
-        <div class="flex items-center gap-3"><button type="submit" class="btn p sm">Save &amp; test connection</button></div>
-      </form>
       <form action="/api/target-system/configure-azure-sql" method="post" class="mt-3 flex flex-wrap items-end gap-3" data-testid="target-azure-sql">
         <label class="field fl">Target owner / SME<input name="owner" value="{{ c.owner if c else '' }}" class="input"></label>
         <button type="submit" class="btn p sm">Use the Azure SQL database as the target</button>
         <span class="text-[10px] text-[#5A6A88]">Reads the table and column list of the schema saved under Azure connection → Target database. Read-only; no row data.</span>
       </form>
-      <p class="mt-2 text-[10px] text-[#8A97B2]">No credentials are stored. This form connects to the local simulated target only (127.0.0.1 or localhost); the Azure SQL database is the button above. Start the simulated target with <span class="font-mono">python -m simulated_target_service</span>.</p>
+      <p class="mt-2 text-[10px] text-[#8A97B2]">No credentials are stored here: the SQL user name and password come from the server's .env (Azure connection, Target database).</p>
     {% else %}
       <p class="mt-3 text-xs font-bold text-amber-800">A Platform Admin must complete the one-time target setup before mapping can start.</p>
     {% endif %}

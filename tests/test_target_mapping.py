@@ -172,7 +172,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     denied = asyncio.run(call("Domain SME", "POST", "/api/target-mapping/propose"))
     assert denied.status_code == 303 and "may+not+perform" in denied.headers["location"]
     assert "must complete the one-time target setup" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
-    assert "Save &amp; test connection" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Use the Azure SQL database as the target" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     assert "Complete and confirm the one-time target system setup first" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"].replace("+", " ")
     cfg_form = {"target_name": "Simplicity", "endpoint": "http://127.0.0.1:8100", "include_code_lists": "on", "owner": "Sam"}
     for role in ("Domain SME", "Migration Analyst", "Validation Specialist"):
@@ -206,7 +206,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": " "})).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": "Owner changed the code lists"})).headers["location"]
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-mapping/propose")).headers["location"]  # mapping paused
-    assert "Save &amp; test connection" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Use the Azure SQL database as the target" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
     for step, form in (("configure", cfg_form), ("infer", None), ("review-all", None), ("confirm", None)):
         assert "notice=" in asyncio.run(call("Platform Admin", "POST", f"/api/target-system/{step}", form)).headers["location"]
     assert "Confirm target model" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
@@ -474,6 +474,14 @@ def test_demo_load_is_restricted_to_flagged_account_and_infers_but_does_not_conf
     monkeypatch.setitem(mgr.authorized_users, "plain@example.invalid", {"can_load_demo": False})
     for sid, email in (("s-flag", "flagged@example.invalid"), ("s-plain", "plain@example.invalid")):
         monkeypatch.setitem(mgr.active_sessions, sid, {"email": email, "name": "T", "role": "Platform Admin"})
+
+    from control_plane.services import sql_target as st  # the target is the Azure SQL database; its catalog is stood in by the demo schema
+    c0 = db.get_db_connection()
+    st.save(c0, "T", {"server": "s.database.windows.net", "database_name": "xodus", "username": "u", "password_env_var": "", "schema_name": ""})
+    c0.commit()
+    c0.close()
+    monkeypatch.setattr(st, "test_connection", lambda c: {"status": "CONNECTED", "found_tables": "T", "check_detail": "Signed in."})
+    monkeypatch.setattr(st, "read_schema", lambda c: tc._http_get("http://127.0.0.1:8100/schema"))
 
     async def post(sid):
         t = httpx.ASGITransport(app=app_module.app)

@@ -1,10 +1,5 @@
 #!/bin/sh
-# One container for the demo: the simulated target (127.0.0.1:8100, its own SQLite DB) plus the platform.
-python -m simulated_target_service &
-i=0
-until python -c "import urllib.request,sys; urllib.request.urlopen(\"http://127.0.0.1:${SIMULATED_TARGET_PORT:-8100}/health\", timeout=1)" 2>/dev/null; do
-  i=$((i+1)); [ "$i" -ge 30 ] && echo "simulated target did not start" >&2 && break; sleep 1
-done
+# The platform only. The target is the Azure SQL database saved on the Azure connection page; no target runs in this container.
 RELOAD=""
 [ -n "$XODUS_RELOAD" ] && RELOAD="--reload --reload-dir ui --reload-dir control_plane --reload-dir agents --reload-dir data_plane"
 exec uvicorn ui.app:app --host 0.0.0.0 --port "${PORT:-8000}" $RELOAD
