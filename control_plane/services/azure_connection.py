@@ -33,6 +33,7 @@ VAULT_URL = re.compile(r"^https://[a-z0-9-]{3,24}\.vault\.azure\.net/?$")
 ENV_VAR = re.compile(r"^AZURE_[A-Z0-9_]{1,50}$")
 FIELDS = ("tenant_id", "client_id", "subscription_id", "resource_group", "factory_name", "storage_account", "staging_container",
           "sql_server", "sql_database", "sql_schema", "key_vault_url", "key_vault_sql_secret", "secret_env_var", "source_container")
+OPTIONAL_NAMES = ("storage_account", "staging_container", "sql_database", "sql_schema", "key_vault_sql_secret")
 DEFAULT_SECRET_ENV = "AZURE_CLIENT_SECRET"
 API = "2018-06-01"
 
@@ -53,17 +54,21 @@ def validate(values: Dict[str, str]) -> Dict[str, str]:
     for k in ("tenant_id", "client_id", "subscription_id"):
         if not GUID.match(v[k]):
             raise ValueError(f"{k.replace('_', ' ').capitalize()} must be a GUID.")
-    for k in ("resource_group", "factory_name", "storage_account", "staging_container", "sql_database", "sql_schema", "key_vault_sql_secret"):
+    for k in ("resource_group", "factory_name"):
         if not NAME.match(v[k]):
+            raise ValueError(f"{k.replace('_', ' ').capitalize()} must be letters, digits, '-' or '_' (up to 63 characters).")
+    for k in OPTIONAL_NAMES:  # storage, SQL and Key Vault settings are optional while only the data factory connection is in use
+        if v[k] and not NAME.match(v[k]):
             raise ValueError(f"{k.replace('_', ' ').capitalize()} must be letters, digits, '-' or '_' (up to 63 characters).")
     if v["source_container"] and not NAME.match(v["source_container"]):
         raise ValueError("Source container must be letters, digits, '-' or '_' (up to 63 characters).")
-    if not SQL_HOST.match(v["sql_server"].lower()):
+    if v["sql_server"] and not SQL_HOST.match(v["sql_server"].lower()):
         raise ValueError("SQL server must be an Azure SQL host such as myserver.database.windows.net.")
     v["sql_server"] = v["sql_server"].lower()
-    if not VAULT_URL.match(v["key_vault_url"].lower()):
-        raise ValueError("Key Vault URL must look like https://<vault>.vault.azure.net/.")
-    v["key_vault_url"] = v["key_vault_url"].lower().rstrip("/") + "/"
+    if v["key_vault_url"]:
+        if not VAULT_URL.match(v["key_vault_url"].lower()):
+            raise ValueError("Key Vault URL must look like https://<vault>.vault.azure.net/.")
+        v["key_vault_url"] = v["key_vault_url"].lower().rstrip("/") + "/"
     if not ENV_VAR.match(v["secret_env_var"]):
         raise ValueError("The secret is read from a server environment variable whose name starts with AZURE_ (for example AZURE_CLIENT_SECRET). "
                          "Never type the secret itself here.")

@@ -116,3 +116,14 @@ def test_column_migration_uses_the_portable_helper_not_sqlite_pragma():
     import pathlib
     src = pathlib.Path(az.__file__).read_text()
     assert "PRAGMA" not in src and "table_columns(" in src  # the live app runs on Postgres, where PRAGMA is a syntax error
+
+
+def test_factory_only_settings_save_without_storage_sql_or_key_vault(conn):
+    adf_only = {k: v for k, v in GOOD.items() if k in ("tenant_id", "client_id", "subscription_id", "resource_group", "factory_name", "secret_env_var")}
+    cfg = az.save(conn, "Ann", adf_only)
+    assert cfg["status"] == "CONFIGURED" and cfg["sql_server"] == "" and cfg["key_vault_url"] == ""
+    for key, bad in [("sql_server", "evil.example.com"), ("key_vault_url", "http://kv.vault.azure.net"), ("storage_account", "a b")]:
+        with pytest.raises(ValueError):  # optional, but still checked when supplied
+            az.validate({**adf_only, key: bad})
+    with pytest.raises(ValueError):
+        az.validate({**adf_only, "factory_name": ""})
