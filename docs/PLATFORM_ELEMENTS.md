@@ -43,3 +43,15 @@ Walked 2026-11-06 in workspace **MIG-DF760032C3** ("Platform walk - CoreCap to O
 - The Household SQL header names the schema as dbo while the Azure SQL target is the simplicity schema; check the generated SQL before relying on it.
 - Entity-level approval of Household reported advisors as needing individual review even after the file-level approval; the file-level approval is what counted.
 - Not browser-tested in this walk: Deal Room, tenant, command-center template pages, Firm knowledge uploads, Confluence import.
+
+## Setup and knowledge walk (same workspace)
+| Element | Action and result |
+|---|---|
+| Firm knowledge, Attach Data Asset (category + file; .md .txt .csv .tsv .json .xlsx .xlsm .xls .docx .pptx .pdf) | Uploaded `corecap_business_rules.md` as business_rules (registered as DOC-001) and a source-analysis note `corecap_migration_decisions.md` (a shortened copy of the demo note: source meaning, derivations, missing values; the open-decisions and extract-quality sections were left out) |
+| Acquisition questionnaire | Saved firm CoreCap, source systems, data owner and mapping approver, and the identifier and relationship notes (HouseholdId, AdvisorId links; no account-to-contact link) |
+| Import Confluence page | Not exercised: no page link supplied |
+| Business rules, Infer draft rules from asset | Asset DOC-001 gave 5 draft rules (2 value maps, date format, number clean, concat); all 5 approved with a comment, each pins as RULE:ID@1 |
+| Azure setup, Test connection (Data Factory sign-in) | Refused: tenant ID and client ID of a service principal are not set. Not needed while the run is started by hand in ADF |
+| Azure SQL, Test SQL connection | Passed: schema simplicity exists with ORION_MCL_ACCOUNT, ORION_MCL_CLIENT, ORION_MCL_HOUSEHOLD, xodus_run_log |
+| GitHub, Test connection | Passed: signed in and can write to xodus-amp main |
+| Transformation SQL page | Shows `[dbo]` table names; the Azure SQL schema is simplicity. Not yet checked against the published package |
