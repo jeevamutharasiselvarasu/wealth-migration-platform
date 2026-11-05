@@ -33,8 +33,31 @@ _DDL = """CREATE TABLE IF NOT EXISTS app_users (
     failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until_utc TEXT, created_utc TEXT NOT NULL, approved_by TEXT, approved_utc TEXT)"""
 
 
+_EVENTS_DDL = """CREATE TABLE IF NOT EXISTS user_access_events (
+    event_id TEXT PRIMARY KEY, at_utc TEXT NOT NULL, actor TEXT NOT NULL, target_email TEXT NOT NULL, event TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}')"""
+
+
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
+    conn.execute(_EVENTS_DDL)
+
+
+def record_event(conn: sqlite3.Connection, actor: str, target_email: str, event: str, detail: Optional[Dict[str, Any]] = None) -> None:
+    """Durable access history for Governance: who did what to which account. Never stores passwords or hashes."""
+    import uuid
+    conn.execute("INSERT INTO user_access_events (event_id, at_utc, actor, target_email, event, detail_json) VALUES (?, ?, ?, ?, ?, ?)",
+                 (uuid.uuid4().hex, _now().isoformat(timespec="microseconds"), actor, target_email, event, json.dumps(detail or {})))
+
+
+def list_events(conn: sqlite3.Connection, limit: int = 50) -> List[Dict[str, Any]]:
+    ensure_table(conn)
+    cur = conn.execute("SELECT at_utc, actor, target_email, event, detail_json FROM user_access_events ORDER BY at_utc DESC, event_id DESC LIMIT ?", (int(limit),))
+    return [{"at_utc": r[0], "actor": r[1], "target_email": r[2], "event": r[3], "detail": json.loads(r[4] or "{}")} for r in cur.fetchall()]
+
+
+def pending_count(conn: sqlite3.Connection) -> int:
+    ensure_table(conn)
+    return int(conn.execute("SELECT COUNT(*) FROM app_users WHERE status = 'PENDING'").fetchone()[0])
 
 
 def hash_password(password: str, salt: Optional[bytes] = None) -> str:
@@ -116,6 +139,7 @@ def register(conn: sqlite3.Connection, name: str, email: str, password: str, res
                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                  (email, name, hash_password(password), json.dumps(roles), roles[0] if roles else "", "ACTIVE" if bootstrap else "PENDING",
                   1 if bootstrap else 0, _now().isoformat(timespec="seconds"), "bootstrap" if bootstrap else None, _now().isoformat(timespec="seconds") if bootstrap else None))
+    record_event(conn, email, email, "REGISTERED", {"status": "ACTIVE" if bootstrap else "PENDING", "bootstrap": bootstrap})
     return {"status": "ACTIVE" if bootstrap else "PENDING", "bootstrap": bootstrap}
 
 
@@ -180,14 +204,17 @@ def decide(conn: sqlite3.Connection, actor_email: str, target_email: str, action
         default = "Platform Admin" if "Platform Admin" in roles else roles[0]
         conn.execute("UPDATE app_users SET roles_json = ?, default_role = ?, status = 'ACTIVE', approved_by = ?, approved_utc = ? WHERE email = ?",
                      (json.dumps(roles), default, actor_email, now, user["email"]))
+        record_event(conn, actor_email, user["email"], "ACCESS_APPROVED" if action == "APPROVE" else "ROLES_CHANGED", {"from": user["roles"], "to": roles})
     elif action == "DISABLE":
         if user["status"] == "ACTIVE" and "Platform Admin" in user["roles"] and admins_after < 1:
             raise ValueError("At least one active Platform Admin must remain.")
         conn.execute("UPDATE app_users SET status = 'DISABLED', approved_by = ?, approved_utc = ? WHERE email = ?", (actor_email, now, user["email"]))
+        record_event(conn, actor_email, user["email"], "ACCOUNT_DISABLED", {"roles": user["roles"]})
     elif action == "ENABLE":
         if user["status"] != "DISABLED":
             raise ValueError("This account is not disabled.")
         conn.execute("UPDATE app_users SET status = ? WHERE email = ?", ("ACTIVE" if user["roles"] else "PENDING", user["email"]))
+        record_event(conn, actor_email, user["email"], "ACCOUNT_ENABLED", {"roles": user["roles"]})
     else:
         raise ValueError("Unknown action.")
     return get_user(conn, user["email"])

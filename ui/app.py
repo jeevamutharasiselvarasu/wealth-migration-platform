@@ -421,13 +421,14 @@ async def admin_users_page(request: Request, notice: str = "", error: str = ""):
     conn = get_db_connection()
     try:
         users = user_registry.list_users(conn)
+        events = user_registry.list_events(conn, 50)
         conn.commit()
     finally:
         conn.close()
     demo = [{"email": e, "name": v["name"], "roles": v["roles"], "has_password": bool(v["password_sha256"])} for e, v in session_mgr.authorized_users.items()]
     return render_template_with_context(request, "admin_users.html", {
-        "space": "tenant",
-        "page_title": "Users & access", "user_name": user["name"], "user_role": user["role"], "users": users, "demo_users": demo,
+        "space": "gov",
+        "page_title": "Users & access", "user_name": user["name"], "user_role": user["role"], "users": users, "demo_users": demo, "events": events,
         "all_roles": user_registry.ALL_ROLES, "notice": notice, "error": error})
 
 
@@ -494,7 +495,7 @@ def _preview_note(text: str, href: str, link: str) -> str:
 
 @app.get("/tenant", response_class=HTMLResponse)
 async def tenant_settings_page(request: Request):
-    note = _preview_note("Brand, identity, roles and deployment defaults below are the template preview and are kept in this browser only.", "/admin/users", "Users &amp; access &rarr;")
+    note = _preview_note("Brand, identity and deployment defaults below are the template preview and are kept in this browser only. Who has access is managed in Governance.", "/admin/users", "Users &amp; access (Governance) &rarr;")
     return _space_page(request, "tenant.html", note)
 
 
@@ -526,8 +527,15 @@ async def migration_workspaces_page(request: Request, view: str = "workspaces"):
 
 @app.get("/governance", response_class=HTMLResponse)
 async def governance_page(request: Request):
+    conn = get_db_connection()
+    try:
+        waiting = user_registry.pending_count(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    access = f'<a href="/admin/users" style="color:#64D8EF">Users &amp; access{f" ({waiting} waiting)" if waiting else ""} &rarr;</a>' if get_current_user(request)["role"] in PLATFORM_ROLES else ""
     note = ('<div style="background:#0B1F33;color:#fff;font:600 12.5px Inter,system-ui,sans-serif;padding:9px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
-            '<span style="opacity:.8">Live in this build:</span><a href="/canonical-changes" style="color:#64D8EF">Canonical change requests &rarr;</a>'
+            '<span style="opacity:.8">Live in this build:</span><a href="/canonical-changes" style="color:#64D8EF">Canonical change requests &rarr;</a>' + access +
             '<span style="opacity:.6">The gate chain, integrity checks and audit trail below are the template preview.</span></div>')
     return _space_page(request, "governance.html", note)
 

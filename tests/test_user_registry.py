@@ -197,3 +197,20 @@ def test_healthz_names_the_database_backend(tmp_path, monkeypatch):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://testserver") as c:
             return (await c.get("/healthz")).json()
     assert asyncio.run(get())["database"] == ("postgresql" if db.using_postgres() else "sqlite")
+
+
+def test_access_history_is_recorded_and_shown_in_the_governance_space(tmp_path, monkeypatch):
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    ur.register(conn, "Root Admin", "root@example.com", "Correct-Horse-9", set(), "")  # first account is the bootstrap admin
+    ur.register(conn, "Ann Lee", "ann@example.com", "Correct-Horse-9", set(), "")
+    ur.decide(conn, "root@example.com", "ann@example.com", "APPROVE", ["Migration Analyst"])
+    ur.decide(conn, "root@example.com", "ann@example.com", "SET_ROLES", ["Migration Analyst", "Validation Specialist"])
+    ur.decide(conn, "root@example.com", "ann@example.com", "DISABLE")
+    ur.decide(conn, "root@example.com", "ann@example.com", "ENABLE")
+    ev = ur.list_events(conn)
+    assert [e["event"] for e in reversed(ev)][1:] == ["REGISTERED", "ACCESS_APPROVED", "ROLES_CHANGED", "ACCOUNT_DISABLED", "ACCOUNT_ENABLED"]
+    assert ev[2]["detail"] == {"from": ["Migration Analyst"], "to": ["Migration Analyst", "Validation Specialist"]} and ev[2]["actor"] == "root@example.com"
+    assert "password" not in str(ev).lower().replace("passwords", "")
+    assert ur.pending_count(conn) == 0
+    assert ur.list_events(conn)[-1]["event"] == "REGISTERED"
