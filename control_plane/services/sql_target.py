@@ -121,3 +121,34 @@ def test_connection(conn: sqlite3.Connection, connect: Callable[..., Any] = _def
             status, detail = "FAILED", f"Could not sign in: {type(exc).__name__}: {str(exc)[:300].replace(password, '***')}"
     conn.execute("UPDATE sql_target_config SET status = ?, checked_utc = ?, check_detail = ?, found_tables = ? WHERE config_id = 1", (status, _now(), detail, found))
     return get_config(conn)
+
+
+_GROUPS = {"date": "date", "datetime": "date", "datetime2": "date", "smalldatetime": "date", "int": "integer", "bigint": "integer", "smallint": "integer",
+           "tinyint": "integer", "decimal": "decimal", "numeric": "decimal", "float": "decimal", "real": "decimal", "money": "decimal", "bit": "boolean"}
+
+
+def read_schema(conn: sqlite3.Connection, connect: Callable[..., Any] = _default_connect) -> Dict[str, Any]:
+    """Table and column list of the target schema, in the shape target inference reads. Catalog only: no row data, nothing changed.
+    The database has no column descriptions or code lists, so those are empty; a column that does not allow NULL is reported as required."""
+    cfg = get_config(conn)
+    if not cfg:
+        raise ValueError("Save the SQL settings first.")
+    password = os.environ.get(cfg["password_env_var"], "")
+    user = cfg["username_effective"]
+    if not (user and password):
+        raise ValueError("The SQL user name or password is missing on the server (SQL_TARGET_USERNAME / " + cfg["password_env_var"] + ").")
+    cfg = {**cfg, "username": user}
+    db = connect(cfg, password)
+    try:
+        cur = db.cursor()
+        cur.execute("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s "
+                    "ORDER BY TABLE_NAME, ORDINAL_POSITION", (cfg["schema_name"],))
+        rows = cur.fetchall()
+    finally:
+        db.close()
+    tables: Dict[str, Any] = {}
+    for table, column, dtype, nullable in rows:
+        t = tables.setdefault(table, {"name": table, "description": "", "columns": []})
+        t["columns"].append({"name": column, "type": _GROUPS.get(str(dtype).lower(), "string"), "required": str(nullable).upper() == "NO",
+                             "generated": False, "description": "", "code_list": None})
+    return {"system": f"Azure SQL {cfg['database_name']}.{cfg['schema_name']}", "version": "", "tables": list(tables.values()), "code_lists": {}}

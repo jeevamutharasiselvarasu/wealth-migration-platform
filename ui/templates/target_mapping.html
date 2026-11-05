@@ -44,6 +44,11 @@
         <label class="flex items-center gap-2 text-xs font-bold text-[#41506B]"><input type="checkbox" name="include_code_lists" {% if not c or c.include_code_lists %}checked{% endif %}> Also read the target's code lists</label>
         <div class="flex items-center gap-3"><button type="submit" class="btn p sm">Save &amp; test connection</button></div>
       </form>
+      <form action="/api/target-system/configure-azure-sql" method="post" class="mt-3 flex flex-wrap items-end gap-3" data-testid="target-azure-sql">
+        <label class="field fl">Target owner / SME<input name="owner" value="{{ c.owner if c else '' }}" class="input"></label>
+        <button type="submit" class="btn p sm">Use the Azure SQL database as the target</button>
+        <span class="text-[10px] text-[#5A6A88]">Reads the table and column list of the schema saved under Azure connection → Target database. Read-only; no row data.</span>
+      </form>
       <p class="mt-2 text-[10px] text-[#8A97B2]">No credentials are stored. This POC connects to a local simulated target only (127.0.0.1 or localhost). Start it with <span class="font-mono">python -m simulated_target_service</span>.</p>
     {% else %}
       <p class="mt-3 text-xs font-bold text-amber-800">A Platform Admin must complete the one-time target setup before mapping can start.</p>

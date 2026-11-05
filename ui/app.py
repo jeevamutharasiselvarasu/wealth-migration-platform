@@ -2629,6 +2629,25 @@ async def configure_target_system(request: Request, target_name: str = Form(...)
     return _target_redirect("notice", cfg["connection_detail"] + " Next: infer the target system.")
 
 
+@app.post("/api/target-system/configure-azure-sql")
+async def configure_target_azure_sql(request: Request, owner: str = Form(""), scope_tables: str = Form("")):
+    """One-time setup, step 1 (Azure SQL): use the target database from the Azure connection page and test it."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = target_connector.configure_azure_sql(conn, user["name"], owner, [t for t in re.split(r"[,\s]+", scope_tables) if t])
+        except ValueError as exc:
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_SYSTEM_CONFIGURED", user, {"endpoint": cfg["endpoint"], "status": cfg["status"]})
+    if cfg["status"] != "CONNECTED":
+        return _target_redirect("error", cfg["connection_detail"])
+    return _target_redirect("notice", cfg["connection_detail"] + " Next: infer the target system.")
+
+
 @app.post("/api/target-system/infer")
 async def infer_target_system(request: Request):
     """One-time setup, step 2: read the target's schema and infer entities and fields (a proposal, not a decision)."""

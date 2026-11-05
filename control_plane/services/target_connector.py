@@ -12,10 +12,11 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from control_plane.services import target_inference
+from control_plane.services import sql_target, target_inference
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 CONNECTOR_TYPE = "simulated-http"
+AZURE_SQL_TYPE = "azure-sql"
 MAX_BYTES = 2_000_000
 
 _DDL = """
@@ -110,6 +111,24 @@ def configure(conn: sqlite3.Connection, actor: str, target_name: str, endpoint: 
     return test_connection(conn)
 
 
+def configure_azure_sql(conn: sqlite3.Connection, actor: str, owner: str, scope_tables: List[str] = ()) -> Dict[str, Any]:
+    """Use the target Azure SQL database (saved on the Azure connection page) as the target system: its table and column list is read
+    with the same read-only connection. Locked once confirmed, like the simulated setup."""
+    ensure_table(conn)
+    if is_confirmed(get_config(conn)):
+        raise ValueError("Target system setup is confirmed and locked. A Platform Admin must reopen it before it can be changed.")
+    sql = sql_target.get_config(conn)
+    if not sql:
+        raise ValueError("Save the target database settings on the Azure connection page first.")
+    scope = sorted({s.strip().upper() for s in scope_tables if s.strip()})
+    conn.execute("DELETE FROM target_system_config WHERE config_id = 1")
+    conn.execute(
+        "INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, "
+        "status, configured_by, configured_utc) VALUES (1, ?, ?, ?, ?, 0, ?, 'CONFIGURED', ?, ?)",
+        ("Simplicity", AZURE_SQL_TYPE, f"azure-sql://{sql['server']}/{sql['database_name']}/{sql['schema_name']}", json.dumps(scope), str(owner or "").strip(), actor, _now()))
+    return test_connection(conn)
+
+
 def reopen(conn: sqlite3.Connection, actor: str, reason: str) -> Dict[str, Any]:
     """Platform Admin unlocks a confirmed setup so it can be reconfigured. Withdraws the confirmed model; existing mappings stay for audit."""
     cfg = get_config(conn)
@@ -129,6 +148,13 @@ def test_connection(conn: sqlite3.Connection) -> Dict[str, Any]:
         raise ValueError("Target system is not configured yet.")
     if is_confirmed(cfg):
         return cfg
+    if cfg["connector_type"] == AZURE_SQL_TYPE:
+        res = sql_target.test_connection(conn)
+        ok = res["status"] == "CONNECTED" and bool(res.get("found_tables"))
+        detail = res["check_detail"] if ok or res["status"] != "CONNECTED" else res["check_detail"] + " Run the create script first."
+        conn.execute("UPDATE target_system_config SET status = ?, connection_checked_utc = ?, connection_detail = ?, "
+                     "inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL WHERE config_id = 1", ("CONNECTED" if ok else "CONFIGURED", _now(), detail))
+        return get_config(conn)
     try:
         health = _http_get(cfg["endpoint"] + "/health")
         ok, detail = health.get("status") == "ok", f"Connected to {health.get('system', 'target')}."
@@ -150,7 +176,7 @@ def infer_model(conn: sqlite3.Connection, canonical: Dict[str, Dict[str, str]]) 
         raise ValueError("The target model is already confirmed.")
     if cfg["status"] not in {"CONNECTED", "INFERRED"}:
         raise ValueError("Test the connection successfully before inferring the target system.")
-    schema = _http_get(cfg["endpoint"] + "/schema")
+    schema = sql_target.read_schema(conn) if cfg["connector_type"] == AZURE_SQL_TYPE else _http_get(cfg["endpoint"] + "/schema")
     if not schema.get("tables"):
         raise ValueError("The target exposed no tables.")
     model = target_inference.infer(schema, canonical, cfg["scope_tables"], cfg["include_code_lists"])

@@ -61,3 +61,37 @@ def test_user_name_falls_back_to_the_server_environment(conn, monkeypatch):
     seen = {}
     cfg = st.test_connection(conn, lambda c, p: seen.update(user=c["username"]) or _Db())
     assert cfg["status"] == "CONNECTED" and seen["user"] == "loader"
+
+
+def test_read_schema_returns_tables_columns_types_and_required_flags(conn, monkeypatch):
+    st.save(conn, "Ann", {**GOOD, "username": "u"})
+    monkeypatch.setenv("SQL_TARGET_PASSWORD", "x")
+
+    class Cur:
+        def execute(self, sql, params=()): self.params = params
+        def fetchall(self): return [("T1", "ID", "nvarchar", "NO"), ("T1", "DOB", "date", "YES"), ("T2", "N", "decimal", "YES")]
+
+    class Db:
+        def cursor(self): return Cur()
+        def close(self): pass
+    sch = st.read_schema(conn, lambda c, p: Db())
+    assert [t["name"] for t in sch["tables"]] == ["T1", "T2"] and sch["tables"][0]["columns"][0] == {"name": "ID", "type": "string", "required": True, "generated": False, "description": "", "code_list": None}
+    assert sch["tables"][0]["columns"][1]["type"] == "date" and sch["tables"][1]["columns"][0]["type"] == "decimal" and sch["code_lists"] == {}
+
+
+def test_azure_sql_can_be_the_target_system_and_is_inferred_from_its_catalog(conn, monkeypatch):
+    from control_plane.services import target_connector as tc
+    st.save(conn, "Ann", {**GOOD, "username": "u"})
+    monkeypatch.setenv("SQL_TARGET_PASSWORD", "x")
+    schema = {"system": "Azure SQL xodus.simplicity", "version": "", "code_lists": {}, "tables": [
+        {"name": "ORION_MCL_ACCOUNT", "description": "", "columns": [
+            {"name": n, "type": "string", "required": False, "generated": False, "description": "", "code_list": None}
+            for n in ("ACCOUNT_NUMBER", "CUSTODIAN", "REGISTRATION_TYPE")]}]}
+    monkeypatch.setattr(st, "read_schema", lambda c: schema)
+    monkeypatch.setattr(st, "test_connection", lambda c: {"status": "CONNECTED", "found_tables": "ORION_MCL_ACCOUNT", "check_detail": "Signed in to XODUS."})
+    cfg = tc.configure_azure_sql(conn, "Ann", "Sam")
+    assert cfg["connector_type"] == "azure-sql" and cfg["status"] == "CONNECTED" and cfg["endpoint"] == "azure-sql://afsw.database.windows.net/simplicitydb/simplicity"
+    cfg = tc.infer_model(conn, {"Account": {"ACCT_NUM": "string", "CUSTODIAN_NAME": "string", "REG_TYPE": "string"}})
+    assert cfg["status"] == "INFERRED" and "Account" in cfg["model"]["entities"] and cfg["model"]["entities"]["Account"]["target_table"] == ["ORION_MCL_ACCOUNT"] or "ORION_MCL_ACCOUNT" in str(cfg["model"]["entities"]["Account"]["target_table"])
+    monkeypatch.setattr(st, "test_connection", lambda c: {"status": "CONNECTED", "found_tables": "", "check_detail": "Signed in. Schema exists but has no tables yet."})
+    assert tc.configure_azure_sql(conn, "Ann", "Sam")["status"] == "CONFIGURED"  # no tables yet: not connected for inference
