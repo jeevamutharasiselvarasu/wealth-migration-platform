@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% include "_setup_tabs.html" %}
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Data migration · Setup</div>
+      <h1>GitHub integration</h1>
+      <p>Where the generated ADF package is published. The factory owner links this repository in Data Factory and takes the package from there. This is separate from the Azure connection.</p>
+    </div>
+  </div>
+  <section class="kpis" aria-label="GitHub summary" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <div class="kpi"><small>Connection</small><b>{{ git.status|default('Not set up')|title if git else 'Not set up' }}</b><span>{{ git.repository if git and git.repository else 'no repository saved' }}</span></div>
+    <div class="kpi"><small>Token</small><b>{{ 'Present' if git and git.token_present else 'Missing' }}</b><span>{{ git.token_env_var if git else git_default_env }} on the server</span></div>
+    <div class="kpi"><small>Last published</small><b>{{ git.last_published_utc[:10] if git and git.last_published_utc else 'Never' }}</b><span>{{ ('by ' ~ git.last_published_by) if git and git.last_published_by else 'publishing is stage 08' }}</span></div>
+  </section>
+  {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the GitHub integration.</p>{% endif %}
+  
+  <div class="sgrp"><section class="card" id="git" data-testid="git-connection">
+    <h3 class="sr-chips"><span class="chip {{ 'ok' if git.status == 'CONNECTED' else 'ex' }}">{{ git.status|default('Not set up') }}</span></h3>
+    <p class="fh">Hands the generated ADF artifacts to the data factory owner without an Azure sign-in. XODUS adds one commit with the stored package to this repository; the factory owner links the repository in Data Factory (Manage, Git configuration) and publishes from there. The token is read from a server environment variable and is never typed here. XODUS only adds commits to the branch below: no force push, no deletes, no other branches.</p>
+    {% if git %}<p class="fh">Token <span class="font-mono">{{ git.token_env_var }}</span>: <strong>{{ 'present on the server' if git.token_present else 'missing on the server' }}</strong>{% if git.checked_utc %} · last tested {{ git.checked_utc[:19] }}{% endif %}{% if git.last_commit_sha %} · last published {{ git.last_published_utc[:19] }} by {{ git.last_published_by }} (commit <span class="font-mono">{{ git.last_commit_sha[:7] }}</span>){% endif %}</p>{% endif %}
+    <form action="/api/git/connection" method="POST"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+      <div class="two">
+        <div class="field"><label for="g-repo">Repository</label><input id="g-repo" class="input" name="repository" value="{{ git.repository|default('') }}" placeholder="owner/xodus-adf-artifacts" required></div>
+        <div class="field"><label for="g-branch">Branch</label><input id="g-branch" class="input" name="branch" value="{{ git.branch|default(git_default_branch) }}" required></div>
+        <div class="field"><label for="g-folder">ADF root folder</label><input id="g-folder" class="input" name="adf_folder" value="{{ git.adf_folder|default(git_default_folder) }}" required><span class="fh">Use this as the root folder when the factory owner links the repository.</span></div>
+        <div class="field"><label for="g-env">Token environment variable</label><input id="g-env" class="input" name="token_env_var" value="{{ git.token_env_var|default(git_default_env) }}" pattern="GIT(HUB)?_[A-Z0-9_]+" required><span class="fh">Name only. Put the token value in the server's .env, never here.</span></div>
+      </div>
+      <button type="submit" class="btn p sm" style="margin-top:10px">Save GitHub settings</button>
+    </fieldset></form>
+    {% if git %}
+    <form action="/api/git/connection/test" method="POST" class="mt-2"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button type="submit" class="btn g sm">Test GitHub connection</button><span class="fh"> Reads the repository and branch; changes nothing.</span></fieldset></form>
+    <p class="fh mt-2">Publishing the ADF package to this repository is stage <a href="/publish-artifacts" class="text-blue-700">08 Publish artifacts</a>.</p>
+    {% endif %}
+  </section></div>
+</div>
+{% endblock %}

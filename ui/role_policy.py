@@ -57,6 +57,7 @@ POST_POLICY = [
     (r"^/api/blob/load$", DISCOVERY_ROLES),
     (r"^/api/blob/seed-demo$", PLATFORM_ROLES),
     (r"^/api/blob/layout$", PLATFORM_ROLES),
+    (r"^/api/blob/(container|test)$", PLATFORM_ROLES),
     (r"^/api/entities/map-(uploaded-file|approved-files|mcl)$", DISCOVERY_ROLES),
     (r"^/api/pilot/(account|household|client)/(profile|map)$", DISCOVERY_ROLES),
     (r"^/api/pipeline/run$", DISCOVERY_ROLES),

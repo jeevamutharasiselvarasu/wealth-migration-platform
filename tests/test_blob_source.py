@@ -135,7 +135,8 @@ def test_container_name_is_published_so_it_survives_a_restart():
     import pathlib
     app = pathlib.Path(__file__).resolve().parent.parent.joinpath("ui/app.py").read_text()
     body = app[app.index("async def create_blob_layout"):app.index("async def load_blob_source_files")]
-    assert 'setup["blob_container"] = container' in body and 'publish_event("MIGRATION_CONTEXT_UPDATED"' in body
+    helper = app[app.index("def _remember_container"):app.index("async def save_blob_container")]
+    assert "_remember_container(user, container)" in body and 'setup["blob_container"] = container' in helper and 'publish_event("MIGRATION_CONTEXT_UPDATED"' in helper
 
 
 def test_promote_copies_only_the_runs_tables_to_curated_and_writes_lineage(monkeypatch):

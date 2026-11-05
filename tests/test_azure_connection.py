@@ -137,3 +137,15 @@ def test_factory_details_save_without_tenant_and_client_but_the_sign_in_test_ask
     assert tested["status"] == "FAILED" and "tenant ID" in tested["check_detail"]
     with pytest.raises(ValueError):
         az.validate({**only, "tenant_id": "not-a-guid"})
+
+
+def test_storage_buttons_are_separate_and_github_has_its_own_page():
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    page = (root / "ui/templates/azure_setup.html").read_text()
+    assert 'formaction="/api/blob/container"' in page and 'formaction="/api/blob/test"' in page and 'formaction="/api/blob/layout"' in page
+    assert 'id="git"' not in page and "/api/git/" not in page  # source control is not part of the Azure page
+    assert "/api/git/connection" in (root / "ui/templates/github_setup.html").read_text()
+    from ui import role_policy
+    for path in ("/api/blob/container", "/api/blob/test", "/api/blob/layout"):
+        assert role_policy.allowed_roles_for("POST", path) == role_policy.PLATFORM_ROLES

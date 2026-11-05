@@ -663,7 +663,24 @@ async def test_azure_connection(request: Request):
 
 
 def _git_back(key: str, msg: str):
-    return RedirectResponse(url="/azure-setup?" + urlencode({key: msg}) + "#git", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/github-setup?" + urlencode({key: msg}), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/github-setup", response_class=HTMLResponse)
+async def github_setup_page(request: Request, notice: str = "", error: str = ""):
+    """GitHub integration: where the generated ADF package is published. Separate from the Azure connection."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        git_cfg = git_connection.get_config(conn)
+        pkg = artifact_store.latest(conn, str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")), "ADF_PACKAGE")
+        conn.commit()
+    finally:
+        conn.close()
+    return render_template_with_context(request, "github_setup.html", {
+        "git": git_cfg or {}, "pkg": pkg, "git_default_env": git_connection.DEFAULT_TOKEN_ENV, "git_default_folder": git_connection.DEFAULT_FOLDER,
+        "git_default_branch": git_connection.DEFAULT_BRANCH, "page_title": "GitHub integration", "user_name": user["name"], "user_role": user["role"],
+        "can_edit_azure": user["role"] in PLATFORM_ROLES, "notice": notice, "error": error})
 
 
 def _sqlt_back(key: str, msg: str):
@@ -3834,26 +3851,60 @@ def _blob_panel(with_files: bool = True) -> dict:
     return st
 
 
-@app.post("/api/blob/layout")
-async def create_blob_layout(request: Request, container: str = Form("")):
-    """Remember the container the user named and create raw/, stage/, curated/ and raw/<source firm>/ in it."""
-    user = get_current_user(request)
-    container = container.strip().lower()
+def _blob_back(key: str, msg: str):
+    return RedirectResponse(url="/azure-setup?" + urlencode({key: msg}) + "#storage", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _remember_container(user, container: str) -> None:
+    """Keep the container name with the migration setup; published like the other setup fields so it survives a restart."""
     setup = state_store.questionnaire_data.setdefault("migration_setup", {})
-    try:
-        res = blob_source.ensure_layout(container, _source_firm())
-    except Exception as exc:
-        return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
     setup["blob_container"] = container
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-    # Published like the other setup fields so the container name survives a restart (state is rebuilt from these events).
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, {
         "migration_id": migration_id, "firm_name": setup.get("migration_name", ""), "migration_name": setup.get("migration_name", ""),
         "source_systems": setup.get("source_details", ""), "target_system": setup.get("target_system", ""), "migration_setup": setup}, user["name"])
+
+
+@app.post("/api/blob/container")
+async def save_blob_container(request: Request, container: str = Form("")):
+    """Save the container name only: nothing is created or contacted."""
+    user = get_current_user(request)
+    container = container.strip().lower()
+    if not blob_source.NAME_OK.match(container):
+        return _blob_back("error", "Container names use lowercase letters, digits and '-' (3 to 63 characters).")
+    _remember_container(user, container)
+    state_store.audit_log.append({"event": "BLOB_CONTAINER_SAVED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"container": container}})
+    return _blob_back("notice", f"Container name '{container}' saved. Test it next, then create the folders.")
+
+
+@app.post("/api/blob/test")
+async def test_blob_storage(request: Request):
+    """Read-only: can the server reach the storage account, does the container exist and are the raw/stage/curated folders in place."""
+    get_current_user(request)
+    st = _blob_panel(with_files=False)
+    if not st["configured"] or not st["reachable"]:
+        return _blob_back("error", st["detail"] or "The storage account is not reachable.")
+    if not st["container_exists"]:
+        return _blob_back("error", f"Storage account {st['account']} is reachable, but container '{st['container']}' does not exist. Use 'Create folders' to create it.")
+    if not st["layout_ready"]:
+        return _blob_back("error", f"Container '{st['container']}' exists but the raw/stage/curated folders are not all in place. Use 'Create folders'.")
+    return _blob_back("notice", f"Storage account {st['account']} reachable; container '{st['container']}' and its folders are in place.")
+
+
+@app.post("/api/blob/layout")
+async def create_blob_layout(request: Request, container: str = Form("")):
+    """Create the container if needed and raw/, stage/, curated/ and raw/<source firm>/ in it (never deletes). Saves the name too."""
+    user = get_current_user(request)
+    container = container.strip().lower()
+    try:
+        res = blob_source.ensure_layout(container, _source_firm())
+    except Exception as exc:
+        return _blob_back("error", str(exc)[:300])
+    _remember_container(user, container)
     state_store.audit_log.append({"event": "BLOB_LAYOUT_CREATED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                   "details": {"container": container, "folders_created": res["folders_created"]}})
     made = ", ".join(res["folders_created"]) or "nothing new (already in place)"
-    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"Container '{container}' ready. Folders created: {made}."), status_code=status.HTTP_303_SEE_OTHER)
+    return _blob_back("notice", f"Container '{container}' ready. Folders created: {made}.")
 
 
 @app.post("/api/blob/load")

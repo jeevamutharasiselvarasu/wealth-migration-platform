@@ -27,15 +27,15 @@
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Firm knowledge</h3><span class="pill queued">{{ knowledge_saved }}</span></div>
       <p class="fh">Knowledge assets and the discovery form that give the agents firm context.</p>
       <a class="btn p sm" href="/firm-knowledge">Open firm knowledge →</a></section>
-    <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Azure Data Factory &amp; storage</h3><span class="pill {{ 'approved' if azure_status == 'connected' else 'review' }}">{{ azure_status|title }}</span></div>
-      <p class="fh">The factory service principal and the Blob storage (raw, stage, curated) the pipeline works in. Secrets stay on the server.</p>
-      <a class="btn p sm" href="/azure-setup#adf">Open Azure connection →</a></section>
+    <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Azure storage &amp; factory</h3><span class="pill {{ 'approved' if azure_status == 'connected' else 'review' }}">{{ azure_status|title }}</span></div>
+      <p class="fh">The Blob storage (raw, stage, curated) the pipeline works in and the factory the package is built for. XODUS does not sign in to Data Factory.</p>
+      <a class="btn p sm" href="/azure-setup#storage">Open Azure connection →</a></section>
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Target database (Azure SQL)</h3><span class="pill {{ 'approved' if sql_status == 'connected' else 'review' }}">{{ sql_status|title }}</span></div>
       <p class="fh">Read-only check of the Azure SQL schema and tables the pipeline loads into. A person runs the create scripts.</p>
       <a class="btn p sm" href="/azure-setup#sqlt">Open target database →</a></section>
     <section class="card hcard" data-testid="hub-github"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">GitHub integration</h3><span class="pill {{ 'approved' if git_status == 'connected' else 'review' }}">{{ git_status|title }}</span></div>
       <p class="fh">The repository the generated ADF package is published to for the factory owner. {% if git_repo %}<span class="font-mono">{{ git_repo }}</span>{% if git_branch %} · {{ git_branch }}{% endif %}. {% endif %}Publishing is stage 08.</p>
-      <a class="btn p sm" href="/azure-setup#git">Open GitHub integration →</a></section>
+      <a class="btn p sm" href="/github-setup">Open GitHub integration →</a></section>
   </div>
 </div>
 {% endblock %}

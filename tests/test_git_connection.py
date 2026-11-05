@@ -124,7 +124,7 @@ def test_git_routes_are_role_gated_and_the_save_route_rejects_a_bad_repository()
             return await client.post("/api/git/connection", data=data, follow_redirects=False)
 
     r = asyncio.run(call({"repository": "not a repo", "branch": "main", "adf_folder": "adf", "token_env_var": "GITHUB_ADF_TOKEN"}))
-    assert r.status_code == 303 and "error=Repository+must+look+like" in r.headers["location"] and r.headers["location"].endswith("#git")
+    assert r.status_code == 303 and "error=Repository+must+look+like" in r.headers["location"] and r.headers["location"].startswith("/github-setup?")
 
 
 def test_publish_records_the_artifact_so_the_stage_knows_which_package_went_out(conn, monkeypatch):
