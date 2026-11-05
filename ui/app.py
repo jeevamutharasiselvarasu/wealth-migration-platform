@@ -1,5 +1,6 @@
 import hashlib
 import io
+import zipfile
 import os
 import re
 import uuid
@@ -20,7 +21,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source
+from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -582,9 +583,14 @@ def _azure_page(request: Request, user, notice: str = "", error: str = "", previ
     conn = get_db_connection()
     try:
         cfg = azure_connection.get_config(conn)
+        git_cfg = git_connection.get_config(conn)
+        pkg = artifact_store.latest(conn, str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED")), "ADF_PACKAGE")
+        conn.commit()
     finally:
         conn.close()
     return render_template_with_context(request, "azure_setup.html", {
+        "git": git_cfg or {}, "git_default_env": git_connection.DEFAULT_TOKEN_ENV, "git_default_folder": git_connection.DEFAULT_FOLDER,
+        "git_default_branch": git_connection.DEFAULT_BRANCH, "adf_pkg": pkg, "can_publish_git": user["role"] in APPROVAL_ROLES,
         "page_title": "Azure connection", "user_name": user["name"], "user_role": user["role"], "cfg": cfg or {},
         "fields": azure_connection.FIELDS, "can_edit_azure": user["role"] in PLATFORM_ROLES,
         "default_secret_env": azure_connection.DEFAULT_SECRET_ENV, "notice": notice, "error": error,
@@ -640,6 +646,70 @@ async def test_azure_connection(request: Request):
     _target_setup_audit("AZURE_CONNECTION_TESTED", user, {"status": cfg["status"]})
     key = "notice" if cfg["status"] == "CONNECTED" else "error"
     return RedirectResponse(url="/azure-setup?" + urlencode({key: cfg["check_detail"]}), status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _git_back(key: str, msg: str):
+    return RedirectResponse(url="/azure-setup?" + urlencode({key: msg}) + "#git", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/git/connection")
+async def save_git_connection(request: Request):
+    user = get_current_user(request)
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            git_connection.save(conn, user["name"], {k: str(form.get(k, "")) for k in git_connection.FIELDS})
+        except ValueError as exc:
+            return _git_back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("GIT_CONNECTION_SAVED", user, {"repository": str(form.get("repository", "")).strip()})
+    return _git_back("notice", "GitHub settings saved. Test the connection next.")
+
+
+@app.post("/api/git/connection/test")
+async def test_git_connection(request: Request):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = git_connection.test_connection(conn)
+        except ValueError as exc:
+            return _git_back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("GIT_CONNECTION_TESTED", user, {"status": cfg["status"]})
+    return _git_back("notice" if cfg["status"] == "CONNECTED" else "error", cfg["check_detail"])
+
+
+@app.post("/api/git/publish")
+async def publish_adf_to_git(request: Request):
+    """Add the latest stored ADF package to the linked GitHub repository as one commit. The factory owner links the repository in Data Factory."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            art = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+            if not art:
+                raise ValueError("Generate the ADF package first (07 Transformation SQL).")
+            rec = artifact_store.read(conn, art["artifact_id"])
+            with zipfile.ZipFile(io.BytesIO(rec["data"])) as z:
+                files = {n: z.read(n).decode("utf-8") for n in z.namelist() if not n.endswith("/")}
+            note = " (simulated Azure values)" if '"simulated": true' in files.get("manifest.json", "") else ""
+            result = git_connection.publish(conn, user["name"], migration_id, files,
+                                            f"XODUS ADF package {art['artifact_id']} v{art['artifact_version']} for {migration_id}{note}, published by {user['name']}")
+        except (ValueError, zipfile.BadZipFile) as exc:
+            return _git_back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("ADF_PACKAGE_PUBLISHED_TO_GIT", user, {"artifact_id": art["artifact_id"], "commit": result["commit_sha"], "files": result["files"],
+                                                              "repository": result["repository"], "branch": result["branch"]})
+    return _git_back("notice", f"Published {result['files']} file(s) from {art['artifact_id']} to {result['repository']} ({result['branch']}), commit {result['commit_sha'][:7]}.")
 
 
 @app.get("/models", response_class=HTMLResponse)
