@@ -65,12 +65,13 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     if not managed_sql:
         add("linkedservices", "linkedService", ls_kv, {"type": "AzureKeyVault", "typeProperties": {"baseUrl": env["keyVaultUrl"]}})
     if real:  # Blob storage reached with the factory's managed identity: no key or secret in the package
-        add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobStorage", "typeProperties": {"serviceEndpoint": env["storageBlobUrl"], "accountKind": "StorageV2"}})
+        add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobStorage", "typeProperties": {"serviceEndpoint": env["storageBlobUrl"].rstrip("/") + "/", "accountKind": "StorageV2"}})
     else:
         add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobFS", "typeProperties": {"url": env["storageDfsUrl"]}})
     if managed_sql:
+        # The connection-string form the Data Factory portal writes (version 1.0) for the factory's own identity: no user, no password, no secret.
         add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {
-            "server": env["sqlServer"], "database": env["sqlDatabase"], "authenticationType": "SystemAssignedManagedIdentity"}})
+            "connectionString": f"Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source={env['sqlServer']};Initial Catalog={env['sqlDatabase']}"}})
     else:
         add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {"connectionString": {
             "type": "AzureKeyVaultSecret", "store": ref(ls_kv, "LinkedServiceReference"), "secretName": env["keyVaultSqlSecretName"]}}})

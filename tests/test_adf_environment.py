@@ -32,7 +32,7 @@ def test_real_package_has_a_stopped_blob_trigger_on_curated_ready_files_and_no_s
     assert trig["typeProperties"]["scope"] == env["storageResourceId"]
     assert trig["pipelines"][0]["pipelineReference"]["referenceName"] == man["pipeline"]
     ls = json.loads(files["linkedService/LS_ADLS_Staging.json"])["properties"]
-    assert ls["type"] == "AzureBlobStorage" and ls["typeProperties"]["serviceEndpoint"] == "https://afswstorage.blob.core.windows.net"
+    assert ls["type"] == "AzureBlobStorage" and ls["typeProperties"]["serviceEndpoint"] == "https://afswstorage.blob.core.windows.net/"
     assert man["simulated"] is False and man["unresolved"] == ["sql"] and "README.txt" in files
     assert "AccountKey" not in json.dumps(files) and not any("_Sim" in n for n in files)
 
@@ -73,7 +73,8 @@ def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_fo
                           "afswstorage", "xodus-lake", emulator=False)
     files = _package("MIG-E439077124", env)["files"]
     ls = json.loads(files["linkedService/LS_SQL_Target.json"])["properties"]["typeProperties"]
-    assert ls == {"server": "afswdatabase.database.windows.net", "database": "simplicitydb", "authenticationType": "SystemAssignedManagedIdentity"}
+    assert ls == {"connectionString": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=afswdatabase.database.windows.net;Initial Catalog=simplicitydb"}
+    assert "Password" not in json.dumps(ls) and "User ID" not in json.dumps(ls)  # the factory's identity signs in: nothing secret in the package
     assert "linkedService/LS_KeyVault.json" not in files and env["unresolved"] == []
     ddl = files["sql/01_target_tables.sql"]
     assert "CREATE SCHEMA [simplicity]" in ddl and "CREATE TABLE [simplicity].[T]" in ddl and "[OPEN_DT] date NULL" in ddl and "DROP TABLE" not in ddl.upper()
