@@ -23,6 +23,7 @@ from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
 from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment
 from control_plane.services import sql_target
+from control_plane.services import canonical_derivations
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -2223,9 +2224,13 @@ async def run_validation(request: Request):
                 (migration_id,)).fetchall():
             mappings.setdefault(row["entity_name"], {})[row["source_field"]] = row["canonical_field"]
         scenarios = validation_scenarios.list_scenarios(conn, migration_id, active_only=True)
+        derivation_rows = canonical_derivations.list_derivations(conn, migration_id)
         conn.commit()
     finally:
         conn.close()
+    derivations: Dict[str, List[Dict[str, Any]]] = {}
+    for d in derivation_rows:
+        derivations.setdefault(d["entity_name"], []).append(d)
     if not mappings:
         return RedirectResponse(url="/reconciliation?error=" + quote_plus("Approve at least one mapping before running validation."),
                                 status_code=status.HTTP_303_SEE_OTHER)
@@ -2242,7 +2247,7 @@ async def run_validation(request: Request):
             except (OSError, ValueError):
                 continue
             files.setdefault(entity, []).append({"filename": rec.get("filename", "source"), "records": records})
-    results = migration_validation.run_checks(contract, mappings, files, scenarios)
+    results = migration_validation.run_checks(contract, mappings, files, scenarios, derivations)
     run_id = "VAL-" + uuid.uuid4().hex[:10].upper()
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db_connection()
@@ -3160,6 +3165,16 @@ def _lookup_context(package: Dict[str, Any]):
     return tables, {k[0] for k in wanted}
 
 
+def _derivations_for(migration_id: str, entity: Optional[str] = None) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    try:
+        found = canonical_derivations.list_derivations(conn, migration_id, entity)
+        conn.commit()
+    finally:
+        conn.close()
+    return found
+
+
 def _canonical_rows_for_migration(migration_id: str, skip_files=()):
     """Canonical-shaped rows per entity, derived in memory from approved source files and mappings (files joined on the entity key)."""
     canonical_rows: Dict[str, List[Dict[str, Any]]] = {}
@@ -3189,7 +3204,8 @@ def _canonical_rows_for_migration(migration_id: str, skip_files=()):
             file_rows.append(mapper.map_source_to_canonical(entity, records)["mapped_records"])
         key_field = next((f.name for f in key_cfg.entities[entity].fields if f.is_key), None) if key_cfg and entity in key_cfg.entities else None
         joined = target_mapping.merge_by_key(file_rows, key_field)
-        canonical_rows[entity] = joined["rows"]
+        derived = _derivations_for(migration_id, entity)
+        canonical_rows[entity] = canonical_derivations.apply_to_rows(joined["rows"], derived)
         join_info[entity] = {"key": key_field, "files": len(file_rows), "keyed_rows": joined["keyed_rows"],
                              "unkeyed_rows": joined["unkeyed_rows"], "conflicts": joined["conflicts"]}
     return canonical_rows, join_info
@@ -3468,12 +3484,21 @@ def _rules_page(request: Request, notice: str = "", error: str = "", inferred=No
     for rule in rules:
         rule["params_text"] = json.dumps(rule["params"], indent=1, sort_keys=True)
         rule["used_by"] = usage.get(rule["expression"], 0)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    derivation_list = _derivations_for(migration_id)
+    derivable = {}
+    try:
+        cfg = load_firm_config()
+        derivable = {e: [f.name for f in cfg.entities[e].fields] for e in target_mapping.ENTITIES if e in cfg.entities}
+    except FirmConfigError:
+        pass
     for item in inferred or []:
         if item.get("recognised"):
             item["params_text"] = json.dumps(item["params"], sort_keys=True)
     return render_template_with_context(request, "transformation_rules.html", {
         "page_title": "Business rules", "user_name": user["name"], "user_role": user["role"],
         "rules": rules, "rule_types": transformation_rules.RULE_TYPES,
+        "derivations": derivation_list, "derivable": derivable, "migration_id": migration_id,
         "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
         "date_formats": list(transformation_rules.DATE_FORMATS),
         "can_author": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
@@ -3482,6 +3507,45 @@ def _rules_page(request: Request, notice: str = "", error: str = "", inferred=No
         "inferred": inferred, "inferred_label": inferred_label, "inferred_source": inferred_source or {},
         "notice": notice, "error": error,
     })
+
+
+@app.post("/api/derivations/set")
+async def set_derivation(request: Request, entity_name: str = Form(...), canonical_field: str = Form(...),
+                         input_field: str = Form(...), rule_expression: str = Form(...), reason: str = Form(...)):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    if entity_name not in target_mapping.ENTITIES:
+        return _rules_redirect("error", "Unsupported entity.")
+    conn = get_db_connection()
+    try:
+        try:
+            canonical_derivations.set_derivation(conn, migration_id, entity_name, canonical_field.strip().upper(), input_field.strip().upper(),
+                                                 rule_expression.strip().upper(), user["name"], reason)
+        except ValueError as exc:
+            conn.rollback()
+            return _rules_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "CANONICAL_DERIVATION_APPROVED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                  "details": {"migration_id": migration_id, "entity": entity_name, "field": canonical_field.strip().upper(),
+                                              "rule": rule_expression.strip().upper()}})
+    return _rules_redirect("notice", f"{canonical_field.strip().upper()} will be derived from {input_field.strip().upper()}. Re-run validation.")
+
+
+@app.post("/api/derivations/remove")
+async def remove_derivation(request: Request, entity_name: str = Form(...), canonical_field: str = Form(...)):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        canonical_derivations.remove_derivation(conn, migration_id, entity_name, canonical_field)
+        conn.commit()
+    finally:
+        conn.close()
+    state_store.audit_log.append({"event": "CANONICAL_DERIVATION_REMOVED", "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                                  "details": {"migration_id": migration_id, "entity": entity_name, "field": canonical_field}})
+    return _rules_redirect("notice", f"Derivation of {canonical_field} removed.")
 
 
 @app.get("/transformation-rules", response_class=HTMLResponse)

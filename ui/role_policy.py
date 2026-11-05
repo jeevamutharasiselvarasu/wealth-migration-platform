@@ -96,6 +96,7 @@ POST_POLICY = [
     (r"^/api/transformation-rules/infer$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules/(infer-preview|suggestion)$", DISCOVERY_ROLES),
     (r"^/api/transformation-rules$", DISCOVERY_ROLES),
+    (r"^/api/derivations/(set|remove)$", APPROVAL_ROLES),
     (r"^/api/transformation-rules/[^/]+/[^/]+/(decision|retire)$", APPROVAL_ROLES),
 ]
 _COMPILED = [(re.compile(pattern), roles) for pattern, roles in POST_POLICY]

@@ -6,6 +6,7 @@ No target-side or load verification is performed (out of scope for the P0 pilot)
 """
 from typing import Any, Dict, List, Optional
 
+from control_plane.services import canonical_derivations
 from control_plane.services.validation_scenarios import evaluate as scenario_eval
 from control_plane.services.mcl_validation import _key_check, _present, _relationship_check
 
@@ -25,10 +26,12 @@ def run_checks(
     mappings: Dict[str, Dict[str, str]],
     files: Dict[str, List[Dict[str, Any]]],
     scenarios: Optional[List[Dict[str, Any]]] = None,
+    derivations: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """contract[entity] = {"required": [...], "keys": [...]};
     mappings[entity] = {source_field: canonical_field} (approved only);
-    files[entity] = [{"filename": str, "records": [dict]}] (confirmed files only)."""
+    files[entity] = [{"filename": str, "records": [dict]}] (confirmed files only);
+    derivations[entity] = approved canonical derivations (see canonical_derivations), computed after source mapping."""
     checks: List[Dict[str, Any]] = []
     merged: Dict[str, List[Dict[str, Any]]] = {}
     per_file: Dict[str, List[tuple]] = {}
@@ -36,7 +39,8 @@ def run_checks(
         required = contract.get(entity, {}).get("required", [])
         keys = contract.get(entity, {}).get("keys", [])
         source_to_canonical = mappings.get(entity, {})
-        mapped_canonical = set(source_to_canonical.values())
+        entity_derivations = (derivations or {}).get(entity, [])
+        mapped_canonical = set(source_to_canonical.values()) | {d["canonical_field"] for d in entity_derivations}
         missing = [f for f in required if f not in mapped_canonical]
         checks.append({
             "check": "REQUIRED_FIELDS_MAPPED", "entity": entity, "status": "FAIL" if missing else "PASS",
@@ -44,7 +48,8 @@ def run_checks(
         })
         entity_rows: List[Dict[str, Any]] = []
         for item in files.get(entity, []):
-            canonical = _canonical_rows(item["records"], source_to_canonical)
+            canonical = canonical_derivations.apply_to_rows(_canonical_rows(item["records"], source_to_canonical), [
+                d for d in entity_derivations if d["input_field"] in set(source_to_canonical.values())])
             entity_rows.extend(canonical)
             present_here = set().union(*[set(r) for r in canonical]) if canonical else set()
             per_file.setdefault(entity, []).append((item["filename"], canonical, present_here))

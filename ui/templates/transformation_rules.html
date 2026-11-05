@@ -115,6 +115,37 @@
     </form>
   </section>
 
+  <section class="card" id="derivations">
+    <h3 style="font-size:16px">Derived canonical fields</h3>
+    <p class="mt-1 text-[11px] leading-4 text-[#5A6A88]">For a canonical field the source cannot supply directly (for example LEGAL_NAME from first, middle and last name, or CUSTODIAN_CODE from CUSTODIAN_NAME). The value is computed from other canonical fields by an approved rule, after source mapping. Blank or unmapped inputs stay blank and are reported; nothing is defaulted. Workspace {{ migration_id }}.</p>
+    {% if derivations %}
+    <table class="mt-3 w-full text-left text-xs">
+      <tr>{% for h in ['Entity', 'Derived field', 'From', 'Rule', 'Approved by', 'Reason', ''] %}<th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">{{ h }}</th>{% endfor %}</tr>
+      {% for d in derivations %}
+      <tr>
+        <td class="border-b border-[#EEF2FA] p-2">{{ d.entity_name }}</td>
+        <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ d.canonical_field }}</td>
+        <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ d.input_field }}</td>
+        <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ d.rule_expression }}</td>
+        <td class="border-b border-[#EEF2FA] p-2">{{ d.decided_by }}</td>
+        <td class="border-b border-[#EEF2FA] p-2">{{ d.reason }}</td>
+        <td class="border-b border-[#EEF2FA] p-2">{% if can_approve %}<form action="/api/derivations/remove" method="post"><input type="hidden" name="entity_name" value="{{ d.entity_name }}"><input type="hidden" name="canonical_field" value="{{ d.canonical_field }}"><button class="btn g sm">Remove</button></form>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No derived fields approved for this workspace.</p>{% endif %}
+    {% if can_approve %}
+    <form action="/api/derivations/set" method="post" class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-6">
+      <select name="entity_name" required aria-label="Entity" class="input">{% for e in derivable %}<option>{{ e }}</option>{% endfor %}</select>
+      <input name="canonical_field" required placeholder="Derived field, e.g. LEGAL_NAME" aria-label="Derived canonical field" class="input font-mono uppercase">
+      <input name="input_field" required placeholder="Input field, e.g. FIRST_NAME" aria-label="Input canonical field" class="input font-mono uppercase">
+      <select name="rule_expression" required aria-label="Approved rule" class="input">{% for r in rules if r.status == 'APPROVED' %}<option value="{{ r.expression }}">{{ r.expression }} ({{ r.rule_type }})</option>{% endfor %}</select>
+      <input name="reason" required placeholder="Reason for approval" aria-label="Reason" class="input">
+      <button class="btn p sm">Approve derivation</button>
+    </form>
+    {% endif %}
+  </section>
+
   <section class="card" id="rule-versions">
     <h3 style="font-size:16px">Rule versions <span class="font-mono text-[10px] text-[#8A97B2]">{{ rules|length }}</span></h3>
     {% if not rules %}<p class="mt-3 rounded-lg border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center text-xs text-[#5A6A88]">No governed rules yet. Create the first one above.</p>{% endif %}
