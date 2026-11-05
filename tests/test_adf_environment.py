@@ -1,3 +1,4 @@
+import pytest
 import json
 
 from control_plane.services import adf_environment as env_mod
@@ -44,6 +45,7 @@ def test_simulated_package_is_unchanged_and_has_no_trigger():
 def test_real_package_reads_the_raw_files_in_place():
     env = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
     env["rawFolder"] = "raw/corecap"
+    env["sourceColumns"] = {"Account": {"ACCT_NUM": "AccountNumber", "OPEN_DATE": "OpenDt", "REG_TYPE": "RegType"}}
     import pytest
     with pytest.raises(ValueError, match="No raw source file"):
         _package("MIG-E439077124", env)
@@ -68,7 +70,7 @@ def test_entity_raw_file_when_only_the_lookup_file_is_the_sample_file_but_the_ma
 def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_for_sql():
     env = env_mod.resolve("MIG-E439077124", {**CFG, "sql_server": "afswdatabase.database.windows.net", "sql_database": "simplicitydb", "sql_schema": "simplicity"},
                           "afswstorage", "xodus-lake", emulator=False)
-    env["rawFiles"] = {"Account": "a.csv", "Client": "c.csv", "Household": "h.csv"}; env["rawFolder"] = "raw/corecap"
+    env["rawFiles"] = {"Account": "a.csv", "Client": "c.csv", "Household": "h.csv"}; env["rawFolder"] = "raw/corecap"; env["sourceColumns"] = {"Account": {"ACCT_NUM": "AccountNumber", "OPEN_DATE": "OpenDt", "REG_TYPE": "RegType"}}
     files = _package("MIG-E439077124", env)["files"]
     ls = json.loads(files["linkedService/LS_SQL_Target.json"])["properties"]["typeProperties"]
     assert ls == {"server": "afswdatabase.database.windows.net", "database": "simplicitydb", "authenticationType": "SystemAssignedManagedIdentity"}
@@ -94,3 +96,14 @@ def test_merge_key_is_an_identifier_field_and_a_table_without_one_inserts_missin
     assert "MERGE on A" in keyed and "WHEN MATCHED THEN UPDATE SET t.[B] = src.[B]" in keyed
     keyless = sp._merge("simplicity", "Client", "T", fields, maps("TAX_ID"), {})["sql"]
     assert "insert-if-missing" in keyless and "WHEN MATCHED" not in keyless and "IS NULL AND src.[A] IS NULL" in keyless
+
+
+def test_copy_maps_the_source_file_headers_to_the_staging_column_names():
+    env = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
+    env["rawFolder"], env["rawFiles"] = "raw/corecap", {"Account": "a.csv"}
+    with pytest.raises(ValueError, match="No approved source mapping supplies staging column"):
+        _package("MIG-E439077124", env)
+    env["sourceColumns"] = {"Account": {"ACCT_NUM": "AccountNumber", "OPEN_DATE": "OpenDt", "REG_TYPE": "RegType"}}
+    acts = json.loads(_package("MIG-E439077124", env)["files"]["pipeline/PL_XODUS_MIG_E439077124.json"])["properties"]["activities"]
+    copy = next(a for a in acts if a["name"] == "Copy_Account")
+    assert {m["source"]["name"]: m["sink"]["name"] for m in copy["typeProperties"]["translator"]["mappings"]} == {"AccountNumber": "ACCT_NUM", "OpenDt": "OPEN_DATE", "RegType": "REG_TYPE"}

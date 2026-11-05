@@ -2933,6 +2933,13 @@ async def download_adf_package(request: Request):
             for e, r in getattr(state_store, "entity_sample_files", {}).items():
                 cands.setdefault(e, []).append(r.get("filename"))
             env["rawCandidates"] = cands
+            conn = get_db_connection()
+            try:
+                env["sourceColumns"] = {}
+                for r in conn.execute("SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1 ORDER BY source_field", (migration_id,)).fetchall():
+                    env["sourceColumns"].setdefault(r["entity_name"], {}).setdefault(r["canonical_field"], str(r["source_field"]).split(".")[-1] if str(r["source_field"]).count(".") > 1 else str(r["source_field"]))
+            finally:
+                conn.close()
         package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
     except ValueError as exc:
         return back("error", str(exc))

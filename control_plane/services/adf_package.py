@@ -83,6 +83,20 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
                            "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}})
     copies: List[str] = []
     raw_files = env.get("rawFiles") or entity_raw_files(env.get("rawCandidates") or {}, {t for t in sm["stagingTables"] if t.startswith("lkp_")})
+    src_cols = env.get("sourceColumns") or {}
+
+    def translator(table: str) -> Dict[str, Any]:
+        """Raw files carry the source firm's headers; staging columns are canonical names. Map one to the other from the approved
+        source mappings. A file read as a lookup keeps its own headers."""
+        if not (real and env.get("rawFolder")) or table.startswith("lkp_"):
+            return {}
+        m = src_cols.get(table) or {}
+        missing = [c for c in sm["stagingColumns"][table] if c not in m]
+        if missing:
+            raise ValueError(f"No approved source mapping supplies staging column(s) {', '.join(missing)} for {table}.")
+        return {"translator": {"type": "TabularTranslator", "mappings": [
+            {"source": {"name": m[c]}, "sink": {"name": c}} for c in sm["stagingColumns"][table]]}}
+
     for table in sm["stagingTables"]:
         _ident(table)
         folder, file_name = f"{env['stagingFolder']}/lookups/{table[4:]}" if table.startswith("lkp_") else f"{env['stagingFolder']}/{table.lower()}", None
@@ -100,7 +114,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
             "typeProperties": {"schema": sql_package.STAGING_SCHEMA, "table": table}})
         activities.append({"name": f"Copy_{table}", "type": "Copy", **({} if merge else {"dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}]}),
                            "inputs": [ref(ds_blob, "DatasetReference")], "outputs": [ref(ds_sql, "DatasetReference")],
-                           "typeProperties": {"source": {"type": "DelimitedTextSource"},
+                           "typeProperties": {"source": {"type": "DelimitedTextSource"}, **translator(table),
                                               "sink": {"type": "AzureSqlSink", "preCopyScript": f"TRUNCATE TABLE [{sql_package.STAGING_SCHEMA}].[{table}]"}}})
         copies.append(f"Copy_{table}")
     run_sql = ([{"type": "NonQuery", "text": st.rstrip()} for st in sql["statements"]] if merge else [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}])

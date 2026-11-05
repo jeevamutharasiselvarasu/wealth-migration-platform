@@ -234,7 +234,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     manifest = {
         "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by, "generatedUtc": datetime.now(timezone.utc).isoformat(),
         "targetSystem": spec.get("target_system"), "targetModelVersion": spec.get("spec_version"), "targetSchema": schema,
-        "stagingSchema": STAGING_SCHEMA, "stagingTables": sorted({**staging, **lookup_cols}), "procedure": proc,
+        "stagingSchema": STAGING_SCHEMA, "stagingTables": sorted({**staging, **lookup_cols}),
+        "stagingColumns": {n: sorted(c) for n, c in {**staging, **lookup_cols}.items()}, "procedure": proc,
         "entities": entities, "warnings": warnings, "provenance": provenance or {}, "executed": False,
         "note": "Nothing was executed. The pipeline copies the Azure Blob source files into the staging tables, then runs these statements against the target SQL database.",
     }
