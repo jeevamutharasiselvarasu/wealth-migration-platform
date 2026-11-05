@@ -129,7 +129,7 @@ def workflow_progress() -> dict:
         if scope:
             marks = ",".join("?" for _ in scope)
             rfi_open = conn.execute(
-                f"SELECT COUNT(*) FROM mapping_information_requests WHERE migration_id = ? AND status != 'RESOLVED' AND entity_name IN ({marks})",
+                f"SELECT COUNT(*) FROM mapping_information_requests WHERE migration_id = ? AND status = 'OPEN' AND entity_name IN ({marks})",
                 (migration_id, *scope)).fetchone()[0]
         changes_open = conn.execute(
             "SELECT COUNT(*) FROM canonical_change_requests WHERE migration_id = ? AND status IN ('OPEN','DEFERRED')", (migration_id,)).fetchone()[0]

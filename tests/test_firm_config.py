@@ -802,3 +802,17 @@ def test_source_review_lets_the_reviewer_change_the_canonical_field_and_type_a_r
     mapped = dict(conn.execute("SELECT source_field, canonical_field FROM canonical_mappings WHERE is_confirmed = 1").fetchall())
     assert mapped["KIND_X"] == "BALANCE" and mapped["NOTE_X"] == "REP_CODE"
     conn.close()
+
+
+def test_answered_information_requests_no_longer_hold_the_mapping_stage_open(tmp_path, monkeypatch):
+    import sqlite3
+    app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "rfianswered")
+    assert _post_setup(app_module, session_id).status_code == 303
+    active = state.questionnaire_data["migration_id"]
+    conn = sqlite3.connect(tmp_path / "rfianswered.db")
+    for rid, status in (("RFI-A", "OPEN"), ("RFI-B", "ANSWERED"), ("RFI-C", "RESOLVED")):
+        conn.execute("INSERT INTO mapping_information_requests (request_id, migration_id, entity_name, canonical_field, status, question, created_utc) "
+                     "VALUES (?, ?, 'Account', ?, ?, 'q', '2026-01-01')", (rid, active, "F_" + rid, status))
+    conn.commit()
+    conn.close()
+    assert app_module.workflow_progress()["rfi_open"] == 1  # only the unanswered one; the header and the bulk-approval check already agree
