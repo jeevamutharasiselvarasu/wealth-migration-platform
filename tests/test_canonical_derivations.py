@@ -66,3 +66,26 @@ def test_validation_treats_derived_field_as_mapped_and_reports_blank_values(conn
     c = {x["check"]: x for x in result["checks"] if x["entity"] == "Account"}
     assert c["REQUIRED_FIELDS_MAPPED"]["status"] == "PASS"
     assert c["REQUIRED_VALUES_PRESENT"]["status"] == "FAIL" and "CUSTODIAN_CODE (1 row(s))" in c["REQUIRED_VALUES_PRESENT"]["detail"]
+
+
+def test_package_records_derivations_and_their_rules(tmp_path):
+    from control_plane.services import package_contract as pc
+    spec = {"entities": {"Account": {"fields": [{"name": "T.A", "table": "T", "column": "A"}]}}}
+    derivation = {"entity_name": "Account", "canonical_field": "CUSTODIAN_CODE", "input_field": "CUSTODIAN_NAME",
+                  "rule_expression": "RULE:CUSTODIAN_CODE_MAP@1", "decided_by": "Ann"}
+    rule = {"status": "APPROVED", "rule_type": "VALUE_MAP", "params": {"map": {"SCHWAB": "SCHWAB"}, "case_insensitive": True, "strict": True},
+            "description": "d", "reviewed_by": "Ann"}
+    base = dict(migration_id="M", source_system="CoreCap", target_system="Simplicity", firm={"firm_id": "F", "config_version": "1", "canonical_contract_ref": "c"},
+                target={"name": "S", "model_version": "v", "confirmed_by": "x", "confirmed_utc": "u"}, source_files=[], spec=spec, scenarios=[],
+                source_mappings=[{"entity": "Account", "source_field": "ACCT", "canonical_field": "ACCT_NUM", "transformation": "DIRECT_COPY"}],
+                environment={"simulated": True, "banner": "b", "factoryName": "f"})
+    m = {"entity_name": "Account", "target_field": "T.A", "canonical_field": "CUSTODIAN_CODE", "status": "APPROVED", "reviewer": "Ann", "transformation_expression": "DIRECT_COPY"}
+    body = pc.build_body(approved_target=[m], rules={"RULE:CUSTODIAN_CODE_MAP@1": rule}, derivations=[derivation], **base)
+    assert body["canonical_derivations"][0]["rule"] == "RULE:CUSTODIAN_CODE_MAP@1"
+    assert [r["expression"] for r in body["transformation_rules"]] == ["RULE:CUSTODIAN_CODE_MAP@1"]
+    with pytest.raises(ValueError, match="not an approved rule"):
+        pc.build_body(approved_target=[m], rules={}, derivations=[derivation], **base)
+    conn = sqlite3.connect(tmp_path / "p.db")
+    conn.row_factory = sqlite3.Row
+    assert pc.generate(conn, "M", "Ann", body)["new"]
+    assert "canonical_derivations" not in pc.build_body(approved_target=[m], rules={}, **base)

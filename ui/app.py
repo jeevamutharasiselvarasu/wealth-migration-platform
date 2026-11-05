@@ -2905,7 +2905,8 @@ async def generate_deployment_package(request: Request):
                 firm={"firm_id": cfg_firm.firm_id, "config_version": str(cfg_firm.config_version), "canonical_contract_ref": str(cfg_firm.canonical_contract_ref)},
                 target={"name": tcfg["target_name"], "model_version": str(tcfg["schema_hash"]), "confirmed_by": tcfg["confirmed_by"] or "", "confirmed_utc": tcfg["confirmed_utc"] or ""},
                 source_files=files, source_mappings=source_maps, spec=spec, approved_target=approved, rules=rules, scenarios=scenarios,
-                environment=azure_simulated.simulated_environment(migration_id))
+                environment=azure_simulated.simulated_environment(migration_id),
+                derivations=canonical_derivations.list_derivations(conn, migration_id))
             result = package_contract.generate(conn, migration_id, user["name"], body)
         except ValueError as exc:
             return _sql_redirect("error", str(exc))

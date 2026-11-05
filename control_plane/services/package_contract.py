@@ -77,6 +77,14 @@ class TargetMapping(_M):
     approved_by: str
 
 
+class CanonicalDerivation(_M):
+    entity: str
+    canonical_field: str
+    input_field: str
+    rule: str
+    approved_by: str
+
+
 class RuleDef(_M):
     expression: str
     rule_type: str
@@ -112,6 +120,7 @@ class PackageDoc(_M):
     target: TargetRef
     source_files: List[SourceFile]
     source_to_canonical: List[SourceMapping]
+    canonical_derivations: List[CanonicalDerivation] = []
     canonical_to_target: List[TargetMapping] = Field(min_length=1)
     transformation_rules: List[RuleDef]
     validation: Validation
@@ -155,7 +164,7 @@ def _digest(body: Dict[str, Any]) -> str:
 def build_body(*, migration_id: str, source_system: str, target_system: str, firm: Dict[str, str], target: Dict[str, str],
                source_files: List[Dict[str, str]], source_mappings: List[Dict[str, str]], spec: Dict[str, Any],
                approved_target: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]], scenarios: List[Dict[str, Any]],
-               environment: Dict[str, Any]) -> Dict[str, Any]:
+               environment: Dict[str, Any], derivations: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Package content without meta. Raises ValueError when approved configuration is incomplete."""
     approved_target = [m for m in approved_target if m["status"] == "APPROVED"]
     if not approved_target:
@@ -164,6 +173,16 @@ def build_body(*, migration_id: str, source_system: str, target_system: str, fir
         raise ValueError("Approve at least one source-to-canonical mapping before generating a deployment package.")
     used_rules: List[Dict[str, Any]] = []
     t_rows = []
+    d_rows = []
+    for d in derivations or []:
+        d_rows.append({"entity": d["entity_name"], "canonical_field": d["canonical_field"], "input_field": d["input_field"],
+                       "rule": d["rule_expression"], "approved_by": d["decided_by"]})
+        if d["rule_expression"] not in {r["expression"] for r in used_rules}:
+            rule = rules.get(d["rule_expression"])
+            if not rule or rule["status"] != "APPROVED":
+                raise ValueError(f"Derivation of {d['canonical_field']} uses '{d['rule_expression']}', which is not an approved rule.")
+            used_rules.append({"expression": d["rule_expression"], "rule_type": rule["rule_type"], "params": rule["params"],
+                               "description": rule["description"], "approved_by": rule.get("reviewed_by") or ""})
     for m in approved_target:
         expr = m["transformation_expression"]
         if expr != "DIRECT_COPY":
@@ -179,11 +198,13 @@ def build_body(*, migration_id: str, source_system: str, target_system: str, fir
         t_rows.append({"entity": m["entity_name"], "target_table": field["table"], "target_column": field["column"], "target_type": str(field.get("type") or ""),
                        "required": bool(field.get("required")), "canonical_field": m["canonical_field"],
                        "transformation": expr, "approved_by": m.get("reviewer") or ""})
+    derived_part = {"canonical_derivations": sorted(d_rows, key=lambda d: (d["entity"], d["canonical_field"]))} if d_rows else {}
     return {
         "migration": {"migration_id": migration_id, "source_system": source_system, "target_system": target_system},
         "firm": firm, "target": target,
         "source_files": sorted(source_files, key=lambda f: (f["entity"], f["filename"])),
         "source_to_canonical": sorted(source_mappings, key=lambda m: (m["entity"], m["canonical_field"], m["source_field"])),
+        **derived_part,
         "canonical_to_target": sorted(t_rows, key=lambda m: (m["entity"], m["target_table"], m["target_column"])),
         "transformation_rules": sorted(used_rules, key=lambda r: r["expression"]),
         "validation": {"scenarios": [{"scenario_id": s["scenario_id"], "entity": s["entity_name"], "check_type": s["check_type"], "field": s.get("field_name"),
