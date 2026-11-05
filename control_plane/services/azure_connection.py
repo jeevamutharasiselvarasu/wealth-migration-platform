@@ -51,8 +51,10 @@ def _now() -> str:
 def validate(values: Dict[str, str]) -> Dict[str, str]:
     v = {k: str(values.get(k, "")).strip() for k in FIELDS}
     v["secret_env_var"] = v["secret_env_var"] or DEFAULT_SECRET_ENV
-    for k in ("tenant_id", "client_id", "subscription_id"):
-        if not GUID.match(v[k]):
+    if not GUID.match(v["subscription_id"]):
+        raise ValueError("Subscription id must be a GUID.")
+    for k in ("tenant_id", "client_id"):  # only needed to sign in; the factory details can be saved without them
+        if v[k] and not GUID.match(v[k]):
             raise ValueError(f"{k.replace('_', ' ').capitalize()} must be a GUID.")
     for k in ("resource_group", "factory_name"):
         if not NAME.match(v[k]):
@@ -120,6 +122,8 @@ def test_connection(conn: sqlite3.Connection, http: Callable[..., httpx.Response
     if not cfg:
         raise ValueError("Save the Azure settings first.")
     try:
+        if not (cfg["tenant_id"] and cfg["client_id"]):
+            raise ValueError("Add the tenant ID and the client (application) ID of the service principal to test the sign-in.")
         token = acquire_token(cfg, "https://management.azure.com/.default", http)
         url = (f"https://management.azure.com/subscriptions/{cfg['subscription_id']}/resourceGroups/{cfg['resource_group']}"
                f"/providers/Microsoft.DataFactory/factories/{cfg['factory_name']}?api-version={API}")

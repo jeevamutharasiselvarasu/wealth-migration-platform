@@ -127,3 +127,13 @@ def test_factory_only_settings_save_without_storage_sql_or_key_vault(conn):
             az.validate({**adf_only, key: bad})
     with pytest.raises(ValueError):
         az.validate({**adf_only, "factory_name": ""})
+
+
+def test_factory_details_save_without_tenant_and_client_but_the_sign_in_test_asks_for_them(conn):
+    only = {"subscription_id": G, "resource_group": "Dodge-Cox-RG", "factory_name": "adf-amp-xodus"}
+    cfg = az.save(conn, "Ann", only)
+    assert cfg["tenant_id"] == "" and cfg["client_id"] == "" and cfg["factory_name"] == "adf-amp-xodus"
+    tested = az.test_connection(conn)
+    assert tested["status"] == "FAILED" and "tenant ID" in tested["check_detail"]
+    with pytest.raises(ValueError):
+        az.validate({**only, "tenant_id": "not-a-guid"})

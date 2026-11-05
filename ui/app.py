@@ -21,7 +21,7 @@ from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_RO
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection
+from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -2835,7 +2835,14 @@ async def download_adf_package(request: Request):
             provenance = artifact_store.build_provenance(conn, migration_id, spec, approved)
         finally:
             conn.close()
-        package = adf_package.build(migration_id, spec, approved, rules, azure_simulated.simulated_environment(migration_id), user["name"], provenance)
+        conn = get_db_connection()
+        try:
+            azure_cfg = azure_connection.get_config(conn)
+        finally:
+            conn.close()
+        blob = blob_source.status(_blob_container())  # account name and emulator flag only; no key is read
+        env = adf_environment.resolve(migration_id, azure_cfg, blob.get("account", ""), _blob_container(), blob.get("emulator", True))
+        package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
     except ValueError as exc:
         return back("error", str(exc))
     _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
@@ -2847,7 +2854,7 @@ async def download_adf_package(request: Request):
     finally:
         conn.close()
     _target_setup_audit("ADF_PACKAGE_STORED", user, {"artifact_id": stored["artifact_id"], "version": stored["artifact_version"], "sha256": stored["content_sha256"]})
-    return back("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, simulated Azure values, not deployed).")
+    return back("notice", f"ADF package v{stored['artifact_version']} saved with this migration ({stored['artifact_id']}, {'simulated Azure values' if package['manifest']['simulated'] else 'configured Azure environment'}, not deployed).")
 
 
 @app.post("/api/validation/signoff-evidence/save")

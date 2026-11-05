@@ -53,8 +53,8 @@
   <form action="/api/azure/connection" method="POST" class="card"><fieldset {% if not can_edit_azure %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
     <h3>Service principal and factory</h3>
     <div class="two">
-      <div class="field"><label for="a-tenant">Tenant ID</label><input id="a-tenant" class="input" name="tenant_id" value="{{ cfg.tenant_id|default('') }}" placeholder="00000000-0000-0000-0000-000000000000" required></div>
-      <div class="field"><label for="a-client">Client (application) ID</label><input id="a-client" class="input" name="client_id" value="{{ cfg.client_id|default('') }}" required></div>
+      <div class="field"><label for="a-tenant">Tenant ID</label><input id="a-tenant" class="input" name="tenant_id" value="{{ cfg.tenant_id|default('') }}" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      <div class="field"><label for="a-client">Client (application) ID</label><input id="a-client" class="input" name="client_id" value="{{ cfg.client_id|default('') }}"></div>
       <div class="field"><label for="a-sub">Subscription ID</label><input id="a-sub" class="input" name="subscription_id" value="{{ cfg.subscription_id|default('') }}" required></div>
       <div class="field"><label for="a-rg">Resource group</label><input id="a-rg" class="input" name="resource_group" value="{{ cfg.resource_group|default('') }}" required></div>
       <div class="field"><label for="a-adf">Data factory name</label><input id="a-adf" class="input" name="factory_name" value="{{ cfg.factory_name|default('') }}" required></div>

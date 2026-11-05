@@ -45,54 +45,78 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     def ref(name: str, kind: str) -> Dict[str, str]:
         return {"referenceName": name, "type": kind}
 
-    add("linkedservices", "linkedService", "LS_KeyVault_Sim", {"type": "AzureKeyVault", "typeProperties": {"baseUrl": env["keyVaultUrl"]}})
-    add("linkedservices", "linkedService", "LS_ADLS_Staging_Sim", {"type": "AzureBlobFS", "typeProperties": {"url": env["storageDfsUrl"]}})
-    add("linkedservices", "linkedService", "LS_SQL_Target_Sim", {"type": "AzureSqlDatabase", "typeProperties": {"connectionString": {
-        "type": "AzureKeyVaultSecret", "store": ref("LS_KeyVault_Sim", "LinkedServiceReference"), "secretName": env["keyVaultSqlSecretName"]}}})
+    real = not env.get("simulated", True)
+    sfx = "" if real else "_Sim"
+    ls_kv, ls_blob, ls_sql = f"LS_KeyVault{sfx}", f"LS_ADLS_Staging{sfx}", f"LS_SQL_Target{sfx}"
+    add("linkedservices", "linkedService", ls_kv, {"type": "AzureKeyVault", "typeProperties": {"baseUrl": env["keyVaultUrl"]}})
+    if real:  # Blob storage reached with the factory's managed identity: no key or secret in the package
+        add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobStorage", "typeProperties": {"serviceEndpoint": env["storageBlobUrl"], "accountKind": "StorageV2"}})
+    else:
+        add("linkedservices", "linkedService", ls_blob, {"type": "AzureBlobFS", "typeProperties": {"url": env["storageDfsUrl"]}})
+    add("linkedservices", "linkedService", ls_sql, {"type": "AzureSqlDatabase", "typeProperties": {"connectionString": {
+        "type": "AzureKeyVaultSecret", "store": ref(ls_kv, "LinkedServiceReference"), "secretName": env["keyVaultSqlSecretName"]}}})
 
     prepare = _batches(sql["files"]["sql/00_staging_tables.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"])
     activities: List[Dict[str, Any]] = [{
-        "name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref("LS_SQL_Target_Sim", "LinkedServiceReference"),
+        "name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
         "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}}]
     copies: List[str] = []
     for table in sm["stagingTables"]:
         _ident(table)
         folder = f"{env['stagingFolder']}/lookups/{table[4:]}" if table.startswith("lkp_") else f"{env['stagingFolder']}/{table.lower()}"
         ds_blob, ds_sql = f"DS_Staging_{table}", f"DS_StagingSql_{table}"
-        add("datasets", "dataset", ds_blob, {"type": "DelimitedText", "linkedServiceName": ref("LS_ADLS_Staging_Sim", "LinkedServiceReference"),
-            "typeProperties": {"location": {"type": "AzureBlobFSLocation", "fileSystem": env["stagingContainer"], "folderPath": folder},
-                               "columnDelimiter": ",", "firstRowAsHeader": True}})
-        add("datasets", "dataset", ds_sql, {"type": "AzureSqlTable", "linkedServiceName": ref("LS_SQL_Target_Sim", "LinkedServiceReference"),
+        location = ({"type": "AzureBlobStorageLocation", "container": env["stagingContainer"], "folderPath": folder} if real
+                    else {"type": "AzureBlobFSLocation", "fileSystem": env["stagingContainer"], "folderPath": folder})
+        add("datasets", "dataset", ds_blob, {"type": "DelimitedText", "linkedServiceName": ref(ls_blob, "LinkedServiceReference"),
+            "typeProperties": {"location": location, "columnDelimiter": ",", "firstRowAsHeader": True}})
+        add("datasets", "dataset", ds_sql, {"type": "AzureSqlTable", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
             "typeProperties": {"schema": sql_package.STAGING_SCHEMA, "table": table}})
         activities.append({"name": f"Copy_{table}", "type": "Copy", "dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}],
                            "inputs": [ref(ds_blob, "DatasetReference")], "outputs": [ref(ds_sql, "DatasetReference")],
                            "typeProperties": {"source": {"type": "DelimitedTextSource"},
                                               "sink": {"type": "AzureSqlSink", "preCopyScript": f"TRUNCATE TABLE [{sql_package.STAGING_SCHEMA}].[{table}]"}}})
         copies.append(f"Copy_{table}")
-    activities.append({"name": "Run_Transformation_SQL", "type": "Script", "linkedServiceName": ref("LS_SQL_Target_Sim", "LinkedServiceReference"),
+    activities.append({"name": "Run_Transformation_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                        "dependsOn": [{"activity": c, "dependencyConditions": ["Succeeded"]} for c in copies],
                        "typeProperties": {"scripts": [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}]}})
 
     pipeline = f"PL_XODUS_{mig}"
     add("pipelines", "pipeline", pipeline, {"description": "Azure Blob source files to staging tables, then the transformation SQL into the target SQL database. Generated from approved mappings.",
-        "parameters": {"MigrationId": {"type": "string", "defaultValue": migration_id}}, "activities": activities})
+        "parameters": {"MigrationId": {"type": "string", "defaultValue": migration_id}, **({"ReadyFile": {"type": "string", "defaultValue": ""}} if real else {})},
+        "activities": activities})
+    if real:  # starts the pipeline when a ready file is created under curated/ (the trigger is published stopped; the factory owner starts it)
+        add("triggers", "trigger", "TR_XODUS_Curated_Ready", {
+            "description": f"Starts {pipeline} when a {env['readySuffix']} file is created in {env['readyContainer']}/{env['readyFolder']}/.",
+            "annotations": [], "runtimeState": "Stopped", "type": "BlobEventsTrigger",
+            "pipelines": [{"pipelineReference": {"referenceName": pipeline, "type": "PipelineReference"},
+                           "parameters": {"ReadyFile": "@triggerBody().fileName"}}],
+            "typeProperties": {"blobPathBeginsWith": f"/{env['readyContainer']}/blobs/{env['readyFolder']}/", "blobPathEndsWith": env["readySuffix"],
+                               "ignoreEmptyBlobs": False, "scope": env["storageResourceId"], "events": ["Microsoft.Storage.BlobCreated"]}})
     arm = {"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
-           "metadata": {"simulated": True, "note": env["banner"]},
+           "metadata": {"simulated": not real, "note": env["banner"]},
            "parameters": {"factoryName": {"type": "string", "defaultValue": env["factoryName"]}}, "resources": resources}
     manifest = {
-        "simulated": True, "banner": env["banner"], "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by,
+        "simulated": not real, "banner": env["banner"], "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by,
         "generatedUtc": datetime.now(timezone.utc).isoformat(), "targetSystem": spec.get("target_system"), "targetModelVersion": spec["spec_version"],
         "pipeline": pipeline, "environment": {k: v for k, v in env.items() if k != "banner"}, "entities": sm["entities"], "warnings": sm["warnings"],
         "stagingTables": sm["stagingTables"], "procedure": sm["procedure"],
-        "provenance": provenance or {}, "deployed": False, "note": "Nothing was deployed or sent to Azure. A human must review the package and replace the simulated environment values.",
+        "provenance": provenance or {}, "deployed": False, "unresolved": env.get("unresolved", []),
+        "note": ("Nothing was deployed or sent to Azure. A human must review the package and replace the simulated environment values." if not real
+                 else "Nothing was deployed by XODUS. Review in Data Factory; SQL and Key Vault values listed under unresolved must be set before the pipeline can run."),
     }
     out = {p: json.dumps(c, indent=2) for p, c in files.items()}
     out.update({p: t for p, t in sql["files"].items() if p.startswith("sql/")})
     out["arm/ARMTemplateForFactory.json"] = json.dumps(arm, indent=2)
     out["manifest.json"] = json.dumps(manifest, indent=2)
-    out["README_SIMULATED.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the Azure Blob source files\n"
-                                  "into staging tables and runs it. Every Azure value (subscription, factory, storage, SQL, Key Vault) is fictitious.\n"
-                                  "No secrets are included; the SQL connection string is a Key Vault secret reference.\n")
+    if real:
+        out["README.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the files from\n"
+                             f"{env['stagingContainer']}/{env['stagingFolder']}/ into staging tables and runs it. TR_XODUS_Curated_Ready starts the pipeline when a\n"
+                             f"{env['readySuffix']} file is created under {env['readyContainer']}/{env['readyFolder']}/; it is published stopped and must be started in Data Factory.\n"
+                             "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n")
+    else:
+        out["README_SIMULATED.txt"] = (env["banner"] + "\n\nGenerated from approved mappings only. The transformation is the SQL under sql/; the pipeline copies the Azure Blob source files\n"
+                                      "into staging tables and runs it. Every Azure value (subscription, factory, storage, SQL, Key Vault) is fictitious.\n"
+                                      "No secrets are included; the SQL connection string is a Key Vault secret reference.\n")
     return {"files": out, "manifest": manifest}
 
 
