@@ -40,7 +40,9 @@ Full decisions and change list: project doc `claude/XODUS_ADVISOR_REVIEW_2026-11
   question built server-side from the stored diagnosis); answered in stage 04 like any other request.
 - D4 DONE [versioned release + notice]: an applied canonical change is live only in the workspace that raised it; the SME/Admin publishes
   numbered releases; each workspace stays on its pinned release (new workspaces start on the latest) and shows a notice until a
-  Migration Analyst adopts. Overlay entries applied before this change are unreleased until the first release is published.
+  Migration Analyst adopts. [Owner: grandfather] Overlay entries applied before releases existed become release 1 automatically,
+  so they stay live in every workspace.
+- The admin's /setup page is titled "Platform Setup" and shows platform values only.
 - F4 BLOCKED: direct ADF API trigger needs an ADF service principal.
 - Still open: /canonical-changes lists the open workspace's change requests and is admin-viewable (pre-existing).
 

@@ -955,11 +955,12 @@ async def setup_hub(request: Request):
     finally:
         conn.close()
     return render_template_with_context(request, "setup_hub.html", {
-        "page_title": "Setup", "user_name": user["name"], "user_role": user["role"],
+        "page_title": "Platform setup" if user["role"] in PLATFORM_ROLES else "Setup", "user_name": user["name"], "user_role": user["role"],
         "sql_status": str(sq.get("status") or "not set up").lower(), "sql_db": sq.get("database_name", ""), "azure_status": str(az.get("status") or "not set up").lower(), "azure_factory": az.get("factory_name", ""),
         "git_status": str(gt.get("status") or "not set up").lower(), "git_repo": gt.get("repository", ""), "git_branch": gt.get("branch", ""),
         "configured": bool(setup), "setup_entities": setup.get("entities") or [],
-        "target_confirmed": cfg.get("status") == "CONFIRMED", "target_system": setup.get("target_system", ""),
+        "target_confirmed": cfg.get("status") == "CONFIRMED",
+        "target_system": cfg.get("target_name", "") if user["role"] in PLATFORM_ROLES else setup.get("target_system", ""),  # the admin sees platform values only
         "knowledge_saved": str(state_store.questionnaire_data.get("last_updated") or "Not yet")[:10],
     })
 

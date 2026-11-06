@@ -44,6 +44,21 @@ def test_a_change_is_live_in_its_own_workspace_and_elsewhere_only_after_release_
     conn.close()
 
 
+def test_changes_applied_before_releases_existed_become_release_1_for_every_workspace(db_path):
+    conn = db_path.get_db_connection()
+    conn.execute("""CREATE TABLE canonical_model_overlay (overlay_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, migration_id TEXT NOT NULL,
+        entity_name TEXT NOT NULL, canonical_field TEXT NOT NULL, change_type TEXT NOT NULL, definition TEXT NOT NULL, applied_by TEXT NOT NULL, applied_utc TEXT NOT NULL)""")
+    conn.execute("INSERT INTO canonical_model_overlay VALUES ('OVL-1', 'CCR-1', 'MIG-A', 'Account', 'ACCOUNT_TITLE', 'ADD_FIELD', 'd', 'Sam', '2026-01-01')")
+    conn.commit()
+    co.ensure_table(conn)
+    conn.commit()
+    assert co.latest_release(conn) == 1 and co.unreleased(conn) == [] and co.releases(conn)[0]["released_by"] == "system"
+    co.ensure_table(conn)  # runs once: no second release
+    assert len(co.releases(conn)) == 1
+    conn.close()
+    assert co.active_added_fields("Account", "MIG-OTHER") == ["ACCOUNT_TITLE"]  # still live everywhere, as before releases
+
+
 def test_release_routes_and_the_dashboard_notice(db_path, tmp_path, monkeypatch):
     import ui.app as app_module
     import ui.state as state_module

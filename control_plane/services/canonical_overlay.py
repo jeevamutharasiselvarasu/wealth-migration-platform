@@ -47,10 +47,17 @@ _PINS_DDL = """CREATE TABLE IF NOT EXISTS workspace_canonical_release (
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
-    if "release_no" not in table_columns(conn, "canonical_model_overlay"):  # overlays applied before releases existed stay unreleased
-        conn.execute("ALTER TABLE canonical_model_overlay ADD COLUMN release_no INTEGER")
     conn.execute(_RELEASES_DDL)
     conn.execute(_PINS_DDL)
+    if "release_no" not in table_columns(conn, "canonical_model_overlay"):
+        conn.execute("ALTER TABLE canonical_model_overlay ADD COLUMN release_no INTEGER")
+        # Changes applied before releases existed were live in every workspace: keep it that way as release 1.
+        old = conn.execute("SELECT request_id, entity_name, canonical_field, change_type FROM canonical_model_overlay ORDER BY applied_utc").fetchall()
+        if old:
+            changes = [{"entity": r["entity_name"], "field": r["canonical_field"], "change_type": r["change_type"], "request_id": r["request_id"]} for r in old]
+            conn.execute("INSERT INTO canonical_releases (release_no, released_by, released_utc, notes, changes_json) VALUES (1, 'system', ?, ?, ?)",
+                         (datetime.now(timezone.utc).isoformat(), "Changes applied before canonical releases existed.", json.dumps(changes)))
+            conn.execute("UPDATE canonical_model_overlay SET release_no = 1")
 
 
 def latest_release(conn: sqlite3.Connection) -> int:
