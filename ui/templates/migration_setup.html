@@ -48,7 +48,7 @@
     </div>
     <p class="d">The target is a separate system. A Platform Admin sets it up once (connection, inference, confirmation); every migration then maps to it. The target can be the Azure SQL database saved on the Azure connection page (read-only: the platform reads its table and column list and never loads data into it).</p>
     {% if tc and tc.status == 'CONFIRMED' %}<p class="fh">Confirmed by {{ tc.confirmed_by }} on {{ tc.confirmed_utc[:10] }}. Fixed for all migrations.</p>{% endif %}
-    <a href="/target-mapping#target-system" class="btn g sm" style="margin-top:8px">{% if tc and tc.status == 'CONFIRMED' %}Open Target mapping →{% else %}Go to one-time target setup →{% endif %}</a>
+    <a href="{% if tc and tc.status == 'CONFIRMED' %}/target-mapping#target-system{% else %}/target-setup{% endif %}" class="btn g sm" style="margin-top:8px">{% if tc and tc.status == 'CONFIRMED' %}Open Target mapping →{% else %}Go to one-time target setup →{% endif %}</a>
   </section>
 
   {% if demo_available and can_load_demo %}

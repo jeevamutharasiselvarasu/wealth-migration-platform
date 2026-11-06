@@ -117,7 +117,7 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             assert "Invalid" in (await go(anon, "POST", "/login", {"email": "bot@example.com", "password": PW})).headers["location"]  # honeypot account was never created
             login = await go(admin, "POST", "/login", {"email": "root@example.com", "password": PW})
             assert login.headers["location"] == "/suite"
-            assert set(app_module.session_mgr.assigned_roles("root@example.com")) == set(app_module.session_mgr.ALL_ROLES)
+            assert set(app_module.session_mgr.assigned_roles("root@example.com")) == {"Platform Admin"}  # infrastructure-only persona
             assert app_module.session_mgr.can_load_demo("root@example.com") is True  # bootstrap admin can load the demo data set
             page = await go(admin, "GET", "/admin/users")
             assert page.status_code == 200 and "ann@example.com" in page.text and "PENDING" in page.text and "password_hash" not in page.text and "scrypt" not in page.text
@@ -161,7 +161,7 @@ def test_demo_email_without_a_host_hash_signs_in_through_the_registry_when_named
     conn.commit()
     sid = mgr.authenticate("jeeva@simplicitywealth.com", PW, mgr.default_role_for("jeeva@simplicitywealth.com"))
     assert sid and mgr.active_sessions[sid]["email"] == "jeeva@simplicitywealth.com"
-    assert mgr.assigned_roles("jeeva@simplicitywealth.com") == set(mgr.ALL_ROLES) and mgr.can_load_demo("jeeva@simplicitywealth.com") is True
+    assert mgr.assigned_roles("jeeva@simplicitywealth.com") == {"Platform Admin"} and mgr.can_load_demo("jeeva@simplicitywealth.com") is True
     assert mgr.authenticate("jeeva@simplicitywealth.com", "wrong-password-1", "Platform Admin") is None
 
 

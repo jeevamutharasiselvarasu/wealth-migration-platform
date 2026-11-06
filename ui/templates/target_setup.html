@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <a href="/setup" class="btn g sm" data-testid="back-to-setup" style="margin-bottom:8px;display:inline-block">← Back to Setup</a>
+      <div class="ey dm">Platform setup · Target system</div>
+      <h1>Target system setup</h1>
+      <p>Platform-level and one time: the Platform Admin connects the target, lets the platform infer its model, reviews it and confirms it. Every migration then maps to this confirmed target; migration users see only the inferred model on the Target mapping page.</p>
+    </div>
+  </div>
+  {% if target_config and target_config.connector_type == 'azure-sql' %}<div class="exc" data-testid="target-banner-azure"><b>Azure SQL target.</b> <span class="font-mono">{{ target_config.endpoint }}</span>. The platform learns its structure by reading the table and column list with a read-only sign-in; it never loads data into it. The ADF pipeline does the loading, and a person runs the create scripts.</div>
+  {% else %}<div class="exc"><b>Simulated target system.</b> It runs as its own service and database, separate from this platform. The platform learns its structure by inspecting it after a one-time setup; nothing is ever loaded into it.</div>{% endif %}
+  <section class="card" id="target-system">
+    {% set c = target_config %}
+    <div class="flex flex-wrap items-start justify-between gap-2"><h3 style="font-size:16px">Target system setup <span class="font-mono text-[10px] font-normal text-[#8A97B2]">one time</span></h3>
+      <span class="pill {% if c and c.status == 'CONFIRMED' %}approved{% else %}review{% endif %}">{% if c %}{{ c.status }}{% else %}NOT CONFIGURED{% endif %}</span></div>
+    <ol class="mt-3 flex flex-wrap gap-2 text-[11px] font-bold">
+      <li class="rounded-full border px-3 py-1 {% if c %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">1 Configure &amp; test connection</li>
+      <li class="rounded-full border px-3 py-1 {% if c and c.status in ('INFERRED','CONFIRMED') %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">2 Infer target system</li>
+      <li class="rounded-full border px-3 py-1 {% if c and c.status == 'CONFIRMED' %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">3 Confirm</li>
+    </ol>
+    {% if c and c.status == 'CONFIRMED' %}
+      <p class="mt-3 text-[11px] text-[#5A6A88]">{{ c.target_name }} · {{ c.endpoint }} · model {{ c.schema_hash }} · confirmed by {{ c.confirmed_by }} on {{ c.confirmed_utc[:10] }}. Setup is locked; every migration uses this target.</p>
+      {% if can_setup_target %}<form action="/api/target-system/reopen" method="post" class="mt-2 flex flex-wrap items-center gap-2"><input name="reason" required maxlength="200" placeholder="Reason for reopening" aria-label="Reason for reopening the target setup" class="input"><button type="submit" class="btn g sm">Reopen setup to reconfigure</button><span class="text-[10px] text-[#5A6A88]">Pauses target mapping until you confirm again. Recorded in the audit log.</span></form>{% endif %}
+    {% elif can_setup_target %}
+      <form action="/api/target-system/configure-azure-sql" method="post" class="mt-3 flex flex-wrap items-end gap-3" data-testid="target-azure-sql">
+        <label class="field fl">Target owner / SME<input name="owner" value="{{ c.owner if c else '' }}" class="input"></label>
+        <button type="submit" class="btn p sm">Use the Azure SQL database as the target</button>
+        <span class="text-[10px] text-[#5A6A88]">Reads the table and column list of the schema saved under Azure connection → Target database. Read-only; no row data.</span>
+      </form>
+      <p class="mt-2 text-[10px] text-[#8A97B2]">No credentials are stored here: the SQL user name and password come from the server's .env (Azure connection, Target database).</p>
+    {% else %}
+      <p class="mt-3 text-xs font-bold text-amber-800">A Platform Admin must complete the one-time target setup before mapping can start.</p>
+    {% endif %}
+    {% if c and c.status != 'CONFIRMED' %}
+      <p class="mt-3 text-[11px] text-[#41506B]">Connection: {{ c.connection_detail }}</p>
+      {% if can_setup_target and c.status in ('CONNECTED','INFERRED') %}<form action="/api/target-system/infer" method="post" class="mt-2"><button type="submit" class="btn g sm">{% if c.status == 'INFERRED' %}Re-read &amp; infer again{% else %}Infer target system{% endif %}</button></form>{% endif %}
+    {% endif %}
+    {% if inferred %}
+    <details class="mt-3" {% if c.status == 'INFERRED' %}open{% endif %}><summary class="cursor-pointer text-xs font-bold text-blue-700">Inferred target model · {{ inferred.entities|length }} entities</summary>
+      {% for ename, body in inferred.entities.items() %}
+      <div class="mt-3 rounded-xl border border-[#D9E3F5] p-3"><p class="text-xs font-bold text-[#152C6B]">{{ ename }} <span class="font-mono text-[10px] font-normal text-[#8A97B2]">{{ body.target_table }}</span></p>
+        {% if c.status == 'INFERRED' and can_setup_target %}{% for tname in body.target_table.split(', ') %}<form action="/api/target-system/move-table" method="post" class="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-[#5A6A88]"><input type="hidden" name="table" value="{{ tname }}">Table <span class="font-mono">{{ tname }}</span> belongs to
+          <select name="entity" aria-label="Entity for {{ tname }}" class="input">{% for en in canonical_fields %}<option value="{{ en }}" {% if en == ename %}selected{% endif %}>{{ en }}</option>{% endfor %}<option value="">Exclude (none)</option></select>
+          <button type="submit" class="btn g">Move</button></form>{% endfor %}{% endif %}
+        {% set rev = c.status == 'INFERRED' and can_setup_target %}
+        <div class="tw"><table{% if rev %} data-bulk-table{% endif %}><thead><tr>{% if rev %}<th><input type="checkbox" data-select-all aria-label="Select all {{ ename }} fields"></th>{% endif %}<th>Target field</th><th>Type</th><th>Req.</th><th>Inferred canonical field</th><th>Confidence</th><th>Evidence</th>{% if rev %}<th>Change to (if wrong)</th><th>Note</th>{% endif %}<th>Status</th></tr></thead><tbody>
+        {% for f in body.fields %}{% set key = f.table ~ '|' ~ f.column %}<tr>
+          {% if rev %}<td><input type="checkbox" form="setup-review" name="rows" value="{{ key }}" data-row-check aria-label="Approve {{ f.name }}"></td>{% endif %}
+          <td class="font-mono">{{ f.name }}</td><td>{{ f.type }}</td><td>{{ 'yes' if f.required else '' }}</td>
+          <td class="font-mono">{{ f.canonical_hint or 'no match' }}</td><td>{% if f.canonical_hint %}{{ '%d%%'|format(f.confidence*100) }}{% endif %}</td><td>{{ f.evidence|join(', ') }}{% if f.code_list %} · codes: {{ f.codes|join('/') }}{% endif %}</td>
+          {% if rev %}<td><select form="setup-review" name="change::{{ key }}" data-row-input aria-label="Change canonical field for {{ f.name }}" class="input w-44"><option value="">Correct as inferred</option><option value="__none__">No canonical equivalent</option><option value="__reject__">Reject (not in target model)</option>{% for cf in canonical_fields.get(ename, []) %}{% if cf != f.canonical_hint %}<option value="{{ cf }}">Change to {{ cf }}</option>{% endif %}{% endfor %}</select></td>
+          <td><input form="setup-review" name="note::{{ key }}" data-row-input placeholder="Comment" aria-label="Note for {{ f.name }}" class="input w-40"></td>{% endif %}
+          <td>{% if f.review %}<span class="{% if f.review.status == 'REJECTED' %}text-red-700{% else %}text-teal-700{% endif %}">{{ f.review.status|lower }} · {{ f.review.by }}</span>{% if f.review.note %}<div class="text-[#5A6A88]">“{{ f.review.note }}”</div>{% endif %}{% else %}<span class="text-amber-800">not reviewed</span>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div></div>
+      {% endfor %}
+      {% if inferred.unassigned_tables %}<p class="mt-2 text-[11px] text-amber-800">Not matched to Account, Client or Household: {{ inferred.unassigned_tables|join(', ') }}</p>{% endif %}
+      <p class="mt-2 text-[10px] text-[#8A97B2]">Surrogate keys assigned by the target are not mapped. Fields with no match become gaps below once confirmed.</p>
+    </details>
+    {% if c.status == 'INFERRED' and can_setup_target %}<form id="setup-review" action="/api/target-system/review-selected" method="post" data-bulk-bar class="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#D9E3F5] bg-[#F8FAFD] p-3 shadow-sm"><span class="text-xs font-bold {% if pending_reviews %}text-amber-800{% else %}text-teal-700{% endif %}">{{ pending_reviews }} field{{ '' if pending_reviews == 1 else 's' }} still need your review</span><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="input w-64"><button type="submit" data-needs-selection class="btn ok sm">Approve selected</button>{% if pending_reviews %}<button type="submit" formaction="/api/target-system/review-all" class="btn g sm">Approve all remaining as inferred</button>{% endif %}</form>
+    <form action="/api/target-system/confirm" method="post" class="mt-3"><button type="submit" {% if pending_reviews %}disabled{% endif %} class="btn ok sm">Confirm target model &amp; lock setup</button><span class="ml-2 text-[10px] text-[#5A6A88]">Recorded under your signed-in name. A Platform Admin can reopen it later.</span></form>{% endif %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

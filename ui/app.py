@@ -17,11 +17,11 @@ from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
-from ui.role_policy import DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, allowed_roles_for
+from ui.role_policy import DEMO_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment
+from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment, validation_signoff
 from control_plane.services import sql_target
 from control_plane.services import canonical_derivations, run_monitor, target_validation
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
@@ -55,6 +55,14 @@ async def enforce_role_policy(request: Request, call_next):
             if "text/html" in request.headers.get("accept", ""):
                 path = urlparse(request.headers.get("referer", "/")).path or "/"
                 return RedirectResponse(url=f"{path}?error=" + quote_plus(detail), status_code=status.HTTP_303_SEE_OTHER)
+            return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
+    elif request.method.upper() in {"GET", "HEAD"}:
+        # The Platform Admin persona sees platform setup only, never migration data.
+        session = session_mgr.get_session(request)
+        if session is not None and session.get("role") == "Platform Admin" and not admin_may_view(request.url.path):
+            detail = "The Platform Admin sees platform setup only, not migration data."
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse(url="/setup?error=" + quote_plus(detail), status_code=status.HTTP_303_SEE_OTHER)
             return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
     return await call_next(request)
 
@@ -92,7 +100,7 @@ def get_current_user(request: Request) -> Dict[str, str]:
 
 
 def _can_load_demo(user: Dict[str, str]) -> bool:
-    return user.get("role") in PLATFORM_ROLES and session_mgr.can_load_demo(user.get("email", ""))
+    return user.get("role") in DEMO_ROLES and session_mgr.can_load_demo(user.get("email", ""))
 
 
 def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, source_role: str) -> Dict[str, Any]:
@@ -188,7 +196,7 @@ def workflow_progress() -> dict:
     elif rfi_open:
         nxt = {"label": f"Answer {rfi_open} information request{'s' if rfi_open != 1 else ''}", "detail": "Required canonical fields still have no source.", "href": "/agent-pipeline#information-requests", "step": "map"}
     elif not target_provisioned:
-        nxt = {"label": "Confirm the target system", "detail": "One-time platform setup: configure, infer and confirm the target before target mapping.", "href": "/target-mapping#target-system", "step": "map"}
+        nxt = {"label": "Confirm the target system", "detail": "One-time platform setup: configure, infer and confirm the target before target mapping.", "href": "/target-setup", "step": "map"}
     else:
         nxt = {"label": "Review validation results", "detail": "All mappings are approved; check keys, relationships and exceptions.", "href": "/reconciliation", "step": "validate"}
     progress = {
@@ -327,6 +335,9 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         base_context["persona_options"] = [r for r in session_mgr.ALL_ROLES if r in _allowed]
         base_context["active_persona"] = _sess.get("role")
         base_context["trole"] = _TEMPLATE_ROLE.get(_sess.get("role"), "IL")
+        if _sess.get("role") == "Platform Admin":
+            # Platform pages only: no migration name, id or pipeline progress in the page frame.
+            base_context.update({"platform_only": True, "progress": {}, "migration_id": "", "firm_name": ""})
     base_context.update(extra_context)
     return templates.TemplateResponse(request=request, name=template_name, context=base_context)
 
@@ -845,6 +856,12 @@ async def publish_adf_to_git(request: Request):
             with zipfile.ZipFile(io.BytesIO(rec["data"])) as z:
                 files = {n: z.read(n).decode("utf-8") for n in z.namelist() if not n.endswith("/")}
             note = " (simulated Azure values)" if '"simulated": true' in files.get("manifest.json", "") else ""
+            # The pipeline writes to the run-log table; a missing table is caught here, before anything is deployed or run.
+            log_check = sql_target.run_log_status(conn) if "sql/02_run_log.sql" in files else {"checked": False, "exists": None, "detail": ""}
+            if log_check["checked"] and not log_check["exists"]:
+                raise ValueError(log_check["detail"])
+            if "sql/02_run_log.sql" in files and not log_check["checked"]:
+                note += " (run-log table not verified: " + log_check["detail"].rstrip(".") + ")"
             result = git_connection.publish(conn, user["name"], migration_id, files,
                                             f"XODUS ADF package {art['artifact_id']} v{art['artifact_version']} for {migration_id}{note}, published by {user['name']}",
                                             artifact_id=art["artifact_id"], replace=replace, prune_linked=prune_linked)
@@ -1690,6 +1707,28 @@ async def run_target_validation(request: Request):
                                   f"{result['summary']['WARN'] + result['summary']['NOT_EVALUATED']} to review).")
 
 
+@app.post("/api/target-validation/signoff")
+async def sign_off_target_validation(request: Request, run_id: str = Form(...), comment: str = Form("")):
+    """The validation specialist signs off the latest target validation run (must be PASS, with a comment)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            tval = target_validation.latest(conn, migration_id)
+            if not tval:
+                raise ValueError("Run target validation first.")
+            effective = validation_scenarios.effective_status(tval["checks"], validation_scenarios.list_exceptions(conn, migration_id, tval["run_id"]))
+            res = validation_signoff.sign_off(conn, migration_id, run_id, effective, comment, user["name"], tval["run_id"])
+        except ValueError as exc:
+            return _tv_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_VALIDATION_SIGNED_OFF", user, {"signoff_id": res["signoff_id"], "run_id": res["run_id"]})
+    return _tv_redirect("notice", f"Target validation {run_id} signed off ({res['signoff_id']}).")
+
+
 def _tv_redirect(key: str, message: str):
     return RedirectResponse(url=f"/validation-rules?{key}=" + quote_plus(message) + "#target-validation", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -1712,7 +1751,7 @@ async def propose_target_validation_exception(request: Request, run_id: str = Fo
     finally:
         conn.close()
     _target_setup_audit("TARGET_VALIDATION_EXCEPTION_PROPOSED", user, {"exception_id": eid, "run_id": run_id, "check_ref": check_ref})
-    return _tv_redirect("notice", f"Exception {eid} proposed. A Migration Analyst or Platform Admin must decide it.")
+    return _tv_redirect("notice", f"Exception {eid} proposed. A Migration Analyst must decide it.")
 
 
 @app.post("/api/target-validation/exceptions/{exception_id}/decision")
@@ -1821,6 +1860,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         tval_exceptions = validation_scenarios.list_exceptions(conn, migration_id, tval["run_id"]) if tval else []
         if tval:
             tval["effective_status"] = validation_scenarios.effective_status(tval["checks"], tval_exceptions)
+            tval["signoff"] = validation_signoff.current(conn, migration_id, tval["run_id"])
         adf_deployment = adf_simulator.latest(conn, migration_id)
         adf_trigger_blocker = adf_simulator.trigger_blocker(adf_deployment, adf_status["stale_reasons"] if adf_status else None, adf_status["latest"]["artifact_id"] if adf_status else None)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
@@ -2349,7 +2389,7 @@ async def propose_validation_exception(request: Request, run_id: str = Form(...)
     finally:
         conn.close()
     _target_setup_audit("VALIDATION_EXCEPTION_PROPOSED", user, {"exception_id": eid, "run_id": run_id, "check_ref": check_ref})
-    return _validation_redirect("notice", f"Exception {eid} proposed. A Migration Analyst or Platform Admin must decide it.")
+    return _validation_redirect("notice", f"Exception {eid} proposed. A Migration Analyst must decide it.")
 
 
 @app.post("/api/validation/exceptions/{exception_id}/decision")
@@ -2795,17 +2835,21 @@ def _target_redirect(key: str, message: str):
     return RedirectResponse(url=f"/target-mapping?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _target_setup_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/target-setup?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/target-mapping", response_class=HTMLResponse)
 async def target_mapping_page(request: Request, notice: str = "", error: str = ""):
     user = get_current_user(request)
     return render_template_with_context(request, "target_mapping.html", _target_mapping_context(request, user, notice=notice, error=error))
 
 
-@app.get("/target-setup")
-async def target_setup_redirect(request: Request):
-    """Target system and mapping are one page; keep the old address working."""
-    get_current_user(request)
-    return RedirectResponse(url="/target-mapping#target-system", status_code=status.HTTP_303_SEE_OTHER)
+@app.get("/target-setup", response_class=HTMLResponse)
+async def target_setup_page(request: Request, notice: str = "", error: str = ""):
+    """Platform setup: connect, infer, review and confirm the target system (Platform Admin). Migration users see only the inferred model on Target mapping."""
+    user = get_current_user(request)
+    return render_template_with_context(request, "target_setup.html", _target_mapping_context(request, user, notice=notice, error=error))
 
 
 def _target_setup_audit(event: str, user: Dict[str, str], details: Dict[str, Any]) -> None:
@@ -2823,14 +2867,14 @@ async def configure_target_system(request: Request, target_name: str = Form(...)
             cfg = target_connector.configure(conn, user["name"], target_name, endpoint, [t for t in re.split(r"[,\s]+", scope_tables) if t],
                                              include_code_lists == "on", owner)
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_SYSTEM_CONFIGURED", user, {"endpoint": cfg["endpoint"], "status": cfg["status"]})
     if cfg["status"] != "CONNECTED":
-        return _target_redirect("error", cfg["connection_detail"])
-    return _target_redirect("notice", cfg["connection_detail"] + " Next: infer the target system.")
+        return _target_setup_redirect("error", cfg["connection_detail"])
+    return _target_setup_redirect("notice", cfg["connection_detail"] + " Next: infer the target system.")
 
 
 @app.post("/api/target-system/configure-azure-sql")
@@ -2842,14 +2886,14 @@ async def configure_target_azure_sql(request: Request, owner: str = Form(""), sc
         try:
             cfg = target_connector.configure_azure_sql(conn, user["name"], owner, [t for t in re.split(r"[,\s]+", scope_tables) if t])
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_SYSTEM_CONFIGURED", user, {"endpoint": cfg["endpoint"], "status": cfg["status"]})
     if cfg["status"] != "CONNECTED":
-        return _target_redirect("error", cfg["connection_detail"])
-    return _target_redirect("notice", cfg["connection_detail"] + " Next: infer the target system.")
+        return _target_setup_redirect("error", cfg["connection_detail"])
+    return _target_setup_redirect("notice", cfg["connection_detail"] + " Next: infer the target system.")
 
 
 @app.post("/api/target-system/infer")
@@ -2862,13 +2906,13 @@ async def infer_target_system(request: Request):
         try:
             cfg = target_connector.infer_model(conn, canonical_types)
         except Exception as exc:
-            return _target_redirect("error", f"Could not infer the target system: {exc}")
+            return _target_setup_redirect("error", f"Could not infer the target system: {exc}")
         conn.commit()
     finally:
         conn.close()
     n = sum(len(b["fields"]) for b in cfg["model"]["entities"].values())
     _target_setup_audit("TARGET_SYSTEM_INFERRED", user, {"schema_hash": cfg["schema_hash"], "fields": n})
-    return _target_redirect("notice", f"Inferred {len(cfg['model']['entities'])} entities and {n} target fields. Review them, then confirm.")
+    return _target_setup_redirect("notice", f"Inferred {len(cfg['model']['entities'])} entities and {n} target fields. Review them, then confirm.")
 
 
 @app.post("/api/target-system/confirm")
@@ -2880,12 +2924,12 @@ async def confirm_target_system(request: Request):
         try:
             cfg = target_connector.confirm(conn, user["name"])
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_SYSTEM_CONFIRMED", user, {"schema_hash": cfg["schema_hash"]})
-    return _target_redirect("notice", "Target system confirmed. Setup is complete and locked; mapping can start.")
+    return _target_setup_redirect("notice", "Target system confirmed. Setup is complete and locked; mapping can start.")
 
 
 @app.post("/api/target-system/review-field")
@@ -2898,12 +2942,12 @@ async def review_target_field(request: Request, table: str = Form(...), column: 
         try:
             target_connector.review_field(conn, user["name"], table, column, decision, canonical_field, _canonical_types())
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_FIELD_REVIEWED", user, {"field": f"{table}.{column}", "decision": decision.upper(), "canonical_field": canonical_field.strip().upper()})
-    return _target_redirect("notice", f"{table}.{column}: decision recorded.")
+    return _target_setup_redirect("notice", f"{table}.{column}: decision recorded.")
 
 
 @app.post("/api/target-system/review-all")
@@ -2915,12 +2959,12 @@ async def review_all_target_fields(request: Request):
         try:
             target_connector.review_all(conn, user["name"])
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_FIELDS_ACCEPTED", user, {})
-    return _target_redirect("notice", "Remaining inferred fields accepted as inferred.")
+    return _target_setup_redirect("notice", "Remaining inferred fields accepted as inferred.")
 
 
 @app.post("/api/target-system/move-table")
@@ -2932,12 +2976,12 @@ async def move_target_table(request: Request, table: str = Form(...), entity: st
         try:
             target_connector.move_table(conn, user["name"], table, entity.strip() or None, _canonical_types())
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_TABLE_REASSIGNED", user, {"table": table, "entity": entity.strip() or "EXCLUDED"})
-    return _target_redirect("notice", f"{table}: moved to {entity.strip() or 'excluded'}. Review its fields again.")
+    return _target_setup_redirect("notice", f"{table}: moved to {entity.strip() or 'excluded'}. Review its fields again.")
 
 
 @app.post("/api/target-system/reopen")
@@ -2949,12 +2993,12 @@ async def reopen_target_system(request: Request, reason: str = Form("")):
         try:
             target_connector.reopen(conn, user["name"], reason)
         except ValueError as exc:
-            return _target_redirect("error", str(exc))
+            return _target_setup_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_SYSTEM_REOPENED", user, {"reason": reason.strip()[:200]})
-    return _target_redirect("notice", "Target setup reopened. Change the configuration, infer and confirm again; target mapping is paused until then.")
+    return _target_setup_redirect("notice", "Target setup reopened. Change the configuration, infer and confirm again; target mapping is paused until then.")
 
 
 @app.post("/api/target-mapping/gaps/raise")
@@ -3256,14 +3300,17 @@ async def start_adf_pipeline(request: Request):
         return back("error", "Blob storage is unreachable or the folder structure is not created yet.")
     now = datetime.now(timezone.utc)
     name = f"curated/{now.strftime('%Y%m%dT%H%M%SZ')}-{re.sub(r'[^a-z0-9]', '', migration_id.lower())[:12]}.ready"
-    marker = {"migration_id": migration_id, "approved_by": user["name"], "approved_utc": now.isoformat(), "adf_package": rec["artifact_id"],
+    setup = state_store.questionnaire_data.get("migration_setup", {}) or {}
+    trace = {"batch_id": name.rsplit("/", 1)[-1][: -len(".ready")],  # also recorded in the run log as trigger_file, so a run ties back to this marker
+             "acquisition": {"source_firm": setup.get("source_firm", ""), "target_system": setup.get("target_system", "")}}
+    marker = {"migration_id": migration_id, **trace, "approved_by": user["name"], "approved_utc": now.isoformat(), "adf_package": rec["artifact_id"],
               "adf_package_version": rec["artifact_version"], "adf_package_sha256": rec["content_sha256"], "stage_path": result["path"],
               "files": [{"name": f["name"], "rows": f["rows"]} for f in result["files"]]}
     try:
         blob_source.write_ready_marker(panel["container"], name, marker)
     except Exception as exc:
         return back("error", f"Canonical files were written but the ready marker could not be: {type(exc).__name__}. Nothing was started.")
-    _target_setup_audit("ADF_PIPELINE_STARTED", user, {"migration_id": migration_id, "ready_file": name, "adf_package": rec["artifact_id"], "stage_path": result["path"]})
+    _target_setup_audit("ADF_PIPELINE_STARTED", user, {"migration_id": migration_id, "ready_file": name, "batch_id": trace["batch_id"], "acquisition": trace["acquisition"], "adf_package": rec["artifact_id"], "stage_path": result["path"]})
     return back("notice", f"Canonical files written ({_stage_summary(result)}) and {name} placed. The factory trigger starts the pipeline; check its run in Data Factory.")
 
 
@@ -3454,7 +3501,7 @@ async def review_selected_target_fields(request: Request):
     form = await request.form()
     keys = [str(k) for k in form.getlist("rows")]
     if not keys:
-        return _target_redirect("error", "Tick at least one field to approve.")
+        return _target_setup_redirect("error", "Tick at least one field to approve.")
     common = str(form.get("common_note", "")).strip()
     canonical = _canonical_types()
     done, failed = 0, []
@@ -3483,7 +3530,7 @@ async def review_selected_target_fields(request: Request):
     finally:
         conn.close()
     kind, msg = _bulk_summary(done, failed, "recorded")
-    return _target_redirect(kind, msg)
+    return _target_setup_redirect(kind, msg)
 
 
 @app.post("/api/target-mapping/review-selected")

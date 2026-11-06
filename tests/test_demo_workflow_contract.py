@@ -70,7 +70,7 @@ def test_demo_load_route_registers_sources_and_knowledge_across_restart(tmp_path
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
         session_id,
-        {"email": "test@example.invalid", "name": "Phase 1 Test", "role": "Platform Admin"},
+        {"email": "test@example.invalid", "name": "Phase 1 Test", "role": "Migration Analyst"},
     )
 
     state = WorkspaceStateStore()
@@ -140,7 +140,7 @@ def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
     monkeypatch.setitem(
         app_module.session_mgr.active_sessions,
         session_id,
-        {"email": "test@example.invalid", "name": "Phase 1 Test", "role": "Platform Admin"},
+        {"email": "test@example.invalid", "name": "Phase 1 Test", "role": "Migration Analyst"},
     )
     state = WorkspaceStateStore()
     monkeypatch.setattr(app_module, "state_store", state)

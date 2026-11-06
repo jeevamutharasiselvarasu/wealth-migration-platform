@@ -25,14 +25,14 @@ def test_every_post_route_is_classified_by_the_role_policy():
 
 def test_policy_matrix_matches_the_documented_responsibilities():
     a = policy.allowed_roles_for
-    assert a("POST", "/api/migration/setup") == {"Platform Admin", "IMO Lead", "Migration Analyst"}
-    assert a("POST", "/api/demo/load") == {"Platform Admin"}
+    assert a("POST", "/api/migration/setup") == {"IMO Lead", "Migration Analyst"}
+    assert a("POST", "/api/demo/load") == {"Migration Analyst"}  # fills a migration workspace, so not an admin action
     assert a("POST", "/api/kernel/update") == {"Platform Admin", "Domain SME"}
-    assert a("POST", "/api/entities/upload-sample-file") == {"Platform Admin", "Migration Analyst"}
-    assert a("POST", "/api/entities/confirm-inference") == {"Platform Admin", "Migration Analyst"}
-    assert a("POST", "/api/mapping-suggestions/S-1/review") == {"Platform Admin", "Migration Analyst"}
-    assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Platform Admin", "Migration Analyst"}
-    assert a("POST", "/api/mapping-gaps/RFI-1/response") == {"Platform Admin", "Migration Analyst", "Domain SME"}
+    assert a("POST", "/api/entities/upload-sample-file") == {"Migration Analyst"}
+    assert a("POST", "/api/entities/confirm-inference") == {"Migration Analyst"}
+    assert a("POST", "/api/mapping-suggestions/S-1/review") == {"Migration Analyst"}
+    assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Migration Analyst"}
+    assert a("POST", "/api/mapping-gaps/RFI-1/response") == {"Migration Analyst", "Domain SME"}
     assert a("GET", "/api/migration/setup") is None and a("POST", "/login") is None
 
 
@@ -51,7 +51,7 @@ def test_template_roles_imo_lead_configures_and_compliance_reviewer_is_read_only
 
 
 @pytest.mark.parametrize("role,setup,upload,confirm,review,answer", [
-    ("Platform Admin", True, True, True, True, True),
+    ("Platform Admin", False, False, False, False, False),
     ("Migration Analyst", True, True, True, True, True),
     ("Domain SME", False, False, False, False, True),
     ("Validation Specialist", False, False, False, False, False),
@@ -130,7 +130,7 @@ def test_personas_are_assigned_per_user_and_a_normal_user_holds_analyst_and_vali
     assert assigned("analyst.demo@simplicitywealth.com") == {"Migration Analyst"}
     assert assigned("validator.demo@simplicitywealth.com") == {"Validation Specialist"}
     assert assigned("sme.demo@simplicitywealth.com") == {"Domain SME", "Migration Analyst", "Validation Specialist"}
-    assert assigned("jeeva@simplicitywealth.com") == set(session_mgr.ALL_ROLES)
+    assert assigned("jeeva@simplicitywealth.com") == {"Platform Admin"}  # infrastructure-only: no migration personas
     assert assigned("nobody@example.invalid") == set()
 
 
@@ -179,7 +179,7 @@ def test_setup_and_discovery_hide_forms_the_active_persona_cannot_use(tmp_path, 
                                      cookies={"session_id": "sid"}) as client:
             return (await client.get(path)).text
 
-    for role, can_setup, can_discover in (("Platform Admin", True, True), ("Migration Analyst", True, True),
+    for role, can_setup, can_discover in (("Migration Analyst", True, True),
                                           ("Domain SME", False, False), ("Validation Specialist", False, False)):
         setup = asyncio.run(page(role, "/migration-setup"))
         assert ("Save setup" in setup) is can_setup, role
@@ -289,3 +289,39 @@ def test_approved_add_field_is_applied_as_overlay_and_becomes_a_mapping_target(t
     page = asyncio.run(call("Domain SME", "Sam SME", "GET", "/canonical-changes")).text
     assert "Applied to the canonical model" in page and "nullable: true" in page
     assert conn.execute("SELECT applied_by FROM canonical_model_overlay").fetchone()[0] == "Sam SME"
+
+
+def test_platform_admin_sees_platform_setup_only_not_migration_data(tmp_path, monkeypatch):
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui import role_policy as policy
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "admin_view.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
+                        {"email": "t@example.invalid", "name": "Admin", "role": "Platform Admin"})
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+
+    async def get(path):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session_id": "sid"}) as client:
+            return await client.get(path, follow_redirects=False, headers={"accept": "text/html"})
+
+    for blocked in ("/", "/discovery", "/execution", "/entity-sample-files", "/migration-setup", "/hitl", "/validation-rules"):
+        r = asyncio.run(get(blocked))
+        assert r.status_code == 303 and r.headers["location"].startswith("/setup?error="), blocked
+    for allowed in ("/setup", "/azure-setup", "/governance"):
+        assert asyncio.run(get(allowed)).status_code != 303 or "/setup?error=" not in asyncio.run(get(allowed)).headers.get("location", ""), allowed
+    assert policy.admin_may_view("/azure-setup") and not policy.admin_may_view("/execution") and not policy.admin_may_view("/")
+    # Platform pages carry no migration frame: no workspace name or id, no pipeline stages, no workspace configuration.
+    app_module.state_store.questionnaire_data.update({"migration_id": "MIG-SECRET01", "migration_setup": {"migration_name": "Secret Deal", "entities": ["Account"]}})
+    for page in ("/setup", "/target-setup", "/azure-setup"):
+        html = asyncio.run(get(page)).text
+        assert "Platform setup" in html and "MIG-SECRET01" not in html and "Secret Deal" not in html, page
+        assert "Pipeline run" not in html and 'href="/migration-setup"' not in html, page
+    # Migration-side POSTs are closed to the admin; platform-side POSTs stay open.
+    assert "Platform Admin" not in policy.allowed_roles_for("POST", "/api/validation/run")
+    assert "Platform Admin" in policy.allowed_roles_for("POST", "/api/azure/connection")

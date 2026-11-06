@@ -90,7 +90,7 @@ def test_problems_can_be_acknowledged_then_resolved_with_a_reason(tmp_path):
 def test_failure_review_route_is_analyst_or_admin_only():
     from ui.role_policy import allowed_roles_for
     roles = allowed_roles_for("POST", "/api/execution/runs/RUN-1/failures/0/review")
-    assert roles == {"Platform Admin", "Migration Analyst"}
+    assert roles == {"Migration Analyst"}
 
 
 def test_a_run_that_read_no_rows_is_not_reported_as_succeeded():
@@ -112,7 +112,7 @@ def test_strict_value_map_counts_blank_and_unlisted_rows_as_failed_not_skipped()
 def test_bulk_review_routes_are_approval_roles_only():
     from ui.role_policy import allowed_roles_for
     for path in ("/api/execution/runs/RUN-1/failures/bulk-review", "/api/execution/recommendations/bulk-decide", "/api/execution/runs/RUN-1/promote"):
-        assert allowed_roles_for("POST", path) == {"Platform Admin", "Migration Analyst"}
+        assert allowed_roles_for("POST", path) == {"Migration Analyst"}
 
 
 def test_bulk_routes_need_a_ticked_row_and_apply_per_row_comments(tmp_path, monkeypatch):

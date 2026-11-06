@@ -171,8 +171,8 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
 
     denied = asyncio.run(call("Domain SME", "POST", "/api/target-mapping/propose"))
     assert denied.status_code == 303 and "may+not+perform" in denied.headers["location"]
-    assert "must complete the one-time target setup" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
-    assert "Use the Azure SQL database as the target" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "target setup is not confirmed yet" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
+    assert "Use the Azure SQL database as the target" in asyncio.run(call("Platform Admin", "GET", "/target-setup")).text
     assert "Complete and confirm the one-time target system setup first" in asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/propose")).headers["location"].replace("+", " ")
     cfg_form = {"target_name": "Simplicity", "endpoint": "http://127.0.0.1:8100", "include_code_lists": "on", "owner": "Sam"}
     for role in ("Domain SME", "Migration Analyst", "Validation Specialist"):
@@ -183,7 +183,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/configure", cfg_form)).headers["location"]
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-mapping/propose")).headers["location"]  # inferred but not confirmed
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/infer")).headers["location"]
-    page = asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    page = asyncio.run(call("Platform Admin", "GET", "/target-setup")).text
     assert "Inferred target model" in page and "Confirm target model" in page and "SIMP_ACCT_MASTER.ACCT_NO" in page
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/confirm")).headers["location"]  # fields not reviewed yet
     # table review: tick rows, one note per row, a change picked on a row; reviewers other than Platform Admin are refused
@@ -193,7 +193,7 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
         "rows": ["SIMP_ACCT_MASTER|ACCT_NO", "SIMP_ACCT_MASTER|OPENED_ON"], "note::SIMP_ACCT_MASTER|ACCT_NO": "checked with the SME",
         "change::SIMP_ACCT_MASTER|OPENED_ON": "OPEN_DATE", "common_note": "bulk pass"}))
     assert "notice=2+recorded" in bulk.headers["location"]
-    page = asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    page = asyncio.run(call("Platform Admin", "GET", "/target-setup")).text
     assert "checked with the SME" in page and "bulk pass" in page and 'name="rows"' in page and "Approve selected" in page
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-selected", {"rows": ["SIMP_ACCT_MASTER|ACCT_NO"], "change::SIMP_ACCT_MASTER|ACCT_NO": "NOT_A_FIELD"})).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/review-all")).headers["location"]
@@ -202,15 +202,17 @@ def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path,
     assert "error=" in locked and "locked" in locked.replace("+", " ")
     for role in ("Domain SME", "Migration Analyst", "Validation Specialist"):
         assert "may+not+perform" in asyncio.run(call(role, "POST", "/api/target-system/reopen", {"reason": "x"})).headers["location"]
-    assert "Reopen setup to reconfigure" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Reopen setup to reconfigure" in asyncio.run(call("Platform Admin", "GET", "/target-setup")).text
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": " "})).headers["location"]
     assert "notice=" in asyncio.run(call("Platform Admin", "POST", "/api/target-system/reopen", {"reason": "Owner changed the code lists"})).headers["location"]
     assert "error=" in asyncio.run(call("Platform Admin", "POST", "/api/target-mapping/propose")).headers["location"]  # mapping paused
-    assert "Use the Azure SQL database as the target" in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
+    assert "Use the Azure SQL database as the target" in asyncio.run(call("Platform Admin", "GET", "/target-setup")).text
     for step, form in (("configure", cfg_form), ("infer", None), ("review-all", None), ("confirm", None)):
         assert "notice=" in asyncio.run(call("Platform Admin", "POST", f"/api/target-system/{step}", form)).headers["location"]
-    assert "Confirm target model" not in asyncio.run(call("Platform Admin", "GET", "/target-mapping")).text
-    assert asyncio.run(call("Migration Analyst", "GET", "/target-setup")).headers["location"] == "/target-mapping#target-system"
+    assert "Confirm target model" not in asyncio.run(call("Platform Admin", "GET", "/target-setup")).text
+    analyst_view = asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text  # the migration side sees the inferred model only, never the setup forms
+    assert "Inferred target model" in analyst_view and "Reopen setup to reconfigure" not in analyst_view and "/api/target-system/" not in analyst_view
+    assert asyncio.run(call("Platform Admin", "GET", "/target-mapping")).headers["location"].startswith("/setup?error=")  # the admin sees platform setup only
     assert "No target mapping proposals" in asyncio.run(call("Migration Analyst", "GET", "/target-mapping")).text
     early = asyncio.run(call("Migration Analyst", "POST", "/api/target-mapping/preview"))
     assert "error=" in early.headers["location"]
@@ -478,7 +480,7 @@ def test_demo_load_is_restricted_to_flagged_account_and_infers_but_does_not_conf
     monkeypatch.setitem(mgr.authorized_users, "flagged@example.invalid", {"can_load_demo": True})
     monkeypatch.setitem(mgr.authorized_users, "plain@example.invalid", {"can_load_demo": False})
     for sid, email in (("s-flag", "flagged@example.invalid"), ("s-plain", "plain@example.invalid")):
-        monkeypatch.setitem(mgr.active_sessions, sid, {"email": email, "name": "T", "role": "Platform Admin"})
+        monkeypatch.setitem(mgr.active_sessions, sid, {"email": email, "name": "T", "role": "Migration Analyst"})
 
     from control_plane.services import sql_target as st  # the target is the Azure SQL database; its catalog is stood in by the demo schema
     c0 = db.get_db_connection()
@@ -527,7 +529,7 @@ def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch
     mgr = app_module.session_mgr
     monkeypatch.setattr(mgr, "demo_mode", True)
     monkeypatch.setitem(mgr.authorized_users, "jeeva@simplicitywealth.com", {"can_load_demo": True, "roles": ["Platform Admin"]})
-    monkeypatch.setitem(mgr.active_sessions, "s-j", {"email": "jeeva@simplicitywealth.com", "name": "J", "role": "Platform Admin"})
+    monkeypatch.setitem(mgr.active_sessions, "s-j", {"email": "jeeva@simplicitywealth.com", "name": "J", "role": "Migration Analyst"})
     monkeypatch.setitem(mgr.active_sessions, "s-a", {"email": "analyst.demo@simplicitywealth.com", "name": "A", "role": "Migration Analyst"})
 
     async def get(sid, path):

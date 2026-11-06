@@ -128,12 +128,13 @@ class SessionManager:
         return bool(self.demo_mode and reg and reg.get("can_load_demo"))
 
     def assigned_roles(self, email: str) -> set:
-        """Personas a user may act under: Platform Admin holds all; others hold their configured roles."""
+        """Personas a user may act under: their configured roles. A Platform Admin is infrastructure-only and holds just
+        that persona (platform setup, no migration data); migration personas are separate accounts or assigned roles."""
         email = email.strip().lower()
         user = self.authorized_users.get(email) or (self._registry_user(email) or {})
         roles = set(user.get("roles", []))
         if user.get("default_role") == "Platform Admin" or "Platform Admin" in roles:
-            return set(self.ALL_ROLES)
+            return {"Platform Admin"}
         return roles & set(self.ALL_ROLES)
 
     def select_role(self, session_id: str, role: str) -> bool:

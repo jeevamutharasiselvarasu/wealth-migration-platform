@@ -95,3 +95,32 @@ def test_azure_sql_can_be_the_target_system_and_is_inferred_from_its_catalog(con
     assert cfg["status"] == "INFERRED" and "Account" in cfg["model"]["entities"] and cfg["model"]["entities"]["Account"]["target_table"] == ["ORION_MCL_ACCOUNT"] or "ORION_MCL_ACCOUNT" in str(cfg["model"]["entities"]["Account"]["target_table"])
     monkeypatch.setattr(st, "test_connection", lambda c: {"status": "CONNECTED", "found_tables": "", "check_detail": "Signed in. Schema exists but has no tables yet."})
     assert tc.configure_azure_sql(conn, "Ann", "Sam")["status"] == "CONFIGURED"  # no tables yet: not connected for inference
+
+
+class _LogCur:
+    def __init__(self, exists): self.exists, self.sql, self.params = exists, "", ()
+    def execute(self, sql, params=()): self.sql, self.params = sql, params
+    def fetchone(self): return (1,) if self.exists else None
+
+
+class _LogDb:
+    def __init__(self, exists): self.c, self.closed = _LogCur(exists), False
+    def cursor(self): return self.c
+    def close(self): self.closed = True
+
+
+def test_run_log_status_reports_missing_present_and_unverifiable(conn, monkeypatch):
+    assert st.run_log_status(conn)["checked"] is False  # SQL target not set up
+    st.save(conn, "Ann", GOOD)
+    monkeypatch.delenv("SQL_TARGET_PASSWORD", raising=False)
+    assert st.run_log_status(conn)["checked"] is False  # no password on the server
+    monkeypatch.setenv("SQL_TARGET_PASSWORD", "s3cret")
+    db = _LogDb(False)
+    missing = st.run_log_status(conn, lambda c, p: db)
+    assert missing == {"checked": True, "exists": False, "detail": missing["detail"]} and "02_run_log.sql" in missing["detail"] and db.closed
+    assert db.c.params == ("simplicity", "xodus_run_log") and "sys.tables" in db.c.sql  # catalog query only, parameterised
+    assert st.run_log_status(conn, lambda c, p: _LogDb(True))["exists"] is True
+
+    def boom(c, p): raise RuntimeError("Login failed; password s3cret rejected")
+    failed = st.run_log_status(conn, boom)
+    assert failed["checked"] is False and "s3cret" not in failed["detail"] and "***" in failed["detail"]

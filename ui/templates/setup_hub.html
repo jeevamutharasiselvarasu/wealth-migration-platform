@@ -10,7 +10,9 @@
     </div>
   </div>
   <section class="kpis k6" aria-label="Setup summary">
+    {% if not platform_only %}
     <div class="kpi"><small>Workspace configuration</small><b>{{ 'Saved' if configured else 'Needs setup' }}</b><span>{{ setup_entities|length }} entit{{ 'y' if setup_entities|length == 1 else 'ies' }} in scope</span></div>
+    {% endif %}
     <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if target_confirmed else 'Not confirmed' }}</b><span>{{ target_system or 'no target recorded' }}</span></div>
     <div class="kpi"><small>Firm knowledge</small><b>{{ knowledge_saved }}</b><span>last saved</span></div>
     <div class="kpi"><small>Azure Data Factory</small><b>{{ azure_status|title }}</b><span>{{ azure_factory or 'no factory saved' }}</span></div>
@@ -18,12 +20,14 @@
     <div class="kpi"><small>GitHub</small><b>{{ git_status|title }}</b><span>{{ git_repo or 'no repository saved' }}</span></div>
   </section>
   <div class="hub">
+    {% if not platform_only %}
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Workspace configuration</h3><span class="pill {{ 'approved' if configured else 'review' }}">{{ 'Saved' if configured else 'Needs setup' }}</span></div>
       <p class="fh">Source firm, target system, canonical version, entities in scope and source access.</p>
       <a class="btn p sm" href="/migration-setup">Open configuration →</a></section>
+    {% endif %}
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Target system</h3><span class="pill {{ 'approved' if target_confirmed else 'review' }}">{{ 'Confirmed' if target_confirmed else 'Not confirmed' }}</span></div>
       <p class="fh">One-time step: connect, infer and confirm the target. Canonical → target mapping then happens in stage 06 Target mapping.</p>
-      <a class="btn p sm" href="/target-mapping#target-system">Open target system →</a></section>
+      <a class="btn p sm" href="/target-setup">Open target system →</a></section>
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Firm knowledge</h3><span class="pill queued">{{ knowledge_saved }}</span></div>
       <p class="fh">Knowledge assets and the discovery form that give the agents firm context.</p>
       <a class="btn p sm" href="/firm-knowledge">Open firm knowledge →</a></section>

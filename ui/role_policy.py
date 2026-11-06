@@ -17,17 +17,35 @@ VALIDATOR = "Validation Specialist"
 
 # Roles are personas: a user may hold several (a normal user holds Analyst + Validation Specialist,
 # the Domain SME holds both plus the canonical-model persona) and acts under the persona chosen in
-# the session. Platform Admin holds every capability.
-PLATFORM_ROLES: Set[str] = {ADMIN}                    # demo data load, workflow replay (platform maintenance)
-SETUP_ROLES: Set[str] = {ADMIN, IMO_LEAD, ANALYST}              # migration setup, scope, source environments
-DISCOVERY_ROLES: Set[str] = {ADMIN, ANALYST}          # upload, profiling, mapping generation
-SCOPE_REVIEW_ROLES: Set[str] = {ADMIN, ANALYST}       # confirm/reject entity inference
-DEFINITION_ROLES: Set[str] = {ADMIN, ANALYST, SME}    # answer information requests (SME: canonical meaning)
-APPROVAL_ROLES: Set[str] = {ADMIN, ANALYST}           # mapping/transformation approval, overrides
-CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes, decide change requests
-CHANGE_REQUEST_ROLES: Set[str] = {ADMIN, ANALYST}     # raise a canonical change request
-VALIDATION_ROLES: Set[str] = {ADMIN, VALIDATOR}       # validation-side evaluation
-TARGET_PREVIEW_ROLES: Set[str] = {ADMIN, ANALYST, VALIDATOR}  # read-only canonical-to-target dry run
+# the session. The Platform Admin is infrastructure-focused: it holds only the platform-level
+# capabilities below and none of the migration-side ones, so it never sees or acts on migration data.
+DEMO_ROLES: Set[str] = {ANALYST}                      # one-click demo load fills a migration workspace (still needs the per-account can_load_demo grant)
+PLATFORM_ROLES: Set[str] = {ADMIN}                    # platform setup (Azure, Git, SQL, blob, target system), users, demo load, replay
+SETUP_ROLES: Set[str] = {IMO_LEAD, ANALYST}                     # migration setup, scope, source environments
+DISCOVERY_ROLES: Set[str] = {ANALYST}                 # upload, profiling, mapping generation
+SCOPE_REVIEW_ROLES: Set[str] = {ANALYST}              # confirm/reject entity inference
+DEFINITION_ROLES: Set[str] = {ANALYST, SME}           # answer information requests (SME: canonical meaning)
+APPROVAL_ROLES: Set[str] = {ANALYST}                  # mapping/transformation approval, overrides
+CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes, decide change requests (platform level)
+CHANGE_REQUEST_ROLES: Set[str] = {ANALYST}            # raise a canonical change request
+VALIDATION_ROLES: Set[str] = {VALIDATOR}              # validation-side evaluation
+TARGET_PREVIEW_ROLES: Set[str] = {ANALYST, VALIDATOR} # read-only canonical-to-target dry run
+
+# Pages the Platform Admin may open: platform setup and administration only. Everything else (migration
+# workspaces, files, mappings, runs, validation) is migration data and is not shown to the Platform Admin.
+ADMIN_VIEW_PREFIXES = (
+    "/static", "/login", "/logout", "/register", "/healthz", "/persona-selection", "/suite", "/setup",
+    "/azure-setup", "/github-setup", "/target-setup", "/admin/users", "/governance", "/tenant", "/models",
+    "/firm-knowledge", "/canonical-changes", "/api/admin", "/api/azure", "/api/git", "/api/sql-target",
+    "/api/users", "/api/target-system", "/api/blob/layout", "/api/blob/container",
+)
+
+
+def admin_may_view(path: str) -> bool:
+    """True when the Platform Admin persona may open this path (platform setup/administration, never migration data).
+    "/" is the migration dashboard, so it is not one of them."""
+    return any(path == p or path.startswith(p + "/") for p in ADMIN_VIEW_PREFIXES)
+
 
 # Routes any authenticated user may POST (authentication/persona handled by their own checks).
 OPEN_POST_PATHS = {"/login", "/persona-selection", "/register"}
@@ -38,7 +56,7 @@ POST_POLICY = [
     (r"^/api/git/connection(/test)?$", PLATFORM_ROLES),
     (r"^/api/sql-target(/test)?$", PLATFORM_ROLES),
     (r"^/api/git/publish$", APPROVAL_ROLES),
-    (r"^/api/demo/load$", PLATFORM_ROLES),
+    (r"^/api/demo/load$", DEMO_ROLES),
     (r"^/api/users/[^/]+/decision$", PLATFORM_ROLES),
     (r"^/api/migration/new$", SETUP_ROLES),
     (r"^/api/migration/open$", SETUP_ROLES),
@@ -80,6 +98,7 @@ POST_POLICY = [
     (r"^/api/execution/start-pipeline$", APPROVAL_ROLES),
     (r"^/api/target-validation/run$", VALIDATION_ROLES),
     (r"^/api/target-validation/exceptions$", VALIDATION_ROLES),
+    (r"^/api/target-validation/signoff$", VALIDATION_ROLES),
     (r"^/api/target-validation/exceptions/[^/]+/decision$", APPROVAL_ROLES),
     (r"^/api/validation/scenarios$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/(suggest|[^/]+/adopt)$", VALIDATION_ROLES),

@@ -27,7 +27,7 @@
   <div class="wrap pb-in">
     <span class="lock"><span class="mk">XA</span><span><strong>Data Migration</strong><span>Agentic migration workbench</span></span></span>
     <div class="pb-ctx">
-      {% if lobby %}<span>Scope</span><b>All migration workspaces</b>{% else %}<span>Migration</span><b>{{ pg.facts.name if pg and pg.facts else 'New migration' }}</b>
+      {% if platform_only %}<span>Scope</span><b>Platform setup</b>{% elif lobby %}<span>Scope</span><b>All migration workspaces</b>{% else %}<span>Migration</span><b>{{ pg.facts.name if pg and pg.facts else 'New migration' }}</b>
       {% if pg and pg.facts %}<span class="pbchip">{{ pg.facts.migration_id }}</span>{% endif %}{% endif %}
     </div>
     <span class="sp"></span>
@@ -42,6 +42,15 @@
 {% endif %}
 <div class="wrap app{% if space != "dm" %} solo{% endif %}">
   {% if space == "dm" %}<aside class="side" aria-label="Data migration navigation">
+    {% if platform_only %}
+    {# Platform Admin: platform setup only, never migration workspaces or their pipeline. #}
+    <div class="sh">Platform setup</div>
+    <a href="/setup" class="nv {% if path == '/setup' %}on{% endif %}" {% if path == '/setup' %}aria-current="page"{% endif %}>Setup overview</a>
+    <a href="/target-setup" class="nv {% if path == '/target-setup' %}on{% endif %}" {% if path == '/target-setup' %}aria-current="page"{% endif %}>Target system</a>
+    <a href="/azure-setup" class="nv {% if path == '/azure-setup' %}on{% endif %}" {% if path == '/azure-setup' %}aria-current="page"{% endif %}>Azure connection</a>
+    <a href="/github-setup" class="nv {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>
+    <a href="/models" class="nv {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
+    {% else %}
     <div class="sh">Data migration</div>
     {% if lobby %}
     <a href="/migrations" class="nv on" aria-current="page">Migration workspaces</a>
@@ -91,6 +100,7 @@
     <div class="sh">Pilot scope</div>
     <div class="scope"><span>Account</span><span>Household</span><span>Client</span></div>
     <div class="fh" style="color:#8FA9BC;padding:6px 10px">Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>
+    {% endif %}
     {% endif %}
   </aside>{% endif %}
   <main class="main xa-legacy" id="main-content">

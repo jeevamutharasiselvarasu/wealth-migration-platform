@@ -267,7 +267,7 @@ def test_default_scenarios_come_from_required_approved_fields_and_keys_and_stay_
 def test_suggest_and_adopt_routes_are_validator_or_admin_only():
     from ui.role_policy import allowed_roles_for
     for path in ("/api/validation/scenarios/suggest", "/api/validation/scenarios/SCN-1/adopt"):
-        assert allowed_roles_for("POST", path) == {"Platform Admin", "Validation Specialist"}
+        assert allowed_roles_for("POST", path) == {"Validation Specialist"}
 
 
 def test_signoff_evidence_is_saved_with_the_migration_and_hash_checked(tmp_path):

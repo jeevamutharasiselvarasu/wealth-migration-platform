@@ -195,7 +195,7 @@ def test_setup_button_opens_an_earlier_migration_on_the_setup_hub_and_ignores_fr
     assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id), ("next", "/setup")]).headers["location"] == "/setup"
     assert _call(app_module, sid, "POST", "/api/migration/open", [("migration_id", first_id), ("next", "https://evil.example/")]).headers["location"] == "/"
     hub = _call(app_module, sid, "GET", "/setup").text
-    for href in ("/migration-setup", "/target-mapping#target-system", "/firm-knowledge"):
+    for href in ("/migration-setup", "/target-setup", "/firm-knowledge"):
         assert f'href="{href}"' in hub
     for path in ("/migration-setup", "/firm-knowledge"):
         assert 'aria-label="Setup navigation"' in _call(app_module, sid, "GET", path).text

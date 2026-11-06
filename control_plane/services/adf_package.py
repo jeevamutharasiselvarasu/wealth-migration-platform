@@ -46,6 +46,13 @@ def run_log_ddl(schema: str) -> str:
             f"CREATE INDEX IX_xodus_run_log_run ON {t} (migration_id, pipeline_run_id, logged_utc);\nGO\n")
 
 
+def all_or_nothing(statements: List[str]) -> str:
+    """One script that runs every transformation statement in a single transaction and rolls everything back on any error."""
+    body = "\n".join(st.rstrip() if st.rstrip().endswith(";") else st.rstrip() + ";" for st in statements)
+    return ("SET XACT_ABORT ON;\nBEGIN TRY\n    BEGIN TRANSACTION;\n" + body +
+            "\n    COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n    THROW;\nEND CATCH")
+
+
 def _expr(value: str) -> Dict[str, str]:
     return {"value": value, "type": "Expression"}
 
@@ -164,7 +171,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
             activities.append({"name": f"Log_Fail_{name}", "type": "Script", "linkedServiceName": ls_ref,
                                "dependsOn": [{"activity": name, "dependencyConditions": ["Failed"]}],
                                "typeProperties": {"scripts": [_log_insert(log_schema, name, "FAILED", message=_error_text(name))]}})
-    run_sql = ([{"type": "NonQuery", "text": st.rstrip()} for st in sql["statements"]] if merge else [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}])
+    # All or nothing: every MERGE runs in one transaction, so a failure leaves the target tables exactly as they were (the whole load stops).
+    run_sql = ([{"type": "NonQuery", "text": all_or_nothing(sql["statements"])}] if merge else [{"type": "NonQuery", "text": f"EXEC {sm['procedure']};"}])
     activities.append({"name": "Run_Transformation_SQL" if not merge else "Merge_Into_Target", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                        "dependsOn": [{"activity": c, "dependencyConditions": ["Succeeded"]} for c in copies],
                        "typeProperties": {"scripts": run_sql}})

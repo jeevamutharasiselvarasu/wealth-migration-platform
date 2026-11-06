@@ -441,7 +441,7 @@ def test_knowledge_forms_are_disabled_for_roles_without_edit_rights(tmp_path, mo
     for role in ("Validation Specialist", "Domain SME"):
         html = asyncio.run(page(role))
         assert html.count("<fieldset disabled") == 3 and "Read-only for " + role in html
-    for role in ("Migration Analyst", "Platform Admin"):
+    for role in ("Migration Analyst",):
         html = asyncio.run(page(role))
         assert "<fieldset disabled" not in html and "Read-only for" not in html
 
@@ -463,7 +463,7 @@ def test_information_request_form_only_for_roles_allowed_to_answer(tmp_path, mon
         "request_id": "RFI-T1", "migration_id": "MIG-X", "entity": "Account", "canonical_field": "CUSTODIAN_CODE",
         "status": "OPEN", "question": "Which source field supplies CUSTODIAN_CODE?", "source_file": "a.csv"}]
     monkeypatch.setattr(app_module, "state_store", store)
-    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid", {"email": "t@example.invalid", "name": "T", "role": "Platform Admin"})
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid", {"email": "t@example.invalid", "name": "T", "role": "Migration Analyst"})
     db.init_db()
 
     async def page(role):
@@ -472,7 +472,7 @@ def test_information_request_form_only_for_roles_allowed_to_answer(tmp_path, mon
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid"}) as client:
             return (await client.get("/agent-pipeline")).text
 
-    for role, shown in (("Platform Admin", True), ("Migration Analyst", True), ("Domain SME", True), ("Validation Specialist", False)):
+    for role, shown in (("Migration Analyst", True), ("Domain SME", True), ("Validation Specialist", False)):
         html = asyncio.run(page(role))
         assert ("/api/mapping-gaps/RFI-T1/response" in html) is shown, role
         assert ("Read-only for " + role in html) is (not shown), role
@@ -555,7 +555,7 @@ def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/migrations"' in base  # the top-bar Data Migration tab opens the workspaces list
     assert 'href="/setup"' in base  # setup inputs sit behind one Setup item in the Data Migration rail
     tabs = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "_setup_tabs.html").read_text(encoding="utf-8")
-    for href in ("/migration-setup", "/target-mapping#target-system", "/firm-knowledge"):
+    for href in ("/migration-setup", "/target-setup", "/firm-knowledge"):
         assert f'href="{href}"' in tabs  # the three setup pages share one tab strip
     for href in ("/validation-rules", "/execution", "/reconciliation", "/target-mapping"):
         assert f"'{href}'" in base  # stages 05, 06 and 07 (mapping validation review, execution, validation rules)
@@ -590,7 +590,7 @@ def test_persona_selector_switches_in_place_and_rejects_open_redirects(tmp_path,
     import ui.state as state_module
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "p.db"); monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     app_module.state_store = state_module.WorkspaceStateStore(); db.init_db()
-    app_module.session_mgr.active_sessions["sid-p"] = {"email": "jeeva@simplicitywealth.com", "name": "Jeeva S.", "role": "Platform Admin"}
+    app_module.session_mgr.active_sessions["sid-p"] = {"email": "sme.demo@simplicitywealth.com", "name": "Sam S.", "role": "Migration Analyst"}  # a multi-persona user; the Platform Admin holds one persona only
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://t", cookies={"session_id": "sid-p"}) as c:
@@ -600,7 +600,7 @@ def test_persona_selector_switches_in_place_and_rejects_open_redirects(tmp_path,
             back = await c.post("/persona-selection", data={"role": "Migration Analyst", "next": "/migration-setup"})
             assert back.headers["location"] == "/migration-setup"
             assert app_module.session_mgr.active_sessions["sid-p"]["role"] == "Migration Analyst"
-            evil = await c.post("/persona-selection", data={"role": "Platform Admin", "next": "//evil.example"})
+            evil = await c.post("/persona-selection", data={"role": "Validation Specialist", "next": "//evil.example"})
             assert evil.headers["location"] == "/suite"
     asyncio.run(run())
     app_module.session_mgr.active_sessions.pop("sid-p", None)
@@ -639,13 +639,13 @@ def test_assistant_tenant_and_workspace_views_follow_the_template(tmp_path, monk
     import ui.state as state_module
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "v.db"); monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     app_module.state_store = state_module.WorkspaceStateStore(); db.init_db()
-    app_module.session_mgr.active_sessions["sid-v"] = {"email": "jeeva@simplicitywealth.com", "name": "Jeeva S.", "role": "Platform Admin"}
+    app_module.session_mgr.active_sessions["sid-v"] = {"email": "sme.demo@simplicitywealth.com", "name": "Sam S.", "role": "Migration Analyst"}
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_module.app), base_url="http://t", cookies={"session_id": "sid-v"}) as c:
             for path in ("/", "/suite", "/continue-data-migration", "/agent-pipeline"):
                 page = (await c.get(path)).text
-                assert 'data-trole="PA"' in page and "/static/assistant.js" in page and "/static/assistant.css" in page, path
+                assert 'data-trole="MA"' in page and "/static/assistant.js" in page and "/static/assistant.css" in page, path
             tenant = await c.get("/tenant")
             assert tenant.status_code == 200 and "Users &amp; access" in tenant.text and 'href="/admin/users"' in tenant.text
             for view in ("workspaces", "command", "validation", "team", "bogus"):

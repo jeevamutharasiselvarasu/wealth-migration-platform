@@ -12,7 +12,7 @@
     </div>
   </div>
   <div class="ins"><b>This stage.</b> Read-only: review the SQL, download it, and build the ADF package that runs it. Change a mapping or rule in <a href="/target-mapping" class="text-blue-700">stage 06 Target mapping</a>; this page follows it.</div>
-  {% if not spec %}<div class="empty">The target system is not set up yet. <a href="/target-mapping#target-system" class="text-blue-700">Set it up and approve mappings first.</a></div>
+  {% if not spec %}<div class="empty">The target system is not set up yet. <a href="/target-setup" class="text-blue-700">Set it up and approve mappings first.</a></div>
   {% elif not can_preview %}<div class="empty">Your role cannot generate the transformation SQL.</div>{% endif %}
   {% if can_preview and spec %}
   <section class="card" id="transformation-sql">

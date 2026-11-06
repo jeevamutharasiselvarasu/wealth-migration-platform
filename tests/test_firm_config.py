@@ -83,7 +83,7 @@ def _setup_client(tmp_path, monkeypatch, name):
     monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = f"firm-config-{name}"
     monkeypatch.setitem(app_module.session_mgr.active_sessions, session_id,
-                        {"email": "test@example.invalid", "name": "Firm Config Test", "role": "Platform Admin"})
+                        {"email": "test@example.invalid", "name": "Firm Config Test", "role": "Migration Analyst"})
     state = WorkspaceStateStore()
     monkeypatch.setattr(app_module, "state_store", state)
     return app_module, session_id, state
@@ -614,14 +614,14 @@ def test_review_controls_are_shown_only_to_approving_roles(tmp_path, monkeypatch
                                      cookies={"session_id": session_id}) as client:
             return (await client.get("/agent-pipeline")).text
 
-    for role, allowed in (("Platform Admin", True), ("Migration Analyst", True),
+    for role, allowed in (("Migration Analyst", True),
                           ("Domain SME", False), ("Validation Specialist", False)):
         html = asyncio.run(page(role))
         assert ("Approve selected" in html) is allowed, role
         assert ("Approve all Account mappings" in html) is allowed, role
         assert '<details class="entity-fold" open' in html and "pending proposals" in html, role  # each entity queue folds
         assert ("Read-only for" in html) is (not allowed), role
-        can_generate = role in ("Platform Admin", "Migration Analyst")
+        can_generate = role in ("Migration Analyst",)
         assert ("Generate proposals from approved files" in html) is can_generate, role
 
 

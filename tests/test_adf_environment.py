@@ -126,3 +126,12 @@ def test_ready_marker_goes_under_curated_only_and_ends_with_ready():
     for bad in ("stage/x.ready", "curated/x.csv", "curated/../raw/x.ready", "raw/curated/x.ready"):
         with pytest.raises(ValueError, match="curated/"):
             blob_source.write_ready_marker("c", bad, {})
+
+
+def test_merge_runs_all_statements_in_one_transaction_so_a_failure_stops_the_whole_load():
+    from control_plane.services import adf_package
+
+    script = adf_package.all_or_nothing(["MERGE a;", "MERGE b"])
+    assert script.startswith("SET XACT_ABORT ON;") and "BEGIN TRANSACTION;" in script and "COMMIT TRANSACTION;" in script
+    assert "ROLLBACK TRANSACTION" in script and "THROW;" in script
+    assert script.index("MERGE a;") < script.index("MERGE b;") < script.index("COMMIT TRANSACTION;")  # a missing semicolon is added

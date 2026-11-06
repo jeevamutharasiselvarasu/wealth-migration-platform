@@ -123,6 +123,35 @@ def test_connection(conn: sqlite3.Connection, connect: Callable[..., Any] = _def
     return get_config(conn)
 
 
+RUN_LOG_TABLE = "xodus_run_log"
+
+
+def run_log_status(conn: sqlite3.Connection, connect: Callable[..., Any] = _default_connect, table: str = RUN_LOG_TABLE) -> Dict[str, Any]:
+    """Does the run-log table the pipeline writes to exist in the target schema? Read-only catalog query, used before the ADF package
+    is published so a missing table is found at deploy time, not after the first run.
+    Returns {"checked": bool, "exists": bool | None, "detail": str}; checked is False when the database cannot be reached or is not set up."""
+    cfg = get_config(conn)
+    if not cfg:
+        return {"checked": False, "exists": None, "detail": "The SQL target is not set up, so the run-log table could not be checked."}
+    password = os.environ.get(cfg["password_env_var"], "")
+    user = cfg["username_effective"]
+    if not (user and password):
+        return {"checked": False, "exists": None, "detail": "The SQL user name or password is missing on the server, so the run-log table could not be checked."}
+    try:
+        db = connect({**cfg, "username": user}, password)
+        try:
+            cur = db.cursor()
+            cur.execute("SELECT 1 FROM sys.tables t JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = %s AND t.name = %s", (cfg["schema_name"], table))
+            exists = cur.fetchone() is not None
+        finally:
+            db.close()
+    except Exception as exc:  # never include the password in the message
+        return {"checked": False, "exists": None, "detail": f"The run-log table could not be checked: {type(exc).__name__}: {str(exc)[:200].replace(password, '***')}"}
+    detail = (f"Run-log table {cfg['schema_name']}.{table} exists." if exists else
+              f"Run-log table {cfg['schema_name']}.{table} does not exist. Run sql/02_run_log.sql from the ADF package against {cfg['database_name']} first.")
+    return {"checked": True, "exists": exists, "detail": detail}
+
+
 _GROUPS = {"date": "date", "datetime": "date", "datetime2": "date", "smalldatetime": "date", "int": "integer", "bigint": "integer", "smallint": "integer",
            "tinyint": "integer", "decimal": "decimal", "numeric": "decimal", "float": "decimal", "real": "decimal", "money": "decimal", "bit": "boolean"}
 

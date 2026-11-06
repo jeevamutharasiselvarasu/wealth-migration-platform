@@ -200,7 +200,7 @@
                 <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">Run after the pipeline succeeds. Each check is one count query against the real database, built from the approved mappings: staging row counts match what the platform wrote, every staging key reached the target, target keys are unique, required columns are filled, no account or client points at a missing household, and the latest pipeline run succeeded. No values are read back or shown, and nothing is changed.</p>
             </div>
             {% if can_run_validation %}<form action="/api/target-validation/run" method="post"><button class="btn p sm" data-testid="run-target-validation">Run target validation</button></form>
-            {% else %}<span class="text-[10px] text-[#5A6A88]">Validation Specialist or Platform Admin runs it.</span>{% endif %}
+            {% else %}<span class="text-[10px] text-[#5A6A88]">A Validation Specialist runs it.</span>{% endif %}
         </div>
         {% if tval %}
         <p class="mt-3 text-xs text-[#41506B]">Run <span class="font-mono">{{ tval.run_id }}</span> by {{ tval.executed_by }} · {{ tval.executed_utc[:19] }} · result <span class="pill {% if tval.effective_status == 'PASS' %}approved{% elif tval.effective_status == 'FAIL' %}failed{% else %}review{% endif %}" data-testid="tval-status">{{ tval.effective_status }}</span>
@@ -229,13 +229,16 @@
             {% endfor %}
             </tbody>
         </table>
+        {% if tval.signoff %}<p class="mt-3 text-xs" data-testid="tval-signed-off"><span class="pill approved">SIGNED OFF</span> by {{ tval.signoff.signed_by }} · {{ tval.signoff.signed_utc[:19] }} — {{ tval.signoff.comment }}</p>
+        {% elif tval.effective_status == 'PASS' and can_run_validation %}<form action="/api/target-validation/signoff" method="post" class="mt-3 flex flex-wrap gap-2" data-testid="tval-signoff-form"><input type="hidden" name="run_id" value="{{ tval.run_id }}"><input name="comment" required placeholder="Sign-off comment" aria-label="Sign-off comment" class="input" style="min-width:280px"><button class="btn p sm">Sign off this run</button></form>
+        {% else %}<p class="mt-3 text-xs text-[#5A6A88]">Not signed off yet. A Validation Specialist signs off once the run passes (failures accepted through an approved exception count as passed).</p>{% endif %}
         {% else %}<p class="mt-3 text-xs text-[#5A6A88]">Not run yet for this migration.</p>{% endif %}
     </section>
     {% endif %}
     {% if view == 'rules' %}
     <section id="validation-scenarios" class="card">
         <h3 style="font-size:16px">Validation scenarios</h3>
-        <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst or Platform Admin approves (never the proposer).</p>
+        <p class="mt-1 text-xs text-[#5A6A88]">Additional checks defined by the Validation Specialist. They run on canonical-shaped rows with the next validation run. Post-execution scenarios are recorded but shown as not evaluated until data-plane results exist. Findings can be accepted only through an exception that a Migration Analyst approves (never the proposer).</p>
         {% if scenarios %}<div class="mt-3 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr><th>Id</th><th>Entity</th><th>Check</th><th>Field</th><th>Stage</th><th>Why</th><th>Status</th><th></th></tr></thead><tbody>
         {% for s in scenarios %}<tr><td class="font-mono">{{ s.scenario_id }}</td><td>{{ s.entity_name }}</td><td class="font-mono">{{ s.check_type }}</td><td class="font-mono">{{ s.field_name or '' }}</td><td>{{ s.stage }}</td><td>{{ s.description }}</td><td>{{ s.status }}</td>
           <td>{% if can_run_validation and s.status == 'DRAFT' %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/adopt" method="post" class="inline"><button class="btn g sm">Adopt</button></form> {% endif %}{% if can_run_validation and s.status in ('ACTIVE', 'DRAFT') %}<form action="/api/validation/scenarios/{{ s.scenario_id }}/retire" method="post" class="inline"><button class="btn g sm">{{ 'Dismiss' if s.status == 'DRAFT' else 'Retire' }}</button></form>{% endif %}</td></tr>{% endfor %}
