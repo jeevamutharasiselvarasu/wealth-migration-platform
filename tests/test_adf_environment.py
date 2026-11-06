@@ -135,3 +135,24 @@ def test_merge_runs_all_statements_in_one_transaction_so_a_failure_stops_the_who
     assert script.startswith("SET XACT_ABORT ON;") and "BEGIN TRANSACTION;" in script and "COMMIT TRANSACTION;" in script
     assert "ROLLBACK TRANSACTION" in script and "THROW;" in script
     assert script.index("MERGE a;") < script.index("MERGE b;") < script.index("COMMIT TRANSACTION;")  # a missing semicolon is added
+
+
+def test_every_staging_row_carries_a_trace_and_old_staging_tables_get_an_add_only_script():
+    from control_plane.services import sql_package
+
+    env = env_mod.resolve("MIG-E439077124", CFG, "afswstorage", "xodus-lake", emulator=False)
+    pkg = _package("MIG-E439077124", env)
+    files, man = pkg["files"], json.loads(pkg["files"]["manifest.json"])
+    trace = [c for c, _ in sql_package.TRACE_COLUMNS]
+    ddl, alter = files["sql/00_staging_tables.sql"], files["sql/03_trace_columns.sql"]
+    for table in man["stagingTables"]:
+        for c in trace:
+            assert f"COL_LENGTH(N'staging.{table}', N'{c}') IS NULL" in alter  # adds only what is missing, safe to rerun
+        assert ddl.count("[xodus_run_id]") == len(man["stagingTables"])
+    statements = "\n".join(l for l in alter.split("\n") if not l.startswith("--")).upper()
+    assert "DROP" not in statements and "UPDATE" not in statements and "ALTER COLUMN" not in statements
+    assert not any(c in cols for cols in man["stagingColumns"].values() for c in trace)  # never written into the stage files
+    pipeline = next(json.loads(v)["properties"] for n, v in files.items() if n.startswith("pipeline/"))
+    copies = [a for a in pipeline["activities"] if a["type"] == "Copy"]
+    assert copies and all({x["name"] for x in a["typeProperties"]["source"]["additionalColumns"]} == {"xodus_migration_id", "xodus_run_id", "xodus_source_file"} for a in copies)
+    assert all(next(x for x in a["typeProperties"]["source"]["additionalColumns"] if x["name"] == "xodus_source_file")["value"] == "$$FILEPATH" for a in copies)

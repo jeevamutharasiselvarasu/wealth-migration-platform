@@ -94,7 +94,7 @@ def test_setup_page_and_routes_are_admin_only_and_never_echo_the_secret(tmp_path
     page = asyncio.run(call("sid", "GET", "/azure-setup"))
     assert page.status_code == 200 and "super-secret" not in page.text and "Present" in page.text and 'name="tenant_id"' in page.text
     viewer = asyncio.run(call("an", "GET", "/azure-setup"))
-    assert viewer.status_code == 200 and "Read-only for Migration Analyst" in viewer.text
+    assert viewer.status_code == 303 and viewer.headers["location"].startswith("/setup?error=")  # platform setup is the admin's page only
 
 
 def test_source_container_is_optional_but_validated_and_old_tables_gain_the_column():

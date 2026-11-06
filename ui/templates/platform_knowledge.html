@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% include "_setup_tabs.html" %}
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Platform setup · Knowledge</div>
+      <h1>Platform knowledge</h1>
+      <p>What the platform knows before any migration starts: the vocabularies the inference services read, the canonical contract and shared domain notes. It is the same for every migration workspace. A firm's own documents belong to that migration's Firm knowledge, not here.</p>
+    </div>
+  </div>
+  <section class="card" data-testid="platform-knowledge-list">
+    <h3 style="font-size:16px">Assets <span class="font-mono text-[10px] font-normal text-[#8A97B2]">{{ assets|length }}</span></h3>
+    <table class="mt-2 w-full text-[12px]">
+      <thead><tr class="text-left text-[#5A6A88]"><th>Name</th><th>Category</th><th>Used by</th><th>Source</th><th>Size</th><th></th></tr></thead>
+      <tbody>
+      {% for a in assets %}
+        <tr class="border-t border-[#E3EAF6]" data-testid="pk-row">
+          <td class="font-mono py-1">{{ a.name }}</td>
+          <td>{{ a.category|replace('_', ' ') }}</td>
+          <td>{{ a.used_by }}</td>
+          <td>{% if a.source == 'built-in' %}<span class="pill queued">built-in</span>{% else %}<span class="pill approved">added</span> {{ a.added_by }} · {{ a.added_utc[:10] }}{% endif %}</td>
+          <td>{{ (a.size_bytes / 1024)|round(1) }} KB</td>
+          <td class="whitespace-nowrap"><a class="btn g sm" href="/platform-knowledge?view={{ a.asset_id|urlencode }}#viewer">View</a>
+            {% if can_edit and a.source == 'added' %}<form action="/api/platform-knowledge/{{ a.asset_id }}/retire" method="post" class="inline"><button class="btn g sm">Retire</button></form>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% if viewing %}
+  <section class="card" id="viewer" data-testid="pk-viewer">
+    <h3 style="font-size:16px">{{ viewing.asset_id }}</h3>
+    {% if viewing.text is not none %}<pre class="mt-2 max-h-[480px] overflow-auto whitespace-pre-wrap text-[11px]">{{ viewing.text }}</pre>
+    {% else %}<p class="fh">That asset was not found or has been retired.</p>{% endif %}
+  </section>
+  {% endif %}
+  {% if can_edit %}
+  <section class="card" data-testid="pk-add">
+    <h3 style="font-size:16px">Add platform knowledge</h3>
+    <p class="fh">Markdown, text, CSV, JSON, YAML, Word, PowerPoint or PDF, up to 5 MB. The text is stored and shared with every migration; never add client data here.</p>
+    <form action="/api/platform-knowledge" method="post" enctype="multipart/form-data" class="mt-2 flex flex-wrap items-end gap-2">
+      <select name="category" class="input" aria-label="Category">{% for c in categories %}<option value="{{ c }}">{{ c|replace('_', ' ') }}</option>{% endfor %}</select>
+      <input type="file" name="file" required class="input" aria-label="Platform knowledge file">
+      <button class="btn p sm">Add</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

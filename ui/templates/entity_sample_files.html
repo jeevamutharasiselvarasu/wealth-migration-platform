@@ -62,14 +62,14 @@
   {% if acquisition_method == 'AZURE_CONNECTION' %}
   <section class="card" id="blob-source" data-testid="blob-source">
     <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-bold text-[#152C6B]" style="font-size:16px">Source files in Azure Blob storage {% if blob and blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h2>
-      <a href="/azure-setup" class="btn g sm">Azure connection →</a></div>
+      </div>
     {% if not blob or not blob.configured %}
     <p class="d" style="margin:8px 0 0">No blob storage is configured on the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>). Upload sample files instead by choosing that option in Setup.</p>
     {% elif not blob.reachable %}
     <p class="d" style="margin:8px 0 0;color:var(--bad)">{{ blob.detail }}</p>
     {% else %}
     <p class="d" style="margin:8px 0 0">Container <span class="font-mono">{{ blob.container }}</span>, folder <span class="font-mono">{{ blob.firm_folder }}</span> · {{ blob.blobs|length }} source file(s) found{% if not blob.container_exists %} · {{ blob.detail|trim('.') }}{% endif %}. Loading runs the same intake as an upload; entity review happens in Discovery.</p>
-    {% if not blob.layout_ready %}<p class="d" style="color:var(--bad)">The folder structure is not in place yet. <a href="/azure-setup#blob-storage" class="font-mono text-blue-700">Create it on the Azure connection page →</a></p>{% endif %}
+    {% if not blob.layout_ready %}<p class="d" style="color:var(--bad)">The folder structure is not in place yet. A Platform Admin creates it under platform setup (Azure connection).</p>{% endif %}
     {% if blob.tree %}<details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-[#152C6B]">Folder structure</summary>{% include "_blob_tree.html" %}</details>{% endif %}
     {% if blob.blobs %}
     <form action="/api/blob/load" method="post" class="mt-2">

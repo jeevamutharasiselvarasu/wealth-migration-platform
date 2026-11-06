@@ -14,6 +14,11 @@ from control_plane.services import transformation_rules as tr
 
 IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 STAGING_SCHEMA = "staging"
+# Per-record trace on every staging row: which migration and pipeline run loaded it, from which source file, and when. The pipeline's
+# Copy step fills the first three (Data Factory has no source row number, so the file plus the load time is the finest trace).
+# They are not source columns, so they are never in stagingColumns or the stage files XODUS writes.
+TRACE_COLUMNS = (("xodus_migration_id", "nvarchar(64) NULL"), ("xodus_run_id", "nvarchar(64) NULL"),
+                 ("xodus_source_file", "nvarchar(1024) NULL"), ("xodus_loaded_utc", "datetime2 NOT NULL DEFAULT SYSUTCDATETIME()"))
 # Rule input-format tokens to SQL Server CONVERT styles. DD-MON-YYYY is read as style 106 after replacing '-' by ' '.
 DATE_STYLE = {"MM/DD/YYYY": 101, "DD/MM/YYYY": 103, "YYYY-MM-DD": 23, "MM-DD-YYYY": 110, "DD-MON-YYYY": 106, "YYYYMMDD": 112, "MM/DD/YY": 1}
 
@@ -220,8 +225,15 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     ddl = [f"IF SCHEMA_ID(N'{STAGING_SCHEMA}') IS NULL EXEC(N'CREATE SCHEMA {_q(STAGING_SCHEMA)}');\nGO\n"]
     for name, cols in sorted({**staging, **lookup_cols}.items()):
         ddl.append(f"IF OBJECT_ID(N'{STAGING_SCHEMA}.{name}', N'U') IS NULL\n    CREATE TABLE {_q(STAGING_SCHEMA)}.{_q(name)} (\n        "
-                   + ",\n        ".join(f"{_q(c)} nvarchar(4000) NULL" for c in sorted(cols)) + "\n    );\nGO\n")
-    files["sql/00_staging_tables.sql"] = ("-- Staging tables the pipeline fills from the Azure Blob source files (every column as text).\n" + "\n".join(ddl))
+                   + ",\n        ".join([f"{_q(c)} nvarchar(4000) NULL" for c in sorted(cols)] + [f"{_q(c)} {t}" for c, t in TRACE_COLUMNS]) + "\n    );\nGO\n")
+    files["sql/00_staging_tables.sql"] = ("-- Staging tables the pipeline fills from the Azure Blob source files (every column as text, plus the xodus_* trace columns).\n" + "\n".join(ddl))
+    trace = []
+    for name in sorted({**staging, **lookup_cols}):
+        for c, t in TRACE_COLUMNS:
+            trace.append(f"IF OBJECT_ID(N'{STAGING_SCHEMA}.{name}', N'U') IS NOT NULL AND COL_LENGTH(N'{STAGING_SCHEMA}.{name}', N'{c}') IS NULL\n"
+                         f"    ALTER TABLE {_q(STAGING_SCHEMA)}.{_q(name)} ADD {_q(c)} {t};\nGO\n")
+    files["sql/03_trace_columns.sql"] = ("-- Adds the per-record trace columns to staging tables created before they existed. Safe to run more than once;\n"
+                                         "-- adds columns only, never drops or changes data.\n" + "\n".join(trace))
     proc = _q(schema) + "." + _q("usp_xodus_load_all")
     if env.get("loadMode") == "merge":  # the pipeline runs the MERGE statements itself: no procedure to create
         proc = ""
@@ -235,7 +247,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         "carrier": "SQL", "migrationId": migration_id, "generatedBy": generated_by, "generatedUtc": datetime.now(timezone.utc).isoformat(),
         "targetSystem": spec.get("target_system"), "targetModelVersion": spec.get("spec_version"), "targetSchema": schema,
         "stagingSchema": STAGING_SCHEMA, "stagingTables": sorted({**staging, **lookup_cols}),
-        "stagingColumns": {n: sorted(c) for n, c in {**staging, **lookup_cols}.items()}, "procedure": proc,
+        "stagingColumns": {n: sorted(c) for n, c in {**staging, **lookup_cols}.items()}, "traceColumns": [c for c, _ in TRACE_COLUMNS], "procedure": proc,
         "entities": entities, "warnings": warnings, "provenance": provenance or {}, "executed": False,
         "note": "Nothing was executed. The pipeline copies the Azure Blob source files into the staging tables, then runs these statements against the target SQL database.",
     }

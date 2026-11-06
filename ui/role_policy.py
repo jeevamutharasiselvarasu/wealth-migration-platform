@@ -30,15 +30,26 @@ CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel
 CHANGE_REQUEST_ROLES: Set[str] = {ANALYST}            # raise a canonical change request
 VALIDATION_ROLES: Set[str] = {VALIDATOR}              # validation-side evaluation
 TARGET_PREVIEW_ROLES: Set[str] = {ANALYST, VALIDATOR} # read-only canonical-to-target dry run
+RUN_FAILURE_ROLES: Set[str] = {ANALYST, VALIDATOR}    # raise an information request from a failed pipeline step
+PLATFORM_KNOWLEDGE_ROLES: Set[str] = {ADMIN, SME}     # add/retire platform-level knowledge shared by every migration
 
 # Pages the Platform Admin may open: platform setup and administration only. Everything else (migration
 # workspaces, files, mappings, runs, validation) is migration data and is not shown to the Platform Admin.
 ADMIN_VIEW_PREFIXES = (
     "/static", "/login", "/logout", "/register", "/healthz", "/persona-selection", "/suite", "/setup",
     "/azure-setup", "/github-setup", "/target-setup", "/admin/users", "/governance", "/tenant", "/models",
-    "/firm-knowledge", "/canonical-changes", "/api/admin", "/api/azure", "/api/git", "/api/sql-target",
+    "/platform-knowledge", "/api/platform-knowledge", "/canonical-changes", "/api/admin", "/api/azure", "/api/git", "/api/sql-target",
     "/api/users", "/api/target-system", "/api/blob/layout", "/api/blob/container",
 )
+
+
+# Platform setup pages only the Platform Admin opens. Migration users get what they need from these settings through
+# the migration setup (filled in from platform setup) and the stage pages, never the setup forms themselves.
+PLATFORM_ONLY_PAGES = ("/azure-setup", "/github-setup", "/target-setup")
+
+
+def platform_only_page(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in PLATFORM_ONLY_PAGES)
 
 
 def admin_may_view(path: str) -> bool:
@@ -69,7 +80,10 @@ POST_POLICY = [
     (r"^/api/canonical-changes$", CHANGE_REQUEST_ROLES),
     (r"^/api/canonical-changes/[^/]+/apply$", CANONICAL_ROLES),
     (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
+    (r"^/api/canonical-releases$", CANONICAL_ROLES),
+    (r"^/api/canonical-releases/adopt$", APPROVAL_ROLES),
     (r"^/api/knowledge/(submit-questionnaire|file-upload|confluence)$", DISCOVERY_ROLES),
+    (r"^/api/platform-knowledge(/[^/]+/retire)?$", PLATFORM_KNOWLEDGE_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
     (r"^/api/relationships/review$", DISCOVERY_ROLES),
     (r"^/api/entities/upload-sample-file$", DISCOVERY_ROLES),
@@ -96,6 +110,7 @@ POST_POLICY = [
     (r"^/api/execution/runs/[^/]+/failures/bulk-review$", APPROVAL_ROLES),
     (r"^/api/execution/runs/[^/]+/promote$", APPROVAL_ROLES),
     (r"^/api/execution/start-pipeline$", APPROVAL_ROLES),
+    (r"^/api/execution/raise-request$", RUN_FAILURE_ROLES),
     (r"^/api/target-validation/run$", VALIDATION_ROLES),
     (r"^/api/target-validation/exceptions$", VALIDATION_ROLES),
     (r"^/api/target-validation/signoff$", VALIDATION_ROLES),

@@ -12,6 +12,16 @@
     </div>
   </div>
 
+  <section class="card" data-testid="canonical-releases">
+    <h3 style="font-size:16px">Canonical releases</h3>
+    <p class="fh">An applied change is live at once only in the workspace that asked for it. Publishing a release makes it available to every workspace; each one moves to the new release when a Migration Analyst adopts it.{% if pinned_release is not none %} This workspace is on release <b>{{ pinned_release }}</b>.{% endif %}</p>
+    {% if unreleased %}<p class="mt-2 text-[11px]"><b>Waiting for a release:</b> {% for u in unreleased %}<span class="font-mono">{{ u.entity_name }}.{{ u.canonical_field }}</span> ({{ u.change_type }}){% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+    {% if can_decide and unreleased %}<form action="/api/canonical-releases" method="post" class="mt-2 flex flex-wrap items-center gap-2" data-testid="publish-release"><input name="notes" required maxlength="500" placeholder="Release notes" aria-label="Release notes" class="input" style="min-width:320px"><button class="btn p sm">Publish release {{ (releases[0].release_no if releases else 0) + 1 }}</button></form>{% endif %}
+    {% if can_adopt and releases and pinned_release is not none and releases[0].release_no > pinned_release %}<form action="/api/canonical-releases/adopt" method="post" class="mt-2"><button class="btn g sm" data-testid="adopt-release">Adopt release {{ releases[0].release_no }} for this workspace</button></form>{% endif %}
+    {% if releases %}<ul class="mt-2 text-[11px]">{% for r in releases %}<li><b>Release {{ r.release_no }}</b> · {{ r.released_by }} · {{ r.released_utc[:10] }} · {{ r.notes }} · {% for ch in r.changes %}<span class="font-mono">{{ ch.entity }}.{{ ch.field }}</span>{% if not loop.last %}, {% endif %}{% endfor %}</li>{% endfor %}</ul>
+    {% else %}<p class="mt-2 text-[11px] text-[#5A6A88]">No release published yet.</p>{% endif %}
+  </section>
+
   {% if can_raise %}
   <section class="card">
     <h3 style="font-size:16px">Raise a change request</h3>

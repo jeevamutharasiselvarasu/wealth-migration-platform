@@ -16,6 +16,11 @@ from control_plane.services import run_monitor, sql_target
 
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 RELATIONSHIPS = (("Account", "HH_ID", "Household", "HH_ID"), ("Client", "HH_ID", "Household", "HH_ID"))
+MAX_LIST_CODES = 1000  # a reference list longer than this is not checked inline
+
+
+def _code_literal(code: Any) -> str:
+    return "N'" + str(code).replace("'", "''") + "'"
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS target_validation_runs (
@@ -37,7 +42,8 @@ def _id(name: str) -> str:
 
 def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """entities[E] = {"staging_table", "expected_rows", "key" (canonical key field or None),
-                      "tables": {target_table: {"columns": {canonical_field: target_column}, "required": [target_column, ...]}},
+                      "tables": {target_table: {"columns": {canonical_field: target_column}, "required": [target_column, ...],
+                                                "code_lists": {target_column: [allowed code, ...]}}},
                       "unmapped_required": [target field names]}.
     Returns checks: {"check", "entity", "table", "field", "sql", "kind", "expected"} (sql None = static finding)."""
     plan: List[Dict[str, Any]] = []
@@ -64,6 +70,19 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
             for col in sorted(set(t.get("required", []))):
                 add("REQUIRED_NOT_BLANK", entity, table, col,
                     f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NULL OR LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))) = ''", "zero")
+            # Reference comparison: populated coded values must be in the target system's own reference list.
+            for col, codes in sorted((t.get("code_lists") or {}).items()):
+                codes = sorted({str(c) for c in codes if str(c).strip()})
+                if not codes:
+                    continue
+                if len(codes) > MAX_LIST_CODES:
+                    add("VALUES_IN_REFERENCE_LIST", entity, table, col, None, "static",
+                        detail=f"The reference list has {len(codes)} codes, more than the {MAX_LIST_CODES} checked inline; review it separately.")
+                    continue
+                val = f"LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000))))"
+                add("VALUES_IN_REFERENCE_LIST", entity, table, col,
+                    f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NOT NULL AND {val} <> '' AND {val} NOT IN ({', '.join(_code_literal(c) for c in codes)})",
+                    "zero", expected=len(codes))
         if e.get("unmapped_required"):
             add("REQUIRED_FIELDS_MAPPED", entity, "", ", ".join(e["unmapped_required"]), None, "warn_static",
                 detail="Required target field(s) with no approved mapping: " + ", ".join(e["unmapped_required"]) + ".")
@@ -121,6 +140,10 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
         elif p["check"] == "REQUIRED_NOT_BLANK":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": "Populated in every target row." if n == 0 else f"{n} target row(s) have a blank value."})
+        elif p["check"] == "VALUES_IN_REFERENCE_LIST":
+            checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
+                           "detail": f"Every populated value is one of the {p['expected']} codes in the target's reference list." if n == 0
+                           else f"{n} target row(s) hold a value that is not in the target's reference list ({p['expected']} codes)."})
         elif p["check"] == "NO_ORPHANS":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": "Every row points at an existing household." if n == 0 else f"{n} row(s) point at a household that is not in the target."})

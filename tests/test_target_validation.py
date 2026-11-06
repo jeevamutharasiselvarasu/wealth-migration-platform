@@ -140,3 +140,17 @@ def test_entity_without_a_mapped_key_column_is_compared_by_row_count():
     assert [c["status"] for c in short if c["check"] == "ROWS_LOADED"] == ["FAIL"]
     none = {"Client": {**ent["Client"], "expected_rows": None}}
     assert [c["status"] for c in tv.evaluate(tv.build_plan(schema="simplicity", staging_schema="staging", entities=none), lambda q: 5, None) if c["check"] == "ROWS_LOADED"] == ["WARN"]
+
+
+def test_coded_values_are_compared_with_the_targets_reference_list():
+    ent = {"Account": {**ENT["Account"], "tables": {"ORION_MCL_ACCOUNT": {**ENT["Account"]["tables"]["ORION_MCL_ACCOUNT"],
+                                                                          "code_lists": {"CUSTODIAN": ["Schwab", "Pershing", "O'Neil & Co", " "], "ACCOUNT_TYPE": []}}}}}
+    p = tv.build_plan(schema="simplicity", staging_schema="staging", entities=ent)
+    ref = by(p, "VALUES_IN_REFERENCE_LIST")
+    assert len(ref) == 1 and ref[0]["field"] == "CUSTODIAN" and ref[0]["expected"] == 3  # blank codes and empty lists are skipped
+    assert "NOT IN (N'O''Neil & Co', N'Pershing', N'Schwab')" in ref[0]["sql"]  # quotes escaped, never a value read back
+    found = by(tv.evaluate(ref, lambda q: 2, None), "VALUES_IN_REFERENCE_LIST")
+    assert found[0]["status"] == "FAIL" and "2 target row(s)" in found[0]["detail"]
+    assert by(tv.evaluate(ref, lambda q: 0, None), "VALUES_IN_REFERENCE_LIST")[0]["status"] == "PASS"
+    big = {"Account": {**ent["Account"], "tables": {"T": {"columns": {}, "required": [], "code_lists": {"C": [str(i) for i in range(tv.MAX_LIST_CODES + 1)]}}}}}
+    assert by(tv.evaluate(tv.build_plan(schema="s", staging_schema="staging", entities=big), lambda q: 0, None), "VALUES_IN_REFERENCE_LIST")[0]["status"] == "NOT_EVALUATED"

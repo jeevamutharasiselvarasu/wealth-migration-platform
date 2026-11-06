@@ -23,12 +23,26 @@ Full decisions and change list: project doc `claude/XODUS_ADVISOR_REVIEW_2026-11
 - New `control_plane/services/validation_signoff.py` + `POST /api/target-validation/signoff` (needs PASS, comment, latest run) + reconciliation.html form; test `tests/test_validation_signoff.py`.
 - Many tests updated for the new role matrix.
 
-## Not done / deferred
-- C1/C3 platform-level knowledge store separate from workspace knowledge.
-- C5 per-record trace columns (existing staging tables would need ALTER).
-- A3 migration setup auto-populating from platform setup; hide Azure/GitHub setup pages from migration users.
-- D4 publish canonical updates to tenants; G4 reference comparison; F2 extra failure actions.
-- F4 direct ADF API trigger (blocked on service principal).
+## Deferred items (status 2026-11-06, Claude Code; owner decisions in brackets)
+- C1/C3 DONE: `/platform-knowledge` (service `platform_knowledge.py`): built-in `platform_knowledge/` files plus documents the
+  Platform Admin or Domain SME adds (text stored in the platform DB); read-only for migration users. /firm-knowledge is workspace-only
+  and no longer admin-viewable.
+- A3 DONE: migration setup fills target system, owner and canonical contract (and the Azure source storage) from platform setup,
+  read-only, and saving enforces them. /azure-setup, /github-setup, /target-setup are Platform Admin only; stage 01 and the setup hub
+  no longer link to them for migration users.
+- G4 DONE [compare against the target's reference lists]: stage 10 check VALUES_IN_REFERENCE_LIST (count only) for every mapped target
+  column with a code list in the confirmed target model. Azure SQL inference currently yields no code lists, so it runs on targets
+  whose model has them (e.g. the simulated target) until lookup tables are read as lists.
+- C5 DONE [ALTER script approved]: staging tables carry xodus_migration_id, xodus_run_id, xodus_source_file (Copy additionalColumns,
+  $$FILEPATH) and xodus_loaded_utc; `sql/03_trace_columns.sql` adds them to older staging tables (add-only, rerunnable). Data Factory has
+  no source row number, so the trace is file + run + load time.
+- F2 DONE [raise to vendor / RFI only]: on stage 09 each failed step can be raised as an information request (entity picked by the user,
+  question built server-side from the stored diagnosis); answered in stage 04 like any other request.
+- D4 DONE [versioned release + notice]: an applied canonical change is live only in the workspace that raised it; the SME/Admin publishes
+  numbered releases; each workspace stays on its pinned release (new workspaces start on the latest) and shows a notice until a
+  Migration Analyst adopts. Overlay entries applied before this change are unreleased until the first release is published.
+- F4 BLOCKED: direct ADF API trigger needs an ADF service principal.
+- Still open: /canonical-changes lists the open workspace's change requests and is admin-viewable (pre-existing).
 
 ## Next steps
 1. Run the app (`docker compose up --build` or `run_local.bat`) and browser-test: /target-setup as Admin, admin redirect, sign-off form as Validation Specialist.

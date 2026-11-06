@@ -12,6 +12,10 @@
   </div>
 
   {% if notice %}<div class="ins" role="status"><b>Notice</b>{{ notice }}</div>{% endif %}
+  {% if request.query_params.get('error') %}<div class="exc" role="alert">{{ request.query_params.get('error') }}</div>{% endif %}
+  {% if canonical_notice %}<div class="ins" role="status" data-testid="canonical-release-notice"><b>Canonical release {{ canonical_notice.latest }} available</b>
+    This workspace is on release {{ canonical_notice.pinned }}. New: {% for r in canonical_notice.releases %}{% for c in r.changes %}{{ c.entity }}.{{ c.field }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}.
+    {% if can_adopt %}<form action="/api/canonical-releases/adopt" method="post" class="inline"><input type="hidden" name="return_to" value="/"><button class="btn p sm">Adopt release {{ canonical_notice.latest }}</button></form>{% else %}A Migration Analyst adopts it.{% endif %}</div>{% endif %}
 
   {% if can_load_demo %}
   <section class="card" aria-label="Demo load">

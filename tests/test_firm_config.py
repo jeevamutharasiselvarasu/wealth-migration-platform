@@ -130,11 +130,11 @@ def test_second_migration_reuses_same_firm_config_version(tmp_path, monkeypatch)
     assert state.questionnaire_data["migration_setup"]["firm_config_version"] == first
 
 
-def test_setup_rejects_contract_reference_that_differs_from_firm_config(tmp_path, monkeypatch):
+def test_setup_takes_the_contract_reference_from_platform_setup_not_the_form(tmp_path, monkeypatch):
     app_module, session_id, state = _setup_client(tmp_path, monkeypatch, "mismatch")
     response = _post_setup(app_module, session_id, canonical_version="Other-Contract-v9")
-    assert response.status_code == 400
-    assert "migration_setup" not in state.questionnaire_data
+    assert response.status_code == 303  # the platform's firm contract wins; a migration cannot point at another contract
+    assert state.questionnaire_data["migration_setup"]["canonical_version"] == load_firm_config().canonical_contract_ref
 
 
 def test_setup_requires_a_valid_firm_config(tmp_path, monkeypatch):

@@ -17,11 +17,11 @@ from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
-from ui.role_policy import DEMO_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for
+from ui.role_policy import RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEMO_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, platform_only_page
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
-from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment, validation_signoff
+from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment, validation_signoff, platform_knowledge
 from control_plane.services import sql_target
 from control_plane.services import canonical_derivations, run_monitor, target_validation
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
@@ -64,6 +64,11 @@ async def enforce_role_policy(request: Request, call_next):
             if "text/html" in request.headers.get("accept", ""):
                 return RedirectResponse(url="/setup?error=" + quote_plus(detail), status_code=status.HTTP_303_SEE_OTHER)
             return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
+        if session is not None and session.get("role") != "Platform Admin" and platform_only_page(request.url.path):
+            detail = "Azure, GitHub and target system setup are platform setup, done by a Platform Admin. Your migration uses those settings."
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse(url="/setup?error=" + quote_plus(detail), status_code=status.HTTP_303_SEE_OTHER)
+            return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
     return await call_next(request)
 
 ui_dir = os.path.dirname(os.path.abspath(__file__))
@@ -77,6 +82,7 @@ os.makedirs(templates_dir, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
+canonical_overlay.ACTIVE_MIGRATION = lambda: str(state_store.questionnaire_data.get("migration_id") or "") or None
 def _asset_version(name: str) -> str:
     """Modification time of a static file, appended to its URL so an edited stylesheet is never served from the browser cache."""
     try:
@@ -619,6 +625,30 @@ def _target_connection_status() -> Dict[str, Any]:
     return {"config": cfg}
 
 
+def _platform_setup_defaults() -> Dict[str, str]:
+    """Migration setup values that come from platform setup: the confirmed target, the firm contract and the source storage.
+    A key is present only when platform setup supplies it; the migration form shows those read-only and saving keeps them."""
+    conn = get_db_connection()
+    try:
+        tcfg = target_connector.get_config(conn)
+        az = azure_connection.get_config(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    out: Dict[str, str] = {}
+    if target_connector.is_confirmed(tcfg):
+        out["target_system"] = tcfg["target_name"]
+        if tcfg.get("owner"):
+            out["target_owner"] = tcfg["owner"]
+    try:
+        out["canonical_version"] = load_firm_config().canonical_contract_ref
+    except FirmConfigError:
+        pass
+    if az and az.get("storage_account") and az.get("source_container"):
+        out["source_storage"] = f"{az['storage_account']}/{az['source_container']}"
+    return out
+
+
 def _azure_page(request: Request, user, notice: str = "", error: str = "", preview: str = "", lines: int = 25):
     conn = get_db_connection()
     try:
@@ -949,6 +979,7 @@ async def migration_setup_page(request: Request, demo_loaded: str = "", error: s
         "demo_loaded": demo_loaded == "1", "new_migration": new_migration == "1",
         "demo_available": session_mgr.demo_mode,
         "knowledge_docs": state_store.firm_knowledge_docs,
+        "platform_defaults": _platform_setup_defaults(),
     })
 
 
@@ -1066,6 +1097,13 @@ async def save_migration_setup(request: Request):
         "configured_by": user["name"],
         "configuration_status": "CONFIGURED",
     }
+    # Values platform setup supplies win over the form: a migration cannot point at a different target or contract.
+    platform_defaults = _platform_setup_defaults()
+    for key in ("target_system", "target_owner", "canonical_version"):
+        if platform_defaults.get(key):
+            setup[key] = platform_defaults[key]
+    if setup["source_acquisition"] == "AZURE_CONNECTION" and platform_defaults.get("source_storage") and not setup["source_details"]:
+        setup["source_details"] = platform_defaults["source_storage"]
     if not setup["target_system"] or not setup["canonical_version"]:
         raise HTTPException(status_code=400, detail="Target system and canonical schema / contract reference are required before source mapping setup.")
     # Target-first: a migration must reference the configured firm contract.
@@ -1110,7 +1148,7 @@ async def save_migration_setup(request: Request):
     )
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
     if setup["source_acquisition"] == "AZURE_CONNECTION":
-        return RedirectResponse(url="/azure-setup?notice=" + quote_plus("Setup saved. Enter the Azure connection details here; they are kept in one place."), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/entity-sample-files?notice=" + quote_plus("Setup saved. Source files are read from the Azure storage the Platform Admin set up."), status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1392,6 +1430,19 @@ async def logout(request: Request):
 
 # --- WORKBENCH MODULE ROUTES ---
 
+def _canonical_notice() -> Optional[Dict[str, Any]]:
+    migration_id = str(state_store.questionnaire_data.get("migration_id") or "")
+    if not migration_id or migration_id == "MIG-UNCONFIGURED":
+        return None
+    conn = get_db_connection()
+    try:
+        out = canonical_overlay.notice(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return out
+
+
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def dashboard_overview(request: Request):
     user = get_current_user(request)
@@ -1400,6 +1451,8 @@ async def dashboard_overview(request: Request):
         template_name="dashboard.html",
         extra_context={
             "page_title": "Migration Dashboard",
+            "canonical_notice": _canonical_notice(),
+            "can_adopt": user["role"] in APPROVAL_ROLES,
             "my_queue": build_queue(user["role"], workflow_progress()),
             "can_load_demo": _can_load_demo(user),
             "notice": request.query_params.get("notice", ""),
@@ -1439,6 +1492,60 @@ async def firm_knowledge_studio(request: Request):
             "docs": state_store.firm_knowledge_docs
         }
     )
+
+
+@app.get("/platform-knowledge", response_class=HTMLResponse)
+async def platform_knowledge_page(request: Request, notice: str = "", error: str = "", view: str = ""):
+    """Platform-level knowledge shared by every migration; separate from a workspace's firm knowledge."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        assets = platform_knowledge.list_all(conn)
+        viewing = {"asset_id": view, "text": platform_knowledge.text_of(conn, view)} if view else None
+        conn.commit()
+    finally:
+        conn.close()
+    return render_template_with_context(request, "platform_knowledge.html", {
+        "page_title": "Platform knowledge", "user_name": user["name"], "user_role": user["role"], "assets": assets,
+        "categories": platform_knowledge.CATEGORIES, "can_edit": user["role"] in PLATFORM_KNOWLEDGE_ROLES,
+        "viewing": viewing, "notice": notice, "error": error})
+
+
+def _pk_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/platform-knowledge?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/platform-knowledge")
+async def add_platform_knowledge(request: Request, category: str = Form(...), file: UploadFile = File(...)):
+    user = get_current_user(request)
+    content = await file.read()
+    conn = get_db_connection()
+    try:
+        try:
+            rec = platform_knowledge.add(conn, file.filename or "", category, content, user["name"])
+        except ValueError as exc:
+            return _pk_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("PLATFORM_KNOWLEDGE_ADDED", user, {"asset_id": rec["asset_id"], "name": rec["name"], "category": rec["category"]})
+    return _pk_redirect("notice", f"{rec['name']} added to platform knowledge ({rec['asset_id']}).")
+
+
+@app.post("/api/platform-knowledge/{asset_id}/retire")
+async def retire_platform_knowledge(request: Request, asset_id: str):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            platform_knowledge.retire(conn, asset_id)
+        except ValueError as exc:
+            return _pk_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("PLATFORM_KNOWLEDGE_RETIRED", user, {"asset_id": asset_id})
+    return _pk_redirect("notice", f"{asset_id} retired.")
 
 
 @app.get("/entity-selection", response_class=HTMLResponse)
@@ -1675,8 +1782,10 @@ def _target_validation_entities(migration_id: str) -> Dict[str, Dict[str, Any]]:
         tables: Dict[str, Dict[str, Any]] = {}
         for m in mine:
             f = fields[m["target_field"]]
-            t = tables.setdefault(f["table"], {"columns": {}, "required": []})
+            t = tables.setdefault(f["table"], {"columns": {}, "required": [], "code_lists": {}})
             t["columns"][m["canonical_field"]] = f["column"]
+            if f.get("codes"):
+                t["code_lists"][f["column"]] = list(f["codes"])
             if f.get("required") or m["canonical_field"] in required_canon.get(entity, set()):
                 t["required"].append(f["column"])
         mapped = {m["target_field"] for m in approved if m["entity_name"] == entity}
@@ -1889,6 +1998,8 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "migration_id": migration_id,
             "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "run_status": run_status, "tval": tval, "tval_exceptions": {e["check_ref"]: e for e in tval_exceptions}, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
+            "can_raise_run_request": user["role"] in RUN_FAILURE_ROLES,
+            "in_scope_entities": [e for e in ("Account", "Household", "Client") if e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", [])],
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
@@ -3255,6 +3366,43 @@ async def stage_canonical_files(request: Request):
     return back("notice", f"Canonical files written to {result['path']}: " + _stage_summary(result) + ".")
 
 
+@app.post("/api/execution/raise-request")
+async def raise_request_from_failed_step(request: Request, step: str = Form(...), entity: str = Form(...), note: str = Form("")):
+    """Turn a failed pipeline step into an information request for the source firm or vendor (for example a corrected file).
+    The question is built from the stored run diagnosis, not from the page, and the request is answered like any other."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+
+    def back(key: str, message: str):
+        return RedirectResponse(url=f"/execution?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+    in_scope = [e for e in ("Account", "Household", "Client") if e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", [])]
+    if entity not in in_scope:
+        return back("error", "Pick an entity that is in scope for this migration.")
+    conn = get_db_connection()
+    try:
+        summary = run_monitor.stored(conn, migration_id) or {}
+        conn.commit()
+    finally:
+        conn.close()
+    failure = next((f for f in summary.get("failures", []) if f.get("step") == step), None)
+    if summary.get("status") != "FAILED" or not failure:
+        return back("error", "That step did not fail in the latest pipeline run. Check the run status again.")
+    field = f"PIPELINE:{summary.get('run_id')}:{step}"
+    requests = state_store.questionnaire_data.setdefault("mapping_information_requests", [])
+    if any(r.get("canonical_field") == field and str(r.get("migration_id", migration_id)) == migration_id for r in requests):
+        return back("error", "An information request for this failed step already exists.")
+    question = (f"Pipeline run {summary.get('run_id')} failed at {step}: {failure['cause']} {failure['message'][:300]} "
+                f"Please supply a corrected file or explain the data. {str(note or '').strip()[:500]}").strip()
+    request_id = f"RFI-{uuid.uuid4().hex[:10].upper()}"
+    requests.append({"request_id": request_id, "migration_id": migration_id, "entity": entity, "canonical_field": field,
+                     "source_file": summary.get("trigger_file") or "", "status": "OPEN", "question": question, "requested_by": user["name"],
+                     "created_utc": datetime.now(timezone.utc).isoformat(), "response": ""})
+    _sync_mapping_information_requests(migration_id)
+    publish_event("INFORMATION_REQUEST_RAISED", migration_id, "information_request", request_id,
+                  {"entity": entity, "source": "pipeline_failure", "step": step, "run_id": summary.get("run_id")}, user["name"])
+    return back("notice", f"Information request {request_id} raised for {entity}. It is answered in stage 04 like any other request.")
+
+
 @app.get("/api/execution/run-status")
 async def execution_run_status(request: Request):
     """Read the pipeline's run log (read-only SQL sign-in), store the latest summary and return it. The Execution page calls this every 30 seconds."""
@@ -3949,6 +4097,9 @@ async def canonical_changes_page(request: Request, notice: str = "", error: str 
         rows = [dict(r) for r in conn.execute(
             "SELECT * FROM canonical_change_requests WHERE migration_id = ? ORDER BY created_utc DESC", (migration_id,)).fetchall()]
         applied = canonical_overlay.applied_request_ids(conn)
+        releases = canonical_overlay.releases(conn)
+        unreleased = canonical_overlay.unreleased(conn)
+        pinned = canonical_overlay.pinned_release(conn, migration_id) if user["role"] not in PLATFORM_ROLES else None
         conn.commit()
     finally:
         conn.close()
@@ -3961,8 +4112,46 @@ async def canonical_changes_page(request: Request, notice: str = "", error: str 
         "page_title": "Canonical Change Requests", "user_name": user["name"], "user_role": user["role"],
         "requests": rows, "change_types": CHANGE_TYPES, "entities": CHANGE_ENTITIES,
         "can_raise": user["role"] in CHANGE_REQUEST_ROLES, "can_decide": user["role"] in CANONICAL_ROLES,
+        "releases": releases, "unreleased": unreleased, "pinned_release": pinned, "can_adopt": user["role"] in APPROVAL_ROLES,
         "notice": notice, "error": error,
     })
+
+
+@app.post("/api/canonical-releases")
+async def publish_canonical_release(request: Request, notes: str = Form("")):
+    """Publish every applied, unreleased change as the next canonical release. Workspaces are told; none moves until it adopts."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rel = canonical_overlay.publish_release(conn, user["name"], notes)
+        except ValueError as exc:
+            return _changes_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("CANONICAL_RELEASE_PUBLISHED", user, {"release_no": rel["release_no"], "changes": len(rel["changes"])})
+    return _changes_redirect("notice", f"Canonical release {rel['release_no']} published with {len(rel['changes'])} change(s). Each migration workspace adopts it when ready.")
+
+
+@app.post("/api/canonical-releases/adopt")
+async def adopt_canonical_release(request: Request, return_to: str = Form("/canonical-changes")):
+    """The open workspace moves to the latest canonical release; its new fields become mapping targets from now on."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    dest = return_to if return_to in ("/", "/canonical-changes") else "/canonical-changes"
+    conn = get_db_connection()
+    try:
+        try:
+            n = canonical_overlay.adopt_latest(conn, migration_id, user["name"])
+        except ValueError as exc:
+            return RedirectResponse(url=f"{dest}?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("CANONICAL_RELEASE_ADOPTED", migration_id, "migration", migration_id, {"release_no": n}, user["name"])
+    return RedirectResponse(url=f"{dest}?notice=" + quote_plus(f"This workspace now uses canonical release {n}. Regenerate target mapping proposals to pick up new fields."),
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _changes_redirect(key: str, message: str):

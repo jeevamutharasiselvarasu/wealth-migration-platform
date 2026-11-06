@@ -325,3 +325,40 @@ def test_platform_admin_sees_platform_setup_only_not_migration_data(tmp_path, mo
     # Migration-side POSTs are closed to the admin; platform-side POSTs stay open.
     assert "Platform Admin" not in policy.allowed_roles_for("POST", "/api/validation/run")
     assert "Platform Admin" in policy.allowed_roles_for("POST", "/api/azure/connection")
+
+
+def test_migration_users_get_platform_setup_through_the_migration_setup_not_the_admin_pages(tmp_path, monkeypatch):
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from control_plane.services import target_connector
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "a3.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid-a3", {"email": "a3@example.invalid", "name": "Ana", "role": "Migration Analyst"})
+    monkeypatch.setattr(app_module, "publish_event", lambda *a, **k: None)
+    conn = db.get_db_connection()
+    target_connector.ensure_table(conn)
+    conn.execute("INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, owner, status, configured_by, configured_utc, confirmed_by, confirmed_utc) "
+                 "VALUES (1, 'Simplicity SQL', 'azure-sql', 'srv/db', 'Target Team', 'CONFIRMED', 'Admin', '2026-11-06', 'Admin', '2026-11-06')")
+    conn.commit()
+    conn.close()
+
+    async def call(method, path, **kw):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid-a3"}) as client:
+            return await client.request(method, path, follow_redirects=False, headers={"accept": "text/html"}, **kw)
+
+    for page in ("/azure-setup", "/github-setup", "/target-setup"):
+        assert asyncio.run(call("GET", page)).headers["location"].startswith("/setup?error="), page
+    hub = asyncio.run(call("GET", "/setup")).text
+    assert 'href="/azure-setup' not in hub and 'href="/github-setup"' not in hub and 'href="/target-setup"' not in hub
+    form = asyncio.run(call("GET", "/migration-setup")).text
+    assert 'data-testid="from-platform-target"' in form and 'value="Simplicity SQL"' in form
+    r = asyncio.run(call("POST", "/api/migration/setup", data={"migration_name": "M", "target_system": "Somewhere else", "canonical_version": "wrong",
+                                                              "entities": ["Account"], "source_acquisition": "SAMPLE_FILES"}))
+    assert r.status_code == 303
+    setup = app_module.state_store.questionnaire_data["migration_setup"]
+    assert setup["target_system"] == "Simplicity SQL" and setup["target_owner"] == "Target Team"

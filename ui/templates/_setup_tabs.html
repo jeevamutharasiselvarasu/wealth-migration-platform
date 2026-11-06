@@ -1,9 +1,10 @@
 <nav aria-label="Setup navigation" class="tabs">
     <a href="/setup" class="tab {% if path == '/setup' %}on{% endif %}" {% if path == '/setup' %}aria-current="page"{% endif %}>Setup overview</a>
     {% if not platform_only %}<a href="/migration-setup" class="tab {% if path == '/migration-setup' %}on{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}>Workspace configuration</a>{% endif %}
-    <a href="/target-setup" class="tab">Target system</a>
-    <a href="/firm-knowledge" class="tab {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
+    {% if platform_only %}<a href="/target-setup" class="tab">Target system</a>{% endif %}
+    {% if not platform_only %}<a href="/firm-knowledge" class="tab {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>{% endif %}
+    <a href="/platform-knowledge" class="tab {% if path == '/platform-knowledge' %}on{% endif %}" {% if path == '/platform-knowledge' %}aria-current="page"{% endif %}>Platform knowledge</a>
     <a href="/models" class="tab {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
-    <a href="/azure-setup" class="tab {% if path == '/azure-setup' %}on{% endif %}" {% if path == '/azure-setup' %}aria-current="page"{% endif %}>Azure connection</a>
-    <a href="/github-setup" class="tab {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>
+    {% if platform_only %}<a href="/azure-setup" class="tab {% if path == '/azure-setup' %}on{% endif %}" {% if path == '/azure-setup' %}aria-current="page"{% endif %}>Azure connection</a>{% endif %}
+    {% if platform_only %}<a href="/github-setup" class="tab {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>{% endif %}
 </nav>

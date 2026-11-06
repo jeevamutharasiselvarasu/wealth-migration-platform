@@ -174,6 +174,12 @@
           var r = document.createElement('p'); r.className = 'mt-1'; r.textContent = 'Recommended fix: ' + x.recommendation; b.appendChild(r);
           var m = document.createElement('pre'); m.className = 'mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-white p-2 font-mono text-[10px]'; m.textContent = x.message; b.appendChild(m);
           if (x.action === 'rewrite_stage' && el('rm-actions')) { var a = el('rm-actions').cloneNode(true); a.classList.remove('hidden'); a.removeAttribute('id'); b.appendChild(a); }
+          if (el('rm-rfi')) {
+            var q = el('rm-rfi').cloneNode(true); q.classList.remove('hidden'); q.removeAttribute('id'); q.querySelector('[name=step]').value = x.step;
+            var guess = (x.step || '').replace(/^Copy_/, ''); var sel = q.querySelector('[name=entity]');
+            Array.prototype.forEach.call(sel.options, function (o) { if (o.value === guess) { sel.value = guess; } });
+            b.appendChild(q);
+          }
           f.appendChild(b);
         });
         f.classList.toggle('hidden', !(d.failures || []).length);
@@ -190,6 +196,10 @@
       check();
     })();
     </script>
+    {% if can_raise_run_request and in_scope_entities %}<form id="rm-rfi" class="hidden mt-2 flex flex-wrap items-center gap-2" action="/api/execution/raise-request" method="post" data-testid="rm-rfi">
+      <input type="hidden" name="step" value=""><select name="entity" class="input" aria-label="Entity the request is about">{% for e in in_scope_entities %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select>
+      <input name="note" maxlength="500" placeholder="Note for the source firm or vendor (optional)" aria-label="Note for the information request" class="input" style="min-width:260px">
+      <button class="btn g sm">Raise information request</button></form>{% endif %}
     <form id="rm-actions" class="hidden mt-2" action="/api/target-mapping/stage-canonical" method="post"><input type="hidden" name="return_to" value="execution"><button class="btn p sm" data-testid="rm-rewrite">Rewrite canonical files to stage/</button> <span class="text-[11px] text-[#41506B]">Then run the pipeline again in Data Factory.</span></form>
     {% endif %}
     {% if view == 'rules' %}

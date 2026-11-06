@@ -131,7 +131,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
     merge = real and env.get("loadMode") == "merge"  # the create scripts (schema, tables, staging) are run by hand; the pipeline only loads
     activities: List[Dict[str, Any]] = []
     if not merge:
-        prepare = _batches(sql["files"]["sql/01_target_tables.sql"]) + _batches(sql["files"]["sql/00_staging_tables.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"])
+        prepare = (_batches(sql["files"]["sql/01_target_tables.sql"]) + _batches(sql["files"]["sql/00_staging_tables.sql"])
+                   + _batches(sql["files"]["sql/03_trace_columns.sql"]) + _batches(sql["files"]["sql/usp_load_all.sql"]))
         activities.append({"name": "Prepare_SQL", "type": "Script", "linkedServiceName": ref(ls_sql, "LinkedServiceReference"),
                            "typeProperties": {"scripts": [{"type": "NonQuery", "text": b} for b in prepare]}})
     copies: List[str] = []
@@ -159,7 +160,10 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
         activities.append({"name": f"Copy_{table}", "type": "Copy",
                            **({"dependsOn": [{"activity": "Log_Start", "dependencyConditions": ["Succeeded"]}]} if merge else {"dependsOn": [{"activity": "Prepare_SQL", "dependencyConditions": ["Succeeded"]}]}),
                            "inputs": [ref(ds_blob, "DatasetReference")], "outputs": [ref(ds_sql, "DatasetReference")],
-                           "typeProperties": {"source": {"type": "DelimitedTextSource"},
+                           "typeProperties": {"source": {"type": "DelimitedTextSource", "additionalColumns": [  # per-record trace (see sql_package.TRACE_COLUMNS)
+                                                  {"name": "xodus_migration_id", "value": _expr("@pipeline().parameters.MigrationId")},
+                                                  {"name": "xodus_run_id", "value": _expr("@pipeline().RunId")},
+                                                  {"name": "xodus_source_file", "value": "$$FILEPATH"}]},
                                               "sink": {"type": "AzureSqlSink", "preCopyScript": f"TRUNCATE TABLE [{sql_package.STAGING_SCHEMA}].[{table}]"}}})
         copies.append(f"Copy_{table}")
         if merge:
@@ -223,6 +227,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved: List[Dict[str, Any]
                              "Blob storage is reached with the factory's managed identity (give it Storage Blob Data Contributor). No secrets are included.\n"
                              + ("\nBEFORE THE FIRST RUN, a person runs these once against the target SQL database (they are not part of the pipeline):\n"
                                 "  sql/01_target_tables.sql   creates the target schema and tables\n  sql/00_staging_tables.sql  creates the staging schema and tables\n  sql/02_run_log.sql         creates the run-log table the pipeline writes to\n"
+                                "  sql/03_trace_columns.sql   adds the per-record trace columns to staging tables created earlier (safe to rerun)\n"
                                 "The pipeline then copies the raw files into staging and runs MERGE statements (update matching rows, insert new ones) into the target tables.\n"
                                 if merge else ""))
     else:
