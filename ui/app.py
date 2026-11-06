@@ -2849,7 +2849,7 @@ async def target_mapping_page(request: Request, notice: str = "", error: str = "
 async def target_setup_page(request: Request, notice: str = "", error: str = ""):
     """Platform setup: connect, infer, review and confirm the target system (Platform Admin). Migration users see only the inferred model on Target mapping."""
     user = get_current_user(request)
-    return render_template_with_context(request, "target_setup.html", _target_mapping_context(request, user, notice=notice, error=error))
+    return render_template_with_context(request, "target_setup.html", {**_target_mapping_context(request, user, notice=notice, error=error), "page_title": "Target system setup"})
 
 
 def _target_setup_audit(event: str, user: Dict[str, str], details: Dict[str, Any]) -> None:
