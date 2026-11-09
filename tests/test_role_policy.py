@@ -318,8 +318,10 @@ def test_platform_admin_sees_platform_setup_only_not_migration_data(tmp_path, mo
     assert policy.admin_may_view("/azure-setup") and not policy.admin_may_view("/execution") and not policy.admin_may_view("/")
     # Platform pages carry no migration frame: no workspace name or id, no pipeline stages, no workspace configuration.
     app_module.state_store.questionnaire_data.update({"migration_id": "MIG-SECRET01", "migration_setup": {"migration_name": "Secret Deal", "entities": ["Account"]}})
-    for page in ("/setup", "/target-setup", "/azure-setup"):
-        html = asyncio.run(get(page)).text
+    for page in ("/suite", "/setup", "/target-setup", "/azure-setup"):
+        r = asyncio.run(get(page))
+        assert r.status_code == 200, page
+        html = r.text
         assert "Platform setup" in html and "MIG-SECRET01" not in html and "Secret Deal" not in html, page
         assert "Pipeline run" not in html and 'href="/migration-setup"' not in html, page
     # Migration-side POSTs are closed to the admin; platform-side POSTs stay open.
