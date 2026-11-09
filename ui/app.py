@@ -98,6 +98,10 @@ schema_mapper = SchemaMapperAgent()
 adf_client = AzureDataFactoryClient()
 
 
+# A source file is decided once confirmed, rejected, or classified as out of scope / a deferred relationship file (NOT_REQUIRED).
+DECIDED_FILE_STATUSES = {"APPROVED", "REJECTED", "NOT_REQUIRED"}
+
+
 def get_current_user(request: Request) -> Dict[str, str]:
     session = session_mgr.get_session(request)
     if not session:
@@ -135,7 +139,7 @@ def workflow_progress() -> dict:
     files = [rec for entity, group in getattr(state_store, "entity_source_files", {}).items() for rec in group.values()]
     files_total = len(files)
     files_confirmed = sum(1 for r in files if r.get("inference_approval_status") == "APPROVED")
-    files_pending = sum(1 for r in files if r.get("inference_approval_status") not in {"APPROVED", "REJECTED"})
+    files_pending = sum(1 for r in files if r.get("inference_approval_status") not in DECIDED_FILE_STATUSES)
     proposals_pending = mappings_approved = changes_open = rfi_open = target_pending = 0
     target_provisioned = False
     validation_status = validation_when = ""
@@ -644,8 +648,9 @@ def _platform_setup_defaults() -> Dict[str, str]:
         out["canonical_version"] = load_firm_config().canonical_contract_ref
     except FirmConfigError:
         pass
-    if az and az.get("storage_account") and az.get("source_container"):
-        out["source_storage"] = f"{az['storage_account']}/{az['source_container']}"
+    account = (az or {}).get("storage_account") or blob_source.account_name(blob_source.connection_string())
+    if account and (az or {}).get("source_container"):
+        out["source_storage"] = f"{account}/{az['source_container']}"
     return out
 
 
@@ -956,7 +961,7 @@ async def setup_hub(request: Request):
         conn.close()
     return render_template_with_context(request, "setup_hub.html", {
         "page_title": "Platform setup" if user["role"] in PLATFORM_ROLES else "Setup", "user_name": user["name"], "user_role": user["role"],
-        "sql_status": str(sq.get("status") or "not set up").lower(), "sql_db": sq.get("database_name", ""), "azure_status": str(az.get("status") or "not set up").lower(), "azure_factory": az.get("factory_name", ""),
+        "sql_status": str(sq.get("status") or "not set up").lower(), "sql_db": sq.get("database_name", ""), "azure_status": "connected" if az.get("status") == "CONNECTED" else ("saved" if az.get("factory_name") else "not set up"),  # XODUS does not sign in to Data Factory; a failed sign-in test is not a setup failure "azure_factory": az.get("factory_name", ""),
         "git_status": str(gt.get("status") or "not set up").lower(), "git_repo": gt.get("repository", ""), "git_branch": gt.get("branch", ""),
         "configured": bool(setup), "setup_entities": setup.get("entities") or [],
         "target_confirmed": cfg.get("status") == "CONFIRMED",
@@ -1470,7 +1475,7 @@ async def dashboard_overview(request: Request):
                 entity: {
                     "total": len(state_store.entity_source_files.get(entity, {})),
                     "approved": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "APPROVED"),
-                    "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in {"APPROVED", "REJECTED"}),
+                    "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in DECIDED_FILE_STATUSES),
                     "rejected": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "REJECTED"),
                 } for entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
             }
@@ -1627,7 +1632,7 @@ def _source_stage_page(request: Request, stage_view: str, uploaded: str, notice:
                 entity: {
                     "total": len(state_store.entity_source_files.get(entity, {})),
                     "approved": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "APPROVED"),
-                    "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in {"APPROVED", "REJECTED"}),
+                    "pending": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") not in DECIDED_FILE_STATUSES),
                     "rejected": sum(1 for item in state_store.entity_source_files.get(entity, {}).values() if item.get("inference_approval_status") == "REJECTED"),
                 } for entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
             },

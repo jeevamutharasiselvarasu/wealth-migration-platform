@@ -271,3 +271,34 @@ def test_project_csv_keeps_only_staging_columns_matches_by_name_and_keeps_quoted
     assert out.splitlines()[1] == 'A1,"[{""RepCode"":""1"",""Custodian"":""Schwab""}]",Ann'
     with pytest.raises(ValueError, match="no column named Email"):
         b.project_csv(raw, ["Id", "Email"])
+
+
+def test_an_account_that_answers_but_refuses_the_container_is_not_reachable(monkeypatch):
+    from control_plane.services import blob_source as bs
+
+    class Container:
+        def exists(self):
+            raise PermissionError("403 AuthorizationFailure")
+
+    class Service:
+        def get_service_properties(self):
+            return {}
+
+        def get_container_client(self, name):
+            return Container()
+
+    monkeypatch.setattr(bs, "_service", lambda cs: Service())
+    out = bs.status("xodus-lake", "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=a2V5;EndpointSuffix=core.windows.net")
+    assert out["reachable"] is False and out["detail"]
+
+
+def test_a_file_decided_out_of_scope_no_longer_counts_as_pending(monkeypatch):
+    import ui.app as app_module
+    from ui.state import WorkspaceStateStore
+
+    store = WorkspaceStateStore()
+    store.entity_source_files = {"Account": {"a": {"inference_approval_status": "APPROVED"}},
+                                 "NEEDS_CLARIFICATION": {"b": {"inference_approval_status": "NOT_REQUIRED"}}}
+    monkeypatch.setattr(app_module, "state_store", store)
+    p = app_module.workflow_progress()
+    assert p["files_total"] == 2 and p["files_pending"] == 0

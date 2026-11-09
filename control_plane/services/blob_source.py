@@ -68,10 +68,10 @@ def status(container: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
     try:
         svc = _service(cs)
         svc.get_service_properties()
-        out["reachable"] = True
-        if container:
+        if container:  # the container check is what the stages use; an account that answers but refuses the container is not reachable
             out["container_exists"] = svc.get_container_client(container).exists()
             out["detail"] = "" if out["container_exists"] else f"Container '{container}' does not exist yet."
+        out["reachable"] = True
     except Exception as exc:  # network, auth or SDK errors: report, do not crash the page
         out["detail"] = explain_error(exc)
     return out
