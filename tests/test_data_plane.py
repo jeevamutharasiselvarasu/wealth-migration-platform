@@ -157,3 +157,13 @@ def test_stage_10_checks_values_fit_the_live_types_and_lengths():
     checks = target_validation.evaluate(plan, lambda q: next((v for k, v in answers.items() if k in q), 0), {"status": "SUCCEEDED"})
     rows = next(c for c in checks if c["check"] == "STAGING_ROW_COUNT")
     assert rows["status"] == "FAIL" and "raw file delivered 89" in rows["detail"]
+
+
+def test_rows_loaded_compares_with_the_canonical_table_when_no_key_is_mapped():
+    ent = {"Client": {"staging_table": "migx_Client", "expected_rows": None, "expected_sql": "SELECT COUNT(*) FROM [xodus_raw].[migx_contacts]", "key": "CLIENT_ID",
+                      "unmapped_required": [], "tables": {"migx_ORION_MCL_CLIENT": {"columns": {"CITY": "CITY"}, "required": []}}}}
+    plan = target_validation.build_plan(schema="xodus_mirror", staging_schema="xodus_canon", entities=ent)
+    rows = next(p for p in plan if p["check"] == "ROWS_LOADED")
+    assert rows["expected_sql"] == "SELECT COUNT(*) FROM [xodus_canon].[migx_Client]"
+    checks = target_validation.evaluate([rows], lambda q: 40, {"status": "SUCCEEDED"})
+    assert checks[0]["status"] == "PASS"

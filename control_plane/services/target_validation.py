@@ -73,6 +73,8 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
             else:  # no target column holds the business key, so rows cannot be matched one by one: compare the loaded row count instead
                 add("ROWS_LOADED", entity, table, "", f"SELECT COUNT(*) FROM {tgt}", "at_least", e.get("expected_rows"),
                     detail=f"The key field {e.get('key') or ''} is not mapped to a column of {table}, so rows are compared by count.")
+                if e.get("expected_sql"):  # stable-pipeline package: compare with the canonical table the mirror was built from
+                    plan[-1]["expected_sql"] = f"SELECT COUNT(*) FROM {staging}"
             for col in sorted(set(t.get("required", []))):
                 add("REQUIRED_NOT_BLANK", entity, table, col,
                     f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NULL OR LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))) = ''", "zero")
