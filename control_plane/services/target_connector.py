@@ -117,9 +117,10 @@ def configure_azure_sql(conn: sqlite3.Connection, actor: str, owner: str, scope_
     ensure_table(conn)
     if is_confirmed(get_config(conn)):
         raise ValueError("Target system setup is confirmed and locked. A Platform Admin must reopen it before it can be changed.")
-    sql = sql_target.get_config(conn)
+    from control_plane.services import live_target
+    sql = live_target.get_config(conn) or sql_target.get_config(conn)  # the live database (Simplicity) when it is set up
     if not sql:
-        raise ValueError("Save the target database settings on the Azure connection page first.")
+        raise ValueError("Save the live database (or target database) settings on the Azure connection page first.")
     scope = sorted({s.strip().upper() for s in scope_tables if s.strip()})
     conn.execute("DELETE FROM target_system_config WHERE config_id = 1")
     conn.execute(
@@ -127,6 +128,15 @@ def configure_azure_sql(conn: sqlite3.Connection, actor: str, owner: str, scope_
         "status, configured_by, configured_utc) VALUES (1, ?, ?, ?, ?, 0, ?, 'CONFIGURED', ?, ?)",
         ("Simplicity", AZURE_SQL_TYPE, f"azure-sql://{sql['server']}/{sql['database_name']}/{sql['schema_name']}", json.dumps(scope), str(owner or "").strip(), actor, _now()))
     return test_connection(conn)
+
+
+def _live_source(conn: sqlite3.Connection, cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The live database (Simplicity) connection when the target endpoint was configured from it; None means the XODUS database."""
+    from control_plane.services import live_target
+    live = live_target.get_config(conn)
+    if live and cfg.get("endpoint") == f"azure-sql://{live['server']}/{live['database_name']}/{live['schema_name']}":
+        return live
+    return None
 
 
 def reopen(conn: sqlite3.Connection, actor: str, reason: str) -> Dict[str, Any]:
@@ -176,7 +186,11 @@ def infer_model(conn: sqlite3.Connection, canonical: Dict[str, Dict[str, str]]) 
         raise ValueError("The target model is already confirmed.")
     if cfg["status"] not in {"CONNECTED", "INFERRED"}:
         raise ValueError("Test the connection successfully before inferring the target system.")
-    schema = sql_target.read_schema(conn) if cfg["connector_type"] == AZURE_SQL_TYPE else _http_get(cfg["endpoint"] + "/schema")
+    if cfg["connector_type"] == AZURE_SQL_TYPE:
+        live = _live_source(conn, cfg)
+        schema = sql_target.read_schema(conn, cfg=live) if live else sql_target.read_schema(conn)
+    else:
+        schema = _http_get(cfg["endpoint"] + "/schema")
     if not schema.get("tables"):
         raise ValueError("The target exposed no tables.")
     model = target_inference.infer(schema, canonical, cfg["scope_tables"], cfg["include_code_lists"])

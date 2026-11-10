@@ -97,7 +97,7 @@ def test_refresh_reads_with_a_parameterised_select_stores_the_summary_and_marks_
     out = rm.refresh(conn, "MIG-1", _connect(rows, seen))
     assert out["status"] == "SUCCEEDED" and rm.succeeded(conn, "MIG-1") and not rm.succeeded(conn, "MIG-2")
     sql, params = seen[0]
-    assert "FROM [simplicity].[xodus_run_log]" in sql and "migration_id = %s" in sql and params == ("MIG-1",)
+    assert "FROM [xodus_ops].[xodus_run_log]" in sql and "<> 'PL_XODUS_Promote'" in sql and "migration_id = %s" in sql and params == ("MIG-1",)
     assert rm.stored(conn, "MIG-1")["checked_utc"]
 
 
@@ -109,7 +109,7 @@ def test_unreadable_log_is_reported_without_the_password_and_does_not_change_the
     assert out["status"] == "UNREADABLE" and "secret-pw" not in out["error"] and rm.succeeded(conn, "MIG-1")
     def missing(cfg, pw):
         raise RuntimeError("Invalid object name 'simplicity.xodus_run_log'.")
-    assert "02_run_log.sql" in rm.refresh(conn, "MIG-1", missing)["error"]
+    assert "setup pipeline" in rm.refresh(conn, "MIG-1", missing)["error"]
 
 
 def test_a_missing_sql_sign_in_is_a_readable_error(tmp_path, monkeypatch):

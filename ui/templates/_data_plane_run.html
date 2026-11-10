@@ -1,0 +1,16 @@
+{# Stage 09 for a stable-pipeline package: start a batch through the service principal and follow Data Factory's own view of it. #}
+{% macro run_line(r, page) %}
+<span class="font-mono">{{ r.adf_run_id }}</span>{% if r.batch_id %} · batch <span class="font-mono">{{ r.batch_id }}</span>{% endif %} · {{ r.requested_by }} · {{ r.requested_utc[:19] }}
+· <span class="pill {{ 'approved' if r.status == 'SUCCEEDED' else ('failed' if r.status in ('FAILED','CANCELLED') else 'review') }}" data-testid="adf-run-status">{{ r.status }}</span>
+{% if r.message %}<span class="fh">{{ r.message[:300] }}</span>{% endif %}
+<form action="/api/data-plane/runs/{{ r.request_id }}/refresh" method="POST" class="inline"><input type="hidden" name="return_to" value="{{ page }}"><button class="btn g sm">Refresh</button></form>
+{% endmacro %}
+<section class="card" id="start-run" data-testid="start-run">
+  <h3 style="font-size:16px">Start a batch <span class="font-mono text-[10px] font-normal text-sky-800">PL_XODUS_RUN · SERVICE PRINCIPAL</span></h3>
+  <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">One approval starts <span class="font-mono">PL_XODUS_Run</span> in Data Factory for a new batch: the raw files in <span class="font-mono">{{ dp.manifest.container }}/{{ dp.manifest.rawFolder }}</span> load as received, each entity is built in the load order ({{ dp.manifest.loadOrder|join(' → ') }}), and the mirror of the live tables is filled. Nothing reaches the live tables until the batch is validated and promoted in stage 10. It refuses unless the pull request is merged, the deployment check passed and mapping validation passed.</p>
+  {% if can_decide_exception %}<form action="/api/data-plane/start" method="post" class="mt-2"><button class="btn p sm" data-testid="start-batch">Approve and start a batch</button></form>
+  {% else %}<p class="fh">A Migration Analyst approves the start.</p>{% endif %}
+  {% if dp.run %}<p class="mt-2 text-xs" data-testid="latest-run">Latest run: {{ run_line(dp.run, '/execution') }}</p>{% endif %}
+  {% if dp.run and dp.run.failures %}<div class="exc mt-2" role="alert"><b>Data Factory reports:</b>{% for f in dp.run.failures %}<div><span class="font-mono">{{ f.activity }}</span>: {{ f.error }}</div>{% endfor %}</div>{% endif %}
+  {% if dp.run and dp.run.status == 'SUCCEEDED' %}<p class="mt-2"><a href="/validation-rules#target-validation" class="btn p sm">Continue to 10 Target validation →</a></p>{% endif %}
+</section>

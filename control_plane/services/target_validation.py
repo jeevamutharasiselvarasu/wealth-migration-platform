@@ -17,6 +17,10 @@ from control_plane.services import run_monitor, sql_target
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 RELATIONSHIPS = (("Account", "HH_ID", "Household", "HH_ID"), ("Client", "HH_ID", "Household", "HH_ID"))
 MAX_LIST_CODES = 1000  # a reference list longer than this is not checked inline
+# Live column types a text value must convert to (checked value by value on the mirror, which holds every value as text).
+TYPE_SQL = {"date": "date", "datetime": "datetime2", "integer": "bigint", "decimal": "decimal(38, 10)",
+            "int": "bigint", "bigint": "bigint", "smallint": "bigint", "tinyint": "bigint", "numeric": "decimal(38, 10)", "float": "float",
+            "real": "float", "money": "decimal(38, 10)", "datetime2": "datetime2", "smalldatetime": "datetime2", "datetimeoffset": "datetimeoffset"}
 
 
 def _code_literal(code: Any) -> str:
@@ -55,6 +59,8 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
     for entity, e in sorted(entities.items()):
         staging = f"{stg}.{_id(e['staging_table'])}"
         add("STAGING_ROW_COUNT", entity, e["staging_table"], "", f"SELECT COUNT(*) FROM {staging}", "equals", e.get("expected_rows"))
+        if e.get("expected_sql"):  # the expected count is itself a count query (rows the raw file delivered)
+            plan[-1]["expected_sql"] = e["expected_sql"]
         for table, t in sorted(e["tables"].items()):
             tgt = f"{sch}.{_id(table)}"
             key_col = t["columns"].get(e["key"]) if e.get("key") else None
@@ -70,6 +76,18 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
             for col in sorted(set(t.get("required", []))):
                 add("REQUIRED_NOT_BLANK", entity, table, col,
                     f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NULL OR LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))) = ''", "zero")
+            # Values must fit the live column: its type (date, number) and its length. The mirror holds them as text, so a value that would
+            # break the promotion is found here, before any sign-off.
+            for col, kind in sorted((t.get("types") or {}).items()):
+                target_type = TYPE_SQL.get(str(kind).lower())
+                if target_type:
+                    val = f"NULLIF(LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))), '')"
+                    add("VALUES_FIT_TYPE", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE {val} IS NOT NULL AND TRY_CONVERT({target_type}, {val}) IS NULL",
+                        "zero", expected=str(kind).lower())
+            for col, length in sorted((t.get("max_lengths") or {}).items()):
+                if isinstance(length, int) and length > 0:
+                    add("VALUES_FIT_LENGTH", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE LEN(CAST({_id(col)} AS nvarchar(4000))) > {int(length)}",
+                        "zero", expected=int(length))
             # Reference comparison: populated coded values must be in the target system's own reference list.
             for col, codes in sorted((t.get("code_lists") or {}).items()):
                 codes = sorted({str(c) for c in codes if str(c).strip()})
@@ -113,6 +131,8 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
             continue
         try:
             n = int(execute(p["sql"]))
+            if p.get("expected_sql"):
+                p = {**p, "expected": int(execute(p["expected_sql"]))}
         except Exception as exc:
             checks.append({**base, "status": "NOT_EVALUATED", "detail": f"The query could not run: {type(exc).__name__}: {str(exc)[:200]}"})
             continue
@@ -121,8 +141,10 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
                 checks.append({**base, "status": "WARN", "detail": f"Staging holds {n} row(s); the platform has no expected count to compare."})
             else:
                 ok = n == p["expected"]
+                source = "the raw file delivered" if p.get("expected_sql") else "the platform wrote"
+                what = "The canonical table holds" if p.get("expected_sql") else "Staging holds"
                 checks.append({**base, "status": "PASS" if ok else "FAIL",
-                               "detail": f"Staging holds {n} row(s); the platform wrote {p['expected']} to the canonical file." + ("" if ok else " They should match.")})
+                               "detail": f"{what} {n} row(s); {source} {p['expected']}." + ("" if ok else " They should match (duplicate keys or dropped rows).")})
         elif p["check"] == "ROWS_LOADED":
             if p["expected"] is None:
                 checks.append({**base, "status": "WARN", "detail": f"The target table holds {n} row(s); the platform has no expected count to compare."})
@@ -140,6 +162,14 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
         elif p["check"] == "REQUIRED_NOT_BLANK":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": "Populated in every target row." if n == 0 else f"{n} target row(s) have a blank value."})
+        elif p["check"] == "VALUES_FIT_TYPE":
+            checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
+                           "detail": f"Every populated value converts to the live column's type ({p['expected']})." if n == 0
+                           else f"{n} row(s) hold a value that does not convert to {p['expected']}; the promotion would fail on them."})
+        elif p["check"] == "VALUES_FIT_LENGTH":
+            checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
+                           "detail": f"Every value fits the live column ({p['expected']} characters)." if n == 0
+                           else f"{n} row(s) are longer than the live column allows ({p['expected']} characters)."})
         elif p["check"] == "VALUES_IN_REFERENCE_LIST":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": f"Every populated value is one of the {p['expected']} codes in the target's reference list." if n == 0
@@ -185,10 +215,11 @@ def _scalar_runner(conn: sqlite3.Connection, connect: Callable[..., Any] = sql_t
 
 
 def run(conn: sqlite3.Connection, migration_id: str, actor: str, entities: Dict[str, Dict[str, Any]], staging_schema: str = "staging",
-        connect: Callable[..., Any] = sql_target._default_connect) -> Dict[str, Any]:
+        connect: Callable[..., Any] = sql_target._default_connect, schema: Optional[str] = None) -> Dict[str, Any]:
     """Run the predefined checks against the loaded database and store the result. Raises ValueError when the database cannot be read."""
     ensure_table(conn)
-    execute, close, schema = _scalar_runner(conn, connect)
+    execute, close, cfg_schema = _scalar_runner(conn, connect)
+    schema = schema or cfg_schema
     try:
         plan = build_plan(schema=schema, staging_schema=staging_schema, entities=entities)
         checks = evaluate(plan, execute, run_monitor.stored(conn, migration_id))

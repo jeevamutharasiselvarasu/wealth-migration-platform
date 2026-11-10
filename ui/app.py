@@ -24,6 +24,7 @@ from control_plane import file_store
 from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment, validation_signoff, platform_knowledge
 from control_plane.services import sql_target
 from control_plane.services import canonical_derivations, run_monitor, target_validation
+from control_plane.services import xodus_pipelines, live_target, deployment_check, adf_runs, git_pull_requests, promotion_gate
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -660,10 +661,12 @@ def _azure_page(request: Request, user, notice: str = "", error: str = "", previ
         cfg = azure_connection.get_config(conn)
         git_cfg = git_connection.get_config(conn)
         sql_cfg = sql_target.get_config(conn)
+        live_cfg = live_target.get_config(conn)
         conn.commit()
     finally:
         conn.close()
     return render_template_with_context(request, "azure_setup.html", {
+        "live": live_cfg or {},
         "sqlt": sql_cfg or {}, "sqlt_default_env": sql_target.DEFAULT_ENV, "sqlt_default_schema": sql_target.DEFAULT_SCHEMA,
         "git": git_cfg or {}, "git_default_env": git_connection.DEFAULT_TOKEN_ENV, "git_default_folder": git_connection.DEFAULT_FOLDER,
         "git_default_branch": git_connection.DEFAULT_BRANCH,
@@ -846,7 +849,7 @@ async def publish_artifacts_page(request: Request, notice: str = "", error: str 
     return render_template_with_context(request, "publish_artifacts.html", {
         "page_title": "Publish artifacts", "user_name": user["name"], "user_role": user["role"], "notice": notice, "error": error,
         "git": git_cfg or {}, "pkg": pkg, "placed": placed, "simulated": simulated, "published": published,
-        "can_publish": user["role"] in APPROVAL_ROLES,
+        "can_publish": user["role"] in APPROVAL_ROLES, "dp": _stage_data_plane(migration_id, "publish"), "can_check": user["role"] in TARGET_PREVIEW_ROLES,
     })
 
 
@@ -1806,13 +1809,21 @@ async def run_target_validation(request: Request):
     """Run the predefined checks against the loaded target database (read-only, counts only)."""
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-    entities = _target_validation_entities(migration_id)
+    conn = get_db_connection()
+    try:
+        _art, xpkg = _xodus_package(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    # Stable-pipeline package: the checks run on this batch's canonical and mirror tables, before anything reaches the live tables.
+    entities = _xodus_validation_entities(migration_id, xpkg["manifest"]) if xpkg else _target_validation_entities(migration_id)
     if not entities:
         return _tv_redirect("error", "Approve target mappings and confirm the target system first.")
     conn = get_db_connection()
     try:
         try:
-            result = target_validation.run(conn, migration_id, user["name"], entities)
+            result = (target_validation.run(conn, migration_id, user["name"], entities, staging_schema="xodus_canon", schema="xodus_mirror") if xpkg
+                      else target_validation.run(conn, migration_id, user["name"], entities))
         except ValueError as exc:
             return _tv_redirect("error", str(exc))
         conn.commit()
@@ -1839,10 +1850,28 @@ async def sign_off_target_validation(request: Request, run_id: str = Form(...), 
         except ValueError as exc:
             return _tv_redirect("error", str(exc))
         conn.commit()
+        _art, xpkg = _xodus_package(conn, migration_id)
+        run = adf_runs.latest(conn, migration_id, "PL_XODUS_Run") if xpkg else None
     finally:
         conn.close()
     _target_setup_audit("TARGET_VALIDATION_SIGNED_OFF", user, {"signoff_id": res["signoff_id"], "run_id": res["run_id"]})
-    return _tv_redirect("notice", f"Target validation {run_id} signed off ({res['signoff_id']}).")
+    if not xpkg:
+        return _tv_redirect("notice", f"Target validation {run_id} signed off ({res['signoff_id']}).")
+    # Record the sign-off where the promotion pipeline checks it: the batch's mirror counts, written to the promotion gate table.
+    if not run or not run.get("batch_id"):
+        return _tv_redirect("error", f"Signed off ({res['signoff_id']}), but no pipeline batch is recorded, so the promotion gate was not written.")
+    conn = get_db_connection()
+    try:
+        try:
+            gate = promotion_gate.record(conn, migration_id, run["batch_id"], run_id, user["name"], res["signed_utc"], xpkg["manifest"])
+        except ValueError as exc:
+            return _tv_redirect("error", f"Signed off ({res['signoff_id']}), but the promotion gate could not be written: {exc}")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("PROMOTION_GATE_RECORDED", user, {"batch_id": run["batch_id"], "counts": gate["counts"]})
+    return _tv_redirect("notice", f"Target validation {run_id} signed off ({res['signoff_id']}). Batch {run['batch_id']} may be promoted: "
+                        + ", ".join(f"{t} {n}" for t, n in gate["counts"].items()) + ".")
 
 
 def _tv_redirect(key: str, message: str):
@@ -1896,6 +1925,23 @@ async def validation_rules_page(request: Request, error: str = "", notice: str =
 async def execution_page(request: Request, error: str = "", notice: str = ""):
     """Stage 09: simulated data-plane execution of the deployment package."""
     return _validation_stage_view(request, "execution", error, notice)
+
+
+def _stage_data_plane(migration_id: str, view: str) -> Dict[str, Any]:
+    """Data-plane state for stages 09 and 10; the gate is read from the XODUS database only on stage 10 and never breaks the page."""
+    try:
+        dp = _data_plane_state(migration_id, refresh_runs=True)
+    except Exception as exc:  # shown, never raised: the page still works without Azure
+        return {"pkg": None, "error": str(exc)}
+    if view == "rules" and dp.get("pkg") and dp.get("run") and dp["run"].get("batch_id"):
+        conn = get_db_connection()
+        try:
+            dp["gate"] = promotion_gate.status(conn, migration_id, dp["run"]["batch_id"])
+        except ValueError as exc:
+            dp["gate_error"] = str(exc)
+        finally:
+            conn.close()
+    return dp
 
 
 def _validation_stage_view(request: Request, view: str, error: str, notice: str):
@@ -2012,6 +2058,8 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
+            "dp": _stage_data_plane(str(migration_id), view),
+            "can_promote": user["role"] in APPROVAL_ROLES,
         }
     )
 
@@ -3299,7 +3347,12 @@ async def download_adf_package(request: Request):
             azure_cfg = {**azure_cfg, "sql_server": sqlt["server"], "sql_database": sqlt["database_name"], "sql_schema": sqlt["schema_name"]}
         blob = blob_source.status(_blob_container())  # account name and emulator flag only; no key is read
         env = adf_environment.resolve(migration_id, azure_cfg, blob.get("account", ""), _blob_container(), blob.get("emulator", True))
-        package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
+        if env.get("simulated", True):
+            package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
+        else:  # the configured Azure environment: stable pipelines plus the generated SQL (raw -> canonical -> mirror -> live)
+            built = xodus_pipelines.build(migration_id, *_xodus_package_inputs(migration_id), generated_by=user["name"], provenance=provenance)
+            package = {"files": built["files"], "manifest": {**built["manifest"], "simulated": False, "pipeline": built["manifest"]["setupPipeline"],
+                                                             "entities": built["manifest"]["canonical"], "warnings": []}}
     except ValueError as exc:
         return back("error", str(exc))
     _target_setup_audit("ADF_PACKAGE_GENERATED", user, {"migration_id": migration_id, "simulated": True, "pipeline": package["manifest"]["pipeline"],
@@ -5926,3 +5979,384 @@ async def get_pilot_client_lineage():
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
+
+# --- XODUS data plane: stable pipelines, pull requests, setup, deployment check, runs, promotion gate ---
+
+ENTITY_DEPENDS = {"Account": {"Household"}, "Client": {"Household"}}  # a household exists before its clients and accounts
+
+
+def _load_order(entities: List[str]) -> List[str]:
+    order, left = [], sorted(entities)
+    while left:
+        ready = [e for e in left if not (ENTITY_DEPENDS.get(e, set()) & set(left))] or left[:1]
+        order += ready
+        left = [e for e in left if e not in ready]
+    return order
+
+
+def _xodus_package_inputs(migration_id: str):
+    """What xodus_pipelines.build needs, from the approved state of this migration (approved files, mappings, rules, derivations)."""
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
+        live = live_target.get_config(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        firm = load_firm_config()
+    except FirmConfigError as exc:
+        raise ValueError(f"Firm configuration is required: {exc}")
+    entities: Dict[str, Any] = {}
+    files: Dict[str, List[str]] = {}
+    for entity, group in state_store.entity_source_files.items():
+        if entity not in target_mapping.ENTITIES or entity not in firm.entities:
+            continue
+        recs = [r for r in group.values() if r.get("inference_approval_status") == "APPROVED"]
+        mappings = {src: {"canonical_field": r["canonical_field"], "expression": r["transformation_expression"]}
+                    for src, r in _get_approved_mapping_rules(migration_id, entity).items()}
+        if not recs or not mappings:
+            continue
+        derivs = [{"canonical_field": d["canonical_field"], "input_field": d["input_field"], "rule_expression": d["rule_expression"]}
+                  for d in _derivations_for(migration_id, entity)]
+        fields = firm.canonical_field_names(entity) + canonical_overlay.active_added_fields(entity, migration_id) + [d["canonical_field"] for d in derivs]
+        for r in recs:
+            files.setdefault(str(r.get("filename")), list(r.get("columns") or []))
+        entities[entity] = {"files": sorted({str(r.get("filename")) for r in recs}), "mappings": mappings, "derivations": derivs,
+                            "key": next((f.name for f in firm.entities[entity].fields if f.is_key), None), "canonical_fields": list(dict.fromkeys(fields))}
+    exprs = ({m["transformation_expression"] for m in approved} | {m["expression"] for e in entities.values() for m in e["mappings"].values()}
+             | {d["rule_expression"] for e in entities.values() for d in e["derivations"]})
+    rules = {}
+    for x in exprs:
+        x = str(x or "").strip().upper()
+        if transformation_rules.parse_expression(x):
+            r = transformation_rules.approved_rule_for_expression(x)
+            if r:
+                rules[x] = r
+    for r in rules.values():  # files a LOOKUP rule reads are loaded too (advisors), even when they are not an entity of their own
+        parent = (r.get("params") or {}).get("parent_file") if r.get("rule_type") == "LOOKUP" else None
+        if parent and parent not in files:
+            rec = next((x for g in state_store.entity_source_files.values() for x in g.values() if str(x.get("filename")) == parent), None)
+            if rec:
+                files[parent] = list(rec.get("columns") or [])
+    raw_files = [{"file_name": n, "columns": c} for n, c in sorted(files.items())]
+    env = {"container": _blob_container(), "rawFolder": blob_source.source_prefix(_source_firm()), "liveSchema": (live or {}).get("schema_name") or "simplicity"}
+    return spec, approved, rules, entities, raw_files, _load_order(list(entities)), env
+
+
+def _xodus_package(conn, migration_id: str):
+    """(artifact, {"manifest", "files"}) for the latest stored package when it is a stable-pipeline package; (artifact or None, None) otherwise."""
+    art = artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
+    if not art:
+        return None, None
+    try:
+        rec = artifact_store.read(conn, art["artifact_id"])
+        with zipfile.ZipFile(io.BytesIO(rec["data"])) as z:
+            files = {n: z.read(n).decode("utf-8") for n in z.namelist() if not n.endswith("/")}
+        manifest = json.loads(files.get("manifest.json") or "{}")
+    except (KeyError, ValueError, zipfile.BadZipFile):
+        return art, None
+    return (art, {"manifest": manifest, "files": files}) if manifest.get("carrier") == "XODUS-SQL-ADF" else (art, None)
+
+
+def _merged_pr(conn, migration_id: str, version: str) -> Optional[Dict[str, Any]]:
+    return next((p for p in git_pull_requests.list_for(conn, migration_id) if p["package_version"] == version and p["state"] == "MERGED"), None)
+
+
+def _data_plane_state(migration_id: str, refresh_runs: bool = False) -> Dict[str, Any]:
+    """Everything stages 08-10 show about the stable-pipeline package: pull requests, setup run, deployment check, runs, gate."""
+    conn = get_db_connection()
+    try:
+        art, pkg = _xodus_package(conn, migration_id)
+        out: Dict[str, Any] = {"pkg": pkg, "artifact": art}
+        if pkg:
+            man = pkg["manifest"]
+            out["manifest"] = man
+            out["prs"] = git_pull_requests.list_for(conn, migration_id)
+            out["merged_pr"] = _merged_pr(conn, migration_id, man["version"])
+            out["open_pr"] = next((p for p in out["prs"] if p["package_version"] == man["version"] and p["state"] == "OPEN"), None)
+            out["setup_run"] = adf_runs.latest(conn, migration_id, man["setupPipeline"])
+            out["run"] = adf_runs.latest(conn, migration_id, "PL_XODUS_Run")
+            out["promote_run"] = adf_runs.latest(conn, migration_id, "PL_XODUS_Promote")
+            if refresh_runs:
+                for k in ("setup_run", "run", "promote_run"):
+                    if out[k] and out[k]["status"] not in ("SUCCEEDED", "FAILED", "CANCELLED"):
+                        try:
+                            out[k] = adf_runs.refresh(conn, out[k])
+                        except ValueError as exc:
+                            out[k] = {**out[k], "message": str(exc)}
+            dc = deployment_check.latest(conn, migration_id)
+            out["deployment"] = dc if dc and dc.get("version") == man["version"] else None
+            out["stale_deployment"] = dc if dc and dc.get("version") != man["version"] else None
+            out["adf_ready"] = (azure_connection.get_config(conn) or {}).get("status") == "CONNECTED"
+        conn.commit()
+    finally:
+        conn.close()
+    return out
+
+
+def _dp_redirect(page: str, key: str, message: str):
+    anchor = {"/publish-artifacts": "#data-plane", "/execution": "#start-run", "/validation-rules": "#promotion"}.get(page, "")
+    return RedirectResponse(url=f"{page}?{key}=" + quote_plus(message) + anchor, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/live-target")
+async def save_live_target(request: Request):
+    user = get_current_user(request)
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            live_target.save(conn, user["name"], {k: str(form.get(k, "")) for k in live_target.FIELDS})
+        except ValueError as exc:
+            return RedirectResponse(url="/azure-setup?" + urlencode({"error": str(exc)}) + "#live", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("LIVE_DATABASE_SAVED", user, {"database": str(form.get("database_name", ""))})
+    return RedirectResponse(url="/azure-setup?" + urlencode({"notice": "Live database settings saved. Test the connection next."}) + "#live", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/live-target/test")
+async def test_live_target(request: Request):
+    get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = live_target.test_connection(conn)
+        except ValueError as exc:
+            return RedirectResponse(url="/azure-setup?" + urlencode({"error": str(exc)}) + "#live", status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    key = "notice" if cfg["status"] == "CONNECTED" else "error"
+    return RedirectResponse(url="/azure-setup?" + urlencode({key: cfg["check_detail"]}) + "#live", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/git/pull-request")
+async def open_package_pull_request(request: Request):
+    """Stage 08: push the stable-pipeline package to its own branch and open a pull request. Nothing is merged here."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            art, pkg = _xodus_package(conn, migration_id)
+            if not pkg:
+                raise ValueError("Generate the pipeline package first (07 Transformation SQL) with the Azure environment set up.")
+            man = pkg["manifest"]
+            body = (f"Generated by XODUS from approved mappings only, for {migration_id}.\n\n- Package {art['artifact_id']} v{art['artifact_version']}, version {man['version']}\n"
+                    f"- Setup pipeline: {man['setupPipeline']} (run it after merging)\n- Entities in load order: {', '.join(man['loadOrder'])}\n"
+                    f"- Live tables: {', '.join(t['live_table'] for t in man['liveTables'])}\n\nOpened by {user['name']} in XODUS; approve and merge it from the Publish page.")
+            pr = git_pull_requests.open_pull_request(conn, user["name"], migration_id, pkg["files"], man["version"], art["artifact_id"], body)
+        except ValueError as exc:
+            return _dp_redirect("/publish-artifacts", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("PULL_REQUEST_OPENED", user, {"number": pr["number"], "branch": pr["branch"], "version": pr["package_version"]})
+    return _dp_redirect("/publish-artifacts", "notice", f"Pull request #{pr['number']} opened ({pr['files']} files on {pr['branch']}). Approve and merge it below.")
+
+
+@app.post("/api/git/pull-request/{number}/refresh")
+async def refresh_package_pull_request(request: Request, number: int):
+    get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            pr = git_pull_requests.refresh(conn, number)
+        except ValueError as exc:
+            return _dp_redirect("/publish-artifacts", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    return _dp_redirect("/publish-artifacts", "notice", f"Pull request #{number} is {pr['state'].lower()}.")
+
+
+@app.post("/api/git/pull-request/{number}/merge")
+async def merge_package_pull_request(request: Request, number: int):
+    """Option b: the signed-in Migration Analyst approves; XODUS records them and merges the pull request on their behalf."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            pr = git_pull_requests.merge(conn, number, user["name"])
+        except ValueError as exc:
+            return _dp_redirect("/publish-artifacts", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("PULL_REQUEST_APPROVED_AND_MERGED", user, {"number": number, "merge_sha": pr.get("merge_sha")})
+    return _dp_redirect("/publish-artifacts", "notice", f"Pull request #{number} approved by {user['name']} and merged. Publish it in Data Factory, then run the setup pipeline.")
+
+
+@app.post("/api/data-plane/setup")
+async def run_setup_pipeline(request: Request):
+    """Starts PL_XODUS_Setup_<migration> through the service principal: deploys this package's SQL objects. Needs the merged pull request."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            art, pkg = _xodus_package(conn, migration_id)
+            if not pkg:
+                raise ValueError("Generate the pipeline package first (07 Transformation SQL).")
+            man = pkg["manifest"]
+            if not _merged_pr(conn, migration_id, man["version"]):
+                raise ValueError("Merge the pull request for this package version first.")
+            req = adf_runs.start(conn, migration_id, man["setupPipeline"], {}, user["name"])
+        except ValueError as exc:
+            return _dp_redirect("/publish-artifacts", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("SETUP_PIPELINE_STARTED", user, {"pipeline": req["pipeline"], "adf_run_id": req["adf_run_id"]})
+    return _dp_redirect("/publish-artifacts", "notice", f"{req['pipeline']} started (run {req['adf_run_id']}). Refresh its status, then run the deployment check.")
+
+
+@app.post("/api/data-plane/runs/{request_id}/refresh")
+async def refresh_data_plane_run(request: Request, request_id: str, return_to: str = Form("/publish-artifacts")):
+    get_current_user(request)
+    page = return_to if return_to in ("/publish-artifacts", "/execution", "/validation-rules") else "/publish-artifacts"
+    conn = get_db_connection()
+    try:
+        adf_runs.ensure_table(conn)
+        row = conn.execute("SELECT * FROM adf_run_requests WHERE request_id = ?", (request_id,)).fetchone()
+        if not row:
+            return _dp_redirect(page, "error", "No such run request.")
+        try:
+            run = adf_runs.refresh(conn, dict(row))
+        except ValueError as exc:
+            return _dp_redirect(page, "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    detail = "" if not run["failures"] else " Failed at " + "; ".join(f"{f['activity']}: {f['error'][:200]}" for f in run["failures"][:2])
+    return _dp_redirect(page, "error" if run["status"] in ("FAILED", "CANCELLED") else "notice", f"{run['pipeline']} run {run['adf_run_id']}: {run['status'].lower()}.{detail}")
+
+
+@app.post("/api/data-plane/deployment-check")
+async def run_deployment_check(request: Request):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            art, pkg = _xodus_package(conn, migration_id)
+            if not pkg:
+                raise ValueError("Generate the pipeline package first (07 Transformation SQL).")
+            res = deployment_check.run(conn, migration_id, pkg["manifest"], user["name"])
+        except ValueError as exc:
+            return _dp_redirect("/publish-artifacts", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    fails = [c for c in res["checks"] if c["status"] == "FAIL"]
+    _target_setup_audit("DEPLOYMENT_CHECKED", user, {"version": res["version"], "status": res["status"], "failures": len(fails)})
+    return _dp_redirect("/publish-artifacts", "notice" if res["status"] == "PASS" else "error",
+                        f"Deployment check {res['status']}." + ("" if not fails else " " + fails[0]["detail"]))
+
+
+@app.post("/api/data-plane/start")
+async def start_data_plane_run(request: Request):
+    """Stage 09: start PL_XODUS_Run for a new batch through the service principal. The approver is the signed-in user."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        art, pkg = _xodus_package(conn, migration_id)
+        reasons = []
+        if not pkg:
+            reasons.append("There is no pipeline package: generate one in stage 07.")
+        else:
+            man = pkg["manifest"]
+            status_info = _adf_status(conn, migration_id)
+            if status_info and status_info["stale_reasons"]:
+                reasons.append("The package is stale (" + " ".join(status_info["stale_reasons"]) + ") Generate a new one and publish it.")
+            if not _merged_pr(conn, migration_id, man["version"]):
+                reasons.append("The pull request for this package is not merged (stage 08).")
+            dc = deployment_check.latest(conn, migration_id)
+            if not dc or dc.get("version") != man["version"] or dc.get("status") != "PASS":
+                reasons.append("The deployment check has not passed for this package (stage 08).")
+        if workflow_progress().get("validation_status") != "PASS":
+            reasons.append("Mapping validation has not passed (stage 05).")
+        if reasons:
+            return _dp_redirect("/execution", "error", "Not started: " + " ".join(reasons))
+        batch = "B" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        try:
+            req = adf_runs.start(conn, migration_id, "PL_XODUS_Run", {"MigrationId": migration_id, "MigrationSlug": man["migrationSlug"], "BatchId": batch},
+                                 user["name"], batch_id=batch)
+        except ValueError as exc:
+            return _dp_redirect("/execution", "error", "Not started: " + str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("DATA_PLANE_RUN_STARTED", user, {"batch_id": batch, "adf_run_id": req["adf_run_id"], "version": man["version"]})
+    return _dp_redirect("/execution", "notice", f"Batch {batch} started (Data Factory run {req['adf_run_id']}). Raw files load from {man['rawFolder']} of {man['container']}.")
+
+
+@app.post("/api/data-plane/promote")
+async def promote_batch(request: Request):
+    """Stage 10, after sign-off: start PL_XODUS_Promote. The pipeline itself refuses unless the gate row matches the mirror."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    state = _data_plane_state(migration_id)
+    man, run = state.get("manifest"), state.get("run")
+    if not man or not run or run["status"] != "SUCCEEDED":
+        return _dp_redirect("/validation-rules", "error", "Promotion needs a succeeded run of the current package.")
+    if not state.get("deployment") or state["deployment"]["status"] != "PASS":
+        return _dp_redirect("/validation-rules", "error", "The deployment check has not passed for this package.")
+    conn = get_db_connection()
+    try:
+        try:
+            gate = promotion_gate.status(conn, migration_id, run["batch_id"])
+            if not gate:
+                raise ValueError(f"Batch {run['batch_id']} has no recorded sign-off. The Validation Specialist signs off the target validation first.")
+            req = adf_runs.start(conn, migration_id, "PL_XODUS_Promote", {"MigrationId": migration_id, "MigrationSlug": man["migrationSlug"], "BatchId": run["batch_id"]},
+                                 user["name"], batch_id=run["batch_id"])
+        except ValueError as exc:
+            return _dp_redirect("/validation-rules", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("PROMOTION_STARTED", user, {"batch_id": run["batch_id"], "adf_run_id": req["adf_run_id"]})
+    return _dp_redirect("/validation-rules", "notice", f"Promotion of batch {run['batch_id']} started (Data Factory run {req['adf_run_id']}).")
+
+
+def _xodus_validation_entities(migration_id: str, man: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Stage 10 checks for the stable-pipeline package: canonical tables vs raw files, mirror tables vs the live columns."""
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"] if spec else []
+        dc = deployment_check.latest(conn, migration_id) or {}
+        conn.commit()
+    finally:
+        conn.close()
+    live_cols = dc.get("live_columns") or {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for t in man["liveTables"]:
+        entity, canon = t["entity"], man["canonical"][t["entity"]]
+        e = out.setdefault(entity, {"staging_table": canon["table"], "expected_rows": None, "key": canon["key"], "tables": {}, "unmapped_required": []})
+        if len(canon["files"]) == 1:
+            e["expected_sql"] = f"SELECT COUNT(*) FROM [xodus_raw].[{canon['files'][0]}]"
+        fields = {f["name"]: f for f in spec["entities"][entity]["fields"]}
+        mine = [m for m in approved if m["entity_name"] == entity and m["target_field"] in fields and fields[m["target_field"]]["table"] == t["live_table"] and m.get("canonical_field")]
+        live = live_cols.get(t["live_table"], {})
+        tt = {"columns": {m["canonical_field"]: fields[m["target_field"]]["column"] for m in mine}, "required": [], "code_lists": {}, "types": {}, "max_lengths": {}}
+        for m in mine:
+            f, col = fields[m["target_field"]], fields[m["target_field"]]["column"]
+            d = live.get(col, {})
+            if f.get("required") or (d and not d.get("nullable", True)):
+                tt["required"].append(col)
+            kind = d.get("type") or f.get("type")
+            if kind and str(kind).lower() not in ("string", "nvarchar", "varchar", "nchar", "char", "text", "ntext", "boolean", "bit"):
+                tt["types"][col] = kind
+            if isinstance(d.get("max_length"), int) and d["max_length"] > 0:
+                tt["max_lengths"][col] = d["max_length"]
+            if f.get("codes"):
+                tt["code_lists"][col] = list(f["codes"])
+        e["tables"][t["mirror_table"]] = tt
+        e["unmapped_required"] += [c for c, d in live.items() if not d.get("nullable", True) and c not in t["columns"]]
+    return out

@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from control_plane.services import sql_target
 
+RUN_LOG_SCHEMA = "xodus_ops"  # written by the XODUS pipelines (see xodus_pipelines); the platform only reads it
 STALL_AFTER = timedelta(minutes=60)  # a run with no end row this long after its start is reported as stalled, not as running
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 
@@ -41,7 +42,7 @@ def fetch_log(conn: sqlite3.Connection, migration_id: str, connect: Callable[...
     cfg["username"] = cfg["username_effective"]
     if not cfg["username"] or not password:
         raise ValueError("The SQL sign-in has no user name or password on the server (see the Azure connection page).")
-    schema = cfg["schema_name"]
+    schema = RUN_LOG_SCHEMA
     if not IDENT.match(schema or ""):
         raise ValueError("The SQL schema name is not a safe identifier.")
     try:
@@ -49,7 +50,8 @@ def fetch_log(conn: sqlite3.Connection, migration_id: str, connect: Callable[...
         try:
             cur = db.cursor()
             cur.execute(f"SELECT TOP {int(limit)} log_id, pipeline_run_id, trigger_file, step_name, status, rows_read, rows_written, message, logged_utc "
-                        f"FROM [{schema}].[xodus_run_log] WHERE migration_id = %s ORDER BY log_id DESC", (migration_id,))
+                        f"FROM [{schema}].[xodus_run_log] WHERE migration_id = %s AND (pipeline_name IS NULL OR pipeline_name <> 'PL_XODUS_Promote') "
+                        f"ORDER BY log_id DESC", (migration_id,))  # promotions are followed in stage 10
             cols = ("log_id", "pipeline_run_id", "trigger_file", "step_name", "status", "rows_read", "rows_written", "message", "logged_utc")
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         finally:
@@ -59,7 +61,7 @@ def fetch_log(conn: sqlite3.Connection, migration_id: str, connect: Callable[...
     except Exception as exc:
         text = str(exc).replace(password, "***")
         if "Invalid object name" in text:
-            raise ValueError(f"The run-log table [{schema}].[xodus_run_log] does not exist yet. Run sql/02_run_log.sql in the database.")
+            raise ValueError(f"The run-log table [{schema}].[xodus_run_log] does not exist yet. Run the setup pipeline (stage 08) first.")
         raise ValueError(f"Could not read the run log: {type(exc).__name__}: {text[:300]}")
     for r in rows:
         r["logged_utc"] = str(r["logged_utc"])

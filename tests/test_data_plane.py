@@ -1,0 +1,153 @@
+import json
+import sqlite3
+
+import httpx
+import pytest
+
+from control_plane.services import adf_runs, azure_connection, deployment_check, git_connection, git_pull_requests, promotion_gate, sql_target, target_validation
+
+MANIFEST = {"version": "v1abc", "setupPipeline": "PL_XODUS_Setup_migx", "migrationSlug": "migx", "liveSchema": "simplicity",
+            "objects": {"tables": ["xodus_canon.migx_Account"], "procedures": ["xodus_canon.usp_canon_migx_Account"]},
+            "liveTables": [{"entity": "Account", "live_table": "ORION_MCL_ACCOUNT", "mirror_table": "migx_ORION_MCL_ACCOUNT",
+                            "columns": ["ACCOUNT_NUMBER", "CUSTODIAN"], "key_columns": ["ACCOUNT_NUMBER"]}]}
+
+
+@pytest.fixture
+def conn():
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    return c
+
+
+def test_deployment_check_blocks_missing_objects_old_versions_and_unmapped_not_null_columns():
+    live = {"ORION_MCL_ACCOUNT": {"ACCOUNT_NUMBER": {"type": "nvarchar", "max_length": 255, "nullable": False},
+                                  "CUSTODIAN": {"type": "nvarchar", "max_length": 255, "nullable": False},
+                                  "FUND_NAME": {"type": "nvarchar", "max_length": 255, "nullable": False},
+                                  "OPEN_DATE": {"type": "date", "max_length": None, "nullable": True}}}
+    ok = deployment_check.evaluate(MANIFEST, "v1abc", {"a": True}, "v1abc", {"ORION_MCL_ACCOUNT": {k: v for k, v in live["ORION_MCL_ACCOUNT"].items() if k != "FUND_NAME"}})
+    assert ok["status"] == "PASS"
+    bad = deployment_check.evaluate(MANIFEST, "old", {"a": True, "b": False}, None, live)
+    by = {c["check"]: c for c in bad["checks"]}
+    assert bad["status"] == "FAIL" and by["XODUS_VERSION"]["status"] == "FAIL" and "PL_XODUS_Setup_migx" in by["XODUS_VERSION"]["detail"]
+    assert by["XODUS_OBJECTS"]["status"] == "FAIL" and "b" in by["XODUS_OBJECTS"]["detail"] and by["LANDING_VERSION"]["status"] == "FAIL"
+    assert by["LIVE_REQUIRED_MAPPED"]["status"] == "FAIL" and "FUND_NAME" in by["LIVE_REQUIRED_MAPPED"]["detail"]
+    gone = deployment_check.evaluate(MANIFEST, "v1abc", {}, "v1abc", {})
+    assert any(c["check"] == "LIVE_TABLE" and "never creates" in c["detail"] for c in gone["checks"])
+
+
+class FakeHTTP:
+    def __init__(self, routes):
+        self.routes, self.calls = routes, []
+
+    def __call__(self, method, url, **kw):
+        self.calls.append((method, url, kw))
+        for (m, part), (code, body) in self.routes.items():
+            if m == method and part in url:
+                return httpx.Response(code, json=body)
+        return httpx.Response(404, json={"message": "Not Found"})
+
+
+def _azure(conn, monkeypatch, status="CONNECTED"):
+    azure_connection.ensure_table(conn)
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "s")
+    azure_connection.save(conn, "Ann", {"tenant_id": "00000000-0000-0000-0000-000000000001", "client_id": "00000000-0000-0000-0000-000000000002",
+                                        "subscription_id": "00000000-0000-0000-0000-000000000003", "resource_group": "rg", "factory_name": "adf-x",
+                                        "secret_env_var": "AZURE_CLIENT_SECRET"})
+    conn.execute("UPDATE azure_connection_config SET status = ?", (status,))
+
+
+def test_runs_start_only_xodus_pipelines_record_the_approver_and_read_failures(conn, monkeypatch):
+    _azure(conn, monkeypatch)
+    http = FakeHTTP({("POST", "/oauth2/v2.0/token"): (200, {"access_token": "t"}), ("POST", "/pipelines/PL_XODUS_Run/createRun"): (200, {"runId": "R1"}),
+                     ("GET", "/pipelineruns/R1"): (200, {"status": "Failed", "message": "boom"}),
+                     ("POST", "/pipelineruns/R1/queryActivityruns"): (200, {"value": [{"activityName": "Copy_Raw", "status": "Failed", "error": {"message": "column X"}}]})})
+    with pytest.raises(ValueError):
+        adf_runs.start(conn, "MIG-1", "SomeOtherPipeline", {}, "Ann", http=http)
+    req = adf_runs.start(conn, "MIG-1", "PL_XODUS_Run", {"MigrationId": "MIG-1", "BatchId": "B1"}, "Ann", batch_id="B1", http=http)
+    assert req["adf_run_id"] == "R1" and req["requested_by"] == "Ann"
+    assert http.calls[-1][2]["json"] == {"MigrationId": "MIG-1", "BatchId": "B1"} and "Bearer t" in http.calls[-1][2]["headers"]["Authorization"]
+    run = adf_runs.refresh(conn, req, http=http)
+    assert run["status"] == "FAILED" and run["failures"] == [{"activity": "Copy_Raw", "type": None, "error": "column X"}]
+    assert adf_runs.latest(conn, "MIG-1", "PL_XODUS_Run")["status"] == "FAILED"
+    conn.execute("UPDATE azure_connection_config SET status = 'FAILED'")
+    with pytest.raises(ValueError):
+        adf_runs.start(conn, "MIG-1", "PL_XODUS_Run", {}, "Ann", http=http)
+
+
+def _git(conn, monkeypatch):
+    git_connection.ensure_table(conn)
+    monkeypatch.setenv("GITHUB_ADF_TOKEN", "tok")
+    git_connection.save(conn, "Ann", {"repository": "o/repo", "branch": "main", "adf_folder": "adf", "token_env_var": "GITHUB_ADF_TOKEN"})
+    conn.execute("UPDATE git_connection_config SET status = 'CONNECTED'")
+
+
+def test_pull_request_goes_to_its_own_branch_and_merges_only_when_open(conn, monkeypatch):
+    _git(conn, monkeypatch)
+    http = FakeHTTP({("GET", "/git/ref/heads/main"): (200, {"object": {"sha": "H"}}), ("GET", "/git/commits/H"): (200, {"tree": {"sha": "T"}}),
+                     ("POST", "/git/trees"): (201, {"sha": "T2"}), ("POST", "/git/commits"): (201, {"sha": "C2"}),
+                     ("GET", "/git/ref/heads/xodus/"): (404, {"message": "Not Found"}), ("POST", "/git/refs"): (201, {}),
+                     ("POST", "/pulls"): (201, {"number": 7, "html_url": "https://github.com/o/repo/pull/7"}),
+                     ("GET", "/pulls/7/reviews"): (200, []), ("GET", "/pulls/7"): (200, {"state": "open", "merged": False, "mergeable": True}),
+                     ("PUT", "/pulls/7/merge"): (200, {"sha": "M1", "merged": True})})
+    pr = git_pull_requests.open_pull_request(conn, "Ann", "MIG-1", {"pipeline/PL_XODUS_Run.json": "{}"}, "v1abc", "ART-1", "body", http=http)
+    assert pr["number"] == 7 and pr["branch"] == "xodus/mig-1-v1abc" and pr["state"] == "OPEN"
+    created = next(c for c in http.calls if c[0] == "POST" and c[1].endswith("/pulls"))
+    assert created[2]["json"]["head"] == "xodus/mig-1-v1abc" and created[2]["json"]["base"] == "main"
+    assert not any(c[0] == "PATCH" and "/heads/main" in c[1] for c in http.calls)  # the configured branch is never written directly
+    with pytest.raises(ValueError):  # one open pull request per package version
+        git_pull_requests.open_pull_request(conn, "Ann", "MIG-1", {"pipeline/x.json": "{}"}, "v1abc", "ART-1", "body", http=http)
+    merged = git_pull_requests.merge(conn, 7, "Bo", http=http)
+    put = next(c for c in http.calls if c[0] == "PUT")
+    assert merged["state"] == "MERGED" and merged["approved_by"] == "Bo" and "Approved in XODUS by Bo" in put[2]["json"]["commit_message"]
+    assert git_pull_requests.list_for(conn, "MIG-1")[0]["approved_by"] == "Bo"
+
+
+class FakeDB:
+    def __init__(self, answers):
+        self.answers, self.sql, self.committed = answers, [], False
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, params=()):
+        self.sql.append((sql, params))
+        self.last = next((a for k, a in self.answers if k in sql), [])
+
+    def fetchall(self):
+        return self.last
+
+    def commit(self):
+        self.committed = True
+
+    def close(self):
+        pass
+
+
+def test_gate_records_the_mirror_counts_with_the_signer_and_reads_back(conn, monkeypatch):
+    sql_target.ensure_table(conn)
+    monkeypatch.setenv("SQL_TARGET_PASSWORD", "pw")
+    sql_target.save(conn, "Ann", {"server": "s.database.windows.net", "database_name": "xodus", "username": "u", "password_env_var": "SQL_TARGET_PASSWORD", "schema_name": "simplicity"})
+    db = FakeDB([("COUNT_BIG(*) FROM [xodus_mirror].[migx_ORION_MCL_ACCOUNT]", [(60,)])])
+    gate = promotion_gate.record(conn, "MIG-1", "B1", "TVAL-1", "Val", "2026-11-10T10:00:00", MANIFEST, connect=lambda cfg, pw: db)
+    assert gate["counts"] == {"migx_ORION_MCL_ACCOUNT": 60} and db.committed
+    insert = next((s, p) for s, p in db.sql if s.startswith("INSERT INTO xodus_ops.xodus_promotion_gate"))
+    assert insert[1][:4] == ("MIG-1", "B1", "TVAL-1", "Val") and json.loads(insert[1][5]) == {"migx_ORION_MCL_ACCOUNT": 60}
+    empty = FakeDB([("COUNT_BIG", [(0,)])])
+    with pytest.raises(ValueError):
+        promotion_gate.record(conn, "MIG-1", "B1", "TVAL-1", "Val", "t", MANIFEST, connect=lambda cfg, pw: empty)
+
+
+def test_stage_10_checks_values_fit_the_live_types_and_lengths():
+    ent = {"Account": {"staging_table": "migx_Account", "expected_rows": None, "expected_sql": "SELECT COUNT(*) FROM [xodus_raw].[migx_corecap_accounts]",
+                       "key": "ACCT_NUM", "unmapped_required": [],
+                       "tables": {"migx_ORION_MCL_ACCOUNT": {"columns": {"ACCT_NUM": "ACCOUNT_NUMBER", "OPEN_DATE": "OPEN_DATE"}, "required": ["ACCOUNT_NUMBER"],
+                                                             "types": {"OPEN_DATE": "date"}, "max_lengths": {"ACCOUNT_NUMBER": 20}}}}}
+    plan = target_validation.build_plan(schema="xodus_mirror", staging_schema="xodus_canon", entities=ent)
+    kinds = {p["check"] for p in plan}
+    assert {"VALUES_FIT_TYPE", "VALUES_FIT_LENGTH"} <= kinds
+    fit = next(p for p in plan if p["check"] == "VALUES_FIT_TYPE")
+    assert "TRY_CONVERT(date," in fit["sql"] and "[xodus_mirror].[migx_ORION_MCL_ACCOUNT]" in fit["sql"]
+    answers = {"[xodus_raw]": 89, "COUNT(*) FROM [xodus_canon]": 88}
+    checks = target_validation.evaluate(plan, lambda q: next((v for k, v in answers.items() if k in q), 0), {"status": "SUCCEEDED"})
+    rows = next(c for c in checks if c["check"] == "STAGING_ROW_COUNT")
+    assert rows["status"] == "FAIL" and "raw file delivered 89" in rows["detail"]

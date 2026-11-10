@@ -1,0 +1,29 @@
+{# Stage 10 for a stable-pipeline package: the promotion gate and the promotion of the signed-off batch into the live tables. #}
+<section class="card" id="promotion" data-testid="promotion">
+  <h3 style="font-size:16px">Promote to live <span class="font-mono text-[10px] font-normal text-sky-800">PL_XODUS_PROMOTE · GATED</span></h3>
+  <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">After the sign-off above, XODUS records the batch's mirror row counts in the promotion gate. The promotion pipeline checks that gate first and stops if the mirror changed since the sign-off; then it copies the mirror to Simplicity and merges it into the live tables in one transaction (all or nothing).</p>
+  {% set run = dp.run %}{% set gate = dp.gate %}
+  {% if not run %}<p class="fh">No batch has run yet (stage 09).</p>
+  {% else %}
+  <p class="mt-2 text-xs">Batch <span class="font-mono">{{ run.batch_id }}</span> · run {{ run.status }}</p>
+  {% if dp.gate_error %}<p class="fh" style="color:var(--bad)">The promotion gate could not be read: {{ dp.gate_error }}</p>
+  {% elif gate %}<p class="mt-1 text-xs" data-testid="gate-row"><span class="pill approved">SIGNED OFF</span> by {{ gate.signed_off_by }} · {{ gate.signed_off_utc[:19] }} · counts {% for t, n in gate.counts.items() %}<span class="font-mono">{{ t }}</span> {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% else %}<p class="fh">Not signed off yet: the gate opens when the Validation Specialist signs off a passing target validation of this batch.</p>{% endif %}
+  {% set ready = gate and run.status == 'SUCCEEDED' and dp.deployment and dp.deployment.status == 'PASS' %}
+  <form action="/api/data-plane/promote" method="post" class="mt-2"><fieldset {% if not (can_promote and ready) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+    <button class="btn p sm" data-testid="promote">Promote batch {{ run.batch_id }} to live</button>
+    <span class="fh">{% if not can_promote %} A Migration Analyst promotes.{% elif not gate %} Waiting for the sign-off.{% elif not (dp.deployment and dp.deployment.status == 'PASS') %} The deployment check has not passed for this package.{% endif %}</span>
+  </fieldset></form>
+  {% if dp.promote_run %}{% set r = dp.promote_run %}
+  <p class="mt-2 text-xs" data-testid="promote-run">Promotion run <span class="font-mono">{{ r.adf_run_id }}</span> · {{ r.requested_by }} · {{ r.requested_utc[:19] }} · <span class="pill {{ 'approved' if r.status == 'SUCCEEDED' else ('failed' if r.status in ('FAILED','CANCELLED') else 'review') }}">{{ r.status }}</span> {{ (r.message or '')[:300] }}
+    <form action="/api/data-plane/runs/{{ r.request_id }}/refresh" method="POST" class="inline"><input type="hidden" name="return_to" value="/validation-rules"><button class="btn g sm">Refresh</button></form></p>
+  {% if r.failures %}<div class="exc mt-2" role="alert">{% for f in r.failures %}<div><span class="font-mono">{{ f.activity }}</span>: {{ f.error }}</div>{% endfor %}</div>{% endif %}
+  {% endif %}
+  {% if gate and gate.promotion %}
+  <div class="tw mt-2"><table data-testid="promotion-result"><thead><tr><th>Live table</th><th>Inserted</th><th>Updated</th></tr></thead><tbody>
+  {% for t in gate.promotion.tables %}<tr><td class="font-mono">{{ t.live_table }}</td><td>{{ t.inserted }}</td><td>{{ t.updated }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p class="fh">Promoted {{ gate.promotion.logged_utc[:19] }} (run {{ gate.promotion.run_id }}).</p>
+  {% endif %}
+  {% endif %}
+</section>

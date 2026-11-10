@@ -1,0 +1,55 @@
+{# Stage 08 for a stable-pipeline package: pull request, Data Factory publish, setup pipeline, deployment check. Needs `dp`. #}
+{% set man = dp.manifest %}
+<section class="card" id="data-plane" data-testid="data-plane">
+  <h3>Pipeline package <span class="font-mono text-[11px]">{{ man.version }}</span></h3>
+  <p class="fh">Stable pipelines (they never change when the source changes) plus this migration's generated SQL. Load order: <b>{{ man.loadOrder|join(' → ') }}</b>. Live tables: {% for t in man.liveTables %}<span class="font-mono">{{ man.liveSchema }}.{{ t.live_table }}</span>{% if not loop.last %}, {% endif %}{% endfor %}. Raw files are read from <span class="font-mono">{{ man.container }}/{{ man.rawFolder }}</span>.</p>
+  <p class="fh">Linked services the factory needs (created by hand, managed identity): {% for l in man.linkedServices %}<span class="font-mono">{{ l }}</span>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+
+  <h4 class="mt-3" style="font-size:14px">1 · Pull request</h4>
+  {% if not dp.open_pr and not dp.merged_pr %}
+  <form action="/api/git/pull-request" method="POST" class="mt-1"><fieldset {% if not (can_publish and git and git.status == 'CONNECTED') %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+    <button class="btn p sm" data-testid="open-pr">Open pull request for version {{ man.version }}</button>
+    <span class="fh">Pushes the package to its own branch and opens a pull request into <span class="font-mono">{{ git.branch if git else 'the configured branch' }}</span>. Nothing is merged yet.{% if not can_publish %} A Migration Analyst opens it.{% endif %}</span>
+  </fieldset></form>
+  {% endif %}
+  {% if dp.prs %}
+  <div class="tw mt-2"><table data-testid="pr-table"><thead><tr><th>#</th><th>Version</th><th>Branch</th><th>State</th><th>Opened</th><th>Approved</th><th></th></tr></thead><tbody>
+  {% for p in dp.prs[:6] %}
+    <tr><td><a class="text-blue-700" href="{{ p.url }}" target="_blank" rel="noopener">#{{ p.number }}</a></td><td class="font-mono">{{ p.package_version }}</td><td class="font-mono">{{ p.branch }}</td>
+      <td><span class="pill {{ 'approved' if p.state == 'MERGED' else ('failed' if p.state == 'CLOSED' else 'review') }}">{{ p.state }}</span>{% if p.state == 'OPEN' and p.mergeable_state %} <span class="fh">{{ p.mergeable_state }}</span>{% endif %}</td>
+      <td>{{ p.opened_by }} · {{ p.opened_utc[:16] }}</td><td>{{ p.approved_by or '—' }}{% if p.merged_utc %} · {{ p.merged_utc[:16] }}{% endif %}</td>
+      <td class="whitespace-nowrap">
+        <form action="/api/git/pull-request/{{ p.number }}/refresh" method="POST" class="inline"><button class="btn g sm">Refresh</button></form>
+        {% if p.state == 'OPEN' and can_publish %}<form action="/api/git/pull-request/{{ p.number }}/merge" method="POST" class="inline"><button class="btn ok sm" data-testid="merge-pr">Approve and merge</button></form>{% endif %}
+      </td></tr>
+  {% endfor %}
+  </tbody></table></div>
+  <p class="fh">Approving here records you as the approver and merges the pull request (the merge commit names you).</p>
+  {% endif %}
+
+  <h4 class="mt-3" style="font-size:14px">2 · Publish in Data Factory</h4>
+  <p class="fh">{% if dp.merged_pr %}Merged as <span class="font-mono">{{ (dp.merged_pr.merge_sha or '')[:7] }}</span>. {% endif %}In Data Factory Studio, open the collaboration branch and click <b>Publish</b> so the pipelines become live. The factory owner does this; XODUS does not deploy factory content.</p>
+
+  <h4 class="mt-3" style="font-size:14px">3 · Setup pipeline <span class="font-mono text-[11px]">{{ man.setupPipeline }}</span></h4>
+  <p class="fh">Deploys the SQL objects of this version: raw, canonical and mirror tables, the generated procedures, the load order and the Simplicity landing objects. Live tables are never created or changed.</p>
+  <form action="/api/data-plane/setup" method="POST" class="mt-1"><fieldset {% if not (can_publish and dp.merged_pr and dp.adf_ready) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+    <button class="btn p sm" data-testid="run-setup">Run setup pipeline</button>
+    <span class="fh">{% if not dp.merged_pr %} Merge the pull request first.{% elif not dp.adf_ready %} Test the Data Factory connection first (Platform Setup).{% endif %}</span>
+  </fieldset></form>
+  {% if dp.setup_run %}{% set r = dp.setup_run %}
+  <p class="fh mt-1" data-testid="setup-run">Last run <span class="font-mono">{{ r.adf_run_id }}</span> by {{ r.requested_by }} · {{ r.requested_utc[:19] }} · <span class="pill {{ 'approved' if r.status == 'SUCCEEDED' else ('failed' if r.status in ('FAILED','CANCELLED') else 'review') }}">{{ r.status }}</span> {{ r.message or '' }}
+    <form action="/api/data-plane/runs/{{ r.request_id }}/refresh" method="POST" class="inline"><input type="hidden" name="return_to" value="/publish-artifacts"><button class="btn g sm">Refresh</button></form></p>
+  {% endif %}
+
+  <h4 class="mt-3" style="font-size:14px">4 · Deployment check</h4>
+  <form action="/api/data-plane/deployment-check" method="POST" class="mt-1"><fieldset {% if not can_check %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+    <button class="btn g sm" data-testid="deployment-check">Run deployment check</button><span class="fh"> Read-only: versions, objects, live tables and columns, NOT NULL columns without a mapping.</span>
+  </fieldset></form>
+  {% if dp.deployment %}{% set d = dp.deployment %}
+  <p class="fh mt-1">Checked by {{ d.checked_by }} · {{ d.checked_utc[:19] }} · <span class="pill {{ 'approved' if d.status == 'PASS' else 'failed' }}" data-testid="deployment-status">{{ d.status }}</span></p>
+  <div class="tw"><table data-testid="deployment-table"><thead><tr><th>Check</th><th>Status</th><th>Finding</th></tr></thead><tbody>
+  {% for c in d.checks %}<tr><td class="font-mono">{{ c.check }}</td><td><span class="pill {{ 'approved' if c.status == 'PASS' else ('failed' if c.status == 'FAIL' else 'review') }}">{{ c.status }}</span></td><td>{{ c.detail }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% elif dp.stale_deployment %}<p class="fh mt-1">The last check was for version {{ dp.stale_deployment.version }}; run it again for this version.</p>{% endif %}
+  {% if dp.deployment and dp.deployment.status == 'PASS' %}<p class="mt-2"><a href="/execution#start-run" class="btn p sm">Continue to 09 ADF Execution →</a></p>{% endif %}
+</section>

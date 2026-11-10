@@ -54,8 +54,9 @@ def columns_used(expression: str, column: str, rule: Optional[Dict[str, Any]]) -
     return cols
 
 
-def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s") -> str:
-    """T-SQL expression for one approved mapping. Raises ValueError for anything unregistered."""
+def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None) -> str:
+    """T-SQL expression for one approved mapping. Raises ValueError for anything unregistered.
+    lookup_ref(parent_file) names the table a LOOKUP reads (default: the staging lookup table)."""
     a = _ident(alias)
     col = f"{a}.{_q(column)}"
     if expression == "DIRECT_COPY":
@@ -69,8 +70,9 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alia
     if kind == "LOOKUP":
         ret = re.sub(r"[^A-Za-z0-9_]", "_", p["return_column"])
         key = re.sub(r"[^A-Za-z0-9_]", "_", p["parent_key"])
+        source = lookup_ref(p["parent_file"]) if lookup_ref else f"{_q(STAGING_SCHEMA)}.{_q(lookup_table(p['parent_file']))}"
         return (f"CASE WHEN {blank} THEN {col} ELSE (SELECT TOP (1) CAST(l.{_q(ret)} AS nvarchar(4000)) "
-                f"FROM {_q(STAGING_SCHEMA)}.{_q(lookup_table(p['parent_file']))} AS l WHERE LTRIM(RTRIM(l.{_q(key)})) = {t}) END")
+                f"FROM {source} AS l WHERE LTRIM(RTRIM(l.{_q(key)})) = {t}) END")
     if kind == "DEFAULT_IF_BLANK":
         return f"CASE WHEN {blank} THEN {_lit(p['default'])} ELSE {col} END"
     if kind == "IF_BLANK":

@@ -80,6 +80,40 @@ def _default_connect(cfg: Dict[str, Any], password: str):
     return pymssql.connect(server=cfg["server"], user=cfg["username"], password=password, database=cfg["database_name"], login_timeout=15, timeout=20, tds_version="7.4")
 
 
+def run(cfg: Optional[Dict[str, Any]], statements, connect: Callable[..., Any] = _default_connect, commit: bool = False) -> list:
+    """Run [(sql, params), ...] with the saved sign-in of `cfg` and return each statement's rows (an empty list when it returns none).
+    Reads only, unless commit=True (used solely to record a promotion sign-off). Raises ValueError with a readable reason; never
+    includes the password."""
+    if not cfg:
+        raise ValueError("The SQL connection is not set up.")
+    password = os.environ.get(cfg["password_env_var"], "")
+    user = cfg.get("username_effective") or cfg.get("username")
+    if not (user and password):
+        raise ValueError("The SQL user name or password is missing on the server.")
+    try:
+        db = connect({**cfg, "username": user}, password)
+    except ImportError:
+        raise ValueError("The SQL driver (pymssql) is not installed in the server image.")
+    except Exception as exc:
+        raise ValueError(f"Could not sign in to {cfg['database_name']}: {type(exc).__name__}: {str(exc)[:200].replace(password, '***')}")
+    out = []
+    try:
+        cur = db.cursor()
+        for sql, params in statements:
+            cur.execute(sql, params)
+            try:
+                out.append(cur.fetchall())
+            except Exception:  # statements that return no rows
+                out.append([])
+        if commit:
+            db.commit()
+    except Exception as exc:
+        raise ValueError(f"{cfg['database_name']}: {type(exc).__name__}: {str(exc)[:300].replace(password, '***')}")
+    finally:
+        db.close()
+    return out
+
+
 def test_connection(conn: sqlite3.Connection, connect: Callable[..., Any] = _default_connect) -> Dict[str, Any]:
     """Sign in, report the database and whether the target schema and its tables exist. Read-only."""
     cfg = get_config(conn)
@@ -156,10 +190,10 @@ _GROUPS = {"date": "date", "datetime": "date", "datetime2": "date", "smalldateti
            "tinyint": "integer", "decimal": "decimal", "numeric": "decimal", "float": "decimal", "real": "decimal", "money": "decimal", "bit": "boolean"}
 
 
-def read_schema(conn: sqlite3.Connection, connect: Callable[..., Any] = _default_connect) -> Dict[str, Any]:
+def read_schema(conn: sqlite3.Connection, connect: Callable[..., Any] = _default_connect, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Table and column list of the target schema, in the shape target inference reads. Catalog only: no row data, nothing changed.
     The database has no column descriptions or code lists, so those are empty; a column that does not allow NULL is reported as required."""
-    cfg = get_config(conn)
+    cfg = cfg or get_config(conn)
     if not cfg:
         raise ValueError("Save the SQL settings first.")
     password = os.environ.get(cfg["password_env_var"], "")

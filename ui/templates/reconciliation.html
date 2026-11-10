@@ -131,13 +131,16 @@
         {% endif %}
     </section>
     {% endif %}
-    {% if view == 'execution' %}
+    {% if view == 'execution' and dp and dp.pkg %}{% include "_data_plane_run.html" %}{% endif %}
+    {% if view == 'execution' and not (dp and dp.pkg) %}
     <section class="card" data-testid="start-pipeline-card">
         <h3 style="font-size:16px">Start the Data Factory pipeline</h3>
         <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">One approval does two things: it maps the raw files to canonical files under <span class="font-mono">stage/</span>, then places a <span class="font-mono">.ready</span> marker in <span class="font-mono">curated/</span>, which starts the pipeline through the factory's blob trigger. It refuses when the ADF package is missing or stale, or mapping validation has not passed. The approver is the signed-in user.</p>
         {% if can_decide_exception %}<form action="/api/execution/start-pipeline" method="post" class="mt-2"><button class="btn p sm" data-testid="start-pipeline">Approve and start the pipeline</button></form>
         {% else %}<p class="fh">A Migration Analyst or Platform Admin approves the start.</p>{% endif %}
     </section>
+    {% endif %}
+    {% if view == 'execution' %}
     <section id="execution" class="card" data-testid="run-monitor">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -245,6 +248,7 @@
         {% else %}<p class="mt-3 text-xs text-[#5A6A88]">Not run yet for this migration.</p>{% endif %}
     </section>
     {% endif %}
+    {% if view == 'rules' and dp and dp.pkg %}{% include "_data_plane_promote.html" %}{% endif %}
     {% if view == 'rules' %}
     <section id="validation-scenarios" class="card">
         <h3 style="font-size:16px">Validation scenarios</h3>
