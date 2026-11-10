@@ -11,7 +11,8 @@
     </div>
     <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">Data plane</span></div>
   </div>
-  <div class="ins"><b>This stage.</b> Follows 07 Transformation SQL, which builds the ADF package. Publishing adds a commit to the configured branch only: it never force-pushes, deletes files or touches other branches. Pulling the published artifacts into Data Factory from this platform is the next piece of work and is not part of this stage yet.</div>
+  {% if dp and dp.pkg %}<div class="ins"><b>This stage.</b> Follows 07 Transformation SQL, which builds the pipeline package. The package goes to its own branch and a pull request; a Migration Analyst approves and merges it here. After the factory owner publishes it in Data Factory, the setup pipeline deploys the SQL objects and the deployment check confirms both databases are ready.</div>
+  {% else %}<div class="ins"><b>This stage.</b> Follows 07 Transformation SQL, which builds the ADF package. Publishing adds a commit to the configured branch only: it never force-pushes, deletes files or touches other branches. Pulling the published artifacts into Data Factory from this platform is the next piece of work and is not part of this stage yet.</div>{% endif %}
   <section class="kpis" aria-label="Publishing summary">
     <div class="kpi"><small>ADF package</small><b>{% if pkg %}v{{ pkg.artifact_version }}{% else %}None{% endif %}</b><span>{% if pkg %}{{ pkg.artifact_id }} · {{ pkg.generated_utc[:19] }}{% else %}build it in 07 Transformation SQL{% endif %}</span></div>
     <div class="kpi"><small>GitHub</small><b>{{ git.status|default('Not set up')|title if git else 'Not set up' }}</b><span>{% if git %}{{ git.repository }} · {{ git.branch }}{% else %}set up in Azure connection{% endif %}</span></div>
