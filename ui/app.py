@@ -697,7 +697,8 @@ async def save_azure_connection(request: Request):
     conn = get_db_connection()
     try:
         try:
-            azure_connection.save(conn, user["name"], {k: str(form.get(k, "")) for k in azure_connection.FIELDS})
+            existing = azure_connection.get_config(conn) or {}  # fields no longer on the form keep their stored value
+            azure_connection.save(conn, user["name"], {k: str(form.get(k)) if k in form else str(existing.get(k) or "") for k in azure_connection.FIELDS})
         except ValueError as exc:
             return RedirectResponse(url="/azure-setup?" + urlencode({"error": str(exc)}), status_code=status.HTTP_303_SEE_OTHER)
         conn.commit()
@@ -3289,6 +3290,13 @@ async def download_adf_package(request: Request):
             azure_cfg = azure_connection.get_config(conn)
         finally:
             conn.close()
+        conn = get_db_connection()
+        try:
+            sqlt = sql_target.get_config(conn)
+        finally:
+            conn.close()
+        if azure_cfg and sqlt:  # the target database is set up once, under Target database; the package uses those values
+            azure_cfg = {**azure_cfg, "sql_server": sqlt["server"], "sql_database": sqlt["database_name"], "sql_schema": sqlt["schema_name"]}
         blob = blob_source.status(_blob_container())  # account name and emulator flag only; no key is read
         env = adf_environment.resolve(migration_id, azure_cfg, blob.get("account", ""), _blob_container(), blob.get("emulator", True))
         package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
@@ -4311,14 +4319,14 @@ def _source_firm() -> str:
 
 
 def _blob_panel(with_files: bool = True) -> dict:
-    """Status, folder tree and the raw/<firm>/ listing for pages that show the migration's blob storage."""
+    """Status, folder tree and the sample-raw/<firm>/ listing (the sample files stage 01 loads) for pages that show blob storage."""
     container, firm = _blob_container(), _source_firm()
     st = blob_source.status(container)
-    prefix = blob_source.source_prefix(firm)
+    prefix = blob_source.sample_prefix(firm)
     st.update({"container": container, "firm_folder": prefix, "blobs": [], "tree": [], "layout_ready": False, "zones": blob_source.ZONES})
     if st["reachable"] and st["container_exists"]:
         try:
-            st["tree"] = blob_source.tree(container)
+            st["tree"] = blob_source.tree(container, folders_only=True)
             have = {r["path"] for r in st["tree"] if r["kind"] == "folder"}
             st["layout_ready"] = all(p in have for p in blob_source.layout_prefixes(firm))
             if with_files:
@@ -4405,7 +4413,7 @@ async def load_blob_source_files(request: Request):
     names = [str(n) for n in form.getlist("blob")]
     if not names:
         return RedirectResponse(url="/entity-sample-files?error=" + quote_plus("Tick at least one blob to load."), status_code=status.HTTP_303_SEE_OTHER)
-    container, prefix = _blob_container(), blob_source.source_prefix(_source_firm())
+    container, prefix = _blob_container(), blob_source.sample_prefix(_source_firm())
     files = []
     try:
         for name in names:
@@ -4419,16 +4427,16 @@ async def load_blob_source_files(request: Request):
 
 @app.post("/api/blob/seed-demo")
 async def seed_blob_with_demo_files(request: Request):
-    """Local emulator only: create the folders and put the CoreCap sample files in raw/<source firm>/ (that folder is reset; others are untouched)."""
+    """Local emulator only: create the folders and put the CoreCap sample files in sample-raw/<source firm>/ (that folder is reset; others are untouched)."""
     get_current_user(request)
     folder = (Path(root_dir) / "demo_data" / "corecap_source_files").resolve()
     files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in blob_source.SOURCE_SUFFIXES}
     firm = _source_firm()
     try:
-        n = blob_source.seed(_blob_container(), files, prefix=blob_source.source_prefix(firm), source_firm=firm)
+        n = blob_source.seed(_blob_container(), files, prefix=blob_source.sample_prefix(firm), source_firm=firm)
     except Exception as exc:
         return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"{n} CoreCap sample files placed in {blob_source.source_prefix(firm)}."), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"{n} CoreCap sample files placed in {blob_source.sample_prefix(firm)}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/upload-sample-file")

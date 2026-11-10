@@ -136,7 +136,8 @@ def test_azure_connection_requires_environment_identifiers_without_collecting_se
     assert 'setup["source_acquisition"] == "AZURE_CONNECTION"' in app and "/azure-setup" in app
     for field in ("azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"):
         assert field not in setup
-    for field in ("tenant_id", "subscription_id", "resource_group", "storage_account"):
+    assert 'name="storage_account"' not in azure_page and 'name="sql_server"' not in azure_page  # set once under Target database / the server
+    for field in ("tenant_id", "subscription_id", "resource_group", "factory_name"):
         assert f'name="{field}"' in azure_page
     assert 'name="file"' not in setup  # knowledge upload lives on Firm knowledge only
     assert "never type the secret" in azure_page.lower() or "never typed" in azure_page.lower()

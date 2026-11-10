@@ -16,7 +16,8 @@ AZURITE_ACCOUNT = "devstoreaccount1"
 SOURCE_SUFFIXES = (".csv", ".tsv", ".xlsx", ".xlsm", ".xls", ".json")
 # Data lake zones inside the one container the user names. Blob storage has no real empty folders (outside ADLS Gen2), so a folder is
 # made visible with a zero-byte marker blob; the marker is hidden from file lists.
-ZONES = ("raw", "stage", "curated")
+# sample-raw/ holds the representative sample files discovery works from; raw/ holds the firm's real data the pipeline loads.
+ZONES = ("sample-raw", "raw", "stage", "curated")
 MARKER = ".xodus-folder"
 
 
@@ -25,12 +26,17 @@ def firm_folder(source_firm: str) -> str:
 
 
 def source_prefix(source_firm: str) -> str:
-    """Where the source firm's files are dropped: raw/<firm>/."""
+    """Where the source firm's real data is dropped: raw/<firm>/. The pipeline loads from here."""
     return f"raw/{firm_folder(source_firm)}/"
 
 
+def sample_prefix(source_firm: str) -> str:
+    """Where the source firm's sample files are dropped: sample-raw/<firm>/. Stage 01 loads these for discovery and mapping."""
+    return f"sample-raw/{firm_folder(source_firm)}/"
+
+
 def layout_prefixes(source_firm: str) -> List[str]:
-    return [f"{z}/" for z in ZONES] + [source_prefix(source_firm)]
+    return [f"{z}/" for z in ZONES] + [sample_prefix(source_firm), source_prefix(source_firm)]
 
 
 def connection_string() -> str:
@@ -101,7 +107,8 @@ def explain_error(exc: Exception) -> str:
 
 
 def ensure_layout(container: str, source_firm: str, conn_str: Optional[str] = None) -> Dict[str, Any]:
-    """Create the container if needed and the raw/stage/curated folders plus raw/<firm>/. Safe to run again; never deletes anything."""
+    """Create the container if needed and the sample-raw/raw/stage/curated folders plus sample-raw/<firm>/ and raw/<firm>/.
+    Safe to run again; never deletes anything."""
     if not NAME_OK.match(container or ""):
         raise ValueError("Container names use lowercase letters, digits and '-' (3 to 63 characters).")
     cc = _service(conn_str).get_container_client(container)
@@ -122,15 +129,16 @@ def ensure_layout(container: str, source_firm: str, conn_str: Optional[str] = No
 NAME_OK = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61})[a-z0-9]$")
 
 
-def tree(container: str, conn_str: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Flat, depth-annotated rows (folders and files) for showing the container's structure. Marker blobs only make their folder visible."""
+def tree(container: str, conn_str: Optional[str] = None, folders_only: bool = False) -> List[Dict[str, Any]]:
+    """Flat, depth-annotated rows (folders and files) for showing the container's structure. Marker blobs only make their folder visible.
+    With folders_only, files are left out (the pages show the layout, not every file)."""
     entries: Dict[str, Dict[str, Any]] = {}
     for b in _service(conn_str).get_container_client(container).list_blobs():
         parts = b.name.split("/")
         for i in range(1, len(parts)):
             path = "/".join(parts[:i]) + "/"
             entries.setdefault(path, {"path": path, "name": parts[i - 1], "kind": "folder", "depth": i - 1, "size": 0})
-        if parts[-1] != MARKER:
+        if parts[-1] != MARKER and not folders_only:
             entries[b.name] = {"path": b.name, "name": parts[-1], "kind": "file", "depth": len(parts) - 1, "size": int(b.size or 0)}
     def order(path: str):  # data lake zones in pipeline order (raw, stage, curated), anything else after, alphabetical inside
         parts = path.rstrip("/").split("/")

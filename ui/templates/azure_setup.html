@@ -19,10 +19,10 @@
   <nav class="anav" aria-label="Sections on this page"><a href="#storage"><span>1</span>Source storage</a><a href="#adf"><span>2</span>Data Factory</a><a href="#target-db"><span>3</span>Target database</a></nav>
   {% if not can_edit_azure %}<p class="fh">Read-only for {{ user_role }}. A Platform Admin sets up the Azure connection.</p>{% endif %}
   <div class="sgrp" id="storage">
-    <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Source storage (Blob)</h2><p>Where the raw, stage and curated folders live. Source files are dropped under raw/; XODUS writes canonical files to stage/ and the ready marker to curated/.</p></div></div>
+    <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Source storage (Blob)</h2><p>Where the data lake folders live. Sample files go under sample-raw/ for discovery; the firm's real data goes under raw/; XODUS writes canonical files to stage/ and the ready marker to curated/.</p></div></div>
   <section class="card" id="blob-storage" data-testid="blob-storage">
     <h3 class="sr-chips">{% if blob.emulator %}<span class="chip ex">Local emulator (Azurite)</span>{% endif %}</h3>
-    <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the source files), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Source files are dropped in <span class="font-mono">{{ blob.firm_folder }}</span>; discovery then works from there. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
+    <p class="fh">Name the container. XODUS creates the data lake folders in it: <span class="font-mono">sample-raw/</span> (with <span class="font-mono">{{ blob.firm_folder }}</span> for the sample files), <span class="font-mono">raw/</span> (with the same firm folder for the real data), <span class="font-mono">stage/</span> and <span class="font-mono">curated/</span>. Discovery works from the sample files; the pipeline loads the real data from <span class="font-mono">raw/</span>. The storage account itself comes from the server (<span class="font-mono">AZURE_BLOB_CONNECTION_STRING</span>), never from this form.</p>
     {% if blob.account %}<p class="fh" data-testid="blob-endpoint">Storage account <span class="font-mono">{{ blob.account }}</span> (from the server's connection string) · container <span class="font-mono">{{ blob.container }}</span>{% if not blob.emulator %} · <span class="font-mono">https://{{ blob.account }}.blob.core.windows.net/{{ blob.container }}</span>{% endif %}</p>{% endif %}
     {% if not blob.configured %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>
     {% elif not blob.reachable %}<p class="fh" style="color:var(--bad)">{{ blob.detail }}</p>{% endif %}
@@ -56,16 +56,6 @@
       </div>
       <p class="fh">Only needed if XODUS were to sign in to the factory itself. The secret is never typed here; it is read from the named server environment variable. Client secret: <strong>{{ 'Present' if cfg and cfg.secret_present else 'Missing' }}</strong> on the server.</p>
     </details>
-    <h3 style="margin-top:14px">Staging and target resources <span class="muted" style="font-weight:400;font-size:12px">(optional)</span></h3>
-    <div class="two">
-      <div class="field"><label for="a-sa">Storage account</label><input id="a-sa" class="input" name="storage_account" value="{{ cfg.storage_account|default('') }}"></div>
-      <div class="field"><label for="a-ct">Staging container</label><input id="a-ct" class="input" name="staging_container" value="{{ cfg.staging_container|default('') }}"></div>
-      <div class="field"><label for="a-sql">SQL server</label><input id="a-sql" class="input" name="sql_server" value="{{ cfg.sql_server|default('') }}" placeholder="myserver.database.windows.net"></div>
-      <div class="field"><label for="a-db">SQL database</label><input id="a-db" class="input" name="sql_database" value="{{ cfg.sql_database|default('') }}"></div>
-      <div class="field"><label for="a-sch">SQL schema</label><input id="a-sch" class="input" name="sql_schema" value="{{ cfg.sql_schema|default('dbo') }}"></div>
-      <div class="field"><label for="a-kv">Key Vault URL</label><input id="a-kv" class="input" name="key_vault_url" value="{{ cfg.key_vault_url|default('') }}" placeholder="https://myvault.vault.azure.net/"></div>
-      <div class="field"><label for="a-ks">Key Vault secret holding the SQL connection string</label><input id="a-ks" class="input" name="key_vault_sql_secret" value="{{ cfg.key_vault_sql_secret|default('') }}"></div>
-    </div>
     <button type="submit" class="btn p sm" style="margin-top:10px">Save settings</button>
   </fieldset></form>
   {% if cfg and cfg.tenant_id and cfg.client_id %}

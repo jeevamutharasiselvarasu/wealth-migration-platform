@@ -73,9 +73,9 @@ def _fake_service(monkeypatch):
 def test_layout_creates_raw_stage_curated_and_the_source_firm_folder_without_duplicating(monkeypatch):
     fc = _fake_service(monkeypatch)
     first = bs.ensure_layout("lake", "CoreCap")
-    assert first["container_created"] and set(first["folders_created"]) == {"raw/", "stage/", "curated/", "raw/corecap/"}
+    assert first["container_created"] and set(first["folders_created"]) == {"sample-raw/", "raw/", "stage/", "curated/", "sample-raw/corecap/", "raw/corecap/"}
     assert bs.ensure_layout("lake", "CoreCap")["folders_created"] == []  # running it again changes nothing
-    assert bs.source_prefix("Core Cap!") == "raw/core-cap/"
+    assert bs.source_prefix("Core Cap!") == "raw/core-cap/" and bs.sample_prefix("Core Cap!") == "sample-raw/core-cap/"
     with pytest.raises(ValueError):
         bs.ensure_layout("Bad_Name", "CoreCap")
 
@@ -90,7 +90,8 @@ def test_tree_shows_folders_hides_markers_and_source_list_reads_only_the_firm_fo
     assert ("raw/", "folder") in paths and ("stage/", "folder") in paths and ("curated/", "folder") in paths
     assert ("raw/corecap/accounts.csv", "file") in paths and not any(p.endswith(bs.MARKER) for p, _ in paths)
     tops = [p for p, k in paths if k == "folder" and p.count("/") == 1]
-    assert tops[:3] == ["raw/", "stage/", "curated/"]  # pipeline order, not alphabetical
+    assert tops[:4] == ["sample-raw/", "raw/", "stage/", "curated/"]  # pipeline order, not alphabetical
+    assert all(r["kind"] == "folder" for r in bs.tree("lake", folders_only=True)) and ("raw/corecap/", "folder") in paths
     names = [b["name"] for b in bs.list_source_blobs("lake", prefix="raw/corecap/")]
     assert names == ["raw/corecap/accounts.csv"]
 
@@ -229,9 +230,10 @@ def test_blob_panel_marks_same_name_different_content_as_changed(monkeypatch):
     fc = _fake_service(monkeypatch)
     monkeypatch.setenv(bs.ENV_VAR, EMU)
     bs.ensure_layout("lake", "CoreCap")
-    fc.blobs["raw/corecap/a.csv"] = b"x\n1\n"
-    fc.blobs["raw/corecap/b.csv"] = b"x\n2\n"
-    fc.blobs["raw/corecap/c.csv"] = b"x\n3\n"
+    fc.blobs["sample-raw/corecap/a.csv"] = b"x\n1\n"  # stage 01 lists the sample files
+    fc.blobs["sample-raw/corecap/b.csv"] = b"x\n2\n"
+    fc.blobs["sample-raw/corecap/c.csv"] = b"x\n3\n"
+    fc.blobs["raw/corecap/real.csv"] = b"x\n4\n"  # real data is never offered for discovery
     fc.exists_flag = True
     monkeypatch.setattr(app_module, "_blob_container", lambda: "lake")
     monkeypatch.setattr(app_module, "_source_firm", lambda: "CoreCap")
