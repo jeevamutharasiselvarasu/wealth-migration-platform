@@ -168,6 +168,18 @@ END""")
         order = " ORDER BY seq" if table != "xodus_live_tables" else " ORDER BY mirror_table"
         b.append(f"CREATE OR ALTER PROCEDURE [{OPS}].[{name}] @MigrationSlug nvarchar(32)\nAS\nBEGIN\n    SET NOCOUNT ON;\n"
                  f"    SELECT {cols} FROM [{OPS}].[{table}] WHERE migration_slug = @MigrationSlug{order};\nEND")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_stamp_raw]
+    @MigrationSlug nvarchar(32), @Table sysname, @MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64), @SourceFile nvarchar(1024)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM [{OPS}].[xodus_raw_files] WHERE migration_slug = @MigrationSlug AND raw_table = @Table)
+        THROW 50003, N'That raw table is not registered for this migration.', 1;
+    DECLARE @sql nvarchar(max) = N'UPDATE ' + QUOTENAME(N'{RAW}') + N'.' + QUOTENAME(@Table)
+        + N' SET xodus_migration_id = @m, xodus_batch_id = @b, xodus_run_id = @r, xodus_source_file = @f WHERE xodus_batch_id IS NULL';
+    EXEC sp_executesql @sql, N'@m nvarchar(64), @b nvarchar(64), @r nvarchar(64), @f nvarchar(1024)', @m = @MigrationId, @b = @BatchId, @r = @RunId, @f = @SourceFile;
+    EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'raw', N'{RAW}', @Table;
+END""")
     for schema, prefix in ((CANON, "usp_canon_"), (MIRROR, "usp_mirror_")):
         is_canon = schema == CANON
         entity_param = ", @Entity sysname" if is_canon else ""
@@ -529,17 +541,23 @@ def _pipelines(s: str, xodus_batches: List[str], live_batches: List[str]) -> Dic
             "inputs": [{"referenceName": "DS_XODUS_RawFile", "type": "DatasetReference",
                         "parameters": {"container": _p("Container"), "folder": _p("Folder"), "file": _p("File")}}],
             "outputs": [{"referenceName": "DS_XODUS_Sql", "type": "DatasetReference", "parameters": {"schema": RAW, "table": _p("Table")}}],
-            "typeProperties": {"source": {"type": "DelimitedTextSource", "storeSettings": {"type": "AzureBlobStorageReadSettings"},
-                                          "additionalColumns": [{"name": "xodus_migration_id", "value": _p("MigrationId")},
-                                                                {"name": "xodus_batch_id", "value": _p("BatchId")},
-                                                                {"name": "xodus_run_id", "value": _p("RunId")},
-                                                                {"name": "xodus_source_file", "value": "$$FILEPATH"}]},
+            "typeProperties": {"source": {"type": "DelimitedTextSource", "storeSettings": {"type": "AzureBlobStorageReadSettings"}},
                                "sink": {"type": "AzureSqlSink", "preCopyScript": _e(f"@concat('TRUNCATE TABLE [{RAW}].[', pipeline().parameters.Table, ']')"),
                                         "writeBehavior": "insert"}}}
-    p["PL_XODUS_Load_Raw_File"] = {"description": "One source file from Blob storage into its raw table, as received (every column text, plus trace columns).",
+    # Data Factory does not allow additional columns on these sink datasets, so the trace columns are stamped by a procedure on the rows
+    # the copy just loaded (the table was truncated before the copy, so those are exactly the rows still unstamped).
+    stamp = _script("Stamp_Trace", LS_XODUS, f"EXEC [{OPS}].[usp_xodus_stamp_raw] @MigrationSlug = @slug, @Table = @table, @MigrationId = @mig, @BatchId = @batch, "
+                                             "@RunId = @run, @SourceFile = @file",
+                    [("slug", "String", _p("MigrationSlug")), ("table", "String", _p("Table")), ("mig", "String", _p("MigrationId")),
+                     ("batch", "String", _p("BatchId")), ("run", "String", _p("RunId")),
+                     ("file", "String", _e("@concat(pipeline().parameters.Container, '/', pipeline().parameters.Folder, '/', pipeline().parameters.File)"))],
+                    [("Copy_Raw", "Succeeded")])
+    step = _e("@concat('Load ', pipeline().parameters.File)")
+    copy_steps = _guarded(copy, "PL_XODUS_Load_Raw_File", step)
+    stamp_steps = _guarded(stamp, "PL_XODUS_Load_Raw_File", step, ok_rows=("@activity('Copy_Raw').output.rowsRead", "@activity('Copy_Raw').output.rowsCopied"))
+    p["PL_XODUS_Load_Raw_File"] = {"description": "One source file from Blob storage into its raw table, as received (every column text), then the trace columns.",
                                    "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId", "Container", "Folder", "File", "Table"),
-                                   "activities": _guarded(copy, "PL_XODUS_Load_Raw_File", _e("@concat('Load ', pipeline().parameters.File)"),
-                                                          ok_rows=("@activity('Copy_Raw').output.rowsRead", "@activity('Copy_Raw').output.rowsCopied")),
+                                   "activities": [a for a in copy_steps if a["name"] != "Log_OK_Copy_Raw"] + stamp_steps,
                                    "folder": {"name": "XODUS"}}
 
     canon = _script("Build_Canonical", LS_XODUS, f"EXEC [{CANON}].[usp_xodus_canon] @MigrationSlug = @slug, @MigrationId = @mig, @BatchId = @batch, @RunId = @run, @Entity = @entity",

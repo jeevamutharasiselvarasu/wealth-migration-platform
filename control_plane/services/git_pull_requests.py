@@ -6,11 +6,16 @@ Never forces the configured branch, never deletes, never rebases. Only branches 
 import json
 import re
 import sqlite3
+from fnmatch import fnmatch
 from typing import Any, Callable, Dict, List
 
 import httpx
 
 from control_plane.services.git_connection import BRANCH, _default_http, _headers, _now, _repo_url, _unreachable, get_config, layout
+
+# Files the earlier XODUS package format generated (one pipeline per migration, staging datasets, the ready trigger). They do not belong
+# with the stable pipelines and can block publishing in Data Factory, so the pull request removes them; nothing else is ever deleted.
+LEGACY = ("pipeline/PL_XODUS_MIG_*.json", "dataset/DS_Staging_*.json", "dataset/DS_StagingSql_*.json", "trigger/TR_XODUS_Curated_Ready.json")
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS git_pull_requests (
@@ -73,8 +78,17 @@ def open_pull_request(conn: sqlite3.Connection, actor: str, migration_id: str, p
         call = _caller(cfg, http)
         head = call("GET", f"/git/ref/heads/{cfg['branch']}")["object"]["sha"]
         base_tree = call("GET", f"/git/commits/{head}")["tree"]["sha"]
-        tree = call("POST", "/git/trees", json={"base_tree": base_tree, "tree": [{"path": p, "mode": "100644", "type": "blob", "content": t}
-                                                                                for p, t in sorted(files.items())]})["sha"]
+        entries = [{"path": p, "mode": "100644", "type": "blob", "content": t} for p, t in sorted(files.items())]
+        listing = call("GET", f"/git/trees/{base_tree}?recursive=1")
+        if listing.get("truncated"):
+            raise ValueError("The repository is too large to list safely; nothing was published.")
+        root = cfg["adf_folder"] + "/"
+        removed = sorted(n["path"] for n in listing.get("tree", []) if n.get("type") == "blob" and n["path"].startswith(root)
+                         and n["path"] not in files and any(fnmatch(n["path"][len(root):], pat) for pat in LEGACY))
+        entries += [{"path": p, "mode": "100644", "type": "blob", "sha": None} for p in removed]
+        if removed:
+            body += "\n\nRemoves files of the earlier XODUS package format:\n" + "\n".join(f"- {p}" for p in removed)
+        tree = call("POST", "/git/trees", json={"base_tree": base_tree, "tree": entries})["sha"]
         commit = call("POST", "/git/commits", json={"message": f"XODUS package {version} for {migration_id}", "tree": tree, "parents": [head]})
         if call("GET", f"/git/ref/heads/{branch}", ok=(200, 404)).get("object"):
             call("PATCH", f"/git/refs/heads/{branch}", json={"sha": commit["sha"], "force": True})  # XODUS's own branch for this version only
@@ -89,7 +103,7 @@ def open_pull_request(conn: sqlite3.Connection, actor: str, migration_id: str, p
                  "VALUES (:number, :repository, :migration_id, :artifact_id, :package_version, :branch, :base, :url, :state, :opened_by, :opened_utc)", rec)
     conn.execute("UPDATE git_connection_config SET last_commit_sha = ?, last_published_utc = ?, last_published_by = ?, last_artifact_id = ? WHERE config_id = 1",
                  (commit["sha"], _now(), actor, artifact_id or None))
-    return {**rec, "files": len(files)}
+    return {**rec, "files": len(files), "removed": removed}
 
 
 def list_for(conn: sqlite3.Connection, migration_id: str) -> List[Dict[str, Any]]:
@@ -118,8 +132,11 @@ def refresh(conn: sqlite3.Connection, number: int, http: Callable[..., httpx.Res
     state = "MERGED" if pr.get("merged") else str(pr.get("state", "")).upper()
     detail = {"mergeable": pr.get("mergeable"), "mergeable_state": pr.get("mergeable_state"), "changed_files": pr.get("changed_files"),
               "reviews": [{"user": (r.get("user") or {}).get("login"), "state": r.get("state")} for r in reviews][-5:]}
-    conn.execute("UPDATE git_pull_requests SET state = ?, checked_utc = ?, detail = ?, merge_sha = COALESCE(merge_sha, ?) WHERE repository = ? AND number = ?",
-                 (state, _now(), json.dumps(detail), pr.get("merge_commit_sha") if pr.get("merged") else None, cfg["repository"], int(number)))
+    merged_by = ("GitHub: " + str((pr.get("merged_by") or {}).get("login") or "unknown")) if pr.get("merged") else None  # merged outside XODUS
+    conn.execute("UPDATE git_pull_requests SET state = ?, checked_utc = ?, detail = ?, merge_sha = COALESCE(merge_sha, ?), approved_by = COALESCE(approved_by, ?), "
+                 "merged_utc = COALESCE(merged_utc, ?) WHERE repository = ? AND number = ?",
+                 (state, _now(), json.dumps(detail), pr.get("merge_commit_sha") if pr.get("merged") else None, merged_by,
+                  pr.get("merged_at") if pr.get("merged") else None, cfg["repository"], int(number)))
     return {**dict(row), "state": state, **detail}
 
 

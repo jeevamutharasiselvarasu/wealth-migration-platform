@@ -6156,7 +6156,8 @@ async def open_package_pull_request(request: Request):
     finally:
         conn.close()
     _target_setup_audit("PULL_REQUEST_OPENED", user, {"number": pr["number"], "branch": pr["branch"], "version": pr["package_version"]})
-    return _dp_redirect("/publish-artifacts", "notice", f"Pull request #{pr['number']} opened ({pr['files']} files on {pr['branch']}). Approve and merge it below.")
+    return _dp_redirect("/publish-artifacts", "notice", f"Pull request #{pr['number']} opened ({pr['files']} files on {pr['branch']}"
+                        + (f"; it also removes {len(pr['removed'])} file(s) of the earlier XODUS package" if pr.get("removed") else "") + "). Approve and merge it below.")
 
 
 @app.post("/api/git/pull-request/{number}/refresh")

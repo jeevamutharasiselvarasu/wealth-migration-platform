@@ -84,6 +84,9 @@ def _git(conn, monkeypatch):
 def test_pull_request_goes_to_its_own_branch_and_merges_only_when_open(conn, monkeypatch):
     _git(conn, monkeypatch)
     http = FakeHTTP({("GET", "/git/ref/heads/main"): (200, {"object": {"sha": "H"}}), ("GET", "/git/commits/H"): (200, {"tree": {"sha": "T"}}),
+                     ("GET", "/git/trees/T"): (200, {"truncated": False, "tree": [
+                         {"path": "adf/pipeline/PL_XODUS_MIG_OLD.json", "type": "blob"}, {"path": "adf/dataset/DS_StagingSql_Account.json", "type": "blob"},
+                         {"path": "adf/linkedService/LS_BLOB.json", "type": "blob"}, {"path": "adf/pipeline/PL_Other.json", "type": "blob"}]}),
                      ("POST", "/git/trees"): (201, {"sha": "T2"}), ("POST", "/git/commits"): (201, {"sha": "C2"}),
                      ("GET", "/git/ref/heads/xodus/"): (404, {"message": "Not Found"}), ("POST", "/git/refs"): (201, {}),
                      ("POST", "/pulls"): (201, {"number": 7, "html_url": "https://github.com/o/repo/pull/7"}),
@@ -91,6 +94,9 @@ def test_pull_request_goes_to_its_own_branch_and_merges_only_when_open(conn, mon
                      ("PUT", "/pulls/7/merge"): (200, {"sha": "M1", "merged": True})})
     pr = git_pull_requests.open_pull_request(conn, "Ann", "MIG-1", {"pipeline/PL_XODUS_Run.json": "{}"}, "v1abc", "ART-1", "body", http=http)
     assert pr["number"] == 7 and pr["branch"] == "xodus/mig-1-v1abc" and pr["state"] == "OPEN"
+    assert pr["removed"] == ["adf/dataset/DS_StagingSql_Account.json", "adf/pipeline/PL_XODUS_MIG_OLD.json"]  # old XODUS files only
+    tree = next(c for c in http.calls if c[0] == "POST" and c[1].endswith("/git/trees"))[2]["json"]["tree"]
+    assert {e["path"] for e in tree if e.get("sha", "x") is None} == set(pr["removed"])
     created = next(c for c in http.calls if c[0] == "POST" and c[1].endswith("/pulls"))
     assert created[2]["json"]["head"] == "xodus/mig-1-v1abc" and created[2]["json"]["base"] == "main"
     assert not any(c[0] == "PATCH" and "/heads/main" in c[1] for c in http.calls)  # the configured branch is never written directly

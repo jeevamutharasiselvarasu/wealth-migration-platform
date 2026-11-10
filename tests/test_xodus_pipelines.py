@@ -77,8 +77,12 @@ def test_pipeline_shape_logging_and_gate():
     run = json.loads(files["pipeline/PL_XODUS_Run.json"])["properties"]
     names = [a["name"] for a in run["activities"]]
     assert names[:2] == ["Log_Start", "Run_Source_To_Canonical"] and "Fail_Run_Canonical_To_Mirror" in names and names[-1] == "Log_Done"
-    raw = json.loads(files["pipeline/PL_XODUS_Load_Raw_File.json"])["properties"]["activities"][0]
-    assert {c["name"] for c in raw["typeProperties"]["source"]["additionalColumns"]} == {"xodus_migration_id", "xodus_batch_id", "xodus_run_id", "xodus_source_file"}
+    load = json.loads(files["pipeline/PL_XODUS_Load_Raw_File.json"])["properties"]["activities"]
+    assert "additionalColumns" not in load[0]["typeProperties"]["source"]  # Data Factory refuses them on these sink datasets
+    stamp = next(a for a in load if a["name"] == "Stamp_Trace")
+    assert stamp["dependsOn"] == [{"activity": "Copy_Raw", "dependencyConditions": ["Succeeded"]}] and "usp_xodus_stamp_raw" in stamp["typeProperties"]["scripts"][0]["text"]
+    assert [a["name"] for a in load if a["name"].startswith("Log_OK")] == ["Log_OK_Stamp_Trace"]
+    assert "CREATE OR ALTER PROCEDURE [xodus_ops].[usp_xodus_stamp_raw]" in files["sql/xodus_mig00a1a6577b.sql"]
     promote = json.loads(files["pipeline/PL_XODUS_Promote.json"])["properties"]["activities"]
     order = [a["name"] for a in promote]
     assert order.index("Gate_Check") < order.index("Stop_If_Gate_Fails") < order.index("Copy_Each_Table") < order.index("Merge_Into_Live")
