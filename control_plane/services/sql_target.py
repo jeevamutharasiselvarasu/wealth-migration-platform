@@ -80,6 +80,18 @@ def _default_connect(cfg: Dict[str, Any], password: str):
     return pymssql.connect(server=cfg["server"], user=cfg["username"], password=password, database=cfg["database_name"], login_timeout=15, timeout=20, tds_version="7.4")
 
 
+def explain(exc: Exception, password: str = "") -> str:
+    """A readable reason for a sign-in failure. The Azure SQL firewall refusal (40615) names the address to allow; never the password."""
+    text = str(exc).replace(password, "***") if password else str(exc)
+    ip = re.search(r"IP address '([0-9a-fA-F.:]+)'", text)
+    if "40615" in text or ip:
+        return ("the Azure SQL firewall does not allow this machine" + (f" (IP {ip.group(1)})" if ip else "")
+                + ". Add it under SQL server > Networking > Firewall rules (Add your client IPv4 address), then try again.")
+    if "18456" in text:
+        return "the user name or password was rejected (error 18456)."
+    return f"{type(exc).__name__}: {text[:300]}"
+
+
 def run(cfg: Optional[Dict[str, Any]], statements, connect: Callable[..., Any] = _default_connect, commit: bool = False) -> list:
     """Run [(sql, params), ...] with the saved sign-in of `cfg` and return each statement's rows (an empty list when it returns none).
     Reads only, unless commit=True (used solely to record a promotion sign-off). Raises ValueError with a readable reason; never
@@ -95,7 +107,7 @@ def run(cfg: Optional[Dict[str, Any]], statements, connect: Callable[..., Any] =
     except ImportError:
         raise ValueError("The SQL driver (pymssql) is not installed in the server image.")
     except Exception as exc:
-        raise ValueError(f"Could not sign in to {cfg['database_name']}: {type(exc).__name__}: {str(exc)[:200].replace(password, '***')}")
+        raise ValueError(f"Could not sign in to {cfg['database_name']}: " + explain(exc, password))
     out = []
     try:
         cur = db.cursor()
