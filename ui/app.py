@@ -106,7 +106,8 @@ DECIDED_FILE_STATUSES = {"APPROVED", "REJECTED", "NOT_REQUIRED"}
 def get_current_user(request: Request) -> Dict[str, str]:
     session = session_mgr.get_session(request)
     if not session:
-        raise HTTPException(status_code=status.HTTP_307_TEMPORARY_REDIRECT, headers={"Location": "/login"})
+        # 303, not 307: a signed-out POST (a button clicked after the session ended) must land on the sign-in page as a GET, not re-post its form there
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login?notice=" + quote_plus("Your session ended. Sign in again.")})
     return session
 
 
