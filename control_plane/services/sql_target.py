@@ -164,7 +164,7 @@ def test_connection(conn: sqlite3.Connection, connect: Callable[..., Any] = _def
         except ImportError:
             status, detail = "FAILED", "The SQL driver (pymssql) is not installed in the server image. Rebuild the image."
         except Exception as exc:  # driver errors carry the server's reason (login failed, firewall); never the password
-            status, detail = "FAILED", f"Could not sign in: {type(exc).__name__}: {str(exc)[:300].replace(password, '***')}"
+            status, detail = "FAILED", "Could not sign in: " + explain(exc, password)
     conn.execute("UPDATE sql_target_config SET status = ?, checked_utc = ?, check_detail = ?, found_tables = ? WHERE config_id = 1", (status, _now(), detail, found))
     return get_config(conn)
 
