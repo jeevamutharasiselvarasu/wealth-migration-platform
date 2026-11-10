@@ -7,7 +7,8 @@
     <div>
       <div class="ey dm">Stage 08 · Data plane · Publish artifacts</div>
       <h1>Publish artifacts</h1>
-      <p>Publishing the artifacts: the stored ADF package goes to the linked GitHub repository as one commit. The owner of the data factory links that repository in Data Factory and takes the artifacts from there, so no Azure sign-in is needed from this platform to hand them over.</p>
+      {% if dp and dp.pkg %}<p>Publishing the artifacts: the pipeline package goes to the linked GitHub repository through a pull request, which a Migration Analyst approves here. Data Factory takes the merged package from the repository; the setup pipeline and the deployment check then prepare both databases.</p>
+      {% else %}<p>Publishing the artifacts: the stored ADF package goes to the linked GitHub repository as one commit. The owner of the data factory links that repository in Data Factory and takes the artifacts from there, so no Azure sign-in is needed from this platform to hand them over.</p>{% endif %}
     </div>
     <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">Data plane</span></div>
   </div>
