@@ -14,8 +14,8 @@
       {% if stage_view == 'load' %}<h1>Loader &amp; Inspector</h1>{% else %}<h1>Discovery</h1>{% endif %}
       {% if stage_view == 'load' %}<p>Connect the source and load the files. Everything that lands is listed here with size, rows and a content hash. Nothing is interpreted at this stage: inference, entity review and cross-file checks happen in 02 Discovery.</p>{% else %}<p>What XODUS found in the loaded files: the entity each file looks like, the evidence, relationships between files, and the registered knowledge assets. A person confirms or rejects each inferred entity. Add or change files in 01 Loader &amp; Inspector.</p>{% endif %}
     </div>
-    {% set _ok = source_uploads|selectattr('inference_approval_status','equalto','APPROVED')|list|length %}
-    <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip {{ 'g' if source_uploads and _ok == source_uploads|length else 'ex' }}">{{ 'Approved' if source_uploads and _ok == source_uploads|length else 'Needs review' }}</span></div>
+    {% set _ok = source_uploads|selectattr('inference_approval_status','equalto','APPROVED')|list|length %}{% set _decided = source_uploads|selectattr('inference_approval_status','in',['APPROVED','REJECTED','NOT_REQUIRED'])|list|length %}
+    <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip {{ 'g' if source_uploads and _decided == source_uploads|length else 'ex' }}">{{ 'All decided' if source_uploads and _decided == source_uploads|length else 'Needs review' }}</span></div>
   </div>
   {% if stage_view == 'load' %}<div class="ins"><b>Control plane.</b> The landing contract. Files are stored as received and hashed; no production data is touched here.</div>{% else %}<div class="ins"><b>Control plane.</b> The source inventory as inferred from headers and sample files. Agent recommendations never approve business meaning.</div>{% endif %}
   {% if stage_view == 'load' %}
@@ -27,7 +27,7 @@
   {% else %}
   <section class="kpis" aria-label="Landing summary">
     <div class="kpi"><small>Files landed</small><b>{{ source_uploads|length }}</b><span>{{ source_uploads|selectattr('inference_approval_status','equalto','APPROVED')|list|length }} confirmed</span></div>
-    <div class="kpi"><small>Awaiting review</small><b>{{ source_uploads|length - _ok }}</b><span>need a person</span></div>
+    <div class="kpi"><small>Awaiting review</small><b>{{ source_uploads|length - _decided }}</b><span>need a person</span></div>
     <div class="kpi"><small>Entities inferred</small><b>{{ source_uploads|map(attribute='inferred_entity')|reject('equalto','Needs clarification')|unique|list|length }}</b><span>Account, Client, Household</span></div>
   </section>
   {% endif %}
