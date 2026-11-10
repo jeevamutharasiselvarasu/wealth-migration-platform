@@ -649,8 +649,8 @@ def _platform_setup_defaults() -> Dict[str, str]:
     except FirmConfigError:
         pass
     account = (az or {}).get("storage_account") or blob_source.account_name(blob_source.connection_string())
-    if account and (az or {}).get("source_container"):
-        out["source_storage"] = f"{account}/{az['source_container']}"
+    if account:  # the container the stages read: platform setup's, else the server default
+        out["source_storage"] = f"{account}/{(az or {}).get('source_container') or _blob_container()}"
     return out
 
 
@@ -1967,7 +1967,8 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         scenarios = validation_scenarios.list_scenarios(conn, migration_id)
         runs = execution_simulator.list_runs(conn, migration_id)
         recs_by_run = {r["run_id"]: gap_recommender.list_for_run(conn, migration_id, r["run_id"]) for r in runs}
-        has_package = bool(package_contract.list_packages(conn, migration_id))
+        # Stage 09 runs the ADF package built in stage 07; the older generated SQL package also counts.
+        has_package = bool(artifact_store.latest(conn, migration_id, "ADF_PACKAGE")) or bool(package_contract.list_packages(conn, migration_id))
         stored_signoff = artifact_store.list_artifacts(conn, migration_id, "SIGNOFF_EVIDENCE")
         adf_status = _adf_status(conn, migration_id)
         run_status = run_monitor.stored(conn, migration_id)
