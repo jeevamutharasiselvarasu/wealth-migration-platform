@@ -563,7 +563,9 @@ def _preview_note(text: str, href: str, link: str) -> str:
 
 @app.get("/tenant", response_class=HTMLResponse)
 async def tenant_settings_page(request: Request):
-    note = _preview_note("Brand, identity and deployment defaults below are the template preview and are kept in this browser only. Who has access is managed in Governance.", "/admin/users", "Users &amp; access (Governance) &rarr;")
+    _admin = get_current_user(request)["role"] in PLATFORM_ROLES  # only the Platform Admin can open Users & access
+    note = _preview_note("Brand, identity and deployment defaults below are the template preview and are kept in this browser only. Who has access is managed in Governance.",
+                         "/admin/users" if _admin else "/governance", "Users &amp; access (Governance) &rarr;" if _admin else "Governance &rarr;")
     return _space_page(request, "tenant.html", note)
 
 

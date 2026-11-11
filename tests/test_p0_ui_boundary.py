@@ -648,7 +648,7 @@ def test_assistant_tenant_and_workspace_views_follow_the_template(tmp_path, monk
                 page = (await c.get(path)).text
                 assert 'data-trole="MA"' in page and "/static/assistant.js" in page and "/static/assistant.css" in page, path
             tenant = await c.get("/tenant")
-            assert tenant.status_code == 200 and "Users &amp; access" in tenant.text and 'href="/admin/users"' in tenant.text
+            assert tenant.status_code == 200 and 'href="/governance"' in tenant.text and 'href="/admin/users"' not in tenant.text  # only the admin opens Users & access
             for view in ("workspaces", "command", "validation", "team", "bogus"):
                 page = await c.get(f"/migration-workspaces?view={view}")
                 want = view if view != "bogus" else "workspaces"
