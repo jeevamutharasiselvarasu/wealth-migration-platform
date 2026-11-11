@@ -61,7 +61,7 @@
   <section class="card" aria-label="Pipeline by plane">
     <h3 style="margin:0">Pipeline by plane</h3>
     <p class="fh" style="margin:4px 0 12px">The control plane sets the migration up and publishes one artifact bundle. The data plane runs it on the real data, as many times as needed.</p>
-    {% macro prow(label, href, key) %}{% set s = st.get(key, 'todo') %}<a href="{{ href }}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;color:inherit"><span>{{ label }}</span><span class="dot {{ {'done':'approved','current':'review','todo':''}[s] }}" title="{{ {'done':'Complete','current':'Needs attention','todo':'Not started'}[s] }}"></span></a>{% endmacro %}
+    {% macro prow(label, href, key) %}{% set s = (((progress or {}).stages or [])|selectattr('number', 'equalto', label[:2])|map(attribute='state')|first) or 'todo' %}<a href="{{ href }}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;color:inherit"><span>{{ label }}</span><span class="dot {{ {'done':'approved','current':'review','todo':''}[s] }}" title="{{ {'done':'Complete','current':'Needs attention','todo':'Not started'}[s] }}"></span></a>{% endmacro %}
     <div class="two">
       <div class="card" style="border-top:3px solid var(--cyan,#08A6D8)"><b>Control plane · setup</b>
         {{ prow('01 Loader & Inspector', '/entity-sample-files', 'discover') }}

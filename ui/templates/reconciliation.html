@@ -12,17 +12,17 @@
             {% elif view == 'execution' %}
             <div class="ey dm">Stage 09 · Data plane · ADF Execution</div>
             <h1>ADF Execution</h1>
-            <p>Run the pipeline by hand in Data Factory and follow it here. Nothing is loaded into a target system in this POC.</p>
+            <p>{% if dp and dp.pkg %}Start a batch through Data Factory and follow it here: raw files to canonical to the mirror in the XODUS database. Nothing reaches the live tables until stage 10.{% else %}Run the pipeline by hand in Data Factory and follow it here. Nothing is loaded into a target system in this POC.{% endif %}</p>
             {% else %}
             <div class="ey dm">Stage 05 · Transformed · Mapping Validation Review</div>
             <h1>Mapping Validation Review</h1>
-            <p>Review source-to-canonical readiness for Account, Household and Client. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
+            <p>Review source-to-canonical readiness for {{ (in_scope_entities or pilot_entities)|join(', ') }}. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
             {% endif %}
         </div>
         <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">{{ {'rules': 'Validation', 'reconcile': 'Transformed'}.get(view, 'Data plane') }}</span></div>
     </div>
     {% if view == 'rules' %}<div class="ins"><b>Target validation.</b> Rules are defined after execution and check the data that was run. Post-execution checks use the Execution results; adopting or retiring a rule is recorded in the audit log.</div>
-    {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> Manual run in ADF for now. The platform writes the canonical files, you start the pipeline in Data Factory, and the platform reads the pipeline's run log to see the result.</div>
+    {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> {% if dp and dp.pkg %}A Migration Analyst or IMO Lead starts a batch below; XODUS starts PL_XODUS_Run in Data Factory and reads the run log (xodus_ops) to show each step.{% else %}Manual run in ADF for now. The platform writes the canonical files, you start the pipeline in Data Factory, and the platform reads the pipeline's run log to see the result.{% endif %}</div>
     {% else %}<div class="ins"><b>Validation.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>{% endif %}
     {% if view == 'rules' %}<section class="kpis" aria-label="Validation rules summary">
         <div class="kpi"><small>Active rules</small><b>{{ scenarios|selectattr('status','equalto','ACTIVE')|list|length }}</b><span>run with every validation</span></div>
@@ -30,7 +30,7 @@
         <div class="kpi"><small>Retired</small><b>{{ scenarios|selectattr('status','equalto','RETIRED')|list|length }}</b><span>kept for the audit trail</span></div>
     </section>
     {% elif view == 'execution' %}<section class="kpis" aria-label="Execution summary">
-        <div class="kpi"><small>Deployment package</small><b>{{ 'Ready' if has_package else 'Not built' }}</b><span>{{ 'latest stored package' if has_package else 'build one in Transformation SQL' }}</span></div>
+        {% set _stale = dp and dp.package_stale %}<div class="kpi"><small>Deployment package</small><b>{{ ('Out of date' if _stale else 'Ready') if has_package else 'Not built' }}</b><span>{{ ('regenerate it in Transformation SQL' if _stale else 'latest stored package') if has_package else 'build one in Transformation SQL' }}</span></div>
         <div class="kpi"><small>Latest ADF run</small><b>{{ (run_status.status if run_status else 'Not checked')|replace('_', ' ')|title }}</b><span>manual run in ADF, read from the run log</span></div>
     </section>
     {% else %}
@@ -109,6 +109,7 @@
         </div>
         {% if validation_run %}
         <p class="mt-3 text-[11px] text-[#5A6A88]">Run {{ validation_run.run_id }} · {{ validation_run.executed_by }} · {{ validation_run.executed_utc[:19] }}</p>
+        {% if validation_run.stale %}<div class="exc mt-2" data-testid="validation-stale"><b>Out of date.</b> Mappings were approved or changed after this run, so it no longer covers them. Run the validation again; stage 05 counts as done only then.</div>{% endif %}
         <div class="mt-2 flex flex-wrap gap-2 text-[10px] font-bold">
             <span class="pill {% if validation_run.status == 'PASS' %}approved{% elif validation_run.status == 'FAIL' %}failed{% else %}review{% endif %}">Overall: {{ validation_run.status }}</span>
             <span class="pill border-teal-200 bg-teal-50 text-teal-800">{{ validation_run.summary.PASS }} passed</span>
@@ -144,7 +145,7 @@
     <section id="execution" class="card" data-testid="run-monitor">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h3 style="font-size:16px">Pipeline run <span class="font-mono text-[10px] font-normal text-sky-800" data-testid="manual-run-tag">MANUAL RUN IN ADF</span></h3>
+                <h3 style="font-size:16px">Pipeline run <span class="font-mono text-[10px] font-normal text-sky-800" data-testid="manual-run-tag">{{ 'RUN LOG' if dp and dp.pkg else 'MANUAL RUN IN ADF' }}</span></h3>
                 <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">For now the pipeline is started by hand in Data Factory (Debug or Trigger now). The platform never signs in to Data Factory: it reads the pipeline's own run log, <span class="font-mono">xodus_run_log</span>, every 30 seconds, and tells you whether the run is running, succeeded or failed.</p>
             </div>
             <div class="flex items-center gap-2"><span id="rm-status" class="pill review" data-testid="rm-status">Checking…</span><button type="button" id="rm-now" class="btn g sm">Check now</button></div>
@@ -203,7 +204,7 @@
       <input type="hidden" name="step" value=""><select name="entity" class="input" aria-label="Entity the request is about">{% for e in in_scope_entities %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select>
       <input name="note" maxlength="500" placeholder="Note for the source firm or vendor (optional)" aria-label="Note for the information request" class="input" style="min-width:260px">
       <button class="btn g sm">Raise information request</button></form>{% endif %}
-    <form id="rm-actions" class="hidden mt-2" action="/api/target-mapping/stage-canonical" method="post"><input type="hidden" name="return_to" value="execution"><button class="btn p sm" data-testid="rm-rewrite">Rewrite canonical files to stage/</button> <span class="text-[11px] text-[#41506B]">Then run the pipeline again in Data Factory.</span></form>
+    {% if not (dp and dp.pkg) %}<form id="rm-actions" class="hidden mt-2" action="/api/target-mapping/stage-canonical" method="post"><input type="hidden" name="return_to" value="execution"><button class="btn p sm" data-testid="rm-rewrite">Rewrite canonical files to stage/</button> <span class="text-[11px] text-[#41506B]">Then run the pipeline again in Data Factory.</span></form>{% endif %}
     {% endif %}
     {% if view == 'rules' %}
     <section id="target-validation" class="card" data-testid="target-validation">

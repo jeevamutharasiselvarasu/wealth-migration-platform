@@ -5,6 +5,9 @@
     {% if not platform_only %}<a href="/firm-knowledge" class="tab {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>{% endif %}
     <a href="/platform-knowledge" class="tab {% if path == '/platform-knowledge' %}on{% endif %}" {% if path == '/platform-knowledge' %}aria-current="page"{% endif %}>Platform knowledge</a>
     <a href="/models" class="tab {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
+    <a href="/canonical-model" class="tab {% if path == '/canonical-model' %}on{% endif %}" {% if path == '/canonical-model' %}aria-current="page"{% endif %}>Canonical model</a>
+    {% if platform_only %}<a href="/target-setup/adapter" class="tab {% if path == '/target-setup/adapter' %}on{% endif %}" {% if path == '/target-setup/adapter' %}aria-current="page"{% endif %}>Target adapter</a>{% endif %}
+    {% if platform_only %}<a href="/target-setup/code-values" class="tab {% if path == '/target-setup/code-values' %}on{% endif %}" {% if path == '/target-setup/code-values' %}aria-current="page"{% endif %}>Target code values</a>{% endif %}
     {% if platform_only %}<a href="/azure-setup" class="tab {% if path == '/azure-setup' %}on{% endif %}" {% if path == '/azure-setup' %}aria-current="page"{% endif %}>Azure connection</a>{% endif %}
     {% if platform_only %}<a href="/github-setup" class="tab {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>{% endif %}
 </nav>

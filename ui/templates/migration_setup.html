@@ -18,7 +18,7 @@
   </section>
 
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
-  {% if not can_configure %}<div class="exc">Read-only for {{ user_role }}. Migration setup is configured by the Migration Analyst, IMO Lead (or Platform Admin); your persona can review the saved setup.</div>{% endif %}
+  {% if not can_configure %}<div class="exc">Read-only for {{ user_role }}. Migration setup is configured by the Migration Analyst or the IMO Lead; your persona can review the saved setup.</div>{% endif %}
   {% if demo_loaded %}
   <div class="ins"><b>Demo inputs loaded.</b> Migration details, knowledge assets and synthetic source files have been populated from the editable demo data set. Save the setup to open the Migration Dashboard, then continue to source discovery.</div>
   {% endif %}

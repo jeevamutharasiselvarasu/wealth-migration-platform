@@ -111,6 +111,7 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+<script type="text/plain" id="xodus-blocked-post">{{ blocked_post_patterns or '' }}</script>
 <script>
 /* In-place actions. A POST form is sent with fetch and only the page content (top bar, rail, main) is swapped, so a click
    no longer reloads the page: scroll position, open <details> and keyboard focus area stay put. Redirects to other pages,
@@ -142,11 +143,26 @@
   }
   /* Table-style approvals: tick rows, add a note or a change, then submit. Editing a row's
      change/note ticks it automatically; the header box selects every row in that table. */
+  /* Forms that post to an action this persona may not perform are shown disabled (the server refuses them anyway). */
+  function gateForms() {
+    var BLOCKED; try { var raw = document.getElementById("xodus-blocked-post").textContent.trim(); BLOCKED = raw ? JSON.parse(atob(raw)).map(function (p) { return new RegExp(p); }) : []; } catch (e) { BLOCKED = []; }
+    if (!BLOCKED.length) return;
+    document.querySelectorAll("form").forEach(function (f) {
+      if ((f.getAttribute("method") || "get").toLowerCase() !== "post") return;
+      var path; try { path = new URL(f.getAttribute("action") || location.pathname, location.href).pathname; } catch (e) { return; }
+      if (!BLOCKED.some(function (re) { return re.test(path); })) return;
+      Array.prototype.forEach.call(f.elements, function (el) {
+        if (el.type === "hidden") return;
+        el.disabled = true; el.setAttribute("data-role-blocked", "1");
+        el.title = "Your persona may not do this. Switch persona, or ask the role that owns this step.";
+      });
+    });
+  }
   function refresh() {
     var checks = Array.prototype.slice.call(document.querySelectorAll("[data-row-check]"));
     var n = checks.filter(function (c) { return c.checked; }).length;
     document.querySelectorAll("[data-selected-count]").forEach(function (el) { el.textContent = n; });
-    document.querySelectorAll("[data-needs-selection]").forEach(function (b) { b.disabled = n === 0; });
+    document.querySelectorAll("[data-needs-selection]").forEach(function (b) { b.disabled = n === 0 || b.hasAttribute("data-role-blocked"); });
     document.querySelectorAll("[data-bulk-table]").forEach(function (t) {
       var rows = t.querySelectorAll("[data-row-check]"), all = t.querySelector("[data-select-all]");
       if (!all || !rows.length) return;
@@ -207,7 +223,7 @@
   }
   function swap(doc, url) {
     var keys = openKeys(), y = window.scrollY;
-    ["header.xtop", ".pbar", ".wrap.app"].forEach(function (sel) {
+    ["#xodus-blocked-post", "header.xtop", ".pbar", ".wrap.app"].forEach(function (sel) {
       var cur = document.querySelector(sel), nxt = doc.querySelector(sel);
       if (cur && nxt) cur.replaceWith(document.importNode(nxt, true));
     });
@@ -216,7 +232,7 @@
     q.delete("notice"); q.delete("error");
     try { history.replaceState(null, "", u.pathname + (q.toString() ? "?" + q.toString() : "") + u.hash); } catch (e) {}
     runScripts(document.querySelector(".wrap.app"));
-    reopen(keys); size(); refresh();
+    gateForms(); reopen(keys); size(); refresh();
     var target = u.hash && document.getElementById(decodeURIComponent(u.hash.slice(1)));
     if (target) target.scrollIntoView({block: "start"}); else window.scrollTo(0, y);
     toast(text, bad);
@@ -261,7 +277,7 @@
       .catch(function () { toast("Could not reach the server. Nothing was changed on this page; try again.", true); })
       .then(function () { busy = false; document.body.style.cursor = ""; if (held) held.disabled = false; });
   });
-  document.addEventListener("DOMContentLoaded", function () { toastFromUrl(); refresh(); size(); });
+  document.addEventListener("DOMContentLoaded", function () { toastFromUrl(); gateForms(); refresh(); size(); });
   window.addEventListener("resize", size); window.addEventListener("load", size);
 })();
 </script>

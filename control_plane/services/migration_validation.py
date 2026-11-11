@@ -28,15 +28,24 @@ def run_checks(
     files: Dict[str, List[Dict[str, Any]]],
     scenarios: Optional[List[Dict[str, Any]]] = None,
     derivations: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    derived_entities: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """contract[entity] = {"required": [...], "keys": [...]};
     mappings[entity] = {source_field: canonical_field} (approved only);
     files[entity] = [{"filename": str, "records": [dict]}] (confirmed files only);
-    derivations[entity] = approved canonical derivations (see canonical_derivations), computed after source mapping."""
+    derivations[entity] = approved canonical derivations (see canonical_derivations), computed after source mapping.
+    derived_entities[entity] = description of an approved derivation that builds the whole entity from other entities (AccountRole
+    from the households): it has no source mapping to check. Only entities in the contract (the migration's scope) are checked."""
     checks: List[Dict[str, Any]] = []
     merged: Dict[str, List[Dict[str, Any]]] = {}
     per_file: Dict[str, List[tuple]] = {}
     for entity in ENTITIES:
+        if entity not in contract:
+            continue  # not in this migration's scope
+        if entity in (derived_entities or {}):
+            checks.append({"check": "REQUIRED_FIELDS_MAPPED", "entity": entity, "status": "PASS",
+                           "detail": "Derived, not mapped (approved on Entity resolution): " + derived_entities[entity]})
+            continue
         required = contract.get(entity, {}).get("required", [])
         keys = contract.get(entity, {}).get("keys", [])
         source_to_canonical = mappings.get(entity, {})

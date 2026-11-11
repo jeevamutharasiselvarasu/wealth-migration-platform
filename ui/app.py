@@ -1,3 +1,4 @@
+import base64
 import csv
 import hashlib
 import io
@@ -18,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
-from ui.role_policy import RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEMO_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, platform_only_page
+from ui.role_policy import POST_POLICY, RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEMO_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, platform_only_page
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
@@ -215,6 +216,9 @@ def workflow_progress() -> dict:
         target_approved = len([m for m in _tm if m["status"] == "APPROVED"])
         last_val = conn.execute(
             "SELECT run_id, status, results_json, executed_utc FROM validation_runs WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()
+        if last_val and _validation_stale(conn, migration_id, last_val["executed_utc"]):
+            validation_status, validation_when = "STALE", str(last_val["executed_utc"])[:10]
+            last_val = None  # mappings changed since this run: it must be run again before stage 05 counts as done
         if last_val:
             validation_status, validation_when = last_val["status"], str(last_val["executed_utc"])[:10]
             # Findings accepted through an approved exception no longer hold the workflow back (same rule as the Validation page).
@@ -402,6 +406,9 @@ def render_template_with_context(request: Request, template_name: str, extra_con
         _allowed = session_mgr.assigned_roles(_sess.get("email", "")) or {_sess.get("role")}
         base_context["persona_options"] = [r for r in session_mgr.ALL_ROLES if r in _allowed]
         base_context["active_persona"] = _sess.get("role")
+        # Actions this persona may not perform (the same POST policy the server enforces): the page shows those forms disabled.
+        base_context["blocked_post_patterns"] = base64.b64encode(json.dumps(
+            [pat for pat, roles in POST_POLICY if _sess.get("role") not in roles]).encode("utf-8")).decode("ascii")  # encoded: not page text
         base_context["trole"] = _TEMPLATE_ROLE.get(_sess.get("role"), "IL")
         if _sess.get("role") == "Platform Admin":
             # Platform pages only: no migration name, id or pipeline progress in the page frame.
@@ -989,6 +996,28 @@ async def models_page(request: Request):
     target, target_error = None, ""
     if not cfg:
         target_error = "The target system is not set up yet (Setup → Target system, then stage 06 Target mapping)."
+    elif cfg.get("connector_type") == "azure-sql":
+        # An Azure SQL target is read once with a read-only sign-in when it is set up; show the confirmed model, not a live call.
+        conn = get_db_connection()
+        try:
+            spec = target_connector.spec(conn)
+            conn.commit()
+        finally:
+            conn.close()
+        if not spec:
+            target_error = "The target system is not confirmed yet (Platform setup → Target system)."
+        else:
+            tables: Dict[str, Dict[str, Any]] = {}
+            code_lists: Dict[str, List[str]] = {}
+            for entity, body in spec["entities"].items():
+                for f in body["fields"]:
+                    t = tables.setdefault(f["table"], {"name": f["table"], "description": f"Mapped from the canonical {entity}.", "columns": []})
+                    t["columns"].append({"name": f["column"], "type": f.get("type") or "", "required": bool(f.get("required")), "generated": False,
+                                         "description": f.get("description") or ""})
+                    if f.get("codes"):
+                        code_lists[f"{f['table']}.{f['column']}"] = list(f["codes"])
+            target = {"system": spec.get("target_system"), "version": spec.get("spec_version"), "tables": sorted(tables.values(), key=lambda t: t["name"]),
+                      "code_lists": code_lists}
     else:
         try:
             target = target_connector._http_get(cfg["endpoint"] + "/schema")
@@ -2103,6 +2132,11 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         validation_run = {"run_id": latest["run_id"], "executed_by": latest["executed_by"],
                           "executed_utc": latest["executed_utc"], **json.loads(latest["results_json"])}
         validation_run["effective_status"] = validation_scenarios.effective_status(validation_run["checks"], exceptions)
+        _c = get_db_connection()
+        try:
+            validation_run["stale"] = _validation_stale(_c, migration_id, latest["executed_utc"])
+        finally:
+            _c.close()
     return render_template_with_context(
         request=request,
         template_name="reconciliation.html",
@@ -2509,6 +2543,12 @@ def _adf_status(conn, migration_id: str):
     return {"latest": stored[0], "stale_reasons": reasons}
 
 
+def _validation_stale(conn, migration_id: str, executed_utc: str) -> bool:
+    """A mapping validation run no longer stands once a source-to-canonical mapping was approved or changed after it."""
+    row = conn.execute("SELECT MAX(updated_utc) FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchone()
+    return bool(row and row[0] and str(row[0]) > str(executed_utc or ""))
+
+
 def _code_map_stale(conn, migration_id: str, manifest: Dict[str, Any]) -> List[str]:
     """Why a stable-pipeline package no longer carries the approved code values or the target system's code values (canonical model v2)."""
     cs = manifest.get("codeSets") or {}
@@ -2680,9 +2720,10 @@ async def run_validation(request: Request):
         cfg = load_firm_config()
     except FirmConfigError as exc:
         raise HTTPException(status_code=409, detail=f"Firm configuration is required before validation. {exc}")
+    scope = _in_scope_entities() or list(CORE_ENTITIES)
     contract = {
         e: {"required": cfg.required_fields(e), "keys": [f.name for f in cfg.entities[e].fields if f.is_key]}
-        for e in migration_validation.ENTITIES if e in cfg.entities}
+        for e in migration_validation.ENTITIES if e in cfg.entities and e in scope}
     conn = get_db_connection()
     try:
         mappings: Dict[str, Dict[str, str]] = {}
@@ -2692,9 +2733,12 @@ async def run_validation(request: Request):
             mappings.setdefault(row["entity_name"], {})[row["source_field"]] = row["canonical_field"]
         scenarios = validation_scenarios.list_scenarios(conn, migration_id, active_only=True)
         derivation_rows = canonical_derivations.list_derivations(conn, migration_id)
+        role_derivation = entity_resolution.derivation(conn, migration_id)
         conn.commit()
     finally:
         conn.close()
+    derived_entities = ({"AccountRole": entity_resolution.ROLE_DERIVATION_TEXT}
+                        if (role_derivation or {}).get("status") == "APPROVED" and not _has_entity_file("AccountRole") else {})
     derivations: Dict[str, List[Dict[str, Any]]] = {}
     for d in derivation_rows:
         derivations.setdefault(d["entity_name"], []).append(d)
@@ -2714,7 +2758,7 @@ async def run_validation(request: Request):
             except (OSError, ValueError):
                 continue
             files.setdefault(entity, []).append({"filename": rec.get("filename", "source"), "records": records})
-    results = migration_validation.run_checks(contract, mappings, files, scenarios, derivations)
+    results = migration_validation.run_checks(contract, mappings, files, scenarios, derivations, derived_entities)
     run_id = "VAL-" + uuid.uuid4().hex[:10].upper()
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db_connection()
@@ -6709,6 +6753,7 @@ def _data_plane_state(migration_id: str, refresh_runs: bool = False) -> Dict[str
             out["prs"] = git_pull_requests.list_for(conn, migration_id)
             out["merged_pr"] = _merged_pr(conn, migration_id, man["version"])
             out["open_pr"] = next((p for p in out["prs"] if p["package_version"] == man["version"] and p["state"] == "OPEN"), None)
+            out["package_stale"] = _code_map_stale(conn, migration_id, man)  # approvals changed since this package was built
             out["setup_run"] = adf_runs.latest(conn, migration_id, man["setupPipeline"])
             out["run"] = adf_runs.latest(conn, migration_id, "PL_XODUS_Run")
             out["promote_run"] = adf_runs.latest(conn, migration_id, "PL_XODUS_Promote")
@@ -6812,8 +6857,17 @@ async def refresh_package_pull_request(request: Request, number: int):
 async def merge_package_pull_request(request: Request, number: int):
     """Option b: the signed-in Migration Analyst approves; XODUS records them and merges the pull request on their behalf."""
     user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
+        # Only the pull request of the current, up-to-date package may be merged: an older one, or one whose package is stale, would
+        # deploy SQL that no longer matches the approvals.
+        _, pkg = _xodus_package(conn, migration_id)
+        target = next((p for p in git_pull_requests.list_for(conn, migration_id) if p["number"] == number), None)
+        if pkg and target and target["package_version"] != pkg["manifest"]["version"]:
+            return _dp_redirect("/publish-artifacts", "error", f"Pull request #{number} is for an older package; it is superseded by {pkg['manifest']['version']}.")
+        if pkg and target and _code_map_stale(conn, migration_id, pkg["manifest"]):
+            return _dp_redirect("/publish-artifacts", "error", "The package is out of date. Generate a new package (stage 07) and merge its pull request instead.")
         try:
             pr = git_pull_requests.merge(conn, number, user["name"])
         except ValueError as exc:
@@ -6941,6 +6995,10 @@ async def promote_batch(request: Request):
         return _dp_redirect("/validation-rules", "error", "Promotion needs a succeeded run of the current package.")
     if not state.get("deployment") or state["deployment"]["status"] != "PASS":
         return _dp_redirect("/validation-rules", "error", "The deployment check has not passed for this package.")
+    promo = state.get("promote_run")
+    if promo and promo.get("batch_id") == run["batch_id"] and promo.get("status") in ("SUCCEEDED", "QUEUED", "INPROGRESS", "CANCELING"):
+        return _dp_redirect("/validation-rules", "error", f"Batch {run['batch_id']} is already promoted (or its promotion is running). "
+                                                          "Run a new batch to promote new data.")
     conn = get_db_connection()
     try:
         try:

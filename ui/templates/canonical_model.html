@@ -47,6 +47,6 @@
     </table></div>
   </section>
   {% endfor %}
-  <div class="exc">AccountRole and Advisor are defined in this version; discovery and mapping for them follow in a later phase (today's pilot maps Household, Client and Account). Matching the same person across files (entity resolution) is phase 2.</div>
+  <div class="ins">Household, Client, Account, Advisor and AccountRole are discovered and mapped per migration (Advisor and AccountRole are opt-in in Migration setup; AccountRole can be derived from the households). The same record in several rows is resolved on Entity resolution (stage 04). The target receives Household, Client and Account; Advisor and AccountRole stay in the canonical model.</div>
 </div>
 {% endblock %}

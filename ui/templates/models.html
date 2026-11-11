@@ -6,7 +6,7 @@
     <div>
       <div class="ey dm">Data migration · Setup</div>
       <h1>Target and canonical models</h1>
-      <p>Left: the target system exactly as it was supplied (read live from the target service, structure only). Right: the canonical model the platform maps source data into. Nothing here can be edited; canonical changes go through <a href="/canonical-changes" class="text-blue-700">change requests</a>.</p>
+      <p>Left: the target system as it was confirmed in Platform setup (tables and columns only, never data). Right: the canonical model the platform maps source data into. Nothing here can be edited; canonical changes go through <a href="/canonical-changes" class="text-blue-700">change requests</a>.</p>
     </div>
   </div>
   {% if target_error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ target_error }}</div>{% endif %}

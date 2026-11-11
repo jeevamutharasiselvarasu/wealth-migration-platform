@@ -20,7 +20,11 @@
       <td>{{ p.opened_by }} · {{ p.opened_utc[:16] }}</td><td>{{ p.approved_by or '—' }}{% if p.merged_utc %} · {{ p.merged_utc[:16] }}{% endif %}</td>
       <td class="whitespace-nowrap">
         <form action="/api/git/pull-request/{{ p.number }}/refresh" method="POST" class="inline"><button class="btn g sm">Refresh</button></form>
-        {% if p.state == 'OPEN' and can_publish %}<form action="/api/git/pull-request/{{ p.number }}/merge" method="POST" class="inline"><button class="btn ok sm" data-testid="merge-pr">Approve and merge</button></form>{% endif %}
+        {% if p.state == 'OPEN' and can_publish %}
+          {% if p.package_version != dp.manifest.version %}<span class="fh" data-testid="pr-superseded">Superseded by package {{ dp.manifest.version }}; do not merge.</span>
+          {% elif dp.package_stale %}<span class="fh" data-testid="pr-stale">The package is out of date ({{ dp.package_stale|length }} change(s) since it was built); generate a new one (stage 07) before merging.</span>
+          {% else %}<form action="/api/git/pull-request/{{ p.number }}/merge" method="POST" class="inline"><button class="btn ok sm" data-testid="merge-pr">Approve and merge</button></form>{% endif %}
+        {% endif %}
       </td></tr>
   {% endfor %}
   </tbody></table></div>

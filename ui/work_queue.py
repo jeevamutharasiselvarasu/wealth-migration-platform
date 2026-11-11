@@ -48,10 +48,24 @@ def build_queue(role: str, c: Dict[str, Any]) -> List[Dict[str, Any]]:
     if c.get("target_pending") and role in APPROVAL_ROLES:
         n = c["target_pending"]
         add(f"Approve {_plural(n, 'target mapping')}", "/target-mapping", "Canonical-to-target proposals waiting for a decision.", n)
+    if (c.get("er_pending") or c.get("roles_needed")) and role in APPROVAL_ROLES:
+        n = c.get("er_pending") or 0
+        add(f"Decide {_plural(n, 'match rule')}" if n else "Decide where account roles come from", "/entity-resolution",
+            "Entity resolution: which rows are the same record, and who holds each account.", n)
+    if (c.get("codes_pending") or c.get("codes_needed")) and role in APPROVAL_ROLES:
+        n = c.get("codes_pending") or 0
+        add(f"Map {_plural(n, 'code value')}" if n else "Read the code values", "/code-sets", "Each source value of a coded field needs a canonical code.", n)
     if c.get("mappings_approved") and role in VALIDATION_ROLES:
         status = c.get("validation_status") or ""
         if status != "PASS":
-            label = {"FAIL": "Review failed validation", "WARN": "Review validation warnings"}.get(status, "Run validation")
+            label = {"FAIL": "Review failed validation", "WARN": "Review validation warnings", "STALE": "Run validation again"}.get(status, "Run validation")
             add(label, "/reconciliation",
-                "Check keys, required fields and relationships." if status else "Mappings are approved; no validation run yet.")
+                "Mappings changed after the last run." if status == "STALE" else
+                ("Check keys, required fields and relationships." if status else "Mappings are approved; no validation run yet."))
+    # Stages 07-10 (data plane): the current stage, for the role that owns it.
+    current = next((st["number"] for st in c.get("stages") or [] if st.get("state") == "current"), None)
+    owner = {"07": APPROVAL_ROLES, "08": APPROVAL_ROLES, "09": APPROVAL_ROLES, "10": VALIDATION_ROLES}.get(current)
+    nxt = c.get("next") or {}
+    if owner and role in owner and nxt.get("href"):
+        add(nxt.get("label", "Continue"), nxt["href"], nxt.get("detail", ""))
     return items

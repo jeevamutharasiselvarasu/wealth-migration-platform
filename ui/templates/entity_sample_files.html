@@ -28,7 +28,7 @@
   <section class="kpis" aria-label="Landing summary">
     <div class="kpi"><small>Files landed</small><b>{{ source_uploads|length }}</b><span>{{ source_uploads|selectattr('inference_approval_status','equalto','APPROVED')|list|length }} confirmed</span></div>
     <div class="kpi"><small>Awaiting review</small><b>{{ source_uploads|length - _decided }}</b><span>need a person</span></div>
-    <div class="kpi"><small>Entities inferred</small><b>{{ source_uploads|map(attribute='inferred_entity')|reject('equalto','Needs clarification')|unique|list|length }}</b><span>Account, Client, Household</span></div>
+    <div class="kpi"><small>Entities inferred</small>{% set _inferred = source_uploads|map(attribute='inferred_entity')|reject('equalto','Needs clarification')|reject('none')|unique|list %}<b>{{ _inferred|length }}</b><span>{{ _inferred|sort|join(', ') or 'none yet' }}</span></div>
   </section>
   {% endif %}
 
