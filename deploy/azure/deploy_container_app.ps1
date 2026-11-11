@@ -10,7 +10,13 @@ param(
     [Parameter(Mandatory = $true)][string]$Location,
     [string]$Prefix = "xodus",
     [string]$SettingsFile = "deploy/azure/app.settings.env",
-    [string]$Tag = (Get-Date -Format "yyyyMMddHHmmss")
+    [string]$Tag = (Get-Date -Format "yyyyMMddHHmmss"),
+    # Names of resources IT created for you, when they differ from the defaults derived from -Prefix.
+    [string]$AcrName = "",
+    [string]$EnvironmentName = "",
+    [string]$AppName = "",
+    # IT created the resource group (you hold rights on the group only): do not try to create it.
+    [switch]$SkipGroupCreate
 )
 $ErrorActionPreference = "Stop"
 
@@ -29,12 +35,12 @@ foreach ($required in @("DATABASE_URL", "AZURE_BLOB_CONNECTION_STRING", "XODUS_B
 if (-not $settings["DATABASE_URL"].StartsWith("mssql://")) { throw "DATABASE_URL must point at the XODUS database (mssql://...)." }
 if ($settings["XODUS_DEMO_MODE"] -ne "false") { throw "Set XODUS_DEMO_MODE=false in $SettingsFile: demo sign-in must be off on a public address." }
 
-$acr = ($Prefix -replace "[^a-z0-9]", "") + "acr"
-$envName = "$Prefix-env"
-$app = "$Prefix-platform"
+$acr = if ($AcrName) { $AcrName } else { ($Prefix -replace "[^a-z0-9]", "") + "acr" }
+$envName = if ($EnvironmentName) { $EnvironmentName } else { "$Prefix-env" }
+$app = if ($AppName) { $AppName } else { "$Prefix-platform" }
 $image = "$acr.azurecr.io/xodus-platform:$Tag"
 
-az group create --name $ResourceGroup --location $Location --output none
+if (-not $SkipGroupCreate) { az group create --name $ResourceGroup --location $Location --output none }
 if (-not (az acr show --name $acr --resource-group $ResourceGroup --query name --output tsv 2>$null)) {
     az acr create --name $acr --resource-group $ResourceGroup --sku Basic --admin-enabled true --output none
 }
