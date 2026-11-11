@@ -1,7 +1,7 @@
 # Browser walkthrough, all personas (2026-11-12)
 
 Platform: local Docker, http://localhost:8080, XODUS Azure SQL database, active migration MIG-00A1A6577B.
-Rules: browser only, no backend changes, no passwords written here. Fresh local test accounts walk3.analyst, walk3.validator, walk3.imo, walk3.sme, walk3.compliance (@example.com) were registered and approved on 2026-11-12 with one role each; the shared test password is held outside the repository. Mark each line Pass / Fail / Note.
+Rules: browser only, no backend changes, no passwords written here. Fresh local test accounts walk3.analyst, walk3.validator, walk3.imo, walk3.sme, walk3.compliance (@example.com) were registered and approved on 2026-11-12 with one role each for this walk, then disabled and deleted from Users & access the same day (the shared test password was never stored in the repository). Mark each line Pass / Fail / Note.
 
 ## Status by persona
 | Persona | Walk account | Status |
@@ -65,4 +65,13 @@ Rules: browser only, no backend changes, no passwords written here. Fresh local 
 
 ## Promote batch (IMO Lead, 2026-11-12)
 - Pass (fix 3): on /validation-rules, "Promote batch B20261111T081428Z to live" is disabled with "This batch is already promoted; a new batch is promoted after its own sign-off."
-- Note: after a few failed-looking sign-ins the login page stopped accepting the walk3.imo account until the app container was restarted (no error shown). Not diagnosed; worth checking for a silent throttle or session issue.
+- Resolved (not an app bug): the sign-in "glitch" was the browser autofilling the saved demo credentials over the typed ones, and navigating away before the sign-in finished (which shows "Your session ended"). A failed sign-in always redirects to /login?error=...; the lockout (5 failures, 15 minutes) is stored in the database and shows "Too many attempts". Restarting the container was not needed. When walking by browser, wait for each sign-in to land before navigating.
+
+## Domain SME rights (walk3.sme, follow-up)
+- Pass: Canonical Change Requests page (/canonical-changes) renders for the SME with the owner text ("you approve, reject or defer below") and the Canonical releases panel (this workspace is on release 1).
+- Not exercised: approve, reject or defer, because the migration has no canonical change requests yet. To exercise them, raise one as the Migration Analyst (Target mapping gap, or a change request from the mapping page) and decide it as the SME.
+- The Canonical model page itself shows no action buttons for the SME unless a release draft exists.
+
+## Delete account and test-account cleanup (2026-11-12)
+- New: Users & access has a "Delete account" button on pending and disabled accounts (an active account is disabled first; nobody deletes their own account). Deletes are written to the access history with the roles the account held.
+- Browser check as Platform Admin: disabling walk3.analyst showed the Delete button on that row only (active rows offer Disable but no Delete); deleting it showed "walk3.analyst@example.com deleted." and the access history logged "Account disabled" then "Account deleted". Repeated for walk3.validator, walk3.imo, walk3.sme and walk3.compliance. Remaining users: the demo admin, mock.tester and the older walk.* accounts (untouched).
