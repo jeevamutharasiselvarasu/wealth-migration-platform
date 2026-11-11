@@ -43,5 +43,5 @@ Acceptance tests cover scope gating, mapping-only execution boundaries, disabled
 
 - Confirm Simplicity field names, formats, code maps and relationship semantics from actual sample CSVs and the data dictionary.
 - Verify persistence across a full process stop/start and Excel/JSON uploads in a browser.
-- Decide the migration reset procedure and the `REP-` prefix rule (see `docs/project/XODUS_CURRENT_STATUS.md`).
+- Decide the migration reset procedure and the `REP-` prefix rule.
 - Azure phase: verify ADLS/ADF connectivity before any cloud status is presented as live.
