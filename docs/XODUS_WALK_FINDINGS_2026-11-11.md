@@ -39,8 +39,8 @@ and entity-resolution previews, adapter version 2 adopted (no change), mapping v
 |---|---|---|---|
 | O1 | Blob storage | The platform gets HTTP 403 (authorization failure) from the storage account. | Storage firewall: allow the current IP (and later the Container App's addresses). |
 | O2 | Stage 07/08 | The package is stale (Advisor, match rules, account-role derivation): regenerate, then open a new pull request. Held until after the Azure move, as decided. | Regenerate after hosting; close pull request #4 on GitHub (the platform has no "close" action). |
-| O3 | Stage 08 | "Published: Yes" tile refers to the last published package even when stage 07 is stale. | Show "Published (older package)" when stale. |
-| O4 | Stage 05 | The field-lineage table shows proposal-time statuses (Advisor fields "PROPOSED_NEEDS_REVIEW") though they are approved. | Show the current approval state or label the table "at proposal time". |
+| O3 | Stage 08 | "Published: Yes" tile refers to the last published package even when stage 07 is stale. | **Fixed:** tile shows "Older package" when the published package is not the current one or is stale. |
+| O4 | Stage 05 | The field-lineage table shows proposal-time statuses (Advisor fields "PROPOSED_NEEDS_REVIEW") though they are approved. | **Fixed:** shows "APPROVED (after proposal)" for fields now approved; page text says status is the state now. |
 | O5 | XODUS database | A legacy `simplicity` schema (ORION tables, xodus_run_log) remains from before the separate Simplicity database. | Drop it after confirming nothing reads it. |
 | O6 | Tenant settings | Brand settings are kept in the browser only (stated on the page). | Store them on the platform if they must be shared. |
 | O7 | Governance | Gate counts are example data (chip "EXAMPLE DATA"). | Connect to the real gates when Governance is in scope. |

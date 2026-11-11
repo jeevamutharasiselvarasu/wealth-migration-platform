@@ -910,13 +910,17 @@ async def publish_artifacts_page(request: Request, notice: str = "", error: str 
                 placed = sorted(git_connection.layout({"adf_folder": (git_cfg or {}).get("adf_folder") or git_connection.DEFAULT_FOLDER}, migration_id, {n: "" for n in names}))
             except (ValueError, zipfile.BadZipFile) as exc:
                 error = error or str(exc)
+        adf_status = _adf_status(conn, migration_id)
         conn.commit()
     finally:
         conn.close()
     published = bool(git_cfg and pkg and git_cfg.get("last_artifact_id") == pkg["artifact_id"])
+    # "Published" must not read as current when the latest package is stale or a different one went out.
+    published_older = bool(git_cfg and git_cfg.get("last_artifact_id") and not published) or bool(
+        published and adf_status and adf_status["stale_reasons"])
     return render_template_with_context(request, "publish_artifacts.html", {
         "page_title": "Publish artifacts", "user_name": user["name"], "user_role": user["role"], "notice": notice, "error": error,
-        "git": git_cfg or {}, "pkg": pkg, "placed": placed, "simulated": simulated, "published": published,
+        "git": git_cfg or {}, "pkg": pkg, "placed": placed, "simulated": simulated, "published": published, "published_older": published_older,
         "can_publish": user["role"] in APPROVAL_ROLES, "dp": _stage_data_plane(migration_id, "publish"), "can_check": user["role"] in TARGET_PREVIEW_ROLES,
     })
 
@@ -2105,6 +2109,13 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
                 (migration_id,),
             ).fetchall()
         ]
+        # The audit rows keep the status at proposal time; show where each field stands now.
+        approved_now = {(r[0], r[1], r[2]) for r in conn.execute(
+            "SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1",
+            (migration_id,)).fetchall()}
+        for item in mapping_lineage:
+            if item["validation_status"] == "PROPOSED_NEEDS_REVIEW" and (item["entity_name"], item["source_column"], item["canonical_column"]) in approved_now:
+                item["validation_status"] = "APPROVED (after proposal)"
         latest = conn.execute(
             "SELECT run_id, status, results_json, executed_by, executed_utc FROM validation_runs "
             "WHERE migration_id = ? ORDER BY executed_utc DESC LIMIT 1", (migration_id,)).fetchone()

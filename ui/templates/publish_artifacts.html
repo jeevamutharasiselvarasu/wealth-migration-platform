@@ -17,7 +17,7 @@
   <section class="kpis" aria-label="Publishing summary">
     <div class="kpi"><small>ADF package</small><b>{% if pkg %}v{{ pkg.artifact_version }}{% else %}None{% endif %}</b><span>{% if pkg %}{{ pkg.artifact_id }} · {{ pkg.generated_utc[:19] }}{% else %}build it in 07 Transformation SQL{% endif %}</span></div>
     <div class="kpi"><small>GitHub</small><b>{{ git.status|default('Not set up')|title if git else 'Not set up' }}</b><span>{% if git %}{{ git.repository }} · {{ git.branch }}{% else %}set up in Azure connection{% endif %}</span></div>
-    <div class="kpi"><small>Published</small><b>{{ 'Yes' if published else 'No' }}</b><span>{% if git and git.last_published_utc %}last {{ git.last_published_utc[:19] }} by {{ git.last_published_by }}{% else %}nothing published yet{% endif %}</span></div>
+    <div class="kpi"><small>Published</small><b>{% if published_older %}Older package{% else %}{{ 'Yes' if published else 'No' }}{% endif %}</b><span>{% if git and git.last_published_utc %}last {{ git.last_published_utc[:19] }} by {{ git.last_published_by }}{% else %}nothing published yet{% endif %}</span></div>
   </section>
   {% if dp and dp.pkg %}{% include "_data_plane_publish.html" %}{% else %}
   <section class="card" data-testid="publish-card">
