@@ -561,6 +561,26 @@ async def decide_user(email: str, request: Request, action: str = Form(...)):
     return RedirectResponse(url="/admin/users?notice=" + quote_plus(f"{updated['email']}: {updated['status']}, roles {', '.join(updated['roles']) or 'none'}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/api/users/{email}/delete")
+async def delete_user_account(email: str, request: Request):
+    """Delete a pending or disabled account (a Platform Admin only). The access history keeps a record of it."""
+    actor = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            removed = user_registry.delete_user(conn, actor["email"], email)
+        except ValueError as exc:
+            return RedirectResponse(url="/admin/users?error=" + quote_plus(str(exc)), status_code=status.HTTP_303_SEE_OTHER)
+        conn.commit()
+    finally:
+        conn.close()
+    for sid, sess in list(session_mgr.active_sessions.items()):  # a deleted account must not keep a session
+        if sess.get("email") == removed["email"]:
+            del session_mgr.active_sessions[sid]
+    _target_setup_audit("USER_ACCOUNT_DELETED", actor, {"target": removed["email"], "status": removed["status"], "roles": removed["roles"]})
+    return RedirectResponse(url="/admin/users?notice=" + quote_plus(f"{removed['email']} deleted."), status_code=status.HTTP_303_SEE_OTHER)
+
+
 _TEMPLATE_ROLE = {"Platform Admin": "PA", "IMO Lead": "IL", "Migration Analyst": "MA", "Domain SME": "MA",
                   "Validation Specialist": "VS", "Compliance Reviewer": "CR"}
 _SPACE_LINKS = {"index.html": "/suite", "data-migration.html": "/migrations", "deal-room.html": "/deal-room",

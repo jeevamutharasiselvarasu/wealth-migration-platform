@@ -220,5 +220,23 @@ def decide(conn: sqlite3.Connection, actor_email: str, target_email: str, action
     return get_user(conn, user["email"])
 
 
+def delete_user(conn: sqlite3.Connection, actor_email: str, target_email: str) -> Dict[str, Any]:
+    """Remove an account that is pending or disabled (an active account is disabled first, which ends its sessions).
+
+    Nobody deletes their own account. Because only non-active accounts can be deleted, the last active Platform Admin is
+    always protected. The access history keeps who deleted which account and what roles it held; the password hash goes with the row."""
+    ensure_table(conn)
+    user = get_user(conn, target_email)
+    if not user:
+        raise ValueError("User not found.")
+    if user["email"] == actor_email.strip().lower():
+        raise ValueError("You cannot delete your own account.")
+    if user["status"] == "ACTIVE":
+        raise ValueError("Disable the account first, then delete it.")
+    conn.execute("DELETE FROM app_users WHERE email = ?", (user["email"],))
+    record_event(conn, actor_email, user["email"], "ACCOUNT_DELETED", {"name": user["name"], "roles": user["roles"], "status": user["status"]})
+    return user
+
+
 def bootstrap_admin_email() -> str:
     return os.getenv("XODUS_BOOTSTRAP_ADMIN_EMAIL", "").strip().lower()

@@ -79,7 +79,7 @@ POST_POLICY = [
     (r"^/api/data-plane/runs/[^/]+/refresh$", TARGET_PREVIEW_ROLES),
     (r"^/api/git/publish$", APPROVAL_ROLES),
     (r"^/api/demo/load$", DEMO_ROLES),
-    (r"^/api/users/[^/]+/decision$", PLATFORM_ROLES),
+    (r"^/api/users/[^/]+/(decision|delete)$", PLATFORM_ROLES),
     (r"^/api/migration/new$", SETUP_ROLES),
     (r"^/api/migration/open$", SETUP_ROLES),
     (r"^/api/migration/archive$", SETUP_ROLES),

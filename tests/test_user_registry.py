@@ -136,10 +136,18 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             assert "DISABLED" in gone.headers["location"] and "ann@example.com" not in {s["email"] for s in app_module.session_mgr.active_sessions.values()}  # sessions ended
             assert "disabled" in (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"]
             assert "error=" in (await go(admin, "POST", "/api/users/root@example.com/decision", {"action": "DISABLE"})).headers["location"]  # last admin
+            page = await go(admin, "GET", "/admin/users")
+            assert 'data-testid="delete-user"' in page.text and "/api/users/ann@example.com/delete" in page.text and "/api/users/root@example.com/delete" not in page.text  # only non-active accounts offer delete
+            assert (await go(anon, "POST", "/api/users/ann@example.com/delete")).headers["location"].startswith("/login")  # not signed in
+            assert "own+account" in (await go(admin, "POST", "/api/users/root@example.com/delete")).headers["location"]
+            removed = await go(admin, "POST", "/api/users/ann@example.com/delete")
+            assert "notice=" in removed.headers["location"] and "deleted" in removed.headers["location"]
+            assert "error=" in (await go(admin, "POST", "/api/users/ann@example.com/delete")).headers["location"]  # already gone
+            assert "Invalid" in (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"]  # the account no longer exists
     asyncio.run(scenario())
     reg = __import__("control_plane.services.user_registry", fromlist=["x"])
     conn = db.get_db_connection()
-    assert reg.get_user(conn, "root@example.com")["status"] == "ACTIVE" and reg.get_user(conn, "ann@example.com")["status"] == "DISABLED"
+    assert reg.get_user(conn, "root@example.com")["status"] == "ACTIVE" and reg.get_user(conn, "ann@example.com") is None
     conn.close()
 
 
@@ -214,3 +222,25 @@ def test_access_history_is_recorded_and_shown_in_the_governance_space(tmp_path, 
     assert "password" not in str(ev).lower().replace("passwords", "")
     assert ur.pending_count(conn) == 0
     assert ur.list_events(conn)[-1]["event"] == "REGISTERED"
+
+
+def test_delete_user_only_for_pending_or_disabled_never_self_and_keeps_history():
+    c = _conn()
+    ur.register(c, "Root User", "root@example.com", PW, set())
+    ur.register(c, "Ann Lee", "ann@example.com", PW, set())      # pending
+    ur.register(c, "Bob Ray", "bob@example.com", PW, set())
+    ur.decide(c, "root@example.com", "bob@example.com", "APPROVE", ["Migration Analyst"])  # active
+    with pytest.raises(ValueError, match="Disable the account first"):
+        ur.delete_user(c, "root@example.com", "bob@example.com")
+    with pytest.raises(ValueError, match="own account"):
+        ur.delete_user(c, "root@example.com", "root@example.com")
+    with pytest.raises(ValueError, match="not found"):
+        ur.delete_user(c, "root@example.com", "nobody@example.com")
+    removed = ur.delete_user(c, "root@example.com", "ann@example.com")  # pending can go at once
+    assert removed["email"] == "ann@example.com" and ur.get_user(c, "ann@example.com") is None
+    ur.decide(c, "root@example.com", "bob@example.com", "DISABLE")
+    ur.delete_user(c, "root@example.com", "bob@example.com")  # disabled can go
+    assert ur.get_user(c, "bob@example.com") is None and ur.get_user(c, "root@example.com") is not None
+    events = [(e["event"], e["target_email"]) for e in ur.list_events(c, 20)]
+    assert ("ACCOUNT_DELETED", "ann@example.com") in events and ("ACCOUNT_DELETED", "bob@example.com") in events
+    assert all("hash" not in str(e["detail"]).lower() for e in ur.list_events(c, 20))  # no password material in the history

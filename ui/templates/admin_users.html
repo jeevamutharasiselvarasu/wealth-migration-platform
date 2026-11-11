@@ -25,6 +25,10 @@
         {% if u.status == 'DISABLED' %}<button name="action" value="ENABLE" class="btn g sm">Enable</button>
         {% else %}<button name="action" value="DISABLE" class="btn g sm">Disable</button>{% endif %}
       </form>
+      {% if u.status != 'ACTIVE' %}<form action="/api/users/{{ u.email }}/delete" method="post" class="mt-2 flex flex-wrap items-center gap-3">
+        <button type="submit" class="btn g sm" data-testid="delete-user" style="color:var(--bad)">Delete account</button>
+        <span class="text-[#5A6A88]">Removes the account for good; the access history keeps a record. An active account must be disabled first.</span>
+      </form>{% endif %}
     </article>
     {% else %}<div class="mt-3 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center text-xs text-[#5A6A88]">No self-registered users yet.</div>{% endfor %}
   </section>
