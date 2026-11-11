@@ -27,6 +27,7 @@ foreach ($required in @("DATABASE_URL", "AZURE_BLOB_CONNECTION_STRING", "XODUS_B
     if (-not $settings[$required]) { throw "$required is required in $SettingsFile." }
 }
 if (-not $settings["DATABASE_URL"].StartsWith("mssql://")) { throw "DATABASE_URL must point at the XODUS database (mssql://...)." }
+if ($settings["XODUS_DEMO_MODE"] -ne "false") { throw "Set XODUS_DEMO_MODE=false in $SettingsFile: demo sign-in must be off on a public address." }
 
 $acr = ($Prefix -replace "[^a-z0-9]", "") + "acr"
 $envName = "$Prefix-env"

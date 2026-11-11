@@ -29,7 +29,8 @@ services:
       - "${XODUS_PORT:-8080}:8000"
     environment:
       - PORT=8000
-      - DATABASE_URL=postgresql://xodus:${POSTGRES_PASSWORD}@db:5432/xodus
+      # Set XODUS_DATABASE_URL=mssql://... in .env to run on the XODUS database (schema xodus_app) instead of the local PostgreSQL.
+      - DATABASE_URL=${XODUS_DATABASE_URL:-postgresql://xodus:${POSTGRES_PASSWORD}@db:5432/xodus}
       - XODUS_SEED_DEMO=${XODUS_SEED_DEMO:-1}
       - XODUS_BOOTSTRAP_ADMIN_EMAIL=${XODUS_BOOTSTRAP_ADMIN_EMAIL:-}
       - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-00000000-0000-0000-0000-000000000000}
