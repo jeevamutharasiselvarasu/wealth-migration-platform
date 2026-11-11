@@ -35,7 +35,7 @@ from control_plane.services.source_file_adapter import read_source_records
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
-from control_plane.db import get_db_connection, using_postgres
+from control_plane.db import database_kind, get_db_connection, using_postgres
 from control_plane.services.firm_config import CORE_ENTITIES, P0_ENTITIES, FirmConfigError, load_firm_config
 from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
@@ -421,7 +421,8 @@ async def process_login(email: str = Form(...), password: str = Form(...)):
     if not session_id:
         return RedirectResponse(url="/login?error=" + quote_plus(session_mgr.last_error), status_code=status.HTTP_303_SEE_OTHER)
     response = RedirectResponse(url="/suite", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(key="session_id", value=session_id, httponly=True, samesite="lax")
+    response.set_cookie(key="session_id", value=session_id, httponly=True, samesite="lax",
+                        secure=os.getenv("XODUS_SECURE_COOKIES", "") == "1")  # HTTPS only when hosted behind Azure's HTTPS ingress
     return response
 
 
@@ -436,7 +437,7 @@ async def healthz():
         conn.close()
     boot = user_registry.bootstrap_admin_email()
     reg = next((u for u in users if u["email"] == boot), None) if boot else None
-    return {"status": "ok", "database": "postgresql" if using_postgres() else "sqlite", "commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7], "registration_page": True,
+    return {"status": "ok", "database": database_kind(), "commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7], "registration_page": True,
             "bootstrap_admin_configured": bool(boot), "bootstrap_admin_is_demo_email": bool(boot) and boot in session_mgr.authorized_users,
             "bootstrap_admin_registered": bool(reg), "bootstrap_admin_status": reg["status"] if reg else None,
             "registered_users": len(users), "active_admins": sum(1 for u in users if u["status"] == "ACTIVE" and "Platform Admin" in u["roles"])}
@@ -481,7 +482,8 @@ async def storage_status(request: Request):
     conn = get_db_connection()
     try:
         if using_postgres():
-            names = [r[0] for r in conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name").fetchall()]
+            schema = "SCHEMA_NAME()" if database_kind() == "mssql" else "current_schema()"
+            names = [r[0] for r in conn.execute(f"SELECT table_name FROM information_schema.tables WHERE table_schema = {schema} ORDER BY table_name").fetchall()]
         else:
             names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()]
         tables = {n: conn.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names}
@@ -498,7 +500,7 @@ async def storage_status(request: Request):
         conn.commit()
     finally:
         conn.close()
-    return {"database": "postgresql" if using_postgres() else "sqlite", "tables": tables, "stored_files": files,
+    return {"database": database_kind(), "tables": tables, "stored_files": files,
             "workflow_events_by_type": events, "registered_users_by_status": users,
             "active_migration_id": state_store.questionnaire_data.get("migration_id")}
 
@@ -4062,7 +4064,7 @@ def _rules_page(request: Request, notice: str = "", error: str = "", inferred=No
         usage = {}
         for row in conn.execute(
                 "SELECT UPPER(transformation_expression) AS expr, COUNT(*) AS n FROM canonical_mappings "
-                "WHERE is_confirmed = 1 AND UPPER(transformation_expression) LIKE 'RULE:%' GROUP BY 1").fetchall():
+                "WHERE is_confirmed = 1 AND UPPER(transformation_expression) LIKE 'RULE:%' GROUP BY UPPER(transformation_expression)").fetchall():
             usage[row["expr"]] = row["n"]
         conn.commit()
     finally:

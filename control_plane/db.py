@@ -18,13 +18,25 @@ def database_url() -> str:
     return os.getenv("DATABASE_URL", "").strip()
 
 
+def database_kind() -> str:
+    """sqlite (no DATABASE_URL), mssql (Azure SQL: the XODUS database, schema xodus_app) or postgresql."""
+    url = database_url()
+    if not url:
+        return "sqlite"
+    return "mssql" if url.split(":", 1)[0].lower() in ("mssql", "sqlserver") else "postgresql"
+
+
 def using_postgres() -> bool:
+    """True when a server database holds the platform's data (PostgreSQL or Azure SQL): file bytes and artifacts are stored in it."""
     return bool(database_url())
 
 
 def get_db_connection():
     """Connection to the control-plane database: PostgreSQL when DATABASE_URL is set, otherwise the local SQLite file.
     Both expose the same small API (execute, cursor, commit, rollback, close; rows readable by index or name)."""
+    if database_kind() == "mssql":
+        from control_plane import mssql_compat
+        return mssql_compat.connect(database_url())
     if using_postgres():
         from control_plane import pg_compat
         return pg_compat.connect(database_url())
@@ -40,13 +52,15 @@ def _is_sqlite(conn) -> bool:
 
 def table_exists(conn, name: str) -> bool:
     if not _is_sqlite(conn):
-        return conn.execute("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?", (name,)).fetchone() is not None
+        schema = "SCHEMA_NAME()" if database_kind() == "mssql" else "current_schema()"
+        return conn.execute(f"SELECT 1 FROM information_schema.tables WHERE table_schema = {schema} AND table_name = ?", (name,)).fetchone() is not None
     return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone() is not None
 
 
 def table_columns(conn, name: str) -> set:
     if not _is_sqlite(conn):
-        return {r[0] for r in conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?", (name,)).fetchall()}
+        schema = "SCHEMA_NAME()" if database_kind() == "mssql" else "current_schema()"
+        return {r[0] for r in conn.execute(f"SELECT column_name FROM information_schema.columns WHERE table_schema = {schema} AND table_name = ?", (name,)).fetchall()}
     return {r[1] for r in conn.execute(f"PRAGMA table_info({name})").fetchall()}
 
 

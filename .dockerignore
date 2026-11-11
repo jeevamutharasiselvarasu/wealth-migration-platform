@@ -11,3 +11,7 @@ __pycache__
 demo_data/*.local.json
 demo_data/*.local.json.bak
 demo_data/demo_passwords*
+deploy/azure/app.settings.env
+audio
+Claude outputs
+docs/claude_memory

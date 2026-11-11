@@ -19,3 +19,5 @@ demo_data/*.local.json.bak
 # Company root CA for the container (organisation-specific)
 certs/*.crt
 certs/*.pem
+# Azure Container Apps settings (secrets); only the .example is committed
+deploy/azure/app.settings.env
