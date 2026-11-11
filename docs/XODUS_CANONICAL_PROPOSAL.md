@@ -1,6 +1,6 @@
 # Proposal: a universal canonical model, with logic where it belongs
 
-Status: proposal for review (2026-11-11). Nothing here is built yet.
+Status: proposal, reviewed 2026-11-11 (entity list agreed with two changes: no Party layer, Client sits in a Household; the representative is the Advisor). Nothing here is built yet.
 
 ## Why change
 
@@ -26,13 +26,12 @@ and every target.
 
 | Entity | Holds | Notes |
 |---|---|---|
-| Party | a person or an organisation: names, birth date, tax id, type | one Party per real person, across files (entity resolution) |
-| Household | the grouping a firm manages together | members are Party roles, not copied names |
-| Account | number, registration type, tax status, custodian, open/close dates, status, balance as of | |
-| AccountRole | Party ↔ Account: owner, joint owner, beneficiary, trustee, ... | replaces names copied onto accounts |
-| HouseholdMember | Party ↔ Household with role (head, spouse, dependent) and order | |
-| Representative | advisor / rep: name, rep codes per custodian | resolves rep codes to people once |
-| Address, ContactPoint | typed addresses, phones, emails, with purpose and primary flag | many per Party |
+| Household | the grouping a firm manages together; its advisor | the top of the model: clients and accounts belong to a household |
+| Client | a person or an organisation in a household: names, birth date, tax id, type, household role (head, spouse, dependent) and order | one Client per real person across files (entity resolution); no separate Party layer (decided 2026-11-11) |
+| Account | number, registration type, tax status, custodian, open/close dates, status, balance as of, household | |
+| AccountRole | Client ↔ Account: owner, joint owner, beneficiary, trustee, ... | replaces names copied onto accounts |
+| Advisor | the advisor (representative): name, contact, rep codes per custodian | the representative is the advisor (decided 2026-11-11); resolves rep codes to advisors once |
+| Address, ContactPoint | typed addresses, phones, emails, with purpose and primary flag | many per Client |
 | Identifier | every external id of an entity (source system, type, value) | keeps the lineage back to each source |
 | Code sets | canonical codes with descriptions, versioned | reference data, not entities |
 
@@ -46,7 +45,7 @@ Every canonical row keeps its lineage (source system, file, batch, source key), 
 | Source code → canonical code | source → canonical | crosswalk table `xodus_ref.source_code_map` (data) |
 | Split / join / lookup / derive (e.g. last name from "Last, First", rep name from rep code) | source → canonical | approved rules (exists), generated into the entity procedure |
 | Entity resolution and survivorship (same person in two files; which value wins) | source → canonical | new: match rules + survivorship rules per entity, approved like mappings |
-| Pivot / unpivot (one contact row → Party + HouseholdMember + ContactPoints) | source → canonical | new: one source file may feed several canonical entities |
+| Pivot / unpivot (one contact row → Client + ContactPoints + its household role) | source → canonical | new: one source file may feed several canonical entities |
 | Canonical code → target code | canonical → target | crosswalk table `xodus_ref.target_code_map` (data), one per target system |
 | Denormalise / flatten (Orion MCL is one flat import) | canonical → target | target adapter, written once per target system |
 | Target formatting and required-field rules | canonical → target | target adapter |
@@ -66,7 +65,7 @@ analyst's work goes. Both remain generated stored procedures run by the same sta
 
 ## Phasing
 
-1. Canonical model v2 and code sets (definition, store, release); Account, Party, Household, HouseholdMember, AccountRole first.
+1. Canonical model v2 and code sets (definition, store, release); Household, Client, Account, AccountRole, Advisor first.
 2. Crosswalk tables and code-set mapping in stages 03/04; source adapter generation against v2.
 3. Orion MCL target adapter against v2, reusable across migrations; stage 06 reworked to adapter review.
 4. Entity resolution and survivorship; conformance validation.
@@ -74,7 +73,7 @@ analyst's work goes. Both remain generated stored procedures run by the same sta
 
 ## Decisions needed
 
-1. Agree the principles and the entity list above (or name entities to add, e.g. holdings and transactions in a later phase).
+1. ~~Agree the principles and the entity list~~: agreed 2026-11-11 with the two changes above. Holdings and transactions can follow in a later phase.
 2. Which code sets to standardise first (proposal: registration type, tax status, custodian, account status, relationship role).
 3. Whether the target adapter is owned by the Platform Admin/SME (platform level) or per migration by the Analyst.
 4. Whether entity resolution (same person across files) is in the first phase or the second.
