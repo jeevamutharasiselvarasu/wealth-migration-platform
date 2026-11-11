@@ -386,8 +386,8 @@ def test_target_setup_is_one_time_and_target_is_separate_and_different_from_cano
     assert not canonical_names & {f["column"] for b in spec["entities"].values() for f in b["fields"]}  # no column name is shared
     # the target service is independent of the platform: it imports nothing from it
     for path in pathlib.Path(tdb.__file__).parent.glob("*.py"):
-        imported = {n.module.split(".")[0] for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.ImportFrom) and n.module}
-        imported |= {a.name.split(".")[0] for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.Import) for a in n.names}
+        imported = {n.module.split(".")[0] for n in ast.walk(ast.parse(path.read_text(encoding="utf-8"))) if isinstance(n, ast.ImportFrom) and n.module}
+        imported |= {a.name.split(".")[0] for n in ast.walk(ast.parse(path.read_text(encoding="utf-8"))) if isinstance(n, ast.Import) for a in n.names}
         assert not imported & {"control_plane", "ui", "agents", "data_plane"}, path.name
 
 
@@ -509,7 +509,7 @@ def test_demo_load_is_restricted_to_flagged_account_and_infers_but_does_not_conf
 def test_jeeva_is_the_only_demo_load_account_in_users_file():
     import json
     from pathlib import Path
-    users = json.loads((Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json").read_text())
+    users = json.loads((Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json").read_text(encoding="utf-8"))
     items = users if isinstance(users, list) else users.get("users", users)
     flagged = [u.get("email") for u in items if isinstance(u, dict) and u.get("can_load_demo")]
     assert flagged == ["jeeva@simplicitywealth.com"]
@@ -547,7 +547,7 @@ def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch
 
 def test_refresh_button_shows_once_mappings_exist():
     from pathlib import Path
-    html = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "target_mapping.html").read_text()
+    html = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "target_mapping.html").read_text(encoding="utf-8")
     assert "Refresh proposals from canonical model" in html and html.count('action="/api/target-mapping/propose"') == 2
 
 
@@ -829,5 +829,5 @@ def test_reviewer_can_change_the_canonical_source_and_type_only_registered_rules
 
 def test_target_mapping_page_links_back_to_setup():
     import re, pathlib
-    html = pathlib.Path(__file__).resolve().parent.parent.joinpath("ui/templates/target_mapping.html").read_text()
+    html = pathlib.Path(__file__).resolve().parent.parent.joinpath("ui/templates/target_mapping.html").read_text(encoding="utf-8")
     assert re.search(r'href="/setup"[^>]*data-testid="back-to-setup"', html)

@@ -26,7 +26,7 @@ def _col(field, values, entity="Account", file="accounts.csv"):
 
 
 def test_business_rules_file_has_only_recognised_rule_lines():
-    text = (ROOT / "demo_data" / "knowledge" / "corecap_business_rules.md").read_text()
+    text = (ROOT / "demo_data" / "knowledge" / "corecap_business_rules.md").read_text(encoding="utf-8")
     results = ri.infer(text)
     assert results and all(r["recognised"] for r in results), [r for r in results if not r["recognised"]]
     assert {r["rule_type"] for r in results} == {"VALUE_MAP", "DATE_FORMAT", "NUMBER_CLEAN", "CONCAT"}
@@ -115,17 +115,17 @@ def test_compliance_reviewer_cannot_use_the_suggestion_endpoints(db, tmp_path, m
 
 
 def test_actions_update_in_place_and_tables_freeze_header_and_first_column():
-    base = (ROOT / "ui" / "templates" / "base.html").read_text()
+    base = (ROOT / "ui" / "templates" / "base.html").read_text(encoding="utf-8")
     assert "resp.redirected ? resp.url : location.href" in base and 'fetch(url.href, {method: "POST"' in base and "data-full-reload" in base and "replaceWith" in base
-    css = (ROOT / "ui" / "static" / "xodus.css").read_text()
+    css = (ROOT / "ui" / "static" / "xodus.css").read_text(encoding="utf-8")
     assert ".tw thead th{position:sticky;top:0" in css and "position:sticky;left:0" in css
 
 
 def test_pinned_bars_do_not_reserve_space_for_the_scrolling_suite_top_bar():
-    css = (ROOT / "ui" / "static" / "xodus.css").read_text()
-    base = (ROOT / "ui" / "templates" / "base.html").read_text()
+    css = (ROOT / "ui" / "static" / "xodus.css").read_text(encoding="utf-8")
+    base = (ROOT / "ui" / "templates" / "base.html").read_text(encoding="utf-8")
     assert ":root{--xh:0px}" in css and '"--xh"' not in base
 
 
 def test_legacy_captions_are_not_smaller_than_the_template_minimum():
-    assert 'text-[9px]' in (ROOT / "ui" / "static" / "xodus.css").read_text() and "10.5px" in (ROOT / "ui" / "static" / "xodus.css").read_text()
+    assert 'text-[9px]' in (ROOT / "ui" / "static" / "xodus.css").read_text(encoding="utf-8") and "10.5px" in (ROOT / "ui" / "static" / "xodus.css").read_text()

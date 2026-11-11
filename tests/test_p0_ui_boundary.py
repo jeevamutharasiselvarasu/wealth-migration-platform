@@ -4,9 +4,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_p0_ui_does_not_render_deferred_wealth_modules_or_assign_waves():
-    pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
-    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
-    knowledge = (ROOT / "ui" / "templates" / "firm_knowledge.html").read_text()
+    pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
+    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    knowledge = (ROOT / "ui" / "templates" / "firm_knowledge.html").read_text(encoding="utf-8")
     for deferred in ("Sleeve Math Agent", "Sleeve / Allocation", "Position (Snapshot)", "Execute 9-Agent Pipeline", "Restricted Models"):
         assert deferred not in pipeline
     assert "Primary Custodian Rails" not in dashboard
@@ -24,15 +24,15 @@ def _shell_source():
     return "".join((t / n).read_text(encoding="utf-8") for n in ("base.html", "_suite_top.html", "_persona_select.html"))
 
 def test_dashboard_knowledge_assets_are_not_fabricated_by_default_state():
-    state = (ROOT / "ui" / "state.py").read_text()
+    state = (ROOT / "ui" / "state.py").read_text(encoding="utf-8")
     assert "Amplify UMA Sleeve and Holding Schema Contract" not in state
     assert 'self.firm_knowledge_docs: List[Dict[str, Any]] = []' in state
     assert '"program_status": "P0_SOURCE_TO_CANONICAL"' in state
 
 def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow():
     navigation = _shell_source()
-    app_source = (ROOT / "ui" / "app.py").read_text()
-    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text()
+    app_source = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text(encoding="utf-8")
     assert 'action="/persona-selection"' in persona and "persona_options" in persona  # persona is a top-bar selector, as in the template
     assert '_suite_top.html' in navigation
     assert "pg.steps" in navigation and 'class="runh"' in navigation and "Next: {{ pg.next.label }}" in navigation  # stage rail with run progress
@@ -46,7 +46,7 @@ def test_p0_navigation_exposes_persona_first_integrated_control_plane_workflow()
 
 
 def test_dashboard_exposes_only_the_three_entity_p0_flow():
-    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
+    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text(encoding="utf-8")
     for entity in ("Account", "Household", "Client"):
         assert entity in dashboard
     for stage in (
@@ -67,7 +67,7 @@ def test_global_ui_shell_matches_agentic_demo_visual_language():
 
 
 def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
-    pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
     assert ">98%</div>" not in pipeline
     assert "HIGH QUALITY · READY" not in pipeline
     assert "P0 · APPROVAL REQUIRED" in pipeline
@@ -77,9 +77,9 @@ def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
 
 
 def test_login_has_no_role_field_and_persona_is_chosen_from_the_top_bar_selector():
-    login = (ROOT / "ui" / "templates" / "login.html").read_text()
-    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text()
-    app = (ROOT / "ui" / "app.py").read_text()
+    login = (ROOT / "ui" / "templates" / "login.html").read_text(encoding="utf-8")
+    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text(encoding="utf-8")
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'name="role"' not in login
     assert 'name="role"' in persona
     assert '@app.get("/persona-selection"' not in app  # no separate persona page; the top-bar selector is the only control
@@ -90,7 +90,7 @@ def test_login_has_no_role_field_and_persona_is_chosen_from_the_top_bar_selector
 
 
 def test_migration_setup_collects_target_azure_knowledge_and_source_before_discovery():
-    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
     for token in ("Target system and canonical contract",
                   "Knowledge and mapping evidence", "Source acquisition method",
                   "SAMPLE_FILES", "AZURE_CONNECTION", "Account", "Household", "Client"):
@@ -100,18 +100,18 @@ def test_migration_setup_collects_target_azure_knowledge_and_source_before_disco
 
 
 def test_source_discovery_does_not_ask_user_to_assign_entity():
-    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
-    inference = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text()
+    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
+    inference = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text(encoding="utf-8")
     assert '<select name="entity_name"' not in source
     assert "Analyse files & infer entities" in source
-    assert "classify_source_file" in (ROOT / "control_plane" / "services" / "entity_classification_agent.py").read_text()
+    assert "classify_source_file" in (ROOT / "control_plane" / "services" / "entity_classification_agent.py").read_text(encoding="utf-8")
     assert "NEEDS_CLARIFICATION" in inference
     assert "data_dictionary_notes" in source
 
 
 def test_mapping_review_supports_approval_rejection_and_information_requests():
-    app = (ROOT / "ui" / "app.py").read_text()
-    studio = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    studio = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
     assert 'value="APPROVED"' in studio
     assert 'value="REJECTED"' in studio
     assert "rejection reason" in studio.lower()
@@ -120,17 +120,17 @@ def test_mapping_review_supports_approval_rejection_and_information_requests():
 
 
 def test_target_contract_is_a_required_prerequisite_for_migration_setup():
-    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
-    app = (ROOT / "ui" / "app.py").read_text()
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'name="canonical_version"' in setup
     assert 'required placeholder="Version or target schema document reference"' in setup
     assert "Target system and canonical schema / contract reference are required" in app
 
 
 def test_azure_connection_requires_environment_identifiers_without_collecting_secrets():
-    app = (ROOT / "ui" / "app.py").read_text()
-    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
-    azure_page = (ROOT / "ui" / "templates" / "azure_setup.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
+    azure_page = (ROOT / "ui" / "templates" / "azure_setup.html").read_text(encoding="utf-8")
     # Azure details are entered once, on the Azure connection page; Setup only redirects there.
     assert 'setup["source_acquisition"] == "AZURE_CONNECTION"' in app and "/azure-setup" in app
     for field in ("azure_tenant_id", "azure_subscription_id", "azure_resource_group", "azure_storage_account", "azure_container"):
@@ -143,14 +143,14 @@ def test_azure_connection_requires_environment_identifiers_without_collecting_se
 
 
 def test_top_bar_selector_shows_the_active_role():
-    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text()
+    persona = (ROOT / "ui" / "templates" / "_persona_select.html").read_text(encoding="utf-8")
     assert "active_persona" in persona and "selected" in persona
 
 
 def test_entity_level_approval_ui_and_backend_are_evidence_gated():
-    app = (ROOT / "ui" / "app.py").read_text()
-    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
-    studio = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
+    studio = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
     assert '@app.post("/api/entities/confirm-entity")' in app
     assert 'inference.get("status") != "INFERRED"' in app
     assert 'record.get("inference_approval_status") == "REJECTED"' in app
@@ -163,14 +163,14 @@ def test_entity_level_approval_ui_and_backend_are_evidence_gated():
 
 
 def test_persona_switch_is_limited_to_roles_assigned_to_authenticated_user():
-    app = (ROOT / "ui" / "app.py").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'session_mgr.assigned_roles(user["email"])' in app
     assert 'if role not in (session_mgr.assigned_roles(user["email"]) or {user["role"]}):' in app
     assert 'raise HTTPException(status_code=403, detail="The selected persona is not assigned to this user.")' in app
 
 
 def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
-    app = (ROOT / "ui" / "app.py").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):' in app
     assert 'async def review_source_mapping_suggestion(' in app
     assert 'if request is not None and "text/html" in request.headers.get("accept", ""):' in app
@@ -178,8 +178,8 @@ def test_mapping_browser_forms_redirect_but_api_callers_keep_json_responses():
 
 
 def test_migration_setup_persists_explicit_entity_scope_selection():
-    app = (ROOT / "ui" / "app.py").read_text()
-    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
     assert 'form.getlist("entities")' in app
     assert "Select at least one in-scope entity" in app
     assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"' in app
@@ -189,8 +189,8 @@ def test_migration_setup_persists_explicit_entity_scope_selection():
 
 
 def test_inferred_entity_requires_human_approval_before_mapping():
-    app = (ROOT / "ui" / "app.py").read_text()
-    inventory = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    inventory = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
     assert '@app.post("/api/entities/confirm-inference")' in app
     assert 'record["inference_approval_status"] = "APPROVED"' in app
     assert 'record["inference_approval_status"] = "REJECTED"' in app
@@ -205,27 +205,27 @@ def test_inferred_entity_requires_human_approval_before_mapping():
 
 
 def test_entity_scope_screen_redirects_into_source_discovery():
-    app = (ROOT / "ui" / "app.py").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'async def entity_selection_view(request: Request):' in app
     assert 'return RedirectResponse(url="/entity-sample-files"' in app
 
 
 def test_demo_login_is_loaded_from_configuration_and_password_is_not_plaintext():
-    auth = (ROOT / "ui" / "auth.py").read_text()
-    users = __import__("json").loads((ROOT / "demo_data" / "demo_users.json").read_text())
+    auth = (ROOT / "ui" / "auth.py").read_text(encoding="utf-8")
+    users = __import__("json").loads((ROOT / "demo_data" / "demo_users.json").read_text(encoding="utf-8"))
     assert "XODUS_DEMO_MODE" in auth
     assert "hashlib.sha256" in auth
     assert "password123" not in auth
     assert users["users"][0]["email"] == "jeeva@simplicitywealth.com"
     assert all("password" not in key for user in users["users"] for key in user), "no credential material in tracked fixtures"
     import fnmatch
-    patterns = [l.strip() for l in (ROOT / ".gitignore").read_text().splitlines() if l.strip() and not l.startswith(("#", "!"))]
+    patterns = [l.strip() for l in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith(("#", "!"))]
     assert any(fnmatch.fnmatch("demo_data/demo_passwords.local.json", p) for p in patterns), "local password file must stay git-ignored"
 
 
 def test_demo_migration_is_input_data_not_values_embedded_in_routes():
-    app = (ROOT / "ui" / "app.py").read_text()
-    manifest = __import__("json").loads((ROOT / "demo_data" / "demo_migration.json").read_text())
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    manifest = __import__("json").loads((ROOT / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
     assert '@app.post("/api/demo/load")' in app
     assert 'demo_migration.json' in app
     assert len(manifest["source_files"]) >= 6
@@ -240,13 +240,13 @@ def test_demo_migration_is_input_data_not_values_embedded_in_routes():
 
 def test_demo_source_inputs_have_no_real_personal_identifiers():
     for path in (ROOT / "demo_data" / "source_files").glob("*.csv"):
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         assert "example.test" in content or path.name != "clients.csv"
 
 
 def test_entity_inference_business_rules_are_externalized_to_configuration():
-    service = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text()
-    rules = __import__("json").loads((ROOT / "knowledge" / "entity_inference_rules.json").read_text())
+    service = (ROOT / "control_plane" / "services" / "entity_inference.py").read_text(encoding="utf-8")
+    rules = __import__("json").loads((ROOT / "knowledge" / "entity_inference_rules.json").read_text(encoding="utf-8"))
     assert "load_entity_inference_rules" in service
     assert "entity_inference_rules.json" in service
     assert "ALIASES =" not in service
@@ -257,7 +257,7 @@ def test_entity_inference_business_rules_are_externalized_to_configuration():
 
 def test_demo_manifest_includes_multiple_files_for_each_supported_entity():
     import json
-    manifest = json.loads((ROOT / "demo_data" / "demo_migration.json").read_text())
+    manifest = json.loads((ROOT / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
     paths = [item["path"] for item in manifest["source_files"]]
     assert len(paths) >= 6
     assert any("account_" in path for path in paths)
@@ -268,8 +268,8 @@ def test_demo_manifest_includes_multiple_files_for_each_supported_entity():
 
 
 def test_setup_forms_are_not_nested_and_demo_load_lands_in_discovery():
-    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text()
-    app = (ROOT / "ui" / "app.py").read_text()
+    setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'id="knowledge-upload-form"' not in setup
     assert 'id="migration-setup-form"' in setup
     assert 'form="migration-setup-form"' in setup
@@ -277,17 +277,17 @@ def test_setup_forms_are_not_nested_and_demo_load_lands_in_discovery():
 
 
 def test_source_inventory_uses_file_level_review_for_multiple_extracts():
-    state = (ROOT / "ui" / "state.py").read_text()
-    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
-    app = (ROOT / "ui" / "app.py").read_text()
+    state = (ROOT / "ui" / "state.py").read_text(encoding="utf-8")
+    source = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert '"file_id": uuid.uuid4().hex' in state
     assert 'name="file_id" value="{{ file.file_id }}"' in source
     assert 'item.get("file_id") == file_id' in app
-    assert 'Entity review queue' in (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    assert 'Entity review queue' in (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
 
 
 def test_mapping_studio_only_shows_pending_proposals_for_active_migration():
-    app = (ROOT / "ui" / "app.py").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     route = app.split('@app.get("/agent-pipeline"', 1)[1].split('@app.get("/reconciliation"', 1)[0]
     assert 'active_migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))' in route
     assert "WHERE s.migration_id = ? AND s.status = 'PENDING'" in route
@@ -296,8 +296,8 @@ def test_mapping_studio_only_shows_pending_proposals_for_active_migration():
 
 
 def test_dashboard_explains_wave_conditions_without_assigning_p0_records():
-    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
-    app = (ROOT / "ui" / "app.py").read_text()
+    dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert '"wave_conditions": CohortConditionEngine.get_condition_catalog()' in app
     assert "condition.condition_name" in dashboard
     assert "condition.parameter" in dashboard
@@ -307,9 +307,9 @@ def test_dashboard_explains_wave_conditions_without_assigning_p0_records():
 
 
 def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_navigation_step():
-    app = (ROOT / "ui" / "app.py").read_text()
-    navigation = (ROOT / "ui" / "templates" / "base.html").read_text()
-    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    navigation = (ROOT / "ui" / "templates" / "base.html").read_text(encoding="utf-8")
+    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
     assert 'MigrationAgentCoordinator().analyze(' in app
     assert 'record["agent_analysis"] = agent_analysis' in app
     assert 'return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)' in app
@@ -322,9 +322,9 @@ def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_nav
 
 
 def test_workflow_validation_errors_use_actionable_ui_modals_not_raw_json():
-    app = (ROOT / "ui" / "app.py").read_text()
-    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text()
-    mapping = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text()
+    app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
+    mapping = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
     assert 'Enter a rejection reason before rejecting this file.' in app
     assert 'url="/agent-pipeline?error=" + quote_plus(message)' in app
     assert 'id="workflow-error-modal"' in discovery
