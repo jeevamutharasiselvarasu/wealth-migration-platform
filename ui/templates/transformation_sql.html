@@ -14,7 +14,22 @@
   <div class="ins"><b>This stage.</b> Read-only: review the SQL, download it, and build the ADF package that runs it. Change a mapping or rule in <a href="/target-mapping" class="text-blue-700">stage 06 Target mapping</a>; this page follows it.</div>
   {% if not spec %}<div class="empty">The target system is not set up yet. <a href="/target-setup" class="text-blue-700">Set it up and approve mappings first.</a></div>
   {% elif not can_preview %}<div class="empty">Your role cannot generate the transformation SQL.</div>{% endif %}
-  {% if can_preview and spec %}
+  {% if xpkg %}
+  <section class="card" id="procedures" data-testid="procedures">
+    <h3 style="font-size:16px">Generated procedures <span class="font-mono text-[10px] font-normal text-[#5A6A88]">package {{ xpkg.manifest.version }}</span></h3>
+    <p class="mt-1 text-xs text-[#5A6A88]">The transformation lives in these stored procedures, not in the pipelines. A source change regenerates the procedures (and a new package version); the pipelines that call them never change. Each procedure runs in one transaction.</p>
+    <ul class="mt-2 text-xs" style="margin-left:16px;list-style:disc">
+      <li><b>Source → canonical</b>: one procedure per entity (<span class="font-mono">usp_canon_…</span>), from the approved source mappings, rules and derivations.</li>
+      <li><b>Canonical → mirror</b>: one procedure (<span class="font-mono">usp_mirror_…</span>) from the approved target mappings.</li>
+      <li><b>Mirror → live</b>: one procedure in Simplicity (<span class="font-mono">usp_promote_…</span>), a MERGE into the live tables.</li>
+    </ul>
+    {% for p in procedures %}
+    <details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-blue-700"><span class="font-mono">{{ p.name }}</span> <span class="text-[#5A6A88] font-normal">· {{ p.database }}</span></summary>
+      <pre class="tree" style="margin:6px 0 0;white-space:pre-wrap">{{ p.sql }}</pre></details>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% if can_preview and spec and not xpkg %}
   <section class="card" id="transformation-sql">
     <h3 style="font-size:16px">Transformation SQL <span class="font-mono text-[10px] font-normal text-[#5A6A88]">T-SQL &middot; not executed here</span></h3>
     <p class="mt-1 text-xs text-[#5A6A88]">Generated from the <b>approved</b> target mappings and approved rules only; nothing else is ever written into it. The ADF run (stage 09) copies the source files from Azure Blob storage into the staging tables, then runs these statements against the target SQL database.</p>
@@ -32,10 +47,10 @@
 
   {% if can_preview and spec %}
   <section class="card" id="adf-package">
-    <h3 style="font-size:16px">Azure Data Factory package <span class="font-mono text-[10px] font-normal text-amber-800">simulated Azure values</span></h3>
+    <h3 style="font-size:16px">Azure Data Factory package <span class="font-mono text-[10px] font-normal text-amber-800">{{ 'stable pipelines' if xpkg else 'simulated Azure values' }}</span></h3>
     <p class="mt-1 text-xs text-[#5A6A88]">Builds an ADF package and <b>saves it with this migration</b> (linked services, datasets, a pipeline that copies the Azure Blob files into staging tables and runs the transformation SQL, and the ARM template) from the <b>approved</b> target mappings only. Subscription, factory, storage, SQL and Key Vault values are fictitious and no secrets are included. Nothing is deployed or sent to Azure.</p>
     <form action="/api/target-mapping/adf-package" method="post" class="mt-3"><button class="btn g sm">Generate and save ADF package (.zip)</button></form>
-    <form action="/api/target-mapping/stage-canonical" method="post" class="mt-2" data-testid="stage-canonical-form"><button class="btn g sm" data-testid="stage-canonical">Write canonical files to stage (from the raw files)</button> <span class="fh">Maps each raw file to canonical column names with the approved source mappings and writes them under stage/. The pipeline copies those files into the staging tables.</span></form>
+    {% if not xpkg %}<form action="/api/target-mapping/stage-canonical" method="post" class="mt-2" data-testid="stage-canonical-form"><button class="btn g sm" data-testid="stage-canonical">Write canonical files to stage (from the raw files)</button> <span class="fh">Maps each raw file to canonical column names with the approved source mappings and writes them under stage/. The pipeline copies those files into the staging tables.</span></form>{% endif %}
     {% if stored_adf %}
     {% if adf_status and adf_status.stale_reasons %}<div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" data-testid="adf-stale"><b>STALE</b> &middot; the latest package ({{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}) no longer reflects the current approved state. Generate a new package before it is used for a sign-off.<ul class="mt-1 list-disc pl-5">{% for r in adf_status.stale_reasons %}<li>{{ r }}</li>{% endfor %}</ul></div>
     {% elif adf_status %}<div class="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900" data-testid="adf-current"><b>CURRENT</b> &middot; the latest package ({{ adf_status.latest.artifact_id }} v{{ adf_status.latest.artifact_version }}) matches the approved mappings, target model, validation run and deployment contract.</div>{% endif %}

@@ -51,6 +51,8 @@
     <a href="/github-setup" class="nv {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>
     <a href="/models" class="nv {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
     <a href="/platform-knowledge" class="nv {% if path == '/platform-knowledge' %}on{% endif %}" {% if path == '/platform-knowledge' %}aria-current="page"{% endif %}>Platform knowledge</a>
+    <div class="sh">Migrations</div>
+    <a href="/migrations" class="nv {% if path in ('/migrations', '/migration-setup') %}on{% endif %}" {% if path in ('/migrations', '/migration-setup') %}aria-current="page"{% endif %}>Migration setups</a>
     {% else %}
     <div class="sh">Data migration</div>
     {% if lobby %}
@@ -96,8 +98,6 @@
     <div class="zg rules"><i></i>Validation</div>
     {{ stage('10', 'Target validation', '/validation-rules', 'validate', 'VS', path == '/validation-rules') }}
     {% endif %}
-    <div class="sh">Workspace views</div>
-    <a href="/migration-workspaces?view=command" class="nv">Command center</a>
     <div class="sh">Pilot scope</div>
     <div class="scope"><span>Account</span><span>Household</span><span>Client</span></div>
     <div class="fh" style="color:#8FA9BC;padding:6px 10px">Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>

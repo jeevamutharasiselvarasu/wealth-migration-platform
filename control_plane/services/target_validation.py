@@ -17,6 +17,7 @@ from control_plane.services import run_monitor, sql_target
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 RELATIONSHIPS = (("Account", "HH_ID", "Household", "HH_ID"), ("Client", "HH_ID", "Household", "HH_ID"))
 MAX_LIST_CODES = 1000  # a reference list longer than this is not checked inline
+MAX_ROW_KEYS = 50  # for a failed check, the identifiers (keys only, never other values) of at most this many failing rows are kept
 # Live column types a text value must convert to (checked value by value on the mirror, which holds every value as text).
 TYPE_SQL = {"date": "date", "datetime": "datetime2", "integer": "bigint", "decimal": "decimal(38, 10)",
             "int": "bigint", "bigint": "bigint", "smallint": "bigint", "tinyint": "bigint", "numeric": "decimal(38, 10)", "float": "float",
@@ -53,8 +54,10 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
     plan: List[Dict[str, Any]] = []
     sch, stg = _id(schema), _id(staging_schema)
 
-    def add(check: str, entity: str, table: str, field: str, sql: Optional[str], kind: str, expected: Any = None, detail: str = "") -> None:
-        plan.append({"check": check, "entity": entity, "table": table, "field": field, "sql": sql, "kind": kind, "expected": expected, "detail": detail})
+    def add(check: str, entity: str, table: str, field: str, sql: Optional[str], kind: str, expected: Any = None, detail: str = "",
+            keys_sql: Optional[str] = None) -> None:
+        plan.append({"check": check, "entity": entity, "table": table, "field": field, "sql": sql, "kind": kind, "expected": expected, "detail": detail,
+                     "keys_sql": keys_sql})
 
     for entity, e in sorted(entities.items()):
         staging = f"{stg}.{_id(e['staging_table'])}"
@@ -63,33 +66,39 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
             plan[-1]["expected_sql"] = e["expected_sql"]
         for table, t in sorted(e["tables"].items()):
             tgt = f"{sch}.{_id(table)}"
+            rk = _id(t["row_key"]) if t.get("row_key") else None  # the column that names a row (the source key), when the table has one
+
+            def keys(cond: str, src: str = tgt, col: Optional[str] = rk) -> Optional[str]:
+                return f"SELECT TOP ({MAX_ROW_KEYS}) CAST({col} AS nvarchar(400)) FROM {src} WHERE {cond}" if col else None
             key_col = t["columns"].get(e["key"]) if e.get("key") else None
             if key_col:
-                add("KEYS_LOADED", entity, table, e["key"],
-                    f"SELECT COUNT(DISTINCT s.{_id(e['key'])}) FROM {staging} s WHERE s.{_id(e['key'])} IS NOT NULL AND NOT EXISTS "
-                    f"(SELECT 1 FROM {tgt} t WHERE t.{_id(key_col)} = s.{_id(e['key'])})", "zero")
+                missing = (f"s.{_id(e['key'])} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {tgt} t WHERE t.{_id(key_col)} = s.{_id(e['key'])})")
+                add("KEYS_LOADED", entity, table, e["key"], f"SELECT COUNT(DISTINCT s.{_id(e['key'])}) FROM {staging} s WHERE {missing}", "zero",
+                    keys_sql=(f"SELECT TOP ({MAX_ROW_KEYS}) CAST(s.{_id(e['key'])} AS nvarchar(400)) FROM {staging} s WHERE {missing}" if rk else None))
                 add("TARGET_KEY_UNIQUE", entity, table, key_col,
-                    f"SELECT COUNT(*) - COUNT(DISTINCT {_id(key_col)}) FROM {tgt} WHERE {_id(key_col)} IS NOT NULL", "zero")
+                    f"SELECT COUNT(*) - COUNT(DISTINCT {_id(key_col)}) FROM {tgt} WHERE {_id(key_col)} IS NOT NULL", "zero",
+                    keys_sql=(f"SELECT TOP ({MAX_ROW_KEYS}) CAST({_id(key_col)} AS nvarchar(400)) FROM {tgt} WHERE {_id(key_col)} IS NOT NULL "
+                              f"GROUP BY {_id(key_col)} HAVING COUNT(*) > 1" if rk else None))
             else:  # no target column holds the business key, so rows cannot be matched one by one: compare the loaded row count instead
                 add("ROWS_LOADED", entity, table, "", f"SELECT COUNT(*) FROM {tgt}", "at_least", e.get("expected_rows"),
                     detail=f"The key field {e.get('key') or ''} is not mapped to a column of {table}, so rows are compared by count.")
                 if e.get("expected_sql"):  # stable-pipeline package: compare with the canonical table the mirror was built from
                     plan[-1]["expected_sql"] = f"SELECT COUNT(*) FROM {staging}"
             for col in sorted(set(t.get("required", []))):
-                add("REQUIRED_NOT_BLANK", entity, table, col,
-                    f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NULL OR LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))) = ''", "zero")
+                cond = f"{_id(col)} IS NULL OR LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))) = ''"
+                add("REQUIRED_NOT_BLANK", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE {cond}", "zero", keys_sql=keys(cond))
             # Values must fit the live column: its type (date, number) and its length. The mirror holds them as text, so a value that would
             # break the promotion is found here, before any sign-off.
             for col, kind in sorted((t.get("types") or {}).items()):
                 target_type = TYPE_SQL.get(str(kind).lower())
                 if target_type:
                     val = f"NULLIF(LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000)))), '')"
-                    add("VALUES_FIT_TYPE", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE {val} IS NOT NULL AND TRY_CONVERT({target_type}, {val}) IS NULL",
-                        "zero", expected=str(kind).lower())
+                    cond = f"{val} IS NOT NULL AND TRY_CONVERT({target_type}, {val}) IS NULL"
+                    add("VALUES_FIT_TYPE", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE {cond}", "zero", expected=str(kind).lower(), keys_sql=keys(cond))
             for col, length in sorted((t.get("max_lengths") or {}).items()):
                 if isinstance(length, int) and length > 0:
-                    add("VALUES_FIT_LENGTH", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE LEN(CAST({_id(col)} AS nvarchar(4000))) > {int(length)}",
-                        "zero", expected=int(length))
+                    cond = f"LEN(CAST({_id(col)} AS nvarchar(4000))) > {int(length)}"
+                    add("VALUES_FIT_LENGTH", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE {cond}", "zero", expected=int(length), keys_sql=keys(cond))
             # Reference comparison: populated coded values must be in the target system's own reference list.
             for col, codes in sorted((t.get("code_lists") or {}).items()):
                 codes = sorted({str(c) for c in codes if str(c).strip()})
@@ -100,9 +109,8 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
                         detail=f"The reference list has {len(codes)} codes, more than the {MAX_LIST_CODES} checked inline; review it separately.")
                     continue
                 val = f"LTRIM(RTRIM(CAST({_id(col)} AS nvarchar(4000))))"
-                add("VALUES_IN_REFERENCE_LIST", entity, table, col,
-                    f"SELECT COUNT(*) FROM {tgt} WHERE {_id(col)} IS NOT NULL AND {val} <> '' AND {val} NOT IN ({', '.join(_code_literal(c) for c in codes)})",
-                    "zero", expected=len(codes))
+                cond = f"{_id(col)} IS NOT NULL AND {val} <> '' AND {val} NOT IN ({', '.join(_code_literal(c) for c in codes)})"
+                add("VALUES_IN_REFERENCE_LIST", entity, table, col, f"SELECT COUNT(*) FROM {tgt} WHERE {cond}", "zero", expected=len(codes), keys_sql=keys(cond))
         if e.get("unmapped_required"):
             add("REQUIRED_FIELDS_MAPPED", entity, "", ", ".join(e["unmapped_required"]), None, "warn_static",
                 detail="Required target field(s) with no approved mapping: " + ", ".join(e["unmapped_required"]) + ".")
@@ -115,12 +123,15 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
         if not pairs or not dpairs:
             continue
         (st, sc), (dt, dc) = pairs[0], dpairs[0]
-        add("NO_ORPHANS", src_e, st, f"{sc} → {dst_e}.{dc}",
-            f"SELECT COUNT(*) FROM {sch}.{_id(st)} a WHERE a.{_id(sc)} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {sch}.{_id(dt)} h WHERE h.{_id(dc)} = a.{_id(sc)})", "zero")
+        orphan = f"a.{_id(sc)} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {sch}.{_id(dt)} h WHERE h.{_id(dc)} = a.{_id(sc)})"
+        rk = s["tables"][st].get("row_key")
+        add("NO_ORPHANS", src_e, st, f"{sc} → {dst_e}.{dc}", f"SELECT COUNT(*) FROM {sch}.{_id(st)} a WHERE {orphan}", "zero",
+            keys_sql=(f"SELECT TOP ({MAX_ROW_KEYS}) CAST(a.{_id(rk)} AS nvarchar(400)) FROM {sch}.{_id(st)} a WHERE {orphan}" if rk else None))
     return plan
 
 
-def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summary: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summary: Optional[Dict[str, Any]],
+             fetch_keys: Optional[Callable[[str], List[Any]]] = None) -> List[Dict[str, Any]]:
     """Run each planned query (execute returns one integer) and turn the counts into findings. Counts only, never values."""
     checks: List[Dict[str, Any]] = []
     for p in plan:
@@ -184,6 +195,15 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
                    "status": "PASS" if status == "SUCCEEDED" else ("NOT_EVALUATED" if not status or status in ("NO_RUN", "UNREADABLE") else "FAIL"),
                    "detail": {"SUCCEEDED": "The latest pipeline run succeeded with no failed step.", "RUNNING": "The latest pipeline run is still running.",
                               "FAILED": "The latest pipeline run has a failed step.", "STALLED": "The latest pipeline run never finished."}.get(status or "", "No pipeline run has been read from the log yet.")})
+    if fetch_keys:  # name the failing rows by their keys (never other values)
+        by_ref = {(p["check"], p["entity"], p["table"], p["field"]): p for p in plan}
+        for c in checks:
+            p = by_ref.get((c["check"], c["entity"], c["table"], c["field"]))
+            if c["status"] == "FAIL" and p and p.get("keys_sql"):
+                try:
+                    c["row_keys"] = [str(v) for v in fetch_keys(p["keys_sql"])][:MAX_ROW_KEYS]
+                except Exception:
+                    pass
     for c in checks:
         c["ref"] = "|".join(str(c.get(k, "")) for k in ("check", "entity", "table", "field"))
     return checks
@@ -213,6 +233,12 @@ def _scalar_runner(conn: sqlite3.Connection, connect: Callable[..., Any] = sql_t
         cur = db.cursor()
         cur.execute(sql)
         return int(cur.fetchone()[0] or 0)
+
+    def rows(sql: str) -> list:
+        cur = db.cursor()
+        cur.execute(sql)
+        return [r[0] for r in cur.fetchall()]
+    execute.rows = rows  # the same sign-in reads the failing rows' keys
     return execute, db.close, cfg["schema_name"]
 
 
@@ -224,7 +250,7 @@ def run(conn: sqlite3.Connection, migration_id: str, actor: str, entities: Dict[
     schema = schema or cfg_schema
     try:
         plan = build_plan(schema=schema, staging_schema=staging_schema, entities=entities)
-        checks = evaluate(plan, execute, run_monitor.stored(conn, migration_id))
+        checks = evaluate(plan, execute, run_monitor.stored(conn, migration_id), getattr(execute, "rows", None))
     finally:
         close()
     result = {"status": overall(checks), "checks": checks, "summary": {s: sum(1 for c in checks if c["status"] == s) for s in ("PASS", "WARN", "FAIL", "NOT_EVALUATED")}}

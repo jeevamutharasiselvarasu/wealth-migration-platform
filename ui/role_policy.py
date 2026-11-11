@@ -19,24 +19,27 @@ VALIDATOR = "Validation Specialist"
 # the Domain SME holds both plus the canonical-model persona) and acts under the persona chosen in
 # the session. The Platform Admin is infrastructure-focused: it holds only the platform-level
 # capabilities below and none of the migration-side ones, so it never sees or acts on migration data.
+# The IMO Lead persona carries both the Migration Analyst and the Validation Specialist rights. Rules that need two different people
+# (an exception is decided by someone other than its proposer) still apply by person, whatever the persona.
 DEMO_ROLES: Set[str] = {ANALYST}                      # one-click demo load fills a migration workspace (still needs the per-account can_load_demo grant)
 PLATFORM_ROLES: Set[str] = {ADMIN}                    # platform setup (Azure, Git, SQL, blob, target system), users, demo load, replay
 SETUP_ROLES: Set[str] = {IMO_LEAD, ANALYST}                     # migration setup, scope, source environments
-DISCOVERY_ROLES: Set[str] = {ANALYST}                 # upload, profiling, mapping generation
-SCOPE_REVIEW_ROLES: Set[str] = {ANALYST}              # confirm/reject entity inference
-DEFINITION_ROLES: Set[str] = {ANALYST, SME}           # answer information requests (SME: canonical meaning)
-APPROVAL_ROLES: Set[str] = {ANALYST}                  # mapping/transformation approval, overrides
+DISCOVERY_ROLES: Set[str] = {ANALYST, IMO_LEAD}       # upload, profiling, mapping generation
+SCOPE_REVIEW_ROLES: Set[str] = {ANALYST, IMO_LEAD}    # confirm/reject entity inference
+DEFINITION_ROLES: Set[str] = {ANALYST, SME, IMO_LEAD} # answer information requests (SME: canonical meaning)
+APPROVAL_ROLES: Set[str] = {ANALYST, IMO_LEAD}        # mapping/transformation approval, overrides
 CANONICAL_ROLES: Set[str] = {ADMIN, SME}              # canonical model / kernel changes, decide change requests (platform level)
-CHANGE_REQUEST_ROLES: Set[str] = {ANALYST}            # raise a canonical change request
-VALIDATION_ROLES: Set[str] = {VALIDATOR}              # validation-side evaluation
-TARGET_PREVIEW_ROLES: Set[str] = {ANALYST, VALIDATOR} # read-only canonical-to-target dry run
-RUN_FAILURE_ROLES: Set[str] = {ANALYST, VALIDATOR}    # raise an information request from a failed pipeline step
+CHANGE_REQUEST_ROLES: Set[str] = {ANALYST, IMO_LEAD}  # raise a canonical change request
+VALIDATION_ROLES: Set[str] = {VALIDATOR, IMO_LEAD}    # validation-side evaluation
+TARGET_PREVIEW_ROLES: Set[str] = {ANALYST, VALIDATOR, IMO_LEAD} # read-only canonical-to-target dry run
+RUN_FAILURE_ROLES: Set[str] = {ANALYST, VALIDATOR, IMO_LEAD}    # raise an information request from a failed pipeline step
 PLATFORM_KNOWLEDGE_ROLES: Set[str] = {ADMIN, SME}     # add/retire platform-level knowledge shared by every migration
 
 # Pages the Platform Admin may open: platform setup and administration only. Everything else (migration
 # workspaces, files, mappings, runs, validation) is migration data and is not shown to the Platform Admin.
 ADMIN_VIEW_PREFIXES = (
     "/static", "/login", "/logout", "/register", "/healthz", "/persona-selection", "/suite", "/setup",
+    "/migrations", "/migration-setup",  # the workspace list and setup (configuration only, read-only), never the data inside a workspace
     "/azure-setup", "/github-setup", "/target-setup", "/admin/users", "/governance", "/tenant", "/models",
     "/platform-knowledge", "/api/platform-knowledge", "/canonical-changes", "/api/admin", "/api/azure", "/api/git", "/api/sql-target",
     "/api/users", "/api/target-system", "/api/blob/layout", "/api/blob/container",
@@ -72,6 +75,7 @@ POST_POLICY = [
     (r"^/api/git/pull-request/[^/]+/merge$", APPROVAL_ROLES),
     (r"^/api/data-plane/(setup|start|promote)$", APPROVAL_ROLES),
     (r"^/api/data-plane/deployment-check$", TARGET_PREVIEW_ROLES),
+    (r"^/api/live-validation/run$", VALIDATION_ROLES),
     (r"^/api/data-plane/runs/[^/]+/refresh$", TARGET_PREVIEW_ROLES),
     (r"^/api/git/publish$", APPROVAL_ROLES),
     (r"^/api/demo/load$", DEMO_ROLES),

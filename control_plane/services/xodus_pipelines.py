@@ -332,7 +332,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             all_cols = sorted({(f["column"], f.get("type") or "string") for f in body["fields"] if f["table"] == table})
             mtable = f"{s}_{table}"
             per_migration.append(_drop_create(MIRROR, mtable, [f"{_q(c)} nvarchar(4000) NULL" for c, _ in all_cols]
-                                              + ["[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL"]))
+                                              + ["[xodus_source_key] nvarchar(400) NULL", "[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL"]))
             objects["tables"].append(f"{MIRROR}.{mtable}")
             exprs, cols, keys = [], [], []
             for m in trows:
@@ -343,13 +343,18 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 cols.append(col)
                 if sql_package._is_key_field(m["canonical_field"]):
                     keys.append(e)
-            dedupe = (f"ROW_NUMBER() OVER (PARTITION BY {', '.join(keys)} ORDER BY (SELECT NULL)) AS [xodus_rn]" if keys else "1 AS [xodus_rn]")
+            # Each mirror row keeps the canonical key of the source row it came from (xodus_source_key): stage 10 names failing rows by it.
+            ckey = canon_counts[entity]["key"]
+            source_key = f"s.{_q(ckey)}" if ckey else "CAST(NULL AS nvarchar(400))"
+            # One row per target key; a table without a mapped key keeps one row per distinct set of values (the first source key).
+            part = ", ".join(keys) if keys else ", ".join(e.rsplit(" AS ", 1)[0] for e in exprs)
+            dedupe = f"ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY {source_key}) AS [xodus_rn]"
             mirror_body.append(f"TRUNCATE TABLE [{MIRROR}].[{mtable}];")
             mirror_body.append(
-                f"INSERT INTO [{MIRROR}].[{mtable}] ({', '.join(_q(c) for c in cols)}, [xodus_batch_id], [xodus_run_id])\n"
-                f"SELECT {'' if keys else 'DISTINCT '}{', '.join('x.' + _q(c) for c in cols)}, @BatchId, @RunId FROM (\n"
-                f"    SELECT {', '.join(exprs)}, {dedupe}\n    FROM [{CANON}].[{canon_counts[entity]['table']}] AS s\n) AS x"
-                + (" WHERE x.[xodus_rn] = 1;" if keys else ";"))
+                f"INSERT INTO [{MIRROR}].[{mtable}] ({', '.join(_q(c) for c in cols)}, [xodus_source_key], [xodus_batch_id], [xodus_run_id])\n"
+                f"SELECT {', '.join('x.' + _q(c) for c in cols)}, x.[xodus_source_key], @BatchId, @RunId FROM (\n"
+                f"    SELECT {', '.join(exprs)}, {source_key} AS [xodus_source_key], {dedupe}\n    FROM [{CANON}].[{canon_counts[entity]['table']}] AS s\n) AS x"
+                " WHERE x.[xodus_rn] = 1;")
             mirror_body.append(f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'mirror', N'{MIRROR}', N'{mtable}';")
             key_cols = [c for c, m in zip(cols, trows) if sql_package._is_key_field(m["canonical_field"])]
             types = {c: t for c, t in all_cols}
@@ -381,7 +386,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                        "[updated] bigint NOT NULL, [promoted_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME());"]
     promote: List[str] = ["DECLARE @a TABLE ([act] nvarchar(10));"]
     for t in live_tables:
-        cols = [f"{_q(c)} nvarchar(4000) NULL" for c in t["all_columns"]] + ["[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL"]
+        cols = [f"{_q(c)} nvarchar(4000) NULL" for c in t["all_columns"]] + ["[xodus_source_key] nvarchar(400) NULL", "[xodus_batch_id] nvarchar(64) NULL",
+                                                                              "[xodus_run_id] nvarchar(64) NULL"]
         live.append(_drop_create(LANDING, t["mirror_table"], cols))
         src_cols = ", ".join(_q(c) for c in t["columns"])
         insert_only = not t["key_columns"]

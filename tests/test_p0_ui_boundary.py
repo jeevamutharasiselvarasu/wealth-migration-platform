@@ -654,7 +654,7 @@ def test_assistant_tenant_and_workspace_views_follow_the_template(tmp_path, monk
                 want = view if view != "bogus" else "workspaces"
                 assert page.status_code == 200 and f"var V={{view:'{want}'" in page.text
             rail = (await c.get("/")).text
-            assert "/migration-workspaces?view=command" in rail and 'href="/validation-rules"' in rail and 'href="/setup"' in rail
+            assert "/migration-workspaces?view=command" not in rail and 'href="/validation-rules"' in rail and 'href="/setup"' in rail  # template sample data, not live
             assert "/migration-workspaces?view=validation" not in rail  # Validation rules is a real stage now, not a template preview
     asyncio.run(run())
     app_module.session_mgr.active_sessions.pop("sid-v", None)

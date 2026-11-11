@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import io
 import zipfile
@@ -24,7 +25,7 @@ from control_plane import file_store
 from control_plane.services import sql_package, gap_recommender, user_registry, adf_simulator, artifact_store, execution_simulator, package_contract, cross_file, adf_package, azure_simulated, activity_feed, canonical_overlay, migration_validation, validation_scenarios, rule_inference, rule_suggestions, drift_detection, signoff_evidence, target_connector, target_inference, target_mapping, transformation_rules, migration_registry, confluence_source, azure_connection, blob_source, git_connection, adf_environment, validation_signoff, platform_knowledge
 from control_plane.services import sql_target
 from control_plane.services import canonical_derivations, run_monitor, target_validation
-from control_plane.services import xodus_pipelines, live_target, deployment_check, adf_runs, git_pull_requests, promotion_gate
+from control_plane.services import xodus_pipelines, live_target, deployment_check, adf_runs, git_pull_requests, promotion_gate, live_validation
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -148,6 +149,7 @@ def workflow_progress() -> dict:
     target_validation_status = ""
     rules_approved = rules_draft = target_approved = runs_n = 0
     sql_ready = published = False
+    data_plane: Dict[str, Any] = {}
     conn = get_db_connection()
     try:
         _rules = transformation_rules.list_rules(conn)
@@ -162,6 +164,16 @@ def workflow_progress() -> dict:
                 _tv["checks"], validation_scenarios.list_exceptions(conn, migration_id, _tv["run_id"]))  # stage 09 is done when the real run's log shows the pipeline succeeded
         _git, _pkg = git_connection.get_config(conn), artifact_store.latest(conn, migration_id, "ADF_PACKAGE")
         published = bool(_git and _pkg and _git.get("last_artifact_id") == _pkg["artifact_id"])  # the latest package is the one that was published
+        _xart, _xpkg = _xodus_package(conn, migration_id)
+        if _xpkg:  # stable-pipeline package: 07 = package built; 08 = pull request merged and deployment check passed for this version;
+            # 10 = the batch was validated, signed off, promoted and validated in the live tables
+            _v = _xpkg["manifest"]["version"]
+            _dc = deployment_check.latest(conn, migration_id)
+            sql_ready = True
+            published = bool(_merged_pr(conn, migration_id, _v)) and bool(_dc and _dc.get("version") == _v and _dc.get("status") == "PASS")
+            _promo = adf_runs.latest(conn, migration_id, "PL_XODUS_Promote")
+            data_plane = {"xodus": True, "promoted": bool(_promo and _promo["status"] == "SUCCEEDED"),
+                          "live_validation": (live_validation_status(conn, migration_id) or {}).get("status", "")}
         proposals_pending = conn.execute(
             "SELECT COUNT(*) FROM mapping_suggestions WHERE migration_id = ? AND status = 'PENDING'", (migration_id,)).fetchone()[0]
         mappings_approved = conn.execute(
@@ -216,9 +228,20 @@ def workflow_progress() -> dict:
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
         "changes_open": changes_open, "next": nxt, "target_provisioned": target_provisioned, "target_pending": target_pending,
         "validation_status": validation_status, "validation_when": validation_when, "target_validation_status": target_validation_status,
+        "data_plane": data_plane,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
     progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n, published))
+    _current = next((s["number"] for s in progress.get("stages", []) if s["state"] == "current"), None)
+    _later = {"05": ("Review mapping validation", "Run the validation checks on the approved mappings.", "/reconciliation", "validate"),
+              "06": ("Approve the target mappings", "Map each canonical field to the target.", "/target-mapping", "map"),
+              "07": ("Generate the pipeline package", "Build the pipelines and SQL from the approved mappings.", "/transformation-sql", "map"),
+              "08": ("Publish and check the deployment", "Merge the pull request, run the setup pipeline and the deployment check.", "/publish-artifacts#data-plane", "validate"),
+              "09": ("Start a batch", "Run the pipelines on the source files.", "/execution#start-run", "validate"),
+              "10": ("Validate and promote the batch", "Target validation, sign-off, promotion and the live checks.", "/validation-rules#target-validation", "validate")}
+    if _current in _later and (nxt.get("step") == "validate" or _current >= "07"):  # once mapping is done, point at the stage that is next
+        label, detail, href, step = _later[_current]
+        progress["next"] = {"label": label, "detail": detail, "href": href, "step": step}
     progress["activity"] = activity_feed.recent_activity(migration_id)
     return progress
 
@@ -237,7 +260,8 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
         ("07", "Transformation SQL", sql_ready),
         ("08", "Publish artifacts", published),
         ("09", "ADF Execution", runs_n > 0),
-        ("10", "Target validation", runs_n > 0 and p.get("target_validation_status") == "PASS"),
+        ("10", "Target validation", runs_n > 0 and p.get("target_validation_status") == "PASS"
+         and (not p.get("data_plane", {}).get("xodus") or (p["data_plane"]["promoted"] and p["data_plane"]["live_validation"] == "PASS"))),
     ]
     stages, current_seen = [], False
     for num, title, ok in done_flags:
@@ -1940,6 +1964,8 @@ def _stage_data_plane(migration_id: str, view: str) -> Dict[str, Any]:
             dp["gate"] = promotion_gate.status(conn, migration_id, dp["run"]["batch_id"])
         except ValueError as exc:
             dp["gate_error"] = str(exc)
+        try:
+            dp["live_validation"] = live_validation_status(conn, migration_id)
         finally:
             conn.close()
     return dp
@@ -2960,9 +2986,29 @@ def _transformation_sql_context(user: Dict[str, str], notice: str = "", error: s
         conn.close()
     can_preview = user["role"] in TARGET_PREVIEW_ROLES
     tsql, tsql_error = _transformation_sql(migration_id, spec, mappings, user["name"]) if can_preview else (None, "")
+    conn = get_db_connection()
+    try:
+        _xart, xpkg = _xodus_package(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
     return {"page_title": "Transformation SQL", "user_name": user["name"], "user_role": user["role"], "spec": spec, "target_config": cfg,
             "tsql": tsql, "tsql_error": tsql_error, "packages": packages, "stored_adf": stored_adf, "adf_status": adf_status,
-            "can_preview": can_preview, "notice": notice, "error": error}
+            "can_preview": can_preview, "notice": notice, "error": error, "xpkg": xpkg, "procedures": _package_procedures(xpkg) if xpkg else []}
+
+
+def _package_procedures(pkg: Dict[str, Any]) -> List[Dict[str, str]]:
+    """The generated stored procedures of a stable-pipeline package, one per entry, for reading on stage 07."""
+    out = []
+    for path, text in sorted(pkg["files"].items()):
+        if not (path.startswith("sql/") and path.endswith(".sql")):
+            continue
+        where = "Simplicity" if path.startswith("sql/simplicity_") else "XODUS"
+        for batch in text.split("\n\nGO\n\n"):
+            m = re.match(r"\s*CREATE OR ALTER PROCEDURE (\[[^\]]+\]\.\[[^\]]+\])", batch)
+            if m and "usp_xodus_" not in m.group(1):  # the shared helpers are the same for every migration; show the generated ones
+                out.append({"name": m.group(1), "database": where, "sql": batch.strip()})
+    return out
 
 
 @app.get("/transformation-sql", response_class=HTMLResponse)
@@ -5986,6 +6032,12 @@ async def get_pilot_client_lineage():
 ENTITY_DEPENDS = {"Account": {"Household"}, "Client": {"Household"}}  # a household exists before its clients and accounts
 
 
+def live_validation_status(conn, migration_id: str) -> Optional[Dict[str, Any]]:
+    """The latest live validation of the current batch (the batch of the latest PL_XODUS_Run), or None."""
+    run = adf_runs.latest(conn, migration_id, "PL_XODUS_Run")
+    return live_validation.latest(conn, migration_id, run["batch_id"]) if run and run.get("batch_id") else None
+
+
 def _load_order(entities: List[str]) -> List[str]:
     order, left = [], sorted(entities)
     while left:
@@ -6326,6 +6378,55 @@ async def promote_batch(request: Request):
     return _dp_redirect("/validation-rules", "notice", f"Promotion of batch {run['batch_id']} started (Data Factory run {req['adf_run_id']}).")
 
 
+@app.get("/api/target-validation/{run_id}/row-keys.csv")
+async def target_validation_row_keys(request: Request, run_id: str):
+    """The keys of the failing rows of one target validation run (keys only, never other values), for fixing the source data."""
+    get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        target_validation.ensure_table(conn)
+        row = conn.execute("SELECT results_json FROM target_validation_runs WHERE run_id = ? AND migration_id = ?", (run_id, migration_id)).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="No such target validation run.")
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["check", "entity", "table", "field", "row_key"])
+    for c in json.loads(row["results_json"]).get("checks", []):
+        for k in c.get("row_keys") or []:
+            w.writerow([c["check"], c.get("entity", ""), c.get("table", ""), c.get("field", ""), k])
+    return Response(content=buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{run_id}-row-keys.csv"'})
+
+
+@app.post("/api/live-validation/run")
+async def run_live_validation(request: Request):
+    """After a promotion: read-only checks on the live tables in Simplicity (separate from the target validation of the mirror)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    state = _data_plane_state(migration_id)
+    man, run, promo = state.get("manifest"), state.get("run"), state.get("promote_run")
+    if not man or not run or not promo or promo["status"] != "SUCCEEDED" or promo.get("batch_id") != run.get("batch_id"):
+        return _dp_redirect("/validation-rules", "error", "Live validation runs after the current batch was promoted successfully.")
+    conn = get_db_connection()
+    try:
+        try:
+            gate = promotion_gate.status(conn, migration_id, run["batch_id"]) or {}
+            dc = deployment_check.latest(conn, migration_id) or {}
+            res = live_validation.run(conn, migration_id, run["batch_id"], user["name"], man, gate, dc.get("live_columns") or {})
+        except ValueError as exc:
+            return _dp_redirect("/validation-rules", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("LIVE_VALIDATION_RUN", user, {"run_id": res["run_id"], "batch_id": run["batch_id"], "status": res["status"]})
+    fails = [c for c in res["checks"] if c["status"] != "PASS"]
+    return _dp_redirect("/validation-rules", "notice" if res["status"] == "PASS" else "error",
+                        f"Live validation {res['run_id']}: {res['status']}." + ("" if not fails else " " + fails[0]["detail"]))
+
+
 def _xodus_validation_entities(migration_id: str, man: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Stage 10 checks for the stable-pipeline package: canonical tables vs raw files, mirror tables vs the live columns."""
     conn = get_db_connection()
@@ -6346,7 +6447,8 @@ def _xodus_validation_entities(migration_id: str, man: Dict[str, Any]) -> Dict[s
         fields = {f["name"]: f for f in spec["entities"][entity]["fields"]}
         mine = [m for m in approved if m["entity_name"] == entity and m["target_field"] in fields and fields[m["target_field"]]["table"] == t["live_table"] and m.get("canonical_field")]
         live = live_cols.get(t["live_table"], {})
-        tt = {"columns": {m["canonical_field"]: fields[m["target_field"]]["column"] for m in mine}, "required": [], "code_lists": {}, "types": {}, "max_lengths": {}}
+        tt = {"columns": {m["canonical_field"]: fields[m["target_field"]]["column"] for m in mine}, "required": [], "code_lists": {}, "types": {}, "max_lengths": {},
+              "row_key": "xodus_source_key"}
         for m in mine:
             f, col = fields[m["target_field"]], fields[m["target_field"]]["column"]
             d = live.get(col, {})

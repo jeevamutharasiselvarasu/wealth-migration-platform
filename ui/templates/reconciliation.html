@@ -217,7 +217,8 @@
         </div>
         {% if tval %}
         <p class="mt-3 text-xs text-[#41506B]">Run <span class="font-mono">{{ tval.run_id }}</span> by {{ tval.executed_by }} · {{ tval.executed_utc[:19] }} · result <span class="pill {% if tval.effective_status == 'PASS' %}approved{% elif tval.effective_status == 'FAIL' %}failed{% else %}review{% endif %}" data-testid="tval-status">{{ tval.effective_status }}</span>
-          <span class="text-[#5A6A88]">({{ tval.summary.PASS }} passed · {{ tval.summary.FAIL }} failed · {{ tval.summary.WARN + tval.summary.NOT_EVALUATED }} to review)</span></p>
+          <span class="text-[#5A6A88]">({{ tval.summary.PASS }} passed · {{ tval.summary.FAIL }} failed · {{ tval.summary.WARN + tval.summary.NOT_EVALUATED }} to review)</span>
+          {% if tval.checks|selectattr('row_keys')|list %} · <a href="/api/target-validation/{{ tval.run_id }}/row-keys.csv" class="text-blue-700" data-testid="row-keys-csv">Download failing row keys (.csv)</a>{% endif %}</p>
         <table class="mt-2 w-full text-left text-xs">
             <thead><tr>{% for h in ['Check', 'Entity', 'Table', 'Field', 'Status', 'Finding', 'Exception'] %}<th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">{{ h }}</th>{% endfor %}</tr></thead>
             <tbody>
@@ -226,7 +227,7 @@
                 <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ c.check }}</td><td class="border-b border-[#EEF2FA] p-2">{{ c.entity }}</td>
                 <td class="border-b border-[#EEF2FA] p-2 font-mono">{{ c.table }}</td><td class="border-b border-[#EEF2FA] p-2 font-mono">{{ c.field }}</td>
                 <td class="border-b border-[#EEF2FA] p-2"><span class="pill {% if c.status == 'PASS' %}approved{% elif c.status == 'FAIL' %}failed{% else %}review{% endif %}">{{ c.status }}</span></td>
-                <td class="border-b border-[#EEF2FA] p-2">{{ c.detail }}</td>
+                <td class="border-b border-[#EEF2FA] p-2">{{ c.detail }}{% if c.row_keys %}<details class="mt-1" data-testid="row-keys"><summary class="cursor-pointer text-[11px]">{{ c.row_keys|length }} failing row key(s)</summary><div class="font-mono text-[10px]">{{ c.row_keys|join(', ') }}</div></details>{% endif %}</td>
                 <td class="border-b border-[#EEF2FA] p-2">
                 {% if c.status != 'PASS' %}
                   {% if ex %}<span class="pill {% if ex.status == 'APPROVED' %}approved{% elif ex.status == 'REJECTED' %}failed{% else %}review{% endif %}">{{ ex.status }}</span> <span class="text-[10px] text-[#5A6A88]">{{ ex.proposed_by }}: {{ ex.reason }}</span>

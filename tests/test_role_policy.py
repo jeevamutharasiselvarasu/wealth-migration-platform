@@ -310,7 +310,7 @@ def test_platform_admin_sees_platform_setup_only_not_migration_data(tmp_path, mo
                                      cookies={"session_id": "sid"}) as client:
             return await client.get(path, follow_redirects=False, headers={"accept": "text/html"})
 
-    for blocked in ("/", "/discovery", "/execution", "/entity-sample-files", "/migration-setup", "/hitl", "/validation-rules"):
+    for blocked in ("/", "/discovery", "/execution", "/entity-sample-files", "/hitl", "/validation-rules", "/agent-pipeline", "/firm-knowledge"):
         r = asyncio.run(get(blocked))
         assert r.status_code == 303 and r.headers["location"].startswith("/setup?error="), blocked
     for allowed in ("/setup", "/azure-setup", "/governance"):
@@ -364,3 +364,29 @@ def test_migration_users_get_platform_setup_through_the_migration_setup_not_the_
     assert r.status_code == 303
     setup = app_module.state_store.questionnaire_data["migration_setup"]
     assert setup["target_system"] == "Simplicity SQL" and setup["target_owner"] == "Target Team"
+
+
+def test_platform_admin_reads_migration_setup_but_not_its_data(tmp_path, monkeypatch):
+    import control_plane.db as db
+    import ui.app as app_module
+    import ui.state as state_module
+    from ui.state import WorkspaceStateStore
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "admin_setup.db")
+    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
+    store = WorkspaceStateStore()
+    store.questionnaire_data.update({"migration_id": "MIG-SETUP1", "migration_setup": {"migration_name": "Setup Only", "entities": ["Account"], "source_firm": "CoreCap"}})
+    monkeypatch.setattr(app_module, "state_store", store)
+    monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid-adm", {"email": "a@example.invalid", "name": "Admin", "role": "Platform Admin"})
+
+    async def get(path):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "sid-adm"}) as client:
+            return await client.get(path, follow_redirects=False, headers={"accept": "text/html"})
+
+    setup = asyncio.run(get("/migration-setup"))
+    assert setup.status_code == 200 and "Read-only for Platform Admin" in setup.text and "<fieldset disabled" in setup.text
+    listing = asyncio.run(get("/migrations"))
+    assert listing.status_code == 200 and "/api/migration/open" not in listing.text and "/api/migration/new" not in listing.text
+    for data_page in ("/", "/discovery", "/entity-sample-files", "/agent-pipeline", "/target-mapping", "/execution", "/validation-rules"):
+        assert asyncio.run(get(data_page)).headers.get("location", "").startswith("/setup?error="), data_page

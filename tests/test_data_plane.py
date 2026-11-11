@@ -167,3 +167,36 @@ def test_rows_loaded_compares_with_the_canonical_table_when_no_key_is_mapped():
     assert rows["expected_sql"] == "SELECT COUNT(*) FROM [xodus_canon].[migx_Client]"
     checks = target_validation.evaluate([rows], lambda q: 40, {"status": "SUCCEEDED"})
     assert checks[0]["status"] == "PASS"
+
+
+def test_failed_checks_name_their_rows_by_key_only():
+    ent = {"Client": {"staging_table": "migx_Client", "expected_rows": None, "key": "CLIENT_ID", "unmapped_required": [],
+                      "tables": {"migx_ORION_MCL_CLIENT": {"columns": {"DATE_OF_BIRTH": "REGISTRATION_DOB"}, "required": [], "types": {"REGISTRATION_DOB": "date"},
+                                                           "row_key": "xodus_source_key"}}}}
+    plan = target_validation.build_plan(schema="xodus_mirror", staging_schema="xodus_canon", entities=ent)
+    fit = next(p for p in plan if p["check"] == "VALUES_FIT_TYPE")
+    assert fit["keys_sql"].startswith("SELECT TOP (50) CAST([xodus_source_key] AS nvarchar(400)) FROM [xodus_mirror].[migx_ORION_MCL_CLIENT] WHERE ")
+    checks = target_validation.evaluate([fit], lambda q: 2, None, lambda q: ["C-1", "C-2"])
+    row = next(c for c in checks if c["check"] == "VALUES_FIT_TYPE")
+    assert row["status"] == "FAIL" and row["row_keys"] == ["C-1", "C-2"]
+
+
+def test_live_validation_checks_what_landed_and_names_duplicate_keys():
+    from control_plane.services import live_validation as lv
+    man = {**MANIFEST, "liveTables": [{**MANIFEST["liveTables"][0]}, {"entity": "Client", "live_table": "ORION_MCL_CLIENT", "mirror_table": "migx_ORION_MCL_CLIENT",
+                                                                   "columns": ["CITY"], "key_columns": []}]}
+    gate = {"counts": {"migx_ORION_MCL_ACCOUNT": 60, "migx_ORION_MCL_CLIENT": 40},
+            "promotion": {"tables": [{"live_table": "ORION_MCL_ACCOUNT", "inserted": 55, "updated": 5}, {"live_table": "ORION_MCL_CLIENT", "inserted": 0, "updated": 0}]}}
+    live = {"ORION_MCL_ACCOUNT": {"ACCOUNT_NUMBER": {"type": "nvarchar", "nullable": False}, "CUSTODIAN": {"type": "nvarchar", "nullable": True}}}
+    plan = lv.build_plan(man, live, gate)
+    assert {p["check"] for p in plan} == {"LIVE_ROWS_PRESENT", "LIVE_KEY_UNIQUE", "LIVE_NOT_BLANK"}
+    answers = {"COUNT(*) - COUNT(DISTINCT": 1, "[ORION_MCL_ACCOUNT]": 60, "[ORION_MCL_CLIENT]": 40, "= N''": 0}
+    checks = lv.evaluate(plan, lambda q: next(v for k, v in answers.items() if k in q), lambda q: ["A-9"])
+    by = {(c["check"], c["table"]): c for c in checks}
+    assert by[("LIVE_ROWS_PRESENT", "ORION_MCL_ACCOUNT")]["status"] == "PASS"
+    assert by[("LIVE_ROWS_PRESENT", "ORION_MCL_CLIENT")]["status"] == "PASS" and "no key" in by[("LIVE_ROWS_PRESENT", "ORION_MCL_CLIENT")]["detail"]
+    dup = by[("LIVE_KEY_UNIQUE", "ORION_MCL_ACCOUNT")]
+    assert dup["status"] == "FAIL" and dup["row_keys"] == ["A-9"]
+    short = lv.evaluate(lv.build_plan(man, live, {**gate, "promotion": {"tables": [{"live_table": "ORION_MCL_ACCOUNT", "inserted": 50, "updated": 0}]}}),
+                        lambda q: next(v for k, v in answers.items() if k in q), lambda q: [])
+    assert next(c for c in short if c["check"] == "LIVE_ROWS_PRESENT" and c["table"] == "ORION_MCL_ACCOUNT")["status"] == "FAIL"
