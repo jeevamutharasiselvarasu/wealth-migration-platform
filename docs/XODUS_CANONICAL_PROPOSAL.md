@@ -74,6 +74,6 @@ analyst's work goes. Both remain generated stored procedures run by the same sta
 ## Decisions needed
 
 1. ~~Agree the principles and the entity list~~: agreed 2026-11-11 with the two changes above. Holdings and transactions can follow in a later phase.
-2. Which code sets to standardise first (proposal: registration type, tax status, custodian, account status, relationship role).
-3. Whether the target adapter is owned by the Platform Admin/SME (platform level) or per migration by the Analyst.
+2. ~~Which code sets first~~: decided 2026-11-11: registration type, tax status, custodian, account status, household role.
+3. ~~Who owns the target adapter~~: decided 2026-11-11: the Platform Admin (platform level, reused by every migration into that target).
 4. Whether entity resolution (same person across files) is in the first phase or the second.
