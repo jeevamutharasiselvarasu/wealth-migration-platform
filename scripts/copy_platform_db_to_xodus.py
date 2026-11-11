@@ -102,7 +102,7 @@ def main() -> int:
                 rows = cur.fetchmany(BATCH)
                 if not rows:
                     break
-                raw.executemany(sql, [tuple(bytes(r[i]) if isinstance(r[i], memoryview) else r[i] for i in idx) for r in rows])
+                raw.executemany(sql, [mssql_compat.params_for_mssql([r[i] for i in idx]) for r in rows])
                 n += len(rows)
             mconn.commit()
             copied += n

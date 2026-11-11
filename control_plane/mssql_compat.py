@@ -199,6 +199,17 @@ def translate(sql: str, named: bool = False, has_params: bool = True) -> Tuple[s
 
 # ---- connection ----
 
+def _param(value):
+    """pymssql sends bytes as text; binary values (stored files, packages) must be bytearray to reach a VARBINARY column."""
+    return bytearray(value) if isinstance(value, (bytes, memoryview)) else value
+
+
+def params_for_mssql(params):
+    if isinstance(params, dict):
+        return {k: _param(v) for k, v in params.items()}
+    return tuple(_param(v) for v in params)
+
+
 class _Cursor:
     def __init__(self, cur):
         self._cur = cur
@@ -209,7 +220,7 @@ class _Cursor:
         named = isinstance(params, dict)
         has = bool(params)
         text, mode = translate(sql, named, has)
-        args = (params if named else tuple(params)) if has else None
+        args = params_for_mssql(params) if has else None
         try:
             self._cur.execute(text, args) if has else self._cur.execute(text)
             self.rowcount = self._cur.rowcount

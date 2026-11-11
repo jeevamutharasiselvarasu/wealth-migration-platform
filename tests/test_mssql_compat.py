@@ -172,3 +172,11 @@ def test_core_and_event_tables_translate(monkeypatch):
     names = {re.match(r"IF OBJECT_ID\(N'(\w+)'", s).group(1) for s in ddl}
     assert {"canonical_mappings", "mapping_suggestions", "workflow_events"} <= names
     assert all(" TEXT" not in s and "INTEGER" not in s for s in ddl)
+
+
+def test_binary_values_are_sent_as_binary():
+    raw = _RecConn()
+    conn = mc.MssqlConnection(_Pool(raw))
+    conn.execute("INSERT INTO stored_files (locator, content) VALUES (?, ?)", ("a", b"\x00\x01"))
+    assert raw.log[0][1] == ("a", bytearray(b"\x00\x01")) and isinstance(raw.log[0][1][1], bytearray)
+    assert mc.params_for_mssql([memoryview(b"x"), 1, None]) == (bytearray(b"x"), 1, None)
