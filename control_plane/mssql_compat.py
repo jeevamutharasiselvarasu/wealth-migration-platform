@@ -12,6 +12,7 @@ What is translated (only what the app uses):
 - a trailing LIMIT n [OFFSET m] -> TOP (n), or OFFSET/FETCH when the query is ordered; BEGIN IMMEDIATE -> a no-op.
 Rows can be read by index, by column name and with dict(row), like sqlite3.Row. Connections come from a small pool.
 """
+import contextvars
 import queue
 import re
 import threading
@@ -210,13 +211,98 @@ def params_for_mssql(params):
     return tuple(_param(v) for v in params)
 
 
+# Table definitions run once per process: the app calls CREATE TABLE IF NOT EXISTS (and its column checks) on most requests, which
+# is free on a local file but a network round trip each on Azure SQL. A definition that ran is not sent again; column lookups are
+# remembered until a column is added.
+_applied_ddl: set = set()
+_catalogue: Dict[Any, List[Tuple]] = {}
+_cache_lock = threading.Lock()
+_CATALOGUE_SQL = re.compile(r"^\s*SELECT\s+(column_name|1)\s+FROM\s+information_schema\.(columns|tables)\b", re.I)
+
+
+def _is_ddl(sql: str) -> bool:
+    u = sql.lstrip().upper()
+    return u.startswith("CREATE TABLE IF NOT EXISTS") or u.startswith("CREATE INDEX IF NOT EXISTS") or u.startswith("CREATE UNIQUE INDEX IF NOT EXISTS")
+
+
+def reset_caches() -> None:
+    with _cache_lock:
+        _applied_ddl.clear()
+        _catalogue.clear()
+
+
+class _Cached:
+    """Stands in for a pymssql cursor when the answer is already known."""
+    def __init__(self, rows, description):
+        self._rows, self.description, self.rowcount = list(rows), description, -1
+
+    def fetchone(self):
+        return self._rows.pop(0) if self._rows else None
+
+    def fetchall(self):
+        rows, self._rows = self._rows, []
+        return rows
+
+    def fetchmany(self, size=1):
+        rows, self._rows = self._rows[:size], self._rows[size:]
+        return rows
+
+    def close(self):
+        pass
+
+
+# Per-request read cache: within one request an identical read (same SQL, same parameters) is answered from memory. Any write in
+# the request empties it, so a request always sees its own changes. The app opens it per request (request_cache()).
+_request_reads: contextvars.ContextVar = contextvars.ContextVar("xodus_request_reads", default=None)
+
+
+class request_cache:
+    """with request_cache(): ... ; reads repeated inside the block are served once."""
+    def __enter__(self):
+        self._token = _request_reads.set({})
+        return self
+
+    def __exit__(self, *exc):
+        _request_reads.reset(self._token)
+        return False
+
+
+_READ = re.compile(r"^\s*(SELECT|WITH)\b", re.I)
+
+
 class _Cursor:
-    def __init__(self, cur):
+    def __init__(self, cur, owner=None):
+        self._owner = owner  # the connection, told when a statement may have changed something
         self._cur = cur
         self._names: List[str] = []
         self.rowcount = -1
 
     def execute(self, sql: str, params=None):
+        if _is_ddl(sql) and sql in _applied_ddl:
+            self._names, self.rowcount = [], -1
+            return self
+        key = (sql, tuple(params) if isinstance(params, (list, tuple)) else None) if _CATALOGUE_SQL.match(sql) else None
+        if key and key in _catalogue:
+            rows, desc = _catalogue[key]
+            self._cur, self._names, self.rowcount = _Cached(rows, desc), [d[0] for d in desc] if desc else [], -1
+            return self
+        reads = _request_reads.get()
+        is_read = bool(_READ.match(sql))
+        if self._owner is not None and not is_read:
+            self._owner._dirty = True
+        if reads is not None and not is_read:
+            reads.clear()
+        rkey = None
+        if reads is not None and is_read and not isinstance(params, dict):
+            try:
+                rkey = (sql, tuple(params) if params else ())
+                hash(rkey)
+            except TypeError:
+                rkey = None
+            if rkey is not None and rkey in reads:
+                rows, desc = reads[rkey]
+                self._cur, self._names, self.rowcount = _Cached(rows, desc), [d[0] for d in desc] if desc else [], -1
+                return self
         named = isinstance(params, dict)
         has = bool(params)
         text, mode = translate(sql, named, has)
@@ -230,6 +316,21 @@ class _Cursor:
             else:
                 raise
         self._names = [d[0] for d in self._cur.description] if self._cur.description else []
+        if _is_ddl(sql):
+            with _cache_lock:
+                _applied_ddl.add(sql)
+        elif re.match(r"\s*ALTER\s+TABLE", sql, re.I):
+            with _cache_lock:
+                _catalogue.clear()
+        elif key:
+            rows = self._cur.fetchall()
+            with _cache_lock:
+                _catalogue[key] = (rows, self._cur.description)
+            self._cur = _Cached(rows, self._cur.description)
+        elif rkey is not None and self._cur.description:
+            rows = self._cur.fetchall()
+            reads[rkey] = (rows, self._cur.description)
+            self._cur = _Cached(rows, self._cur.description)
         return self
 
     def executemany(self, sql: str, seq):
@@ -262,28 +363,34 @@ class _Cursor:
 
 class MssqlConnection:
     def __init__(self, pool: "_Pool"):
-        self._pool, self._conn = pool, pool.get()
+        self._pool, self._conn, self._dirty = pool, pool.get(), False
 
     def execute(self, sql: str, params=None) -> _Cursor:
-        return _Cursor(self._conn.cursor()).execute(sql, params)
+        return _Cursor(self._conn.cursor(), self).execute(sql, params)
 
     def executemany(self, sql: str, seq) -> _Cursor:
-        return _Cursor(self._conn.cursor()).executemany(sql, seq)
+        return _Cursor(self._conn.cursor(), self).executemany(sql, seq)
 
     def cursor(self) -> _Cursor:
-        return _Cursor(self._conn.cursor())
+        return _Cursor(self._conn.cursor(), self)
 
+    # Reads only (the most common case on a page): nothing to commit or roll back, so no round trip is spent on it.
     def commit(self) -> None:
-        self._conn.commit()
+        if self._dirty:
+            self._conn.commit()
+            self._dirty = False
 
     def rollback(self) -> None:
-        self._conn.rollback()
+        if self._dirty:
+            self._conn.rollback()
+            self._dirty = False
 
     def close(self) -> None:
         if self._conn is not None:
             conn, self._conn = self._conn, None
             try:
-                conn.rollback()  # discard anything uncommitted, as SQLite's close() does
+                if self._dirty:
+                    conn.rollback()  # discard anything uncommitted, as SQLite's close() does
             except Exception:
                 self._pool.discard(conn)
                 return

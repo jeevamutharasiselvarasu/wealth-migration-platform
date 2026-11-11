@@ -47,6 +47,16 @@ app = FastAPI(title="Data Migration Workbench", version="3.5.0")
 
 
 @app.middleware("http")
+async def request_read_cache(request: Request, call_next):
+    """On Azure SQL every read is a network round trip: within one request an identical read is served once (a write clears it)."""
+    if database_kind() != "mssql":
+        return await call_next(request)
+    from control_plane import mssql_compat
+    with mssql_compat.request_cache():
+        return await call_next(request)
+
+
+@app.middleware("http")
 async def enforce_role_policy(request: Request, call_next):
     """Reject state-changing requests from roles that may not perform them (session role, server side)."""
     allowed = allowed_roles_for(request.method, request.url.path)

@@ -16,6 +16,7 @@ class _RecCursor:
         self.log.append((sql, args))
         if self.fail:
             raise self.fail
+        self.description = [("a",)] if sql.lstrip().upper().startswith("SELECT") else None  # pymssql describes every read
 
     def fetchall(self):
         return []
@@ -180,3 +181,66 @@ def test_binary_values_are_sent_as_binary():
     conn.execute("INSERT INTO stored_files (locator, content) VALUES (?, ?)", ("a", b"\x00\x01"))
     assert raw.log[0][1] == ("a", bytearray(b"\x00\x01")) and isinstance(raw.log[0][1][1], bytearray)
     assert mc.params_for_mssql([memoryview(b"x"), 1, None]) == (bytearray(b"x"), 1, None)
+
+
+def test_table_definitions_run_once_and_column_lookups_are_cached_until_a_column_is_added():
+    mc.reset_caches()
+    raw = _RecConn()
+    conn = mc.MssqlConnection(_Pool(raw))
+    ddl = "CREATE TABLE IF NOT EXISTS t (a TEXT PRIMARY KEY)"
+    conn.execute(ddl)
+    conn.execute(ddl)
+    look = "SELECT column_name FROM information_schema.columns WHERE table_schema = SCHEMA_NAME() AND table_name = ?"
+    conn.execute(look, ("t",))
+    conn.execute(look, ("t",))
+    assert sum("CREATE TABLE" in s for s, _ in raw.log) == 1 and sum("information_schema" in s for s, _ in raw.log) == 1
+    conn.execute("ALTER TABLE t ADD COLUMN b TEXT")
+    conn.execute(look, ("t",))
+    assert sum("information_schema" in s for s, _ in raw.log) == 2  # asked again after a column was added
+    mc.reset_caches()
+
+
+def test_reads_spend_no_round_trip_on_commit_or_rollback():
+    class Raw(_RecConn):
+        def __init__(self):
+            super().__init__()
+            self.ends = []
+
+        def commit(self):
+            self.ends.append("commit")
+
+        def rollback(self):
+            self.ends.append("rollback")
+    raw = Raw()
+    conn = mc.MssqlConnection(_Pool(raw))
+    conn.execute("SELECT 1 FROM t WHERE a = ?", ("x",))
+    conn.commit()
+    conn.close()
+    assert raw.ends == []
+    conn = mc.MssqlConnection(_Pool(raw))
+    conn.execute("UPDATE t SET a = ?", ("y",))
+    conn.close()
+    assert raw.ends == ["rollback"]  # an uncommitted change is still discarded on close
+    conn = mc.MssqlConnection(_Pool(raw))
+    conn.execute("DELETE FROM t")
+    conn.commit()
+    conn.close()
+    assert raw.ends == ["rollback", "commit"]
+
+
+def test_a_request_reads_the_same_row_once_and_sees_its_own_writes():
+    raw = _RecConn()
+    with mc.request_cache():
+        for _ in range(3):
+            c = mc.MssqlConnection(_Pool(raw))
+            c.execute("SELECT * FROM target_system_config WHERE id = ?", (1,))
+            c.close()
+        assert sum("target_system_config" in s for s, _ in raw.log) == 1
+        c = mc.MssqlConnection(_Pool(raw))
+        c.execute("UPDATE target_system_config SET a = ?", ("x",))
+        c.execute("SELECT * FROM target_system_config WHERE id = ?", (1,))
+        c.close()
+        assert sum(s.startswith("SELECT * FROM target_system_config") for s, _ in raw.log) == 2  # read again after the write
+    c = mc.MssqlConnection(_Pool(raw))
+    c.execute("SELECT * FROM target_system_config WHERE id = ?", (1,))  # outside a request nothing is cached
+    assert sum(s.startswith("SELECT * FROM target_system_config") for s, _ in raw.log) == 3
