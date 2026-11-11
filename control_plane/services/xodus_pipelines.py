@@ -5,6 +5,7 @@ Layers (all in the XODUS database unless noted; every table is per migration, na
   xodus_canon   one table per entity in the canonical model, filled by usp_canon_<slug>_<Entity>     <- PL_XODUS_Canonical_Entity
   xodus_mirror  a mirror of each live target table, filled by usp_mirror_<slug>                      <- PL_XODUS_Canonical_To_Mirror
   xodus_ops     version, load order, run log, pipeline runs, table counts, promotion gate and log
+  xodus_ref     code maps (data the procedures read): source value -> canonical code per migration, canonical code -> target value per target
   Simplicity    xodus_landing.<slug>_<table> and usp_promote_<slug>, which merges into the live tables  <- PL_XODUS_Promote
 
 What changes with the source lives only in the SQL (the generated procedures and the load-order rows), which PL_XODUS_Setup_<slug>
@@ -21,7 +22,7 @@ from typing import Any, Dict, List, Optional
 from control_plane.services import sql_package
 from control_plane.services.sql_package import _lit, _q, translate
 
-RAW, CANON, MIRROR, OPS, LANDING = "xodus_raw", "xodus_canon", "xodus_mirror", "xodus_ops", "xodus_landing"
+RAW, CANON, MIRROR, OPS, LANDING, REF = "xodus_raw", "xodus_canon", "xodus_mirror", "xodus_ops", "xodus_landing", "xodus_ref"
 LS_BLOB, LS_XODUS, LS_LIVE = "LS_BLOB", "LS_SQL_Target", "LS_SQL_Simplicity"
 STABLE_PIPELINES = ("PL_XODUS_Run", "PL_XODUS_Source_To_Canonical", "PL_XODUS_Load_Raw_File", "PL_XODUS_Canonical_Entity",
                     "PL_XODUS_Canonical_To_Mirror", "PL_XODUS_Promote")
@@ -115,7 +116,13 @@ def _drop_create(schema: str, table: str, columns: List[str]) -> str:
 
 def shared_sql() -> List[str]:
     """Objects every migration uses (schemas, ops tables, logging, dispatch, gate check). Safe to run again."""
-    b = [_schema(s) for s in (RAW, CANON, MIRROR, OPS)]
+    b = [_schema(s) for s in (RAW, CANON, MIRROR, OPS, REF)]
+    b.append(f"IF OBJECT_ID(N'{REF}.code_map', N'U') IS NULL CREATE TABLE [{REF}].[code_map] ([migration_slug] nvarchar(32) NOT NULL, "
+             "[code_set] nvarchar(64) NOT NULL, [source_value] nvarchar(400) NOT NULL, [canonical_code] nvarchar(64) NOT NULL, "
+             "CONSTRAINT [PK_code_map] PRIMARY KEY ([migration_slug], [code_set], [source_value]));")
+    b.append(f"IF OBJECT_ID(N'{REF}.target_code_map', N'U') IS NULL CREATE TABLE [{REF}].[target_code_map] ([target_system] nvarchar(128) NOT NULL, "
+             "[code_set] nvarchar(64) NOT NULL, [canonical_code] nvarchar(64) NOT NULL, [target_value] nvarchar(400) NOT NULL, "
+             "CONSTRAINT [PK_target_code_map] PRIMARY KEY ([target_system], [code_set], [canonical_code]));")
     tables = {
         "xodus_schema_version": "[migration_slug] nvarchar(32) NOT NULL, [component] nvarchar(32) NOT NULL, [version] nvarchar(64) NOT NULL, "
                                 "[deployed_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_xodus_schema_version] PRIMARY KEY ([migration_slug], [component])",
@@ -226,12 +233,18 @@ END""")
 
 def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
           entities: Dict[str, Dict[str, Any]], raw_files: List[Dict[str, Any]], load_order: List[str], env: Dict[str, Any],
-          generated_by: str, provenance: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+          generated_by: str, provenance: Optional[Dict[str, Any]] = None, codes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """entities[E] = {"files": [file_name, ...], "mappings": {source_field: {"canonical_field", "expression"}}, "key": canonical key or None,
                       "derivations": [{"canonical_field", "input_field", "rule_expression"}], "canonical_fields": [...]}
     raw_files = [{"file_name", "columns": [...]}] (entity files and the lookup files their rules read).
-    env = {"container", "rawFolder", "liveSchema"}. Returns {"files": {path: text}, "manifest": {...}, "version": str}."""
+    env = {"container", "rawFolder", "liveSchema"}.
+    codes (canonical model v2) = {"coded": {entity: {canonical_field: code_set}}, "source_map": [{"code_set", "source_value", "canonical_code"}],
+                                  "target_map": [{"code_set", "canonical_code", "target_value"}], "target_system": str, "model_version": str}:
+    coded canonical fields are translated through xodus_ref.code_map after the entity is built, and through xodus_ref.target_code_map on
+    the way to the mirror (a code with no target value passes through). Returns {"files": {path: text}, "manifest": {...}, "version": str}."""
     s = slug(migration_id)
+    coded = (codes or {}).get("coded") or {}
+    target_system = str((codes or {}).get("target_system") or (spec or {}).get("target_system") or "")
     live_schema = sql_package._ident(env.get("liveSchema") or "simplicity")
     approved_target = [m for m in approved_target if m.get("status") == "APPROVED"]
     if not spec or not approved_target:
@@ -253,6 +266,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
 
     # Source -> canonical: one table and one procedure per entity.
     canon_counts: Dict[str, Dict[str, Any]] = {}
+    applied_codes: Dict[str, Dict[str, str]] = {}  # the coded fields the canonical procedures translate (stage 10 checks them)
     for entity in load_order:
         e = entities[entity]
         sql_package._ident(entity)
@@ -309,6 +323,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 continue
             derive.append(f"UPDATE c SET c.{_q(d['canonical_field'])} = {translate(d['rule_expression'], d['input_field'], rule, 'c', lookup_ref)} "
                           f"FROM [{CANON}].[{ctable}] AS c;")
+        # Coded fields: the approved source value -> canonical code map (data in xodus_ref.code_map). A value with no approved code is left
+        # as received and fails the stage 10 conformance check (VALUES_IN_CODE_SET).
+        filled = set(mapped) | {d["canonical_field"] for d in e.get("derivations", [])}
+        for field, code_set in sorted((coded.get(entity) or {}).items()):
+            if field in filled and field in cfields:
+                applied_codes.setdefault(entity, {})[field] = code_set
+                derive.append(f"UPDATE c SET c.{_q(field)} = m.[canonical_code] FROM [{CANON}].[{ctable}] AS c JOIN [{REF}].[code_map] AS m "
+                              f"ON m.[migration_slug] = {_lit(s)} AND m.[code_set] = {_lit(code_set)} AND m.[source_value] = UPPER(LTRIM(RTRIM(c.{_q(field)})));")
         log = f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'canonical', N'{CANON}', N'{ctable}';"
         per_migration.append(_proc(f"[{CANON}].[usp_canon_{s}_{entity}]", "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64)",
                                    [f"TRUNCATE TABLE [{CANON}].[{ctable}];", select] + derive + [log]))
@@ -339,6 +361,10 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 col = sql_package._ident(fields[m["target_field"]]["column"])
                 rule = rules.get(m["transformation_expression"])
                 e = translate(m["transformation_expression"], m["canonical_field"], rule, "s", lookup_ref)
+                code_set = (coded.get(entity) or {}).get(m["canonical_field"])
+                if code_set:  # canonical code -> the target system's value (xodus_ref.target_code_map); a code with no target value passes through
+                    e = (f"COALESCE((SELECT TOP (1) t.[target_value] FROM [{REF}].[target_code_map] AS t WHERE t.[target_system] = {_lit(target_system)} "
+                         f"AND t.[code_set] = {_lit(code_set)} AND t.[canonical_code] = {e}), {e})")
                 exprs.append(f"{e} AS {_q(col)}")
                 cols.append(col)
                 if sql_package._is_key_field(m["canonical_field"]):
@@ -375,6 +401,17 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
              + ", ".join(f"({_lit(s)}, {i + 1}, {_lit(e)})" for i, e in enumerate(load_order)) + ";"]
     rows += [f"INSERT INTO [{OPS}].[xodus_live_tables] (migration_slug, mirror_table, live_table) VALUES "
              + ", ".join(f"({_lit(s)}, {_lit(t['mirror_table'])}, {_lit(t['live_table'])})" for t in live_tables) + ";"]
+    if codes is not None:  # the code maps are data: rewritten on every setup, read by the procedures above
+        source_map = sorted({(r["code_set"], r["source_value"], r["canonical_code"]) for r in codes.get("source_map") or []})
+        target_map = sorted({(r["code_set"], r["canonical_code"], r["target_value"]) for r in codes.get("target_map") or []})
+        rows.append(f"DELETE FROM [{REF}].[code_map] WHERE migration_slug = {_lit(s)};")
+        if source_map:
+            rows.append(f"INSERT INTO [{REF}].[code_map] (migration_slug, code_set, source_value, canonical_code) VALUES "
+                        + ", ".join(f"({_lit(s)}, {_lit(cs)}, {_lit(v)}, {_lit(c)})" for cs, v, c in source_map) + ";")
+        rows.append(f"DELETE FROM [{REF}].[target_code_map] WHERE target_system = {_lit(target_system)};")
+        if target_map:
+            rows.append(f"INSERT INTO [{REF}].[target_code_map] (target_system, code_set, canonical_code, target_value) VALUES "
+                        + ", ".join(f"({_lit(target_system)}, {_lit(cs)}, {_lit(c)}, {_lit(v)})" for cs, c, v in target_map) + ";")
 
     # Simplicity: landing tables and the promotion procedure (MERGE into the live tables, all tables in one transaction).
     live: List[str] = [_schema(LANDING),
@@ -431,6 +468,10 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         "linkedServices": [LS_BLOB, LS_XODUS, LS_LIVE], "rawFiles": [{"file": f["file_name"], "table": raw_names[f["file_name"]]} for f in raw_files],
         "rawFolder": folder, "container": container, "loadOrder": load_order, "canonical": canon_counts, "liveTables": live_tables,
         "objects": objects, "provenance": provenance or {}, "deployed": False,
+        "codeSets": ({"modelVersion": codes.get("model_version"), "coded": applied_codes, "sourceValues": len(codes.get("source_map") or []),
+                      "sourceMap": sorted([r["code_set"], r["source_value"], r["canonical_code"]] for r in codes.get("source_map") or []),
+                      "targetValues": len(codes.get("target_map") or []),
+                      "targetMap": sorted([r["code_set"], r["canonical_code"], r["target_value"]] for r in codes.get("target_map") or []), "targetSystem": target_system} if codes is not None else None),
     }
     out["manifest.json"] = json.dumps(manifest, indent=2)
     out["README.txt"] = (

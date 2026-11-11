@@ -50,6 +50,8 @@
     <a href="/azure-setup" class="nv {% if path == '/azure-setup' %}on{% endif %}" {% if path == '/azure-setup' %}aria-current="page"{% endif %}>Azure connection</a>
     <a href="/github-setup" class="nv {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>
     <a href="/models" class="nv {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
+    <a href="/canonical-model" class="nv {% if path == '/canonical-model' %}on{% endif %}" {% if path == '/canonical-model' %}aria-current="page"{% endif %}>Canonical model</a>
+    <a href="/target-setup/code-values" class="nv {% if path == '/target-setup/code-values' %}on{% endif %}" {% if path == '/target-setup/code-values' %}aria-current="page"{% endif %}>Target code values</a>
     <a href="/platform-knowledge" class="nv {% if path == '/platform-knowledge' %}on{% endif %}" {% if path == '/platform-knowledge' %}aria-current="page"{% endif %}>Platform knowledge</a>
     <div class="sh">Migrations</div>
     <a href="/migrations" class="nv {% if path in ('/migrations', '/migration-setup') %}on{% endif %}" {% if path in ('/migrations', '/migration-setup') %}aria-current="page"{% endif %}>Migration setups</a>
@@ -86,7 +88,7 @@
     {{ stage('01', 'Loader & Inspector', '/entity-sample-files', 'discover', 'MA', path in ('/entity-sample-files', '/entity-selection')) }}
     <div class="zg staged"><i></i>Staged</div>
     {{ stage('02', 'Discovery', '/discovery', 'discover', 'MA', path == '/discovery') }}
-    {{ stage('03', 'Business Rules', '/transformation-rules', 'map', 'MA', path == '/transformation-rules') }}
+    {{ stage('03', 'Business Rules', '/transformation-rules', 'map', 'MA', path in ('/transformation-rules', '/code-sets')) }}
     <div class="zg transformed"><i></i>Transformed</div>
     {{ stage('04', 'Schema Mapper', '/agent-pipeline', 'map', 'MA', path == '/agent-pipeline') }}
     {{ stage('05', 'Mapping Validation Review', '/reconciliation', 'validate', 'VS', path == '/reconciliation') }}

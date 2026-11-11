@@ -26,6 +26,7 @@ from control_plane.services import sql_package, gap_recommender, user_registry, 
 from control_plane.services import sql_target
 from control_plane.services import canonical_derivations, run_monitor, target_validation
 from control_plane.services import xodus_pipelines, live_target, deployment_check, adf_runs, git_pull_requests, promotion_gate, live_validation
+from control_plane.services import canonical_model, code_mappings
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -148,6 +149,8 @@ def workflow_progress() -> dict:
     validation_status = validation_when = ""
     target_validation_status = ""
     rules_approved = rules_draft = target_approved = runs_n = 0
+    codes_pending = 0
+    codes_needed = False
     sql_ready = published = False
     data_plane: Dict[str, Any] = {}
     conn = get_db_connection()
@@ -155,6 +158,12 @@ def workflow_progress() -> dict:
         _rules = transformation_rules.list_rules(conn)
         rules_approved = sum(1 for r in _rules if r["status"] == "APPROVED")
         rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
+        _cc = code_mappings.counts(conn, migration_id)
+        codes_pending = _cc["PROPOSED"]
+        if not sum(_cc.values()):  # nothing profiled yet: needed once a coded canonical field has an approved mapping
+            _coded = canonical_model.coded_fields(canonical_model.current(conn)[0])
+            codes_needed = any(r["canonical_field"] in _coded.get(r["entity_name"], {}) for r in conn.execute(
+                "SELECT entity_name, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall())
         sql_ready = bool(package_contract.list_packages(conn, migration_id))
         runs_n = 1 if run_monitor.succeeded(conn, migration_id) else 0
         _tv = target_validation.latest(conn, migration_id)
@@ -169,7 +178,8 @@ def workflow_progress() -> dict:
             # 10 = the batch was validated, signed off, promoted and validated in the live tables
             _v = _xpkg["manifest"]["version"]
             _dc = deployment_check.latest(conn, migration_id)
-            sql_ready = True
+            # The package must carry the approved code values (canonical model v2): a newly decided value makes it stale until regenerated.
+            sql_ready = not _code_map_stale(conn, migration_id, _xpkg["manifest"])
             published = bool(_merged_pr(conn, migration_id, _v)) and bool(_dc and _dc.get("version") == _v and _dc.get("status") == "PASS")
             _promo = adf_runs.latest(conn, migration_id, "PL_XODUS_Promote")
             data_plane = {"xodus": True, "promoted": bool(_promo and _promo["status"] == "SUCCEEDED"),
@@ -219,6 +229,9 @@ def workflow_progress() -> dict:
         nxt = {"label": "Generate mapping proposals", "detail": "Profile the confirmed files and create review items.", "href": "/agent-pipeline", "step": "map"}
     elif rfi_open:
         nxt = {"label": f"Answer {rfi_open} information request{'s' if rfi_open != 1 else ''}", "detail": "Required canonical fields still have no source.", "href": "/agent-pipeline#information-requests", "step": "map"}
+    elif codes_pending or codes_needed:
+        nxt = {"label": f"Map {codes_pending} code value{'s' if codes_pending != 1 else ''}" if codes_pending else "Profile the code values",
+               "detail": "Each source value of a coded field needs a canonical code.", "href": "/code-sets", "step": "map"}
     elif not target_provisioned:
         nxt = {"label": "Confirm the target system", "detail": "One-time platform setup: configure, infer and confirm the target before target mapping.", "href": "/target-setup", "step": "map"}
     else:
@@ -228,7 +241,7 @@ def workflow_progress() -> dict:
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
         "changes_open": changes_open, "next": nxt, "target_provisioned": target_provisioned, "target_pending": target_pending,
         "validation_status": validation_status, "validation_when": validation_when, "target_validation_status": target_validation_status,
-        "data_plane": data_plane,
+        "data_plane": data_plane, "codes_pending": codes_pending, "codes_needed": codes_needed,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
     progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n, published))
@@ -253,7 +266,7 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
     done_flags = [
         ("01", "Loader & Inspector", p["files_total"] > 0),
         ("02", "Discovery", p["files_total"] > 0 and p["files_pending"] == 0),
-        ("03", "Business Rules", rules_approved > 0 and rules_draft == 0),
+        ("03", "Business Rules", rules_approved > 0 and rules_draft == 0 and not p.get("codes_pending") and not p.get("codes_needed")),
         ("04", "Schema Mapper", mapped),
         ("05", "Mapping Validation Review", p["validation_status"] == "PASS"),
         ("06", "Target mapping", p["target_provisioned"] and target_approved > 0 and p["target_pending"] == 0),
@@ -2463,7 +2476,24 @@ def _adf_status(conn, migration_id: str):
         return None
     spec = target_connector.spec(conn)
     approved = [m for m in target_mapping.list_mappings(conn, migration_id, spec) if m["status"] == "APPROVED"]
-    return {"latest": stored[0], "stale_reasons": artifact_store.staleness(stored[0], artifact_store.build_provenance(conn, migration_id, spec, approved))}
+    reasons = artifact_store.staleness(stored[0], artifact_store.build_provenance(conn, migration_id, spec, approved))
+    _, xpkg = _xodus_package(conn, migration_id)
+    if xpkg:
+        reasons += _code_map_stale(conn, migration_id, xpkg["manifest"])
+    return {"latest": stored[0], "stale_reasons": reasons}
+
+
+def _code_map_stale(conn, migration_id: str, manifest: Dict[str, Any]) -> List[str]:
+    """Why a stable-pipeline package no longer carries the approved code values or the target system's code values (canonical model v2)."""
+    cs = manifest.get("codeSets") or {}
+    reasons = []
+    approved = sorted([r["code_set"], r["source_value"], r["canonical_code"]] for r in code_mappings.approved_source_map(conn, migration_id))
+    if (cs.get("sourceMap") or []) != approved:
+        reasons.append("Code values were decided on Business Rules → Code sets after this package was built.")
+    system = (target_connector.spec(conn) or {}).get("target_system") or ""
+    if system and (cs.get("targetMap") or []) != sorted([r["code_set"], r["canonical_code"], r["target_value"]] for r in code_mappings.target_map(conn, system)):
+        reasons.append("The target system's code values changed (Platform setup → Target code values).")
+    return reasons
 
 
 MIN_STALE_REASON = 10
@@ -3399,7 +3429,8 @@ async def download_adf_package(request: Request):
         if env.get("simulated", True):
             package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
         else:  # the configured Azure environment: stable pipelines plus the generated SQL (raw -> canonical -> mirror -> live)
-            built = xodus_pipelines.build(migration_id, *_xodus_package_inputs(migration_id), generated_by=user["name"], provenance=provenance)
+            built = xodus_pipelines.build(migration_id, *_xodus_package_inputs(migration_id), generated_by=user["name"], provenance=provenance,
+                                          codes=_xodus_code_inputs(migration_id))
             package = {"files": built["files"], "manifest": {**built["manifest"], "simulated": False, "pipeline": built["manifest"]["setupPipeline"],
                                                              "entities": built["manifest"]["canonical"], "warnings": []}}
     except ValueError as exc:
@@ -4273,6 +4304,198 @@ async def adopt_canonical_release(request: Request, return_to: str = Form("/cano
 
 def _changes_redirect(key: str, message: str):
     return RedirectResponse(url=f"/canonical-changes?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ---- Canonical model v2: the model and its releases, code-set mapping (stage 03), target code values (platform setup) ----
+
+def _model_redirect(path: str, key: str, message: str):
+    return RedirectResponse(url=f"{path}?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/canonical-model", response_class=HTMLResponse)
+async def canonical_model_page(request: Request, notice: str = "", error: str = ""):
+    """The universal canonical model (v2): entities, typed fields, code sets and the released versions. Read-only except the release."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        model, rel = canonical_model.current(conn)
+        rels = canonical_model.releases(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        definition, def_error = canonical_model.load_definition(), ""
+    except (OSError, ValueError) as exc:
+        definition, def_error = None, f"The definition file does not validate: {exc}"
+    pending = bool(definition) and definition["version"] not in {r["version"] for r in rels}
+    return render_template_with_context(request, "canonical_model.html", {
+        "page_title": "Canonical model", "user_name": user["name"], "user_role": user["role"],
+        "model": model, "release": rel, "releases": rels, "definition_version": (definition or {}).get("version"), "pending": pending,
+        "coded": canonical_model.coded_fields(model), "can_release": user["role"] in CANONICAL_ROLES,
+        "notice": notice, "error": error or def_error,
+    })
+
+
+@app.post("/api/canonical-model/release")
+async def release_canonical_model(request: Request):
+    """Record the canonical model definition as an immutable version (Platform Admin or Domain SME)."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rec = canonical_model.release(conn, user["name"])
+        except (OSError, ValueError) as exc:
+            conn.rollback()
+            return _model_redirect("/canonical-model", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("CANONICAL_MODEL_RELEASED", user, {"version": rec["version"], "sha256": rec["content_sha256"][:16]})
+    return _model_redirect("/canonical-model", "notice", f"Canonical model {rec['version']} released. Code-set mapping and the target code values use it from now on.")
+
+
+@app.get("/code-sets", response_class=HTMLResponse)
+async def code_sets_page(request: Request, notice: str = "", error: str = ""):
+    """Stage 03: the source values of every coded field, each mapped to a canonical code (suggested from the code set, approved by a person)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        model, rel = canonical_model.current(conn)
+        rows = code_mappings.list_mappings(conn, migration_id)
+        totals = code_mappings.counts(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    coded = canonical_model.coded_fields(model)
+    sets = []
+    for name, cs in model["code_sets"].items():
+        values = [r for r in rows if r["code_set"] == name]
+        sets.append({"name": name, "description": cs.get("description", ""), "codes": cs["codes"], "values": values,
+                     "fields": [f"{e}.{f}" for e, fs in coded.items() for f, s in fs.items() if s == name],
+                     "pending": sum(1 for v in values if v["status"] == "PROPOSED")})
+    return render_template_with_context(request, "code_sets.html", {
+        "page_title": "Code sets", "user_name": user["name"], "user_role": user["role"], "migration_id": migration_id,
+        "model": model, "release": rel, "sets": sets, "totals": totals,
+        "can_profile": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
+        "notice": notice, "error": error,
+    })
+
+
+@app.post("/api/code-sets/profile")
+async def profile_code_sets(request: Request):
+    """Read the distinct values of the coded fields from the approved files and mappings (in memory) and propose a canonical code for each new one."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    rows, _ = _canonical_rows_for_migration(migration_id)
+    if not any(rows.values()):
+        return _model_redirect("/code-sets", "error", "No canonical rows yet: confirm the source files and approve their mappings first.")
+    conn = get_db_connection()
+    try:
+        model, _ = canonical_model.current(conn)
+        res = code_mappings.propose(conn, migration_id, model, rows)
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("CODE_VALUES_PROFILED", migration_id, "migration", migration_id, res, user["name"])
+    return _model_redirect("/code-sets", "notice", f"{res['values']} distinct value(s) read; {res['new']} new, {res['suggested']} with a suggested code. "
+                                                   "Approve or change each one.")
+
+
+@app.post("/api/code-sets/decide")
+async def decide_code_value(request: Request, code_set: str = Form(...), source_value: str = Form(...), decision: str = Form(...),
+                            canonical_code: str = Form("")):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        model, _ = canonical_model.current(conn)
+        try:
+            rec = code_mappings.decide(conn, migration_id, model, code_set, source_value, decision, canonical_code, user["name"])
+        except ValueError as exc:
+            conn.rollback()
+            return _model_redirect("/code-sets", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("CODE_VALUE_DECIDED", migration_id, "code_set", code_set,
+                  {"source_value": source_value, "status": rec["status"], "canonical_code": rec.get("canonical_code")}, user["name"])
+    what = {"APPROVED": f"mapped to {rec.get('canonical_code')}", "REJECTED": "rejected (it stays unmapped and fails conformance)",
+            "PROPOSED": "reopened"}[rec["status"]]
+    return _model_redirect("/code-sets", "notice", f"{code_set}: '{source_value}' {what}. Regenerate the package (stage 07) to deploy the change.")
+
+
+@app.post("/api/code-sets/approve-suggested")
+async def approve_suggested_code_values(request: Request):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        model, _ = canonical_model.current(conn)
+        n = code_mappings.approve_suggested(conn, migration_id, model, user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("CODE_VALUES_APPROVED", migration_id, "migration", migration_id, {"approved": n}, user["name"])
+    return _model_redirect("/code-sets", "notice", f"{n} suggested code(s) approved. Values without a suggestion still need a person to choose the code.")
+
+
+@app.get("/target-setup/code-values", response_class=HTMLResponse)
+async def target_code_values_page(request: Request, notice: str = "", error: str = ""):
+    """Platform setup: the target system's value for each canonical code (the target adapter's crosswalk, reused by every migration)."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        model, rel = canonical_model.current(conn)
+        system = (target_connector.spec(conn) or {}).get("target_system") or ""
+        cw = code_mappings.crosswalk(conn, system) if system else {}
+        conn.commit()
+    finally:
+        conn.close()
+    sets = [{"name": n, "description": cs.get("description", ""), "codes": cs["codes"], "values": cw.get(n, {}),
+             "unmapped": sum(1 for c in cs["codes"] if c["code"] not in cw.get(n, {}))} for n, cs in model["code_sets"].items()]
+    return render_template_with_context(request, "target_code_values.html", {
+        "page_title": "Target code values", "user_name": user["name"], "user_role": user["role"], "model": model, "release": rel,
+        "target_system": system, "sets": sets, "can_edit": user["role"] in PLATFORM_ROLES and bool(system), "notice": notice, "error": error,
+    })
+
+
+@app.post("/api/target-system/code-values")
+async def save_target_code_values(request: Request):
+    user = get_current_user(request)
+    form = await request.form()
+    code_set = str(form.get("code_set") or "")
+    values = {k[len("v_"):]: str(v) for k, v in form.items() if k.startswith("v_")}
+    conn = get_db_connection()
+    try:
+        model, _ = canonical_model.current(conn)
+        system = (target_connector.spec(conn) or {}).get("target_system") or ""
+        try:
+            kept = code_mappings.save_crosswalk(conn, system, model, code_set, values, user["name"])
+        except ValueError as exc:
+            conn.rollback()
+            return _model_redirect("/target-setup/code-values", "error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_CODE_VALUES_SAVED", user, {"target_system": system, "code_set": code_set, "entries": kept})
+    return _model_redirect("/target-setup/code-values", "notice", f"{code_set}: {kept} target value(s) saved for {system}. "
+                                                                   "Codes without a value pass to the target unchanged. Each migration picks this up when its package is regenerated.")
+
+
+def _xodus_code_inputs(migration_id: str) -> Dict[str, Any]:
+    """The code maps a stable-pipeline package carries (canonical model v2): approved source values and the target system's values."""
+    conn = get_db_connection()
+    try:
+        model, rel = canonical_model.current(conn)
+        system = (target_connector.spec(conn) or {}).get("target_system") or ""
+        out = {"coded": canonical_model.coded_fields(model), "source_map": code_mappings.approved_source_map(conn, migration_id),
+               "target_map": code_mappings.target_map(conn, system) if system else [], "target_system": system,
+               "model_version": (rel or {}).get("version") or model.get("version")}
+        conn.commit()
+    finally:
+        conn.close()
+    return out
 
 
 @app.post("/api/canonical-changes")
@@ -6446,6 +6669,15 @@ def _xodus_validation_entities(migration_id: str, man: Dict[str, Any]) -> Dict[s
         e = out.setdefault(entity, {"staging_table": canon["table"], "expected_rows": None, "key": canon["key"], "tables": {}, "unmapped_required": []})
         if len(canon["files"]) == 1:
             e["expected_sql"] = f"SELECT COUNT(*) FROM [xodus_raw].[{canon['files'][0]}]"
+        coded = ((man.get("codeSets") or {}).get("coded") or {}).get(entity) or {}
+        if coded and "code_sets" not in e:
+            conn = get_db_connection()
+            try:
+                model = canonical_model.current(conn)[0]
+                conn.commit()
+            finally:
+                conn.close()
+            e["code_sets"] = {f: canonical_model.codes(model, cs) for f, cs in coded.items() if cs in model["code_sets"]}
         fields = {f["name"]: f for f in spec["entities"][entity]["fields"]}
         mine = [m for m in approved if m["entity_name"] == entity and m["target_field"] in fields and fields[m["target_field"]]["table"] == t["live_table"] and m.get("canonical_field")]
         live = live_cols.get(t["live_table"], {})

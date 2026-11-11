@@ -41,7 +41,7 @@ ADMIN_VIEW_PREFIXES = (
     "/static", "/login", "/logout", "/register", "/healthz", "/persona-selection", "/suite", "/setup",
     "/migrations", "/migration-setup",  # the workspace list and setup (configuration only, read-only), never the data inside a workspace
     "/azure-setup", "/github-setup", "/target-setup", "/admin/users", "/governance", "/tenant", "/models",
-    "/platform-knowledge", "/api/platform-knowledge", "/canonical-changes", "/api/admin", "/api/azure", "/api/git", "/api/sql-target",
+    "/platform-knowledge", "/api/platform-knowledge", "/canonical-changes", "/canonical-model", "/api/canonical-model", "/api/admin", "/api/azure", "/api/git", "/api/sql-target",
     "/api/users", "/api/target-system", "/api/blob/layout", "/api/blob/container",
 )
 
@@ -93,6 +93,10 @@ POST_POLICY = [
     (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
     (r"^/api/canonical-releases$", CANONICAL_ROLES),
     (r"^/api/canonical-releases/adopt$", APPROVAL_ROLES),
+    (r"^/api/canonical-model/release$", CANONICAL_ROLES),
+    (r"^/api/code-sets/profile$", DISCOVERY_ROLES),
+    (r"^/api/code-sets/(decide|approve-suggested)$", APPROVAL_ROLES),
+    (r"^/api/target-system/code-values$", PLATFORM_ROLES),
     (r"^/api/knowledge/(submit-questionnaire|file-upload|confluence)$", DISCOVERY_ROLES),
     (r"^/api/platform-knowledge(/[^/]+/retire)?$", PLATFORM_KNOWLEDGE_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),

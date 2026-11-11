@@ -21,6 +21,7 @@
     <div class="kpi"><small>Waiting</small><b>{{ _draft }}</b><span>draft, need a person</span></div>
     <div class="kpi"><small>Suggestions</small><b>{{ suggestions|length }}</b><span>from the source data</span></div>
   </section>
+  <div class="ins" data-testid="code-sets-link"><b>Code sets.</b> Coded fields (registration type, tax status, custodian, account status, household role) are mapped value by value to canonical codes on <a href="/code-sets" class="font-bold text-blue-700">Code sets</a>; this stage is complete when every value there is decided.</div>
   <p class="d" style="margin:0">Built-in families: <span class="font-mono">{{ builtin_rules|join(', ') }}</span></p>
 
   {% if can_author %}

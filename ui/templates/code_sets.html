@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Stage 03 · Business rules · code sets</div>
+      <h1>Code sets</h1>
+      <p>Each coded field of the <a href="/canonical-model" class="font-bold text-blue-700">canonical model {{ (release.version if release else model.version) }}</a> holds a canonical code. Here every value the source actually uses is mapped to one, once for this migration. XODUS suggests a code when the value is the code, one of its known spellings or its description; a person approves every mapping. The approved map is data the generated procedures read, so a new source value is a reviewed data change, not new SQL.</p>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start"><a href="/transformation-rules" class="btn g sm">← Business rules</a></div>
+  </div>
+  <section class="kpis" aria-label="Code value summary">
+    <div class="kpi"><small>Values read</small><b>{{ totals.values()|sum }}</b><span>distinct source values</span></div>
+    <div class="kpi"><small>Approved</small><b>{{ totals.APPROVED }}</b><span>mapped to a code</span></div>
+    <div class="kpi"><small>Waiting</small><b>{{ totals.PROPOSED }}</b><span>need a person</span></div>
+    <div class="kpi"><small>Rejected</small><b>{{ totals.REJECTED }}</b><span>stay unmapped, fail conformance</span></div>
+  </section>
+  <div class="ins">Values are read from the approved source files through the approved mappings, in memory; only the distinct values and how many rows use each are kept, never rows. A value with no approved code stays as received and fails the stage 10 check <span class="font-mono">VALUES_IN_CODE_SET</span>, named by its source key.</div>
+  <div class="flex flex-wrap gap-2">
+    {% if can_profile %}<form action="/api/code-sets/profile" method="post"><button class="btn p sm" data-testid="profile-codes">Read the source values</button></form>{% endif %}
+    {% if can_approve and totals.PROPOSED %}<form action="/api/code-sets/approve-suggested" method="post"><button class="btn g sm" data-testid="approve-suggested">Approve all suggested codes</button></form>{% endif %}
+  </div>
+
+  {% for cs in sets %}
+  <section class="card" id="set-{{ cs.name }}">
+    <h3 style="font-size:16px"><span class="font-mono">{{ cs.name }}</span> <span class="ml-2 text-[10px] text-[#5A6A88]">{{ cs["values"]|length }} value(s){% if cs.pending %} · <b>{{ cs.pending }} waiting</b>{% endif %}</span></h3>
+    <p class="fh">{{ cs.description }}{% if cs.fields %} Field(s): <span class="font-mono">{{ cs.fields|join(', ') }}</span>.{% endif %}</p>
+    {% if cs["values"] %}
+    <div class="tw mt-2"><table class="t">
+      <thead><tr><th>Source value</th><th>Rows</th><th>Canonical code</th><th>Why</th><th>Status</th><th></th></tr></thead>
+      <tbody>{% for v in cs["values"] %}<tr>
+        <td class="font-mono">{{ v.source_value }}</td>
+        <td>{{ v.row_count }}</td>
+        <td>{% if can_approve and v.status == 'PROPOSED' %}
+          <form id="cv-{{ cs.name }}-{{ loop.index }}" action="/api/code-sets/decide" method="post" class="flex items-center gap-1">
+            <input type="hidden" name="code_set" value="{{ cs.name }}"><input type="hidden" name="source_value" value="{{ v.source_value }}">
+            <select name="canonical_code" class="input w-44" aria-label="Canonical code for {{ v.source_value }}">{% if not v.canonical_code %}<option value="">Choose a code</option>{% endif %}{% for c in cs.codes %}<option value="{{ c.code }}" {% if c.code == v.canonical_code %}selected{% endif %}>{{ c.code }}</option>{% endfor %}</select>
+          </form>
+          {% else %}<span class="font-mono">{{ v.canonical_code or '—' }}</span>{% endif %}</td>
+        <td class="text-[11px]">{{ v.reason }}</td>
+        <td><span class="pill {% if v.status == 'APPROVED' %}approved{% elif v.status == 'REJECTED' %}failed{% else %}review{% endif %}">{{ v.status }}</span>{% if v.decided_by %}<div class="text-[10px] text-[#5A6A88]">{{ v.decided_by }} · {{ v.decided_utc[:10] }}</div>{% endif %}</td>
+        <td>{% if can_approve %}{% if v.status == 'PROPOSED' %}
+          <button form="cv-{{ cs.name }}-{{ loop.index }}" name="decision" value="APPROVE" class="btn p sm">Approve</button>
+          <button form="cv-{{ cs.name }}-{{ loop.index }}" name="decision" value="REJECT" class="btn g sm">Reject</button>
+          {% else %}<form action="/api/code-sets/decide" method="post"><input type="hidden" name="code_set" value="{{ cs.name }}"><input type="hidden" name="source_value" value="{{ v.source_value }}"><button name="decision" value="REOPEN" class="btn g sm">Reopen</button></form>{% endif %}{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="mt-2 text-[11px] text-[#5A6A88]">{% if cs.fields %}No values read yet (or the field is not mapped in this migration).{% else %}No field uses this set yet.{% endif %}</p>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

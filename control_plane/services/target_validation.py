@@ -64,6 +64,17 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
         add("STAGING_ROW_COUNT", entity, e["staging_table"], "", f"SELECT COUNT(*) FROM {staging}", "equals", e.get("expected_rows"))
         if e.get("expected_sql"):  # the expected count is itself a count query (rows the raw file delivered)
             plan[-1]["expected_sql"] = e["expected_sql"]
+        # Canonical conformance (model v2): every populated coded value in the canonical table is a code of its set. A value no one mapped
+        # to a canonical code stays as received and is named here by its source key.
+        for field, codes in sorted((e.get("code_sets") or {}).items()):
+            codes = sorted({str(c) for c in codes if str(c).strip()})
+            if not codes:
+                continue
+            val = f"LTRIM(RTRIM(CAST({_id(field)} AS nvarchar(4000))))"
+            cond = f"{_id(field)} IS NOT NULL AND {val} <> '' AND {val} NOT IN ({', '.join(_code_literal(c) for c in codes)})"
+            ck = _id(e["key"]) if e.get("key") else None
+            add("VALUES_IN_CODE_SET", entity, e["staging_table"], field, f"SELECT COUNT(*) FROM {staging} WHERE {cond}", "zero", expected=len(codes),
+                keys_sql=(f"SELECT TOP ({MAX_ROW_KEYS}) CAST({ck} AS nvarchar(400)) FROM {staging} WHERE {cond}" if ck else None))
         for table, t in sorted(e["tables"].items()):
             tgt = f"{sch}.{_id(table)}"
             rk = _id(t["row_key"]) if t.get("row_key") else None  # the column that names a row (the source key), when the table has one
@@ -187,6 +198,10 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": f"Every populated value is one of the {p['expected']} codes in the target's reference list." if n == 0
                            else f"{n} target row(s) hold a value that is not in the target's reference list ({p['expected']} codes)."})
+        elif p["check"] == "VALUES_IN_CODE_SET":
+            checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
+                           "detail": f"Every populated value is a canonical code ({p['expected']} codes in the set)." if n == 0
+                           else f"{n} canonical row(s) hold a value with no approved canonical code; map it on Business Rules → Code sets."})
         elif p["check"] == "NO_ORPHANS":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": "Every row points at an existing household." if n == 0 else f"{n} row(s) point at a household that is not in the target."})

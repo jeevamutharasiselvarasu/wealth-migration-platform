@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Canonical model governance</div>
+      <h1>Canonical model {{ model.version }}</h1>
+      <p>The universal model every source maps into and every target maps out of. Fields are typed; coded fields are bound to a code set, so a source's own spellings are mapped to canonical codes once (stage 03, Code sets) and canonical codes to the target's values once per target system (Target system → Code values).</p>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start">{% if release %}<span class="chip g">Released</span>{% else %}<span class="chip ex">Not released</span>{% endif %}</div>
+  </div>
+
+  <section class="card" data-testid="model-releases">
+    <h3 style="font-size:16px">Releases</h3>
+    {% if release %}<p class="fh">In use: <b>{{ release.version }}</b>, released by {{ release.released_by }} on {{ release.released_utc[:10] }} (content <span class="font-mono">{{ release.content_sha256[:12] }}</span>).</p>
+    {% else %}<p class="fh">Nothing is released yet; the platform reads the definition ({{ definition_version }}) until the Platform Admin or the Domain SME releases it.</p>{% endif %}
+    {% if can_release and pending %}<form action="/api/canonical-model/release" method="post" class="mt-2"><button class="btn p sm" data-testid="release-model">Release version {{ definition_version }}</button></form>{% endif %}
+    {% if releases %}<ul class="mt-2 text-[11px]">{% for r in releases %}<li><b>{{ r.version }}</b> · {{ r.released_by }} · {{ r.released_utc[:19] }} · <span class="font-mono">{{ r.content_sha256[:12] }}</span></li>{% endfor %}</ul>{% endif %}
+    <p class="mt-2 text-[11px] text-[#5A6A88]">A released version never changes. A changed definition needs a new version number. Field changes requested by a migration still go through <a href="/canonical-changes" class="font-bold text-blue-700">Canonical change requests</a>.</p>
+  </section>
+
+  {% for name, e in model.entities.items() %}
+  <section class="card" id="entity-{{ name }}">
+    <h3 style="font-size:16px">{{ name }} <span class="ml-2 font-mono text-[10px] text-[#5A6A88]">{{ e.fields|length }} fields</span></h3>
+    <p class="fh">{{ e.description }}</p>
+    <div class="tw mt-2"><table class="t">
+      <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Required</th><th>Code set</th><th>Notes</th></tr></thead>
+      <tbody>{% for f in e.fields %}<tr>
+        <td class="font-mono">{{ f.name }}</td><td>{{ f.type or 'string' }}</td><td>{{ 'Yes' if f.key else '' }}</td><td>{{ 'Yes' if f.required else '' }}</td>
+        <td>{% if f.code_set %}<a href="#set-{{ f.code_set }}" class="font-mono text-blue-700">{{ f.code_set }}</a>{% endif %}</td>
+        <td>{% if f.sensitive %}<span class="chip ex">Sensitive</span> {% endif %}{{ f.description or '' }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endfor %}
+
+  {% for name, cs in model.code_sets.items() %}
+  <section class="card" id="set-{{ name }}">
+    <h3 style="font-size:16px">Code set: <span class="font-mono">{{ name }}</span> <span class="ml-2 font-mono text-[10px] text-[#5A6A88]">{{ cs.codes|length }} codes</span></h3>
+    <p class="fh">{{ cs.description }}{% set used = [] %}{% for en, fs in coded.items() %}{% for f, s in fs.items() %}{% if s == name %}{% if used.append(en ~ '.' ~ f) %}{% endif %}{% endif %}{% endfor %}{% endfor %}{% if used %} Used by <span class="font-mono">{{ used|join(', ') }}</span>.{% else %} Not bound to a field yet.{% endif %}</p>
+    <div class="tw mt-2"><table class="t">
+      <thead><tr><th>Code</th><th>Description</th><th>Known spellings (suggestions only)</th></tr></thead>
+      <tbody>{% for c in cs.codes %}<tr><td class="font-mono">{{ c.code }}</td><td>{{ c.description }}</td><td class="text-[11px]">{{ (c.synonyms or [])|join(', ') }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endfor %}
+  <div class="exc">AccountRole and Advisor are defined in this version; discovery and mapping for them follow in a later phase (today's pilot maps Household, Client and Account). Matching the same person across files (entity resolution) is phase 2.</div>
+</div>
+{% endblock %}

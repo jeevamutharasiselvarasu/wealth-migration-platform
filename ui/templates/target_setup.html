@@ -9,7 +9,7 @@
       <a href="/setup" class="btn g sm" data-testid="back-to-setup" style="margin-bottom:8px;display:inline-block">← Back to Setup</a>
       <div class="ey dm">Platform setup · Target system</div>
       <h1>Target system setup</h1>
-      <p>Platform-level and one time: the Platform Admin connects the target, lets the platform infer its model, reviews it and confirms it. Every migration then maps to this confirmed target; migration users see only the inferred model on the Target mapping page.</p>
+      <p>Platform-level and one time: the Platform Admin connects the target, lets the platform infer its model, reviews it and confirms it. Every migration then maps to this confirmed target; migration users see only the inferred model on the Target mapping page. The target's value for each canonical code is set under <a href="/target-setup/code-values" class="font-bold text-blue-700" data-testid="code-values-link">Target code values</a>.</p>
     </div>
   </div>
   {% if target_config and target_config.connector_type == 'azure-sql' %}<div class="exc" data-testid="target-banner-azure"><b>Azure SQL target.</b> <span class="font-mono">{{ target_config.endpoint }}</span>. The platform learns its structure by reading the table and column list with a read-only sign-in; it never loads data into it. The ADF pipeline does the loading, and a person runs the create scripts.</div>

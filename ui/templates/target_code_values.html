@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Platform setup · target adapter</div>
+      <h1>Target code values{% if target_system %} · {{ target_system }}{% endif %}</h1>
+      <p>The value the target system expects for each canonical code (<a href="/canonical-model" class="font-bold text-blue-700">canonical model {{ (release.version if release else model.version) }}</a>). Set once per target system by the Platform Admin and reused by every migration into it. A code left blank passes to the target unchanged.</p>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start"><a href="/target-setup" class="btn g sm">← Target system</a></div>
+  </div>
+  {% if not target_system %}<div class="exc">Confirm the target system first (Target system), then set its code values here.</div>{% endif %}
+  <div class="ins">These values are data in the package (<span class="font-mono">xodus_ref.target_code_map</span>); the mirror procedure translates the canonical code on the way to the target. A change reaches a migration when its package is regenerated, merged and set up.</div>
+
+  {% for cs in sets %}
+  <section class="card" id="set-{{ cs.name }}">
+    <h3 style="font-size:16px"><span class="font-mono">{{ cs.name }}</span> <span class="ml-2 text-[10px] text-[#5A6A88]">{{ cs.codes|length - cs.unmapped }} of {{ cs.codes|length }} set</span></h3>
+    <p class="fh">{{ cs.description }}</p>
+    <form action="/api/target-system/code-values" method="post">
+      <input type="hidden" name="code_set" value="{{ cs.name }}">
+      <div class="tw mt-2"><table class="t">
+        <thead><tr><th>Canonical code</th><th>Description</th><th>Target value</th><th>Last set</th></tr></thead>
+        <tbody>{% for c in cs.codes %}{% set cur = cs["values"].get(c.code) %}<tr>
+          <td class="font-mono">{{ c.code }}</td><td>{{ c.description }}</td>
+          <td>{% if can_edit %}<input name="v_{{ c.code }}" value="{{ cur.target_value if cur else '' }}" maxlength="400" class="input w-56" placeholder="(passes through)" aria-label="Target value for {{ c.code }}">{% else %}<span class="font-mono">{{ cur.target_value if cur else '—' }}</span>{% endif %}</td>
+          <td class="text-[10px] text-[#5A6A88]">{% if cur %}{{ cur.updated_by }} · {{ cur.updated_utc[:10] }}{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+      {% if can_edit %}<button class="btn p sm mt-2">Save {{ cs.name }}</button>{% endif %}
+    </form>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

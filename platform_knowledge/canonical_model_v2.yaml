@@ -1,0 +1,129 @@
+# XODUS canonical model v2: universal for every source and every target (docs/XODUS_CANONICAL_PROPOSAL.md).
+# Field names of Household, Client and Account are unchanged from v1, so approved mappings stay valid; v2 adds types, code sets
+# bound to the coded fields, and the AccountRole and Advisor entities. Released on the platform (Canonical model page) as a version.
+# Code sets: every canonical code with a description and the spellings sources commonly use (synonyms are only suggestions;
+# an analyst approves every source value -> canonical code).
+model: XODUS-Canonical
+version: 2.0.0
+entities:
+  Household:
+    description: The grouping a firm manages together, with its advisor. Clients and accounts belong to a household.
+    fields:
+      - {name: HH_ID, type: string, key: true, required: true, description: Household identifier in the source}
+      - {name: HH_NAME, type: string, required: true, description: Household name as the firm writes it}
+      - {name: HH_DISPLAY_NAME, type: string, description: Proper display name}
+      - {name: ADVISOR_ID, type: string, description: The household's advisor (Advisor.ADVISOR_ID)}
+      - {name: REP_CODE, type: string, description: Rep code the household is booked under}
+      - {name: CREATED_DATE, type: date}
+      - {name: HH_STATUS, type: string}
+      - {name: DELETED_DATE, type: date}
+  Client:
+    description: A person or an organisation in a household, with its role and order in the household.
+    fields:
+      - {name: CLIENT_ID, type: string, key: true, required: true}
+      - {name: LEGAL_NAME, type: string, required: true}
+      - {name: TAX_ID, type: string, required: true, sensitive: true}
+      - {name: CLIENT_TYPE, type: string, required: true}
+      - {name: FIRST_NAME, type: string}
+      - {name: MIDDLE_NAME, type: string}
+      - {name: LAST_NAME, type: string}
+      - {name: DATE_OF_BIRTH, type: date, sensitive: true}
+      - {name: HH_ID, type: string, description: The client's household (Household.HH_ID)}
+      - {name: HH_ORDER, type: integer}
+      - {name: HH_RELATIONSHIP, type: string, code_set: household_role}
+      - {name: ADDRESS_LINE_1, type: string}
+      - {name: ADDRESS_LINE_2, type: string}
+      - {name: CITY, type: string}
+      - {name: STATE, type: string}
+      - {name: POSTAL_CODE, type: string}
+      - {name: COUNTRY, type: string}
+      - {name: PHONE, type: string, sensitive: true}
+      - {name: EMAIL, type: string, sensitive: true}
+      - {name: EMPLOYER_NAME, type: string}
+  Account:
+    description: An account held at a custodian, owned through AccountRole and booked to a household.
+    fields:
+      - {name: ACCT_NUM, type: string, key: true, required: true}
+      - {name: ACCOUNT_ID, type: string}
+      - {name: ACCT_NAME, type: string}
+      - {name: CUSTODIAN_CODE, type: string, required: true, code_set: custodian}
+      - {name: CUSTODIAN_NAME, type: string}
+      - {name: REG_TYPE, type: string, required: true, code_set: registration_type}
+      - {name: TAX_STATUS, type: string, code_set: tax_status}
+      - {name: ACCT_STATUS, type: string, code_set: account_status}
+      - {name: OPEN_DATE, type: date, required: true}
+      - {name: CLOSED_DATE, type: date}
+      - {name: REP_CODE, type: string}
+      - {name: HH_ID, type: string, description: The account's household (Household.HH_ID)}
+      - {name: BALANCE, type: decimal}
+      - {name: BALANCE_AS_OF, type: date}
+  AccountRole:
+    description: Who holds an account and how (owner, joint owner, trustee, beneficiary, ...). Replaces names copied onto accounts.
+    fields:
+      - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
+      - {name: CLIENT_ID, type: string, key: true, required: true, description: Client.CLIENT_ID}
+      - {name: ROLE, type: string, required: true, code_set: account_role}
+      - {name: ROLE_ORDER, type: integer}
+  Advisor:
+    description: The advisor (the representative on accounts and households), with the rep codes they use at each custodian.
+    fields:
+      - {name: ADVISOR_ID, type: string, key: true, required: true}
+      - {name: ADVISOR_NAME, type: string, required: true}
+      - {name: EMAIL, type: string, sensitive: true}
+      - {name: TITLE, type: string}
+      - {name: IS_ACTIVE, type: boolean}
+      - {name: REP_CODES, type: string, description: Rep codes with their custodian}
+code_sets:
+  registration_type:
+    description: How an account is registered.
+    codes:
+      - {code: INDIVIDUAL, description: Individual taxable account, synonyms: [Individual, INDV, INDV_TAXABLE, TAX, Taxable]}
+      - {code: JOINT_WROS, description: Joint tenants with right of survivorship, synonyms: [JTWROS, Joint WROS, Joint]}
+      - {code: JOINT_TIC, description: Joint tenants in common, synonyms: [JT_TEN, Tenants in Common, TIC]}
+      - {code: IRA_TRADITIONAL, description: Traditional IRA, synonyms: [IRA, IRA_TRAD, Traditional IRA]}
+      - {code: IRA_ROTH, description: Roth IRA, synonyms: [Roth IRA, ROTH]}
+      - {code: IRA_ROLLOVER, description: Rollover IRA, synonyms: [Rollover IRA, IRA Rollover, IRA_ROLL, ROLLOVER_IRA]}
+      - {code: IRA_SEP, description: SEP IRA, synonyms: [SEP IRA, SEP]}
+      - {code: IRA_SIMPLE, description: SIMPLE IRA, synonyms: [SIMPLE IRA]}
+      - {code: IRA_INHERITED, description: Inherited (beneficiary) IRA, synonyms: [Inherited IRA, Beneficiary IRA]}
+      - {code: IRA_INHERITED_ROTH, description: Inherited Roth IRA, synonyms: [Inherited Roth IRA]}
+      - {code: TRUST, description: Trust, synonyms: [Trust, Revocable Trust, Irrevocable Trust]}
+      - {code: ESTATE, description: Estate, synonyms: [Estate]}
+      - {code: CORPORATE, description: Corporate or entity account, synonyms: [Corporate, Corporation, LLC, Entity]}
+      - {code: CUSTODIAL_MINOR, description: UGMA or UTMA custodial account, synonyms: [UGMA, UTMA, Custodial]}
+  tax_status:
+    description: How the account is taxed.
+    codes:
+      - {code: TAXABLE, description: Taxable, synonyms: [Taxable, Tax]}
+      - {code: TAX_DEFERRED, description: Tax deferred, synonyms: [TaxDeferred, Tax Deferred, Deferred]}
+      - {code: TAX_EXEMPT, description: Tax exempt, synonyms: [TaxExempt, Tax Exempt, Exempt, TaxFree, NonTaxable, Non Taxable]}
+  custodian:
+    description: The custodian holding the account.
+    codes:
+      - {code: SCHWAB, description: Charles Schwab, synonyms: [Schwab, SCHW, SWB, SCHWAB_PAS, Charles Schwab]}
+      - {code: TDA, description: TD Ameritrade, synonyms: [TD Ameritrade, TD AMERITRADE, TDAmeritrade]}
+      - {code: FIDELITY, description: Fidelity, synonyms: [Fidelity, FID, FIDC, NFS]}
+      - {code: PERSHING, description: Pershing, synonyms: [Pershing, PERSH, PER, BNY_PERSHING]}
+      - {code: AXOS, description: Axos Advisor Services, synonyms: [Axos, Axos Clearing]}
+      - {code: LINCOLN, description: Lincoln Financial Group, synonyms: [Lincoln Financial Group, Lincoln]}
+  account_status:
+    description: Whether the account is open.
+    codes:
+      - {code: OPEN, description: Open, synonyms: [Open, Active, A]}
+      - {code: CLOSED, description: Closed, synonyms: [Closed, Inactive, C]}
+      - {code: PENDING, description: Pending opening, synonyms: [Pending, New]}
+  household_role:
+    description: A client's role in the household.
+    codes:
+      - {code: HEAD, description: Head of household, synonyms: [Head, Primary, HOH]}
+      - {code: SPOUSE, description: Spouse or partner, synonyms: [Spouse, Partner, Wife, Husband]}
+      - {code: DEPENDENT, description: Dependent, synonyms: [Dependent, Child, Minor]}
+      - {code: OTHER, description: Other member, synonyms: [Other, Member]}
+  account_role:
+    description: How a client holds an account.
+    codes:
+      - {code: OWNER, description: Owner, synonyms: [Owner, Primary Owner]}
+      - {code: JOINT_OWNER, description: Joint owner, synonyms: [Joint Owner, Joint]}
+      - {code: TRUSTEE, description: Trustee, synonyms: [Trustee]}
+      - {code: BENEFICIARY, description: Beneficiary, synonyms: [Beneficiary]}
+      - {code: AUTHORIZED, description: Authorized person, synonyms: [Authorized, Power of Attorney, POA]}
