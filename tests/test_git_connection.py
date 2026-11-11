@@ -120,7 +120,7 @@ def test_git_routes_are_role_gated_and_the_save_route_rejects_a_bad_repository()
     from ui import app as app_module
     from ui.role_policy import allowed_roles_for
     assert allowed_roles_for("POST", "/api/git/connection") == allowed_roles_for("POST", "/api/git/connection/test") == {"Platform Admin"}
-    assert allowed_roles_for("POST", "/api/git/publish") == {"Migration Analyst"}  # publishing the package is a migration action, not platform setup
+    assert allowed_roles_for("POST", "/api/git/publish") == {"Migration Analyst", "IMO Lead"}  # publishing the package is a migration action, not platform setup
     sessions = app_module.session_mgr.active_sessions
     sessions["sid"] = dict(sessions.get("sid", {}), role="Platform Admin", name="Ann")
 

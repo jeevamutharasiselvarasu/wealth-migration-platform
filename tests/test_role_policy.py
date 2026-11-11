@@ -28,16 +28,17 @@ def test_policy_matrix_matches_the_documented_responsibilities():
     assert a("POST", "/api/migration/setup") == {"IMO Lead", "Migration Analyst"}
     assert a("POST", "/api/demo/load") == {"Migration Analyst"}  # fills a migration workspace, so not an admin action
     assert a("POST", "/api/kernel/update") == {"Platform Admin", "Domain SME"}
-    assert a("POST", "/api/entities/upload-sample-file") == {"Migration Analyst"}
-    assert a("POST", "/api/entities/confirm-inference") == {"Migration Analyst"}
-    assert a("POST", "/api/mapping-suggestions/S-1/review") == {"Migration Analyst"}
-    assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Migration Analyst"}
-    assert a("POST", "/api/mapping-gaps/RFI-1/response") == {"Migration Analyst", "Domain SME"}
+    assert a("POST", "/api/entities/upload-sample-file") == {"Migration Analyst", "IMO Lead"}
+    assert a("POST", "/api/entities/confirm-inference") == {"Migration Analyst", "IMO Lead"}
+    assert a("POST", "/api/mapping-suggestions/S-1/review") == {"Migration Analyst", "IMO Lead"}
+    assert a("POST", "/api/mapping-suggestions/approve-entity") == {"Migration Analyst", "IMO Lead"}
+    assert a("POST", "/api/mapping-gaps/RFI-1/response") == {"Migration Analyst", "Domain SME", "IMO Lead"}
     assert a("GET", "/api/migration/setup") is None and a("POST", "/login") is None
 
 
 def test_template_roles_imo_lead_configures_and_compliance_reviewer_is_read_only():
-    """Suite template roles: the IMO Lead creates and configures workspaces but approves no mapping; the Compliance Reviewer holds no write capability."""
+    """Suite template roles: the IMO Lead carries both the Migration Analyst and the Validation Specialist rights (decided 2026-11-11), never the
+    platform or canonical-model ones; the Compliance Reviewer holds no write capability."""
     from ui.auth import SessionManager
     from control_plane.services import user_registry
 
@@ -46,7 +47,10 @@ def test_template_roles_imo_lead_configures_and_compliance_reviewer_is_read_only
     assert "Compliance Reviewer" not in write_roles
     for path in ("/api/migration/setup", "/api/migration/new", "/api/entities/save-scopes"):
         assert "IMO Lead" in policy.allowed_roles_for("POST", path)
-    for path in ("/api/mapping-suggestions/approve-entity", "/api/entities/confirm-inference", "/api/validation/run", "/api/kernel/update", "/api/demo/load"):
+    for path in ("/api/mapping-suggestions/approve-entity", "/api/entities/confirm-inference", "/api/validation/run", "/api/data-plane/start",
+                 "/api/target-validation/signoff", "/api/live-validation/run", "/api/git/pull-request/1/merge"):
+        assert "IMO Lead" in policy.allowed_roles_for("POST", path)
+    for path in ("/api/kernel/update", "/api/demo/load", "/api/azure/connection", "/api/live-target", "/api/canonical-releases"):
         assert "IMO Lead" not in policy.allowed_roles_for("POST", path)
 
 

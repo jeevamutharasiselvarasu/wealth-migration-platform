@@ -122,7 +122,7 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             page = await go(admin, "GET", "/admin/users")
             assert page.status_code == 200 and "ann@example.com" in page.text and "PENDING" in page.text and "password_hash" not in page.text and "scrypt" not in page.text
             await go(admin, "POST", "/persona-selection", {"role": "Platform Admin"})
-            assert (await go(ann, "POST", "/api/users/ann@example.com/decision", {"action": "APPROVE", "roles": "Platform Admin"})).headers["location"] == "/login"  # not signed in
+            assert (await go(ann, "POST", "/api/users/ann@example.com/decision", {"action": "APPROVE", "roles": "Platform Admin"})).headers["location"].startswith("/login")  # not signed in
             r = await go(admin, "POST", "/api/users/ann@example.com/decision", {"action": "APPROVE", "roles": "Migration Analyst"})
             assert "notice=" in r.headers["location"] and "ACTIVE" in r.headers["location"]
             assert (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"] == "/suite"

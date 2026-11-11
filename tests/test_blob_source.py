@@ -29,7 +29,7 @@ def test_status_never_raises_and_says_when_nothing_is_configured(monkeypatch):
 
 
 def test_blob_routes_are_role_gated():
-    assert allowed_roles_for("POST", "/api/blob/load") == {"Migration Analyst"}
+    assert allowed_roles_for("POST", "/api/blob/load") == {"Migration Analyst", "IMO Lead"}
     assert allowed_roles_for("POST", "/api/blob/seed-demo") == {"Platform Admin"}
 
 

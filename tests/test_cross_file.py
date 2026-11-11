@@ -78,7 +78,7 @@ def test_relationship_decisions_are_validated_persisted_and_attached(tmp_path):
     assert analysis["relationships"][0]["review"]["status"] == "REJECTED" and analysis["relationships"][0]["review"]["reviewer"] == "Bea"
     assert analysis["relationships"][1]["review"] is None
     from ui.role_policy import allowed_roles_for
-    assert allowed_roles_for("POST", "/api/relationships/review") == {"Migration Analyst"}
+    assert allowed_roles_for("POST", "/api/relationships/review") == {"Migration Analyst", "IMO Lead"}
 
 
 def test_non_key_columns_that_share_values_are_not_offered_as_relationships():
