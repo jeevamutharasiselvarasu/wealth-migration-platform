@@ -8,11 +8,12 @@
 # Account and Household (2.6% null at source; Households carry an advisor, not a rep code). Fields the targets need
 # but the source cannot always supply are nullable here and carry `required_for_targets`, to be enforced when
 # canonical-to-target mapping starts. `sensitive` marks personal data that must never appear in lineage or previews.
+# v1.2.0 (2026-11-11): Advisor and AccountRole added (canonical model v2, phase 2); field names as in platform_knowledge/canonical_model_v2.yaml.
 # SEED VALUES: keys/types still need business owner confirmation before being treated as final.
 schema_version: 1
 firm_id: SIMPLICITY
 firm_name: Simplicity
-config_version: "1.1.0"
+config_version: "1.2.0"
 scope_direction: source_to_canonical
 canonical_contract_ref: Simplicity-MCL-v1
 target_system:
@@ -71,3 +72,19 @@ entities:
       - {name: CREATED_DATE, type: date, nullable: true, description: "Date the household record was created (source CreatedDate)."}
       - {name: HH_STATUS, type: string, nullable: true, description: "Active or Deleted, derived from DELETED_DATE. Whether deleted households migrate is a business decision."}
       - {name: DELETED_DATE, type: date, nullable: true, description: "Date the household was deleted or archived (source DeletedDate); empty means active."}
+  Advisor:
+    grain: One advisor (the representative on households and accounts)
+    fields:
+      - {name: ADVISOR_ID, type: string, nullable: false, is_key: true, description: "Advisor identifier (source Id GUID); Household.ADVISOR_ID points at it."}
+      - {name: ADVISOR_NAME, type: string, nullable: false, description: "Advisor's name as shown to clients (source Name); the Orion Representative Name."}
+      - {name: EMAIL, type: string, nullable: true, sensitive: true, description: "Work email (source Email)."}
+      - {name: TITLE, type: string, nullable: true, description: "Job title (source Title)."}
+      - {name: IS_ACTIVE, type: boolean, nullable: true, description: "Whether the advisor is active (source IsActive)."}
+      - {name: REP_CODES, type: string, nullable: true, description: "Rep codes with their custodian (source RepCodes, a JSON list)."}
+  AccountRole:
+    grain: One client's role on one account (owner, joint owner, trustee, beneficiary, ...)
+    fields:
+      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM)."}
+      - {name: CLIENT_ID, type: string, nullable: false, description: "The client (Client.CLIENT_ID); points at the surviving client after entity resolution."}
+      - {name: ROLE, type: string, nullable: false, description: "Canonical account_role code (OWNER, JOINT_OWNER, TRUSTEE, BENEFICIARY, AUTHORIZED)."}
+      - {name: ROLE_ORDER, type: integer, nullable: true, description: "Order of the role holders on the account (1 is the first owner)."}

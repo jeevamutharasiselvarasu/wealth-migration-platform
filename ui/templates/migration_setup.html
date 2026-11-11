@@ -75,7 +75,7 @@
       <div class="ins" style="border-left-color:var(--blue)">
         <b>Migration entity scope</b>
         Select the entities included in this migration. Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
-        <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for entity in ['Account','Household','Client'] %}<label class="lt"><input type="checkbox" name="entities" value="{{ entity }}" {% if entity in setup.get('entities',['Account','Household','Client']) %}checked{% endif %}><span><strong>{{ entity }}</strong><span>Include in this migration</span></span></label>{% endfor %}</div>
+        <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for entity in pilot_entities %}<label class="lt"><input type="checkbox" name="entities" value="{{ entity }}" {% if entity in setup.get('entities', core_entities) %}checked{% endif %}><span><strong>{{ entity }}</strong><span>Include in this migration</span></span></label>{% endfor %}</div>
       </div>
     </section>
 

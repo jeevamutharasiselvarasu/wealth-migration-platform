@@ -26,7 +26,7 @@ def test_seed_firm_config_is_p0_source_to_canonical_only():
     assert config.firm_id == "SIMPLICITY"
     assert config.target_system.name == "Simplicity"
     assert config.scope_direction == "source_to_canonical"
-    assert sorted(config.entities) == ["Account", "Client", "Household"]
+    assert sorted(config.entities) == ["Account", "AccountRole", "Advisor", "Client", "Household"]
 
 
 def test_required_fields_match_platform_kernel_required_fields():
@@ -68,7 +68,7 @@ def test_version_id_is_stable_and_changes_with_contract(tmp_path):
         tmp_path, lambda raw: raw["entities"]["Client"]["fields"][1].update({"nullable": True})))
     assert changed.config_version == base.config_version
     assert changed.version_id != base.version_id
-    assert base.version_id.startswith("1.1.0+")
+    assert base.version_id.startswith("1.2.0+")
 
 
 def _setup_client(tmp_path, monkeypatch, name):

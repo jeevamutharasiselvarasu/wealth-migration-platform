@@ -165,6 +165,9 @@ class SchemaMapperAgent:
     ENTITY_CATALOG = {
         "Account": {"AccountId": "ACCOUNT_ID"},
         "Household": {"Id": "HH_ID"},
+        "Advisor": {"Id": "ADVISOR_ID", "Name": "ADVISOR_NAME", "Title": "TITLE", "Email": "EMAIL", "IsActive": "IS_ACTIVE", "RepCodes": "REP_CODES"},
+        "AccountRole": {"AccountNumber": "ACCT_NUM", "ContactId": "CLIENT_ID", "ClientId": "CLIENT_ID", "Role": "ROLE", "RoleType": "ROLE",
+                        "RoleOrder": "ROLE_ORDER"},
     }
 
     MANDATORY_CANONICAL_FIELDS = {

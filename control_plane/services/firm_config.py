@@ -12,7 +12,8 @@ from typing import Dict, List, Literal
 import yaml
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
-P0_ENTITIES = ("Account", "Client", "Household")
+P0_ENTITIES = ("Account", "Client", "Household", "Advisor", "AccountRole")
+CORE_ENTITIES = ("Account", "Household", "Client")  # the default scope of a new migration; Advisor and AccountRole are opt-in
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "firm_config.yaml"
 CONFIG_PATH_ENV = "XODUS_FIRM_CONFIG"
 

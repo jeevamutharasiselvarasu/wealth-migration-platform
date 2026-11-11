@@ -5,13 +5,14 @@ transform source values, load a target, or assign migration waves.
 """
 from __future__ import annotations
 
+from control_plane.services.firm_config import P0_ENTITIES as _P0
 from collections import Counter
 from typing import Any
 
 from control_plane.services.entity_inference import infer_entity_from_headers
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 
-P0_ENTITIES = ("Account", "Household", "Client")
+P0_ENTITIES = _P0
 
 
 class SourceClassificationAgent:

@@ -4,13 +4,14 @@ Reads approved mappings and the confirmed source files; never executes transform
 Values are checked as supplied in the source, before any registered transformation.
 No target-side or load verification is performed (out of scope for the P0 pilot).
 """
+from control_plane.services.firm_config import P0_ENTITIES as _P0
 from typing import Any, Dict, List, Optional
 
 from control_plane.services import canonical_derivations
 from control_plane.services.validation_scenarios import evaluate as scenario_eval
 from control_plane.services.mcl_validation import _key_check, _present, _relationship_check
 
-ENTITIES = ("Account", "Client", "Household")
+ENTITIES = _P0
 RELATIONSHIPS = (
     ("Account", "HH_ID", "Household", "HH_ID"),
     ("Client", "HH_ID", "Household", "HH_ID"),

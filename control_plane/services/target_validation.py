@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from control_plane.services import run_monitor, sql_target
+from control_plane.services import entity_resolution, run_monitor, sql_target
 
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 RELATIONSHIPS = (("Account", "HH_ID", "Household", "HH_ID"), ("Client", "HH_ID", "Household", "HH_ID"))
@@ -64,6 +64,15 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
         add("STAGING_ROW_COUNT", entity, e["staging_table"], "", f"SELECT COUNT(*) FROM {staging}", "equals", e.get("expected_rows"))
         if e.get("expected_sql"):  # the expected count is itself a count query (rows the raw file delivered)
             plan[-1]["expected_sql"] = e["expected_sql"]
+        # Entity resolution: after the approved match rules ran, no two canonical rows may still share a match value.
+        for fields in e.get("resolution") or []:
+            m = entity_resolution.sql_match(fields, "c")
+            ck = _id(e["key"]) if e.get("key") else None
+            dup = f"SELECT {m} AS [m] FROM {staging} AS c"
+            add("DUPLICATES_RESOLVED", entity, e["staging_table"], " + ".join(fields),
+                f"SELECT COUNT(*) FROM (SELECT d.[m] FROM ({dup}) AS d WHERE d.[m] IS NOT NULL GROUP BY d.[m] HAVING COUNT(*) > 1) AS x", "zero",
+                keys_sql=(f"SELECT TOP ({MAX_ROW_KEYS}) CAST(c.{ck} AS nvarchar(400)) FROM {staging} AS c WHERE {m} IN "
+                          f"(SELECT d.[m] FROM ({dup}) AS d WHERE d.[m] IS NOT NULL GROUP BY d.[m] HAVING COUNT(*) > 1)" if ck else None))
         # Canonical conformance (model v2): every populated coded value in the canonical table is a code of its set. A value no one mapped
         # to a canonical code stays as received and is named here by its source key.
         for field, codes in sorted((e.get("code_sets") or {}).items()):
@@ -198,6 +207,10 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": f"Every populated value is one of the {p['expected']} codes in the target's reference list." if n == 0
                            else f"{n} target row(s) hold a value that is not in the target's reference list ({p['expected']} codes)."})
+        elif p["check"] == "DUPLICATES_RESOLVED":
+            checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
+                           "detail": "No two canonical records share this match value; every duplicate was resolved to one record." if n == 0
+                           else f"{n} match value(s) are still shared by more than one canonical record."})
         elif p["check"] == "VALUES_IN_CODE_SET":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
                            "detail": f"Every populated value is a canonical code ({p['expected']} codes in the set)." if n == 0

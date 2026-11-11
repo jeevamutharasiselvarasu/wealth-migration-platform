@@ -12,6 +12,7 @@ from control_plane import file_store
 from control_plane.db import get_db_connection, init_db, table_exists
 from control_plane.services.source_file_adapter import read_source_records
 from control_plane.services import document_text
+from control_plane.services.firm_config import P0_ENTITIES as _P0
 
 SOURCE_UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "App_Data" / "source_uploads"
 
@@ -473,7 +474,7 @@ class WorkspaceStateStore:
         self.generated_dashboard = self._build_dashboard_from_form()
         return self.generated_dashboard
 
-    P0_ENTITIES = {"Account", "Client", "Household"}
+    P0_ENTITIES = set(_P0)
 
     def save_entity_scopes(self, scopes_map: Dict[str, str]):
         """Persist only the three entities enabled in the P0 source-to-canonical workflow."""

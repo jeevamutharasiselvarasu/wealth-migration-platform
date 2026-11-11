@@ -22,6 +22,14 @@ ENTITY_TERMS = {
         "id": {"client", "clientid", "clientref", "party", "partyref", "partyid", "personid", "individualid", "contactid", "contactref"},
         "attributes": {"salutation", "nickname", "middlename", "dateofbirth", "dob", "birthdate", "jobtitle", "employername", "employer", "designations", "legalname", "fullname", "displaytxt", "displayname", "givenname", "givennm", "firstname", "surname", "lastname", "email", "emailtxt", "taxid", "clienttype", "recordkind", "activeflag", "channelcd", "updatedat"},
     },
+    "Advisor": {
+        "id": {"advisor", "advisorid", "advisorref", "representative", "repid"},
+        "attributes": {"repcodes", "smsphone", "isactive", "advisorname", "title"},
+    },
+    "AccountRole": {
+        "id": {"accountrole", "accountroleid", "ownershipid"},
+        "attributes": {"role", "roletype", "roleorder", "ownershiptype", "ownershippct"},
+    },
 }
 RELATIONSHIP_TERMS = {
     "owner", "ownerref", "object", "objectref", "link", "linkkind", "relationship",

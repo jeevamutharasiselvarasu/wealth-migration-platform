@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Platform setup · target adapter</div>
+      <h1>Target adapter{% if target_system %} · {{ target_system }}{% endif %}</h1>
+      <p>Canonical → target, reviewed once for this target system and reused by every migration into it. Canonical field names are the same for every source, so the adapter does not depend on any source. Each migration adopts the latest confirmed version on stage 06 and reviews only the fields the adapter leaves open. The target's values for coded fields are set under <a href="/target-setup/code-values" class="font-bold text-blue-700">Target code values</a>.</p>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start"><a href="/target-setup" class="btn g sm">← Target system</a></div>
+  </div>
+  {% if not spec %}<div class="exc">Confirm the target system first (Target system).</div>{% else %}
+  <section class="kpis" aria-label="Adapter summary">
+    <div class="kpi"><small>Confirmed version</small><b>{{ versions[0].version if versions else '—' }}</b><span>{{ (versions[0].fields ~ ' field(s)') if versions else 'none yet' }}</span></div>
+    <div class="kpi"><small>Approved</small><b>{{ counts.APPROVED or 0 }}</b><span>mapped by the adapter</span></div>
+    <div class="kpi"><small>Waiting</small><b>{{ counts.PROPOSED or 0 }}</b><span>need a decision</span></div>
+    <div class="kpi"><small>Left to migrations</small><b>{{ counts.REJECTED or 0 }}</b><span>each migration maps these</span></div>
+  </section>
+
+  {% if can_edit %}
+  <section class="card">
+    <h3 style="font-size:16px">Draft</h3>
+    <p class="fh">Adds every target field the adapter does not hold yet. Start from one migration's approved target mappings (configuration only, no data is read), or from the target model's own hints. Decided fields are never changed by a draft.</p>
+    <form action="/api/target-system/adapter/draft" method="post" class="mt-2 flex flex-wrap items-center gap-2">
+      <select name="from_migration" class="input" aria-label="Start from"><option value="">From the target model's hints</option>{% for m in migrations %}<option value="{{ m.id }}">From {{ m.name }} ({{ m.id }})</option>{% endfor %}</select>
+      <button class="btn g sm" data-testid="adapter-draft">Add fields to the draft</button>
+    </form>
+    <div class="mt-2 flex flex-wrap gap-2">
+      {% if counts.PROPOSED %}<form action="/api/target-system/adapter/approve-proposed" method="post"><button class="btn g sm">Approve proposed fields with a canonical field</button></form>{% endif %}
+      {% if grouped and not counts.PROPOSED and draft_changed %}<form action="/api/target-system/adapter/confirm" method="post" class="flex items-center gap-2"><input name="notes" maxlength="500" placeholder="Notes (optional)" class="input" aria-label="Notes"><button class="btn p sm" data-testid="adapter-confirm">Confirm version {{ (versions[0].version if versions else 0) + 1 }}</button></form>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if versions %}<section class="card"><h3 style="font-size:16px">Confirmed versions</h3>
+    <ul class="mt-2 text-[11px]">{% for v in versions %}<li><b>Version {{ v.version }}</b> · {{ v.fields }} field(s) · target model {{ v.spec_version }} · {{ v.confirmed_by }} · {{ v.confirmed_utc[:19] }}{% if v.notes %} · {{ v.notes }}{% endif %}</li>{% endfor %}</ul>
+    <p class="mt-1 text-[11px] text-[#5A6A88]">A confirmed version never changes; a change to the draft becomes the next version.</p></section>{% endif %}
+
+  {% for entity, rows in grouped.items() %}
+  <section class="card" id="adapter-{{ entity }}">
+    <h3 style="font-size:16px">{{ entity }} <span class="ml-2 font-mono text-[10px] text-[#5A6A88]">{{ rows|length }} target fields</span></h3>
+    <div class="tw mt-2"><table class="t">
+      <thead><tr><th>Target field</th><th>Canonical field</th><th>Rule</th><th>Proposed from</th><th>Status</th><th></th></tr></thead>
+      <tbody>{% for r in rows %}<tr>
+        <td class="font-mono">{{ r.target_field }}</td>
+        <td>{% if can_edit and r.status == 'PROPOSED' %}<form id="ad-{{ entity }}-{{ loop.index }}" action="/api/target-system/adapter/decide" method="post">
+            <input type="hidden" name="entity_name" value="{{ entity }}"><input type="hidden" name="target_field" value="{{ r.target_field }}">
+            <select name="canonical_field" class="input w-44" aria-label="Canonical field for {{ r.target_field }}">{% if not r.canonical_field %}<option value="">Choose a field</option>{% endif %}{% for cf in canonical_fields.get(entity, []) %}<option value="{{ cf }}" {% if cf == r.canonical_field %}selected{% endif %}>{{ cf }}</option>{% endfor %}</select></form>
+          {% else %}<span class="font-mono">{{ r.canonical_field or '—' }}</span>{% endif %}</td>
+        <td class="font-mono text-[11px]">{{ r.transformation_expression }}</td>
+        <td class="text-[11px]">{{ r.origin }}</td>
+        <td><span class="pill {% if r.status == 'APPROVED' %}approved{% elif r.status == 'REJECTED' %}failed{% else %}review{% endif %}">{{ 'LEFT TO MIGRATION' if r.status == 'REJECTED' else r.status }}</span></td>
+        <td>{% if can_edit %}{% if r.status == 'PROPOSED' %}
+          <button form="ad-{{ entity }}-{{ loop.index }}" name="decision" value="APPROVE" class="btn p sm">Approve</button>
+          <button form="ad-{{ entity }}-{{ loop.index }}" name="decision" value="REJECT" class="btn g sm">Leave to migration</button>
+          {% else %}<form action="/api/target-system/adapter/decide" method="post"><input type="hidden" name="entity_name" value="{{ entity }}"><input type="hidden" name="target_field" value="{{ r.target_field }}"><button name="decision" value="REOPEN" class="btn g sm">Reopen</button></form>{% endif %}{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

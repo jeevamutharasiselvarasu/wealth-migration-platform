@@ -19,9 +19,10 @@ def _fields(entity):
     return set(CONFIG.canonical_field_names(entity))
 
 
-def test_contract_is_1_1_0_with_the_same_three_entities_and_stable_required_fields():
-    assert CONFIG.config_version == "1.1.0" and CONFIG.canonical_contract_ref == "Simplicity-MCL-v1"
-    assert sorted(CONFIG.entities) == ["Account", "Client", "Household"]
+def test_contract_keeps_the_three_core_entities_and_stable_required_fields():
+    # 1.2.0 adds Advisor and AccountRole (canonical model v2, phase 2); the three core entities are unchanged
+    assert CONFIG.config_version == "1.2.0" and CONFIG.canonical_contract_ref == "Simplicity-MCL-v1"
+    assert sorted(CONFIG.entities) == ["Account", "AccountRole", "Advisor", "Client", "Household"]
     assert CONFIG.required_fields("Account") == ["ACCT_NUM", "CUSTODIAN_CODE", "REG_TYPE", "OPEN_DATE"]  # REP_CODE became optional
     assert CONFIG.required_fields("Client") == ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
     assert CONFIG.required_fields("Household") == ["HH_ID", "HH_NAME"]
@@ -30,7 +31,7 @@ def test_contract_is_1_1_0_with_the_same_three_entities_and_stable_required_fiel
 
 def test_keys_are_unchanged_and_the_system_id_is_kept_apart_from_the_custodian_number():
     keys = {e: [f.name for f in c.fields if f.is_key] for e, c in CONFIG.entities.items()}
-    assert keys == {"Account": ["ACCT_NUM"], "Client": ["CLIENT_ID"], "Household": ["HH_ID"]}
+    assert keys == {"Account": ["ACCT_NUM"], "Client": ["CLIENT_ID"], "Household": ["HH_ID"], "Advisor": ["ADVISOR_ID"], "AccountRole": []}
     assert {"ACCOUNT_ID", "ACCT_NUM"} <= _fields("Account")
 
 

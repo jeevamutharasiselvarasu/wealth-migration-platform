@@ -5,6 +5,7 @@ canonical-shaped rows in memory; nothing is executed as code. A Validation Speci
 and proposes exceptions; a Migration Analyst or Platform Admin approves or rejects an exception, and never
 their own proposal.
 """
+from control_plane.services.firm_config import P0_ENTITIES as _P0
 import json
 import sqlite3
 import uuid
@@ -24,7 +25,7 @@ CHECK_TYPES: Dict[str, str] = {
     "ROW_COUNT_MIN": "File set supplies at least N rows for the entity",
 }
 STAGES = ("PRE", "POST")
-ENTITIES = ("Account", "Client", "Household")
+ENTITIES = _P0
 FIELD_OK = tr.FIELD_PATTERN
 
 _DDL = (

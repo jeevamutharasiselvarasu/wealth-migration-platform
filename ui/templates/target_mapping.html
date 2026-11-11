@@ -15,6 +15,12 @@
   <div class="ins"><b>This stage.</b> Runs after the source→canonical mapping has been validated (stage 05). Map each canonical field to a target field and approve the mappings and rules. The next stage (07 Transformation SQL) writes the approved mappings and rules out as SQL.</div>
   {% if target_config and target_config.connector_type == 'azure-sql' %}<div class="exc" data-testid="target-banner-azure"><b>Azure SQL target.</b> <span class="font-mono">{{ target_config.endpoint }}</span>. The platform learns its structure by reading the table and column list with a read-only sign-in; it never loads data into it. The ADF pipeline does the loading, and a person runs the create scripts.</div>
   {% else %}<div class="exc"><b>Simulated target system.</b> It runs as its own service and database, separate from this platform. The platform learns its structure by inspecting it after a one-time setup; nothing is ever loaded into it.</div>{% endif %}
+  {% if adapter %}<section class="card" data-testid="target-adapter">
+    <h3 style="font-size:16px">Target adapter</h3>
+    {% if adapter.latest %}<p class="fh">The Platform Admin confirmed adapter version <b>{{ adapter.latest.version }}</b> for this target ({{ adapter.latest.fields }} field(s)). Adopting it sets those mappings from the adapter; this migration then reviews only the fields the adapter leaves open.{% if adapter.adopted %} This migration adopted version <b>{{ adapter.adopted.version }}</b> ({{ adapter.adopted.adopted_by }}, {{ adapter.adopted.adopted_utc[:10] }}).{% endif %}</p>
+      {% if can_review and (not adapter.adopted or adapter.adopted.version < adapter.latest.version) %}<form action="/api/target-mapping/adopt-adapter" method="post" class="mt-2"><button class="btn p sm" data-testid="adopt-adapter">Adopt adapter version {{ adapter.latest.version }}</button></form>{% endif %}
+    {% else %}<p class="fh">No adapter is confirmed for this target yet; map each field here. The Platform Admin confirms the adapter under Platform setup → Target adapter, and later migrations reuse it.</p>{% endif %}
+  </section>{% endif %}
   <p class="d" style="margin:0">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
 
   <nav aria-label="On this page" class="flex flex-wrap gap-2 text-[11px] font-bold">

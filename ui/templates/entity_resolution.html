@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page" style="padding-block:0">
+  {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
+  <div class="ph">
+    <div>
+      <div class="ey dm">Stage 04 · Schema mapper · entity resolution</div>
+      <h1>Entity resolution</h1>
+      <p>When several source rows are the same real-world record (the same client in two rows), the approved match rules turn them into one canonical record. Rows linked by any approved rule are one record. The most complete row survives and its blank fields are filled from the others. Every source key is kept with its surviving key, and references from other entities (an account role's client) point at the survivor. Masked or missing values (such as <span class="font-mono">[REDACTED]</span>) never match.</p>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start"><a href="/agent-pipeline" class="btn g sm">← Schema mapper</a></div>
+  </div>
+  <div class="ins">Only keys and counts are shown here, never the values that matched. The same steps run in the generated canonical procedures; stage 10 checks <span class="font-mono">DUPLICATES_RESOLVED</span>.</div>
+  <div class="flex flex-wrap gap-2">
+    {% if can_suggest %}<form action="/api/entity-resolution/suggest" method="post"><button class="btn p sm" data-testid="suggest-rules">Propose match rules</button></form>{% endif %}
+    {% if can_preview and entities %}<form action="/api/entity-resolution/preview" method="post"><button class="btn g sm" data-testid="preview-resolution">Preview (counts only)</button></form>{% endif %}
+  </div>
+
+  {% if preview is not none %}
+  <section class="card" data-testid="resolution-preview">
+    <h3 style="font-size:16px">Preview</h3>
+    {% if not preview %}<p class="fh">No proposed or approved rule to preview, or no canonical rows yet.</p>{% endif %}
+    {% for p in preview %}
+    <p class="mt-2 text-xs"><b>{{ p.entity }}</b>: {{ p.rows }} row(s) → {{ p.records }} record(s) with every listed rule ({{ p.merged }} merged).</p>
+    <div class="tw mt-1"><table class="t"><thead><tr><th>Rule</th><th>Status</th><th>Rows merged</th><th>Groups</th><th>Example groups ({{ p.key }})</th></tr></thead>
+      <tbody>{% for r in p.rules %}<tr><td class="font-mono">{{ r.rule_id }}</td><td>{{ r.status }}</td><td>{{ r.merged }}</td><td>{{ r.clusters }}</td>
+        <td class="font-mono text-[10px]">{% for g in r.examples %}{{ g|join(' + ') }}{% if not loop.last %}<br>{% endif %}{% else %}none{% endfor %}</td></tr>{% endfor %}</tbody></table></div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% for e in entities %}
+  <section class="card" id="er-{{ e.name }}">
+    <h3 style="font-size:16px">{{ e.name }}</h3>
+    <p class="fh">Suggested rules: {% for r in e.suggested %}<span class="font-mono">{{ r|join(' + ') }}</span>{% if not loop.last %}; {% endif %}{% endfor %}. A rule is proposed only when this migration fills all of its fields.</p>
+    {% if e.rules %}
+    <div class="tw mt-2"><table class="t">
+      <thead><tr><th>Rule</th><th>Same record when these fields are equal</th><th>Status</th><th></th></tr></thead>
+      <tbody>{% for r in e.rules %}<tr>
+        <td class="font-mono">{{ r.rule_id }}</td><td class="font-mono">{{ r.fields|join(' + ') }}</td>
+        <td><span class="pill {% if r.status == 'APPROVED' %}approved{% elif r.status == 'REJECTED' %}failed{% else %}review{% endif %}">{{ r.status }}</span>{% if r.decided_by %}<div class="text-[10px] text-[#5A6A88]">{{ r.decided_by }} · {{ r.decided_utc[:10] }}</div>{% endif %}</td>
+        <td>{% if can_approve %}<form action="/api/entity-resolution/decide" method="post" class="flex gap-1"><input type="hidden" name="entity_name" value="{{ e.name }}"><input type="hidden" name="rule_id" value="{{ r.rule_id }}">
+          {% if r.status == 'PROPOSED' %}<button name="decision" value="APPROVE" class="btn p sm">Approve</button><button name="decision" value="REJECT" class="btn g sm">Reject</button>
+          {% else %}<button name="decision" value="REOPEN" class="btn g sm">Reopen</button>{% endif %}</form>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="mt-2 text-[11px] text-[#5A6A88]">No rule proposed yet.</p>{% endif %}
+  </section>
+  {% endfor %}
+  {% if not entities %}<div class="exc">No entity in this migration's scope has suggested match rules (Client and Advisor do).</div>{% endif %}
+
+  {% if needs_role_source or derivation %}
+  <section class="card" data-testid="account-roles">
+    <h3 style="font-size:16px">Account roles</h3>
+    <p class="fh">AccountRole is in scope but no source file says who holds each account. It can be derived instead: <b>{{ role_derivation_text }}</b> This is a business assumption (joint owners, trustees and beneficiaries are not known this way), so a person decides it.</p>
+    {% if derivation %}<p class="mt-1 text-[11px]">Decision: <b>{{ derivation.status }}</b> by {{ derivation.decided_by }} · {{ derivation.decided_utc[:10] }}</p>{% endif %}
+    {% if can_approve %}<form action="/api/entity-resolution/account-roles" method="post" class="mt-2 flex gap-2">
+      <button name="decision" value="APPROVE" class="btn p sm" data-testid="approve-role-derivation">Derive account roles this way</button>
+      <button name="decision" value="REJECT" class="btn g sm">Do not derive</button></form>{% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

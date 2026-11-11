@@ -10,6 +10,7 @@ Releases: an applied change is live at once only in the workspace that raised it
 publishes the applied changes as a numbered canonical release. Every workspace is pinned to a release and keeps it until
 a Migration Analyst adopts a newer one, so a release never changes a running migration's mapping targets by surprise.
 """
+from control_plane.services.firm_config import P0_ENTITIES as _P0
 import json
 import re
 import sqlite3
@@ -21,7 +22,7 @@ from control_plane.db import get_db_connection, table_columns
 # The active migration workspace, set by the application. Services and agents call active_added_fields without knowing it.
 ACTIVE_MIGRATION: Callable[[], Optional[str]] = lambda: None
 
-P0_ENTITIES = ("Account", "Client", "Household")
+P0_ENTITIES = _P0
 FIELD_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 
 _DDL = """

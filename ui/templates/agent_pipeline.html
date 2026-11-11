@@ -30,6 +30,7 @@
     </div><div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip ex">P0 · APPROVAL REQUIRED</span></div>
   </div>
   <div class="ins"><b>Control plane.</b> The mapping from source fields to the canonical model (Mapping Studio). It works from metadata and sample files; every decision needs a person and no production data is touched here.</div>
+  <div class="ins" data-testid="entity-resolution-link"><b>Entity resolution.</b> Which source rows are the same record (match rules) and, when AccountRole has no source file, whether account roles are derived: decided on <a href="/entity-resolution" class="font-bold text-blue-700">Entity resolution</a>. This stage is complete when nothing there is waiting.</div>
   {% if progress %}<section class="kpis" aria-label="Mapping summary">
     <div class="kpi"><small>Mappings approved</small><b>{{ progress.mappings_approved }}</b><span>source to canonical</span></div>
     <div class="kpi"><small>Proposals waiting</small><b>{{ progress.proposals_pending }}</b><span>need a person</span></div>

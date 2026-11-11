@@ -26,7 +26,7 @@ from control_plane.services import sql_package, gap_recommender, user_registry, 
 from control_plane.services import sql_target
 from control_plane.services import canonical_derivations, run_monitor, target_validation
 from control_plane.services import xodus_pipelines, live_target, deployment_check, adf_runs, git_pull_requests, promotion_gate, live_validation
-from control_plane.services import canonical_model, code_mappings
+from control_plane.services import canonical_model, code_mappings, target_adapter, entity_resolution
 from control_plane.services.value_evidence import EVIDENCE_REVIEW_THRESHOLD
 from data_plane.storage_manager import HybridStorageManager
 from control_plane.services.profiler import SourceDataProfiler
@@ -36,7 +36,7 @@ from control_plane.services.wave_rules import CohortConditionEngine, WaveConditi
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import get_db_connection, using_postgres
-from control_plane.services.firm_config import FirmConfigError, load_firm_config
+from control_plane.services.firm_config import CORE_ENTITIES, P0_ENTITIES, FirmConfigError, load_firm_config
 from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
 
@@ -138,7 +138,7 @@ def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, sour
 def workflow_progress() -> dict:
     """Counts and the single next action shown in the navigation and dashboard."""
     setup = state_store.questionnaire_data.get("migration_setup", {})
-    scope = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
+    scope = [e for e in setup.get("entities", []) if e in set(P0_ENTITIES)]
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     files = [rec for entity, group in getattr(state_store, "entity_source_files", {}).items() for rec in group.values()]
     files_total = len(files)
@@ -151,6 +151,8 @@ def workflow_progress() -> dict:
     rules_approved = rules_draft = target_approved = runs_n = 0
     codes_pending = 0
     codes_needed = False
+    er_pending = 0
+    roles_needed = False
     sql_ready = published = False
     data_plane: Dict[str, Any] = {}
     conn = get_db_connection()
@@ -158,6 +160,8 @@ def workflow_progress() -> dict:
         _rules = transformation_rules.list_rules(conn)
         rules_approved = sum(1 for r in _rules if r["status"] == "APPROVED")
         rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
+        er_pending = entity_resolution.pending(conn, migration_id)
+        roles_needed = ("AccountRole" in scope and not _has_entity_file("AccountRole") and not entity_resolution.derivation(conn, migration_id))
         _cc = code_mappings.counts(conn, migration_id)
         codes_pending = _cc["PROPOSED"]
         if not sum(_cc.values()):  # nothing profiled yet: needed once a coded canonical field has an approved mapping
@@ -229,6 +233,9 @@ def workflow_progress() -> dict:
         nxt = {"label": "Generate mapping proposals", "detail": "Profile the confirmed files and create review items.", "href": "/agent-pipeline", "step": "map"}
     elif rfi_open:
         nxt = {"label": f"Answer {rfi_open} information request{'s' if rfi_open != 1 else ''}", "detail": "Required canonical fields still have no source.", "href": "/agent-pipeline#information-requests", "step": "map"}
+    elif er_pending or roles_needed:
+        nxt = {"label": f"Decide {er_pending} match rule{'s' if er_pending != 1 else ''}" if er_pending else "Decide where account roles come from",
+               "detail": "Entity resolution: which source rows are the same record, and who holds each account.", "href": "/entity-resolution", "step": "map"}
     elif codes_pending or codes_needed:
         nxt = {"label": f"Map {codes_pending} code value{'s' if codes_pending != 1 else ''}" if codes_pending else "Profile the code values",
                "detail": "Each source value of a coded field needs a canonical code.", "href": "/code-sets", "step": "map"}
@@ -241,7 +248,7 @@ def workflow_progress() -> dict:
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
         "changes_open": changes_open, "next": nxt, "target_provisioned": target_provisioned, "target_pending": target_pending,
         "validation_status": validation_status, "validation_when": validation_when, "target_validation_status": target_validation_status,
-        "data_plane": data_plane, "codes_pending": codes_pending, "codes_needed": codes_needed,
+        "data_plane": data_plane, "codes_pending": codes_pending, "codes_needed": codes_needed, "er_pending": er_pending, "roles_needed": roles_needed,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
     progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n, published))
@@ -262,7 +269,8 @@ def workflow_progress() -> dict:
 def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_approved: int, sql_ready: bool, runs_n: int, published: bool = False) -> dict:
     """The ten pipeline stages in order, each done / current / todo, so the rail counts the same stages it lists.
     A stage is done when its own work exists and every earlier stage is done; the first unfinished stage is the current one."""
-    mapped = p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0
+    mapped = (p["mappings_approved"] > 0 and p["proposals_pending"] == 0 and p["rfi_open"] == 0 and not p.get("er_pending")
+              and not p.get("roles_needed"))
     done_flags = [
         ("01", "Loader & Inspector", p["files_total"] > 0),
         ("02", "Discovery", p["files_total"] > 0 and p["files_pending"] == 0),
@@ -370,6 +378,7 @@ def _azure_cfg_for_display():
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
         "request": request,
+        "pilot_entities": list(P0_ENTITIES), "core_entities": list(CORE_ENTITIES),
         "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"),
         "firm_name": state_store.questionnaire_data.get("firm_name", "New Migration"),
         "adls_connected": state_store.adls_connected,
@@ -1060,13 +1069,13 @@ async def start_new_migration(request: Request):
     for stale in ("firm_name", "migration_name", "source_systems"):
         state_store.questionnaire_data[stale] = ""  # the previous migration's name must not label the new one
     state_store.questionnaire_data["migration_id"] = migration_id
-    for entity in ("Account", "Household", "Client"):
+    for entity in P0_ENTITIES:
         state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
     context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id, "migration_template": prefill, "firm_name": "", "migration_name": "", "source_systems": ""}
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
     publish_event(
         "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
-        {"scopes": {entity: "OUT_OF_SCOPE" for entity in ("Account", "Household", "Client")}}, user["name"],
+        {"scopes": {entity: "OUT_OF_SCOPE" for entity in P0_ENTITIES}}, user["name"],
     )
     return RedirectResponse(url="/migration-setup?new_migration=1" + ("&from_template=1" if prefill else ""), status_code=status.HTTP_303_SEE_OTHER)
 
@@ -1112,7 +1121,7 @@ async def open_migration_workspace(request: Request):
         state_store.questionnaire_data["mapping_information_requests"] = []
         state_store.questionnaire_data["migration_setup"] = {}
         state_store.questionnaire_data["migration_template"] = {}
-        for entity in ("Account", "Household", "Client"):
+        for entity in P0_ENTITIES:
             state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
         # Becoming the latest context event makes this the active migration after a restart too.
         publish_event("MIGRATION_CONTEXT_UPDATED", target_id, "migration", target_id, {**context, "reopened_from": current_id}, user["name"])
@@ -1127,7 +1136,7 @@ async def save_migration_setup(request: Request):
     user = get_current_user(request)
     form = await request.form()
     # Explicit scope selection controls downstream P0 workflows.
-    allowed_entities = {"Account", "Household", "Client"}
+    allowed_entities = set(P0_ENTITIES)
     selected_entities = [entity for entity in form.getlist("entities") if entity in allowed_entities]
     if not selected_entities:
         raise HTTPException(status_code=400, detail="Select at least one in-scope entity: Account, Household, or Client.")
@@ -1179,9 +1188,14 @@ async def save_migration_setup(request: Request):
         "target_system": setup["target_system"],
         "source_systems": setup["source_details"],
     })
+    previous = set((state_store.questionnaire_data.get("migration_setup") or {}).get("entities") or [])
     state_store.questionnaire_data["migration_setup"] = setup
-    for entity in {"Account", "Household", "Client"}:
-        state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
+    for entity in set(P0_ENTITIES):
+        # An entity already in scope keeps its reviewed scope; only one newly added starts at discovery.
+        if entity not in selected_entities:
+            state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
+        elif entity not in previous:
+            state_store.entity_scopes[entity] = "PENDING_DISCOVERY"
     context_payload = {
         "migration_id": migration_id,
         "firm_name": setup["migration_name"],
@@ -1193,7 +1207,7 @@ async def save_migration_setup(request: Request):
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
     publish_event(
         "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
-        {"scopes": {entity: state_store.entity_scopes[entity] for entity in ("Account", "Household", "Client")}},
+        {"scopes": {entity: state_store.entity_scopes[entity] for entity in P0_ENTITIES}},
         user["name"],
     )
     state_store.audit_log.append({"event":"MIGRATION_SETUP_SAVED","actor":user["name"],"timestamp_utc":datetime.now(timezone.utc).isoformat(),"details":{"target_system":setup["target_system"],"source_acquisition":setup["source_acquisition"],"entities":selected_entities}})
@@ -1236,7 +1250,7 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
     setup["firm_id"] = firm_config.firm_id
     setup["firm_config_version"] = firm_config.version_id
 
-    selected_entities = [entity for entity in setup.get("entities", ["Account", "Household", "Client"]) if entity in {"Account", "Household", "Client"}]
+    selected_entities = [entity for entity in setup.get("entities", list(CORE_ENTITIES)) if entity in set(P0_ENTITIES)]
     if not selected_entities:
         raise HTTPException(status_code=500, detail="Demo migration must configure at least one in-scope entity.")
     setup["entities"] = selected_entities
@@ -1252,7 +1266,7 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
     state_store.entity_sample_files.clear()
     state_store.entity_source_files.clear()
     state_store.firm_knowledge_docs.clear()
-    for entity in {"Account", "Household", "Client"}:
+    for entity in set(P0_ENTITIES):
         state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
 
     context_payload = {
@@ -1267,7 +1281,7 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
     publish_event(
         "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
-        {"scopes": {entity: state_store.entity_scopes[entity] for entity in ("Account", "Household", "Client")}},
+        {"scopes": {entity: state_store.entity_scopes[entity] for entity in P0_ENTITIES}},
         user["name"],
     )
 
@@ -1290,7 +1304,7 @@ def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
             context=" ".join(part for part in (source_context, dictionary_notes) if part).strip(),
         )
         entity_name = inference.get("entity")
-        if inference.get("status") == "NEEDS_CLARIFICATION" or entity_name not in {"Account", "Household", "Client"}:
+        if inference.get("status") == "NEEDS_CLARIFICATION" or entity_name not in set(P0_ENTITIES):
             entity_name = "Needs clarification"
         elif entity_name not in selected_entities:
             loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": "EXCLUDED_OUT_OF_SCOPE"})
@@ -1431,7 +1445,7 @@ async def agent_studio(request: Request):
 async def analyze_source_file_with_agents(request: Request, file_id: str):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
-    selected = [e for e in setup.get("entities", []) if e in {"Account", "Household", "Client"}]
+    selected = [e for e in setup.get("entities", []) if e in set(P0_ENTITIES)]
     if not selected:
         raise HTTPException(status_code=400, detail="Select at least one in-scope entity in Migration Setup first.")
     found = None
@@ -1512,9 +1526,9 @@ async def dashboard_overview(request: Request):
             "migration_setup": state_store.questionnaire_data.get("migration_setup", {}),
             "azure_cfg": _azure_cfg_for_display(),
             "knowledge_docs_count": len(state_store.firm_knowledge_docs),
-            "in_scope_entities": [entity for entity in ("Account", "Household", "Client") if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])],
+            "in_scope_entities": [entity for entity in P0_ENTITIES if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])],
             "wave_conditions": CohortConditionEngine.get_condition_catalog(),
-            "required_fields_by_entity": {entity: SchemaMapperAgent.required_fields(entity) for entity in ("Account", "Household", "Client")},
+            "required_fields_by_entity": {entity: SchemaMapperAgent.required_fields(entity) for entity in P0_ENTITIES},
             "entity_approval_summary": {
                 entity: {
                     "total": len(state_store.entity_source_files.get(entity, {})),
@@ -1627,7 +1641,7 @@ def _source_stage_page(request: Request, stage_view: str, uploaded: str, notice:
             inferred_entity = "Needs clarification" if entity == "Needs clarification" else (record.get("inference", {}).get("entity") or entity)
             selected = inferred_entity in in_scope_entities
             review_status = record.get("inference_approval_status", "PENDING")
-            display_status = "NEEDS_CLARIFICATION" if inferred_entity not in {"Account", "Household", "Client"} else "OUT_OF_SCOPE" if not selected else review_status
+            display_status = "NEEDS_CLARIFICATION" if inferred_entity not in set(P0_ENTITIES) else "OUT_OF_SCOPE" if not selected else review_status
             source_uploads.append({**record, "file_id": record.get("file_id", file_id), "inferred_entity": inferred_entity, "display_status": display_status, "scope_eligible": selected})
     source_uploads.sort(key=lambda item: item.get("uploaded_at", ""), reverse=True)
     cross = None
@@ -1695,7 +1709,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
     _sync_mapping_information_requests(active_migration_id)
     conn = get_db_connection()
     try:
-        selected_scope = [e for e in state_store.questionnaire_data.get("migration_setup", {}).get("entities", []) if e in {"Account", "Household", "Client"}]
+        selected_scope = [e for e in state_store.questionnaire_data.get("migration_setup", {}).get("entities", []) if e in set(P0_ENTITIES)]
         scope_placeholders = ", ".join("?" for _ in selected_scope) or "''"
         rows = conn.execute(
             f"""
@@ -1739,10 +1753,10 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
     source_files = {
         entity: dict(files)
         for entity, files in getattr(state_store, "entity_source_files", {}).items()
-        if entity in selected_scope and entity in {"Account", "Household", "Client"}
+        if entity in selected_scope and entity in set(P0_ENTITIES)
     }
     for entity, record in getattr(state_store, "entity_sample_files", {}).items():
-        if entity in selected_scope and entity in {"Account", "Household", "Client"}:
+        if entity in selected_scope and entity in set(P0_ENTITIES):
             source_files.setdefault(entity, {}).setdefault(record.get("source_role", "ENTITY_MASTER"), record)
 
     return render_template_with_context(
@@ -2095,7 +2109,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "validation_run": validation_run, "error": error, "notice": notice, "stored_signoff": stored_signoff, "adf_status": adf_status, "run_status": run_status, "tval": tval, "tval_exceptions": {e["check_ref"]: e for e in tval_exceptions}, "adf_deployment": adf_deployment, "adf_trigger_blocker": adf_trigger_blocker,
             "can_run_validation": user["role"] in VALIDATION_ROLES,
             "can_raise_run_request": user["role"] in RUN_FAILURE_ROLES,
-            "in_scope_entities": [e for e in ("Account", "Household", "Client") if e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", [])],
+            "in_scope_entities": [e for e in P0_ENTITIES if e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", [])],
             "drift": drift_detection.detect(approved_mappings, state_store.entity_source_files),
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
@@ -2187,7 +2201,7 @@ def _store_gap_recommendations(migration_id: str, run_id: str, package: Dict[str
             key_cfg = None
         tables: Dict[str, Dict[str, Any]] = {}
         for entity, group in state_store.entity_source_files.items():
-            if entity not in target_mapping.ENTITIES:
+            if entity not in P0_ENTITIES:
                 continue
             rules = _get_approved_mapping_rules(migration_id, entity)
             mapper = SchemaMapperAgent(
@@ -2202,7 +2216,7 @@ def _store_gap_recommendations(migration_id: str, run_id: str, package: Dict[str
                 tables[str(rec.get("filename", "source.csv"))] = {"entity": entity, "rows": records, "lineage": lineage}
         keys = {}
         if key_cfg:
-            for e in target_mapping.ENTITIES:
+            for e in P0_ENTITIES:
                 if e in key_cfg.entities:
                     k = next((f.name for f in key_cfg.entities[e].fields if f.is_key), None)
                     if k:
@@ -2490,6 +2504,17 @@ def _code_map_stale(conn, migration_id: str, manifest: Dict[str, Any]) -> List[s
     approved = sorted([r["code_set"], r["source_value"], r["canonical_code"]] for r in code_mappings.approved_source_map(conn, migration_id))
     if (cs.get("sourceMap") or []) != approved:
         reasons.append("Code values were decided on Business Rules → Code sets after this package was built.")
+    # Entity resolution and the entities themselves (canonical model phase 2): match rules, derived account roles, entities in scope.
+    canon = manifest.get("canonical") or {}
+    er_now = entity_resolution.approved_rules(conn, migration_id)
+    if any(sorted(map(tuple, (canon.get(e) or {}).get("resolution") or [])) != sorted(map(tuple, er_now.get(e, []))) for e in set(canon) | set(er_now)):
+        reasons.append("Match rules were decided on Entity resolution after this package was built.")
+    scope = _in_scope_entities()
+    wanted = {e for e in scope if _has_entity_file(e) and _get_approved_mapping_rules(migration_id, e)}
+    if "AccountRole" in scope and not _has_entity_file("AccountRole") and (entity_resolution.derivation(conn, migration_id) or {}).get("status") == "APPROVED":
+        wanted.add("AccountRole")
+    if wanted - set(canon):
+        reasons.append("Entities now in scope are not in this package: " + ", ".join(sorted(wanted - set(canon))) + ".")
     system = (target_connector.spec(conn) or {}).get("target_system") or ""
     if system and (cs.get("targetMap") or []) != sorted([r["code_set"], r["canonical_code"], r["target_value"]] for r in code_mappings.target_map(conn, system)):
         reasons.append("The target system's code values changed (Platform setup → Target code values).")
@@ -2904,7 +2929,7 @@ CHANGE_TYPES = {
     "ADD_REFERENCE_VALUE": "Add or change a reference/lookup value",
     "OTHER": "Other canonical model change",
 }
-CHANGE_ENTITIES = ("Account", "Household", "Client")
+CHANGE_ENTITIES = P0_ENTITIES
 CHANGE_DECISIONS = {"APPROVED", "REJECTED", "DEFERRED"}
 
 
@@ -2975,6 +3000,12 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         packages = package_contract.list_packages(conn, migration_id)
         stored_adf = artifact_store.list_artifacts(conn, migration_id, "ADF_PACKAGE")
         adf_status = _adf_status(conn, migration_id)
+        adapter_info = None
+        if spec:
+            _sys = spec.get("target_system") or ""
+            _lat = target_adapter.latest(conn, _sys)
+            adapter_info = {"latest": {"version": _lat["version"], "fields": len(_lat["fields"]), "spec_version": _lat["spec_version"]} if _lat else None,
+                            "adopted": target_adapter.adopted(conn, migration_id, _sys)}
         ccr = {(r["entity_name"], r["canonical_field"]): r for r in conn.execute(
             "SELECT entity_name, canonical_field, request_id, status FROM canonical_change_requests WHERE migration_id = ? "
             "AND change_type = 'ADD_FIELD' AND status != 'REJECTED' ORDER BY created_utc", (migration_id,)).fetchall()}
@@ -3000,6 +3031,7 @@ def _target_mapping_context(request: Request, user: Dict[str, str], preview_resu
         "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error,
         "canonical_fields": {e: sorted(fs) for e, fs in _canonical_types().items()},
         "pending_reviews": target_connector.pending_reviews(cfg["model"]) if cfg and cfg.get("model") else 0,
+        "adapter": adapter_info,
     }
 
 
@@ -3523,7 +3555,7 @@ async def raise_request_from_failed_step(request: Request, step: str = Form(...)
 
     def back(key: str, message: str):
         return RedirectResponse(url=f"/execution?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
-    in_scope = [e for e in ("Account", "Household", "Client") if e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", [])]
+    in_scope = [e for e in P0_ENTITIES if e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", [])]
     if entity not in in_scope:
         return back("error", "Pick an entity that is in scope for this migration.")
     conn = get_db_connection()
@@ -3701,7 +3733,7 @@ def _derivations_for(migration_id: str, entity: Optional[str] = None) -> List[Di
     return found
 
 
-def _canonical_rows_for_migration(migration_id: str, skip_files=()):
+def _canonical_rows_for_migration(migration_id: str, skip_files=(), resolve: bool = True):
     """Canonical-shaped rows per entity, derived in memory from approved source files and mappings (files joined on the entity key)."""
     canonical_rows: Dict[str, List[Dict[str, Any]]] = {}
     join_info: Dict[str, Dict[str, int]] = {}
@@ -3710,7 +3742,7 @@ def _canonical_rows_for_migration(migration_id: str, skip_files=()):
     except FirmConfigError:
         key_cfg = None
     for entity, group in state_store.entity_source_files.items():
-        if entity not in target_mapping.ENTITIES:
+        if entity not in P0_ENTITIES:
             continue
         file_rows: List[List[Dict[str, Any]]] = []
         rules = _get_approved_mapping_rules(migration_id, entity)
@@ -3734,7 +3766,35 @@ def _canonical_rows_for_migration(migration_id: str, skip_files=()):
         canonical_rows[entity] = canonical_derivations.apply_to_rows(joined["rows"], derived)
         join_info[entity] = {"key": key_field, "files": len(file_rows), "keyed_rows": joined["keyed_rows"],
                              "unkeyed_rows": joined["unkeyed_rows"], "conflicts": joined["conflicts"]}
+    if resolve:
+        _resolve_in_memory(migration_id, canonical_rows, join_info)
     return canonical_rows, join_info
+
+
+def _resolve_in_memory(migration_id: str, rows: Dict[str, List[Dict[str, Any]]], join_info: Dict[str, Dict[str, Any]]) -> None:
+    """The same steps as the generated canonical procedures: references point at survivors, approved match rules merge duplicates,
+    and (when approved) account roles are derived from the households."""
+    conn = get_db_connection()
+    try:
+        er_rules = entity_resolution.approved_rules(conn, migration_id)
+        deriv = entity_resolution.derivation(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    if (deriv or {}).get("status") == "APPROVED" and "AccountRole" in _in_scope_entities() and not rows.get("AccountRole"):
+        rows["AccountRole"] = []
+        join_info["AccountRole"] = {"key": None, "files": 0, "derived": entity_resolution.ROLE_DERIVATION}
+    xrefs: Dict[str, Dict[str, str]] = {}
+    for entity in _load_order(list(rows)):
+        if entity == "AccountRole" and join_info.get(entity, {}).get("derived"):
+            rows[entity] = entity_resolution.derive_account_roles(rows.get("Account", []), rows.get("Client", []))
+        for field, (ref, _) in (entity_resolution.REFERENCES.get(entity) or {}).items():
+            if ref in xrefs:
+                entity_resolution.repoint(rows[entity], field, xrefs[ref])
+        key = (join_info.get(entity) or {}).get("key")
+        if er_rules.get(entity) and key:
+            rows[entity], xrefs[entity], stats = entity_resolution.resolve(rows[entity], key, er_rules[entity])
+            join_info[entity]["resolution"] = {k: v for k, v in stats.items() if k != "examples"}
 
 
 @app.post("/api/target-mapping/preview", response_class=HTMLResponse)
@@ -4015,7 +4075,7 @@ def _rules_page(request: Request, notice: str = "", error: str = "", inferred=No
     derivable = {}
     try:
         cfg = load_firm_config()
-        derivable = {e: [f.name for f in cfg.entities[e].fields] for e in target_mapping.ENTITIES if e in cfg.entities}
+        derivable = {e: [f.name for f in cfg.entities[e].fields] for e in P0_ENTITIES if e in cfg.entities}
     except FirmConfigError:
         pass
     for item in inferred or []:
@@ -4040,7 +4100,7 @@ async def set_derivation(request: Request, entity_name: str = Form(...), canonic
                          input_field: str = Form(...), rule_expression: str = Form(...), reason: str = Form(...)):
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-    if entity_name not in target_mapping.ENTITIES:
+    if entity_name not in P0_ENTITIES:
         return _rules_redirect("error", "Unsupported entity.")
     conn = get_db_connection()
     try:
@@ -4483,6 +4543,275 @@ async def save_target_code_values(request: Request):
                                                                    "Codes without a value pass to the target unchanged. Each migration picks this up when its package is regenerated.")
 
 
+# ---- Target adapter: canonical -> target, reviewed once per target system (Platform Admin), adopted by each migration on stage 06 ----
+
+def _adapter_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/target-setup/adapter?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/target-setup/adapter", response_class=HTMLResponse)
+async def target_adapter_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        system = (spec or {}).get("target_system") or ""
+        rows = target_adapter.fields(conn, system) if system else []
+        tallies = target_adapter.counts(conn, system) if system else {}
+        vers = target_adapter.versions(conn, system) if system else []
+        _last = target_adapter.latest(conn, system) if system else None
+        draft_changed = not _last or _last["spec_version"] != str((spec or {}).get("spec_version")) or _last["fields"] != [
+            {k: r[k] for k in ("entity_name", "target_field", "canonical_field", "transformation_expression")} for r in rows if r["status"] == "APPROVED"]
+        migrations = [m for m in migration_registry.list_migrations(conn) if not m.get("archived")]
+        conn.commit()
+    finally:
+        conn.close()
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        grouped.setdefault(r["entity_name"], []).append(r)
+    return render_template_with_context(request, "target_adapter.html", {
+        "page_title": "Target adapter", "user_name": user["name"], "user_role": user["role"], "target_system": system, "spec": spec,
+        "grouped": grouped, "counts": tallies, "versions": vers, "migrations": migrations, "draft_changed": draft_changed,
+        "canonical_fields": {e: sorted(fs) for e, fs in _canonical_types().items()},
+        "can_edit": user["role"] in PLATFORM_ROLES and bool(spec), "notice": notice, "error": error,
+    })
+
+
+@app.post("/api/target-system/adapter/draft")
+async def draft_target_adapter(request: Request, from_migration: str = Form("")):
+    """Add the target fields the adapter does not hold yet, proposed from one migration's approved target mappings or from the target model's hints."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        if not spec:
+            return _adapter_redirect("error", "Confirm the target system first.")
+        seed = None
+        if from_migration:
+            seed = [dict(m, migration_id=from_migration) for m in target_mapping.list_mappings(conn, from_migration, spec)]
+        res = target_adapter.draft(conn, spec, _canonical_field_lists(), seed)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_ADAPTER_DRAFTED", user, {"target_system": spec["target_system"], "from_migration": from_migration, **res})
+    return _adapter_redirect("notice", f"{res['added']} field(s) added to the draft, {res['with_source']} with a proposed canonical field"
+                                       + (f" (from {from_migration}'s approved target mappings)." if from_migration else " (from the target model's hints)."))
+
+
+@app.post("/api/target-system/adapter/decide")
+async def decide_target_adapter_field(request: Request, entity_name: str = Form(...), target_field: str = Form(...), decision: str = Form(...),
+                                      canonical_field: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn) or {}
+        try:
+            rec = target_adapter.decide(conn, spec.get("target_system", ""), entity_name, target_field, decision, user["name"], canonical_field,
+                                        sorted(_canonical_types().get(entity_name, {})))
+        except ValueError as exc:
+            conn.rollback()
+            return _adapter_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    return _adapter_redirect("notice", f"{target_field}: " + {"APPROVED": "approved for the adapter.", "REJECTED": "left to each migration.",
+                                                              "PROPOSED": "reopened."}[rec["status"]])
+
+
+@app.post("/api/target-system/adapter/approve-proposed")
+async def approve_proposed_target_adapter(request: Request):
+    """Approve every proposed field that has a canonical field; fields with none stay open for a decision."""
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn) or {}
+        system = spec.get("target_system", "")
+        rows = [r for r in target_adapter.fields(conn, system) if r["status"] == "PROPOSED" and r["canonical_field"]]
+        for r in rows:
+            target_adapter.decide(conn, system, r["entity_name"], r["target_field"], "APPROVE", user["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_ADAPTER_APPROVED", user, {"target_system": system, "approved": len(rows)})
+    return _adapter_redirect("notice", f"{len(rows)} proposed field(s) approved. Fields without a canonical field need a decision (approve with a field, or leave to each migration).")
+
+
+@app.post("/api/target-system/adapter/confirm")
+async def confirm_target_adapter(request: Request, notes: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        if not spec:
+            return _adapter_redirect("error", "Confirm the target system first.")
+        try:
+            ver = target_adapter.confirm(conn, spec, user["name"], notes)
+        except ValueError as exc:
+            conn.rollback()
+            return _adapter_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("TARGET_ADAPTER_CONFIRMED", user, {"target_system": ver["target_system"], "version": ver["version"], "fields": len(ver["fields"])})
+    return _adapter_redirect("notice", f"Target adapter version {ver['version']} confirmed with {len(ver['fields'])} field(s). Each migration adopts it on stage 06.")
+
+
+@app.post("/api/target-mapping/adopt-adapter")
+async def adopt_target_adapter(request: Request):
+    """Stage 06: take every field the confirmed target adapter maps; the migration reviews only what the adapter leaves open."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+        if not spec:
+            return _target_redirect("error", "The target system is not confirmed yet.")
+        try:
+            res = target_adapter.adopt(conn, migration_id, spec, user["name"])
+        except ValueError as exc:
+            conn.rollback()
+            return _target_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("TARGET_ADAPTER_ADOPTED", migration_id, "migration", migration_id, res, user["name"])
+    return _target_redirect("notice", f"Target adapter version {res['version']} adopted: {res['applied']} mapping(s) set from the adapter, "
+                                      f"{res['unchanged']} already matched, {res['open']} left for this migration to review.")
+
+
+# ---- Entity resolution (canonical model phase 2): match rules, survivorship preview, the derived account roles ----
+
+def _er_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/entity-resolution?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _in_scope_entities() -> List[str]:
+    return [e for e in (state_store.questionnaire_data.get("migration_setup", {}) or {}).get("entities", []) if e in P0_ENTITIES]
+
+
+def _has_entity_file(entity: str) -> bool:
+    return any(r.get("inference_approval_status") == "APPROVED" for r in state_store.entity_source_files.get(entity, {}).values())
+
+
+def _filled_canonical_fields(migration_id: str, entity: str) -> List[str]:
+    return sorted({r["canonical_field"] for r in _get_approved_mapping_rules(migration_id, entity).values()}
+                  | {d["canonical_field"] for d in _derivations_for(migration_id, entity)})
+
+
+def _er_context(request: Request, user: Dict[str, str], preview=None, notice: str = "", error: str = "") -> Dict[str, Any]:
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    scope = _in_scope_entities()
+    conn = get_db_connection()
+    try:
+        all_rules = entity_resolution.rules(conn, migration_id)
+        deriv = entity_resolution.derivation(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    entities = []
+    for e in scope:
+        suggested = entity_resolution.SUGGESTED_RULES.get(e, [])
+        if not suggested:
+            continue
+        entities.append({"name": e, "rules": [r for r in all_rules if r["entity_name"] == e], "suggested": suggested,
+                         "filled": _filled_canonical_fields(migration_id, e)})
+    return {"page_title": "Entity resolution", "user_name": user["name"], "user_role": user["role"], "migration_id": migration_id,
+            "entities": entities, "scope": scope, "preview": preview, "derivation": deriv,
+            "role_derivation_text": entity_resolution.ROLE_DERIVATION_TEXT,
+            "needs_role_source": "AccountRole" in scope and not _has_entity_file("AccountRole"),
+            "can_suggest": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
+            "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error}
+
+
+@app.get("/entity-resolution", response_class=HTMLResponse)
+async def entity_resolution_page(request: Request, notice: str = "", error: str = ""):
+    user = get_current_user(request)
+    return render_template_with_context(request, "entity_resolution.html", _er_context(request, user, notice=notice, error=error))
+
+
+@app.post("/api/entity-resolution/suggest")
+async def suggest_match_rules(request: Request):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        added = sum(entity_resolution.suggest(conn, migration_id, e, _filled_canonical_fields(migration_id, e)) for e in _in_scope_entities())
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("MATCH_RULES_SUGGESTED", migration_id, "migration", migration_id, {"added": added}, user["name"])
+    return _er_redirect("notice", f"{added} match rule(s) proposed (only rules whose fields this migration fills). Preview them, then approve or reject each one."
+                        if added else "No new match rule: the suggested rules are already listed, or their fields are not mapped in this migration.")
+
+
+@app.post("/api/entity-resolution/decide")
+async def decide_match_rule(request: Request, entity_name: str = Form(...), rule_id: str = Form(...), decision: str = Form(...)):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            st = entity_resolution.decide(conn, migration_id, entity_name, rule_id, decision, user["name"])
+        except ValueError as exc:
+            conn.rollback()
+            return _er_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("MATCH_RULE_DECIDED", migration_id, "entity", entity_name, {"rule_id": rule_id, "status": st}, user["name"])
+    return _er_redirect("notice", f"{entity_name} {rule_id}: {st.lower()}. Regenerate the package (stage 07) to deploy the change.")
+
+
+@app.post("/api/entity-resolution/account-roles")
+async def decide_account_role_derivation(request: Request, decision: str = Form(...)):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            st = entity_resolution.decide_derivation(conn, migration_id, decision, user["name"])
+        except ValueError as exc:
+            conn.rollback()
+            return _er_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    publish_event("ACCOUNT_ROLE_DERIVATION_DECIDED", migration_id, "entity", "AccountRole", {"method": entity_resolution.ROLE_DERIVATION, "status": st}, user["name"])
+    return _er_redirect("notice", "Account roles will be derived: " + entity_resolution.ROLE_DERIVATION_TEXT if st == "APPROVED"
+                        else "Account roles will not be derived; AccountRole needs a source file that names who holds each account.")
+
+
+@app.post("/api/entity-resolution/preview", response_class=HTMLResponse)
+async def preview_entity_resolution(request: Request):
+    """Read-only: run the approved and proposed match rules in memory on the canonical rows. Counts and keys only, never values."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    raw, _ = _canonical_rows_for_migration(migration_id, resolve=False)
+    conn = get_db_connection()
+    try:
+        candidates = [r for r in entity_resolution.rules(conn, migration_id) if r["status"] in ("APPROVED", "PROPOSED")]
+        conn.commit()
+    finally:
+        conn.close()
+    key_of = {}
+    try:
+        firm = load_firm_config()
+        key_of = {e: next((f.name for f in firm.entities[e].fields if f.is_key), None) for e in firm.entities}
+    except FirmConfigError:
+        pass
+    out = []
+    for e in sorted({r["entity_name"] for r in candidates}):
+        if not raw.get(e) or not key_of.get(e):
+            continue
+        per_rule = []
+        for r in [x for x in candidates if x["entity_name"] == e]:
+            _, _, st = entity_resolution.resolve(raw[e], key_of[e], [r["fields"]])
+            per_rule.append({"rule_id": r["rule_id"], "status": r["status"], "merged": st["merged"], "clusters": st["clusters"], "examples": st["examples"][:5]})
+        _, _, both = entity_resolution.resolve(raw[e], key_of[e], [x["fields"] for x in candidates if x["entity_name"] == e])
+        out.append({"entity": e, "key": key_of[e], "rows": both["rows"], "records": both["records"], "merged": both["merged"], "rules": per_rule})
+    return render_template_with_context(request, "entity_resolution.html", _er_context(request, user, preview=out))
+
+
 def _xodus_code_inputs(migration_id: str) -> Dict[str, Any]:
     """The code maps a stable-pipeline package carries (canonical model v2): approved source values and the target system's values."""
     conn = get_db_connection()
@@ -4620,11 +4949,11 @@ async def submit_questionnaire(
 async def save_entity_scopes(request: Request):
     form_data = await request.form()
     configured_scope = set(state_store.questionnaire_data.get("migration_setup", {}).get("entities", []))
-    scopes_map = {entity: "OUT_OF_SCOPE" for entity in ("Account", "Household", "Client") if entity not in configured_scope}
+    scopes_map = {entity: "OUT_OF_SCOPE" for entity in P0_ENTITIES if entity not in configured_scope}
     for key, value in form_data.items():
         if key.startswith("scope_"):
             entity_name = key.replace("scope_", "")
-            if entity_name in configured_scope and entity_name in {"Account", "Household", "Client"}:
+            if entity_name in configured_scope and entity_name in set(P0_ENTITIES):
                 scopes_map[entity_name] = str(value)
 
     state_store.save_entity_scopes(scopes_map)
@@ -4793,7 +5122,7 @@ async def upload_entity_sample_file(
             failed.append(f"{filename}: {str(exc)}")
             continue
 
-        if inference.get("status") == "NEEDS_CLARIFICATION" or inference.get("entity") not in {"Account", "Household", "Client"}:
+        if inference.get("status") == "NEEDS_CLARIFICATION" or inference.get("entity") not in set(P0_ENTITIES):
             entity_name = "Needs clarification"
             needs_review.append(filename)
         else:
@@ -4866,7 +5195,7 @@ async def upload_entity_sample_file(
 async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(...), comments: str = Form("")):
     """Approve all files for an entity in one action only when every file has clear inference evidence."""
     user = get_current_user(request)
-    if entity_name not in {"Account", "Household", "Client"}:
+    if entity_name not in set(P0_ENTITIES):
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
     entity_files = state_store.entity_source_files.get(entity_name, {})
     if not entity_files:
@@ -4981,7 +5310,7 @@ def _apply_inference_review(user: Dict[str, Any], file_id: str, entity_name: str
                 break
         if record:
             break
-    if record is None and entity_name in {"Account", "Household", "Client"}:
+    if record is None and entity_name in set(P0_ENTITIES):
         record = state_store.entity_sample_files.get(entity_name)
         current_entity = entity_name if record else None
     if not record:
@@ -5029,7 +5358,7 @@ def _apply_inference_review(user: Dict[str, Any], file_id: str, entity_name: str
             }
             reviewed_entity = "Out of scope"
         else:
-            if selected_entity not in {"Account", "Household", "Client"}:
+            if selected_entity not in set(P0_ENTITIES):
                 raise HTTPException(status_code=400, detail="Select Account, Household, Client or Out of scope.")
             configured_scope = state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])
             if selected_entity not in configured_scope:
@@ -5251,7 +5580,7 @@ def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[s
 def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow", file_id: str = "") -> Dict[str, Any]:
     """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
     scope_entity = "Client" if entity_name == "Client" else entity_name
-    if scope_entity not in {"Account", "Household", "Client"}:
+    if scope_entity not in set(P0_ENTITIES):
         raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the P0 MCL workflow.")
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
@@ -5373,7 +5702,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
 @app.post("/api/entities/map-uploaded-file")
 async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):
     """Profile and map an uploaded MCL CSV or another explicitly supported canonical source entity."""
-    if entity_name not in {"Account", "Household", "Client"}:
+    if entity_name not in set(P0_ENTITIES):
         raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
     try:
         form = await request.form() if request is not None else {}
@@ -5415,7 +5744,7 @@ async def map_all_approved_source_files(request: Request):
     approved_files = []
     configured_scope = set(state_store.questionnaire_data.get("migration_setup", {}).get("entities", []))
     for entity_name, files in state_store.entity_source_files.items():
-        if entity_name not in configured_scope or entity_name not in {"Account", "Household", "Client"}:
+        if entity_name not in configured_scope or entity_name not in set(P0_ENTITIES):
             continue
         for record in files.values():
             if record.get("inference_approval_status") == "APPROVED" and not record.get("mapping_generated"):
@@ -5909,7 +6238,7 @@ async def approve_entity_mapping_suggestions(
     if user.get("role") not in APPROVAL_ROLES:
         raise HTTPException(status_code=403, detail="Only Migration Analyst or Platform Admin may approve entity mappings.")
     reviewer_name = str(user.get("name", "")).strip()
-    if entity_name not in {"Account", "Household", "Client"}:
+    if entity_name not in set(P0_ENTITIES):
         raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
     if not reviewer_name:
         raise HTTPException(status_code=400, detail="Reviewer is required.")
@@ -6254,7 +6583,7 @@ async def get_pilot_client_lineage():
 
 # --- XODUS data plane: stable pipelines, pull requests, setup, deployment check, runs, promotion gate ---
 
-ENTITY_DEPENDS = {"Account": {"Household"}, "Client": {"Household"}}  # a household exists before its clients and accounts
+ENTITY_DEPENDS = {"Household": {"Advisor"}, "Account": {"Household"}, "Client": {"Household"}, "AccountRole": {"Account", "Client"}}  # referenced records load first (a household before its clients and accounts; clients are resolved before account roles point at them)
 
 
 def live_validation_status(conn, migration_id: str) -> Optional[Dict[str, Any]]:
@@ -6289,7 +6618,7 @@ def _xodus_package_inputs(migration_id: str):
     entities: Dict[str, Any] = {}
     files: Dict[str, List[str]] = {}
     for entity, group in state_store.entity_source_files.items():
-        if entity not in target_mapping.ENTITIES or entity not in firm.entities:
+        if entity not in P0_ENTITIES or entity not in firm.entities:
             continue
         recs = [r for r in group.values() if r.get("inference_approval_status") == "APPROVED"]
         mappings = {src: {"canonical_field": r["canonical_field"], "expression": r["transformation_expression"]}
@@ -6303,6 +6632,20 @@ def _xodus_package_inputs(migration_id: str):
             files.setdefault(str(r.get("filename")), list(r.get("columns") or []))
         entities[entity] = {"files": sorted({str(r.get("filename")) for r in recs}), "mappings": mappings, "derivations": derivs,
                             "key": next((f.name for f in firm.entities[entity].fields if f.is_key), None), "canonical_fields": list(dict.fromkeys(fields))}
+    conn = get_db_connection()
+    try:
+        er_rules = entity_resolution.approved_rules(conn, migration_id)
+        deriv = entity_resolution.derivation(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    for name, ent in entities.items():
+        if er_rules.get(name):
+            ent["resolution"] = er_rules[name]
+    if ((deriv or {}).get("status") == "APPROVED" and "AccountRole" in _in_scope_entities() and "AccountRole" not in entities
+            and {"Account", "Client"} <= set(entities) and "AccountRole" in firm.entities):
+        entities["AccountRole"] = {"files": [], "mappings": {}, "derivations": [], "key": None, "derived": entity_resolution.ROLE_DERIVATION,
+                                   "canonical_fields": firm.canonical_field_names("AccountRole")}
     exprs = ({m["transformation_expression"] for m in approved} | {m["expression"] for e in entities.values() for m in e["mappings"].values()}
              | {d["rule_expression"] for e in entities.values() for d in e["derivations"]})
     rules = {}
@@ -6669,6 +7012,9 @@ def _xodus_validation_entities(migration_id: str, man: Dict[str, Any]) -> Dict[s
         e = out.setdefault(entity, {"staging_table": canon["table"], "expected_rows": None, "key": canon["key"], "tables": {}, "unmapped_required": []})
         if len(canon["files"]) == 1:
             e["expected_sql"] = f"SELECT COUNT(*) FROM [xodus_raw].[{canon['files'][0]}]"
+        if canon.get("xref"):
+            e["expected_sql"] = f"SELECT COUNT(DISTINCT [survivor_key]) FROM [xodus_canon].[{canon['xref']}]"
+            e["resolution"] = canon.get("resolution") or []
         coded = ((man.get("codeSets") or {}).get("coded") or {}).get(entity) or {}
         if coded and "code_sets" not in e:
             conn = get_db_connection()

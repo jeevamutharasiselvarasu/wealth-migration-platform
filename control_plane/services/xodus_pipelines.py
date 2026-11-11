@@ -19,7 +19,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from control_plane.services import sql_package
+from control_plane.services import entity_resolution, sql_package
 from control_plane.services.sql_package import _lit, _q, translate
 
 RAW, CANON, MIRROR, OPS, LANDING, REF = "xodus_raw", "xodus_canon", "xodus_mirror", "xodus_ops", "xodus_landing", "xodus_ref"
@@ -266,7 +266,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
 
     # Source -> canonical: one table and one procedure per entity.
     canon_counts: Dict[str, Dict[str, Any]] = {}
-    applied_codes: Dict[str, Dict[str, str]] = {}  # the coded fields the canonical procedures translate (stage 10 checks them)
+    applied_codes: Dict[str, Dict[str, str]] = {}
+    resolved: Dict[str, str] = {}  # entity -> its crosswalk table (source key -> surviving key)  # the coded fields the canonical procedures translate (stage 10 checks them)
     for entity in load_order:
         e = entities[entity]
         sql_package._ident(entity)
@@ -275,45 +276,59 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         per_migration.append(_drop_create(CANON, ctable, [f"{_q(c)} nvarchar(4000) NULL" for c in cfields]
                                           + ["[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL", "[xodus_loaded_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()"]))
         objects["tables"].append(f"{CANON}.{ctable}")
-        files = [fn for fn in e["files"] if fn in columns_of]
-        if not files:
-            raise ValueError(f"{entity} has no approved source file to read.")
-        # Which canonical field each file supplies (a field can come from several files: the first non-blank wins, as in memory).
-        per_file: List[Dict[str, str]] = []
-        for i, fn in enumerate(files):
-            alias = f"f{i}"
-            exprs = {}
-            for src, m in sorted(e["mappings"].items()):
-                if src in columns_of[fn] and m["canonical_field"] in cfields:
-                    exprs[m["canonical_field"]] = source_expression(m["expression"], src, rules, "s", lookup_ref)
-            per_file.append(exprs)
-        mapped = [c for c in cfields if any(c in p for p in per_file)]
-        key = e.get("key") if e.get("key") in mapped else None
-        selects = []
-        for i, (fn, exprs) in enumerate(zip(files, per_file)):
-            body = ", ".join(f"{exprs[c]} AS {_q(c)}" for c in mapped if c in exprs)
-            part = f"ROW_NUMBER() OVER (PARTITION BY {exprs[key]} ORDER BY (SELECT NULL)) AS [xodus_rn]" if key and key in exprs else "1 AS [xodus_rn]"
-            selects.append(f"f{i} AS (SELECT {body}, {part} FROM [{RAW}].[{raw_names[fn]}] AS s WHERE s.[xodus_batch_id] = @BatchId)")
-        if len(files) == 1:
-            exprs = per_file[0]
-            pick = f"WHERE (f0.{_q(key)} IS NULL OR f0.[xodus_rn] = 1)" if key and key in exprs else ""
-            select = (f"WITH {selects[0]}\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_batch_id], [xodus_run_id])\n"
-                      f"SELECT {', '.join('f0.' + _q(c) for c in mapped if c in exprs)}, @BatchId, @RunId FROM f0 {pick};")
+        derived = e.get("derived")
+        if derived == entity_resolution.ROLE_DERIVATION:
+            # AccountRole without a source file: the approved derivation (the household head owns each account of the household),
+            # read from the canonical Account and Client tables built earlier in the load order (Client already resolved).
+            if "Account" not in entities or "Client" not in entities or load_order.index(entity) < max(load_order.index("Account"), load_order.index("Client")):
+                raise ValueError("Deriving account roles needs the Account and Client entities, loaded before AccountRole.")
+            files, mapped, key = [], ["ACCT_NUM", "CLIENT_ID", "ROLE", "ROLE_ORDER"], None
+            select = (f"INSERT INTO [{CANON}].[{ctable}] ([ACCT_NUM], [CLIENT_ID], [ROLE], [ROLE_ORDER], [xodus_batch_id], [xodus_run_id])\n"
+                      f"SELECT a.[ACCT_NUM], h.[CLIENT_ID], N'OWNER', N'1', @BatchId, @RunId FROM [{CANON}].[{s}_Account] AS a JOIN "
+                      f"(SELECT [HH_ID], MIN([CLIENT_ID]) AS [CLIENT_ID] FROM [{CANON}].[{s}_Client] WHERE LTRIM(RTRIM([HH_ORDER])) IN (N'1', N'1.0') "
+                      f"AND [HH_ID] IS NOT NULL AND [CLIENT_ID] IS NOT NULL GROUP BY [HH_ID]) AS h ON h.[HH_ID] = a.[HH_ID] WHERE a.[ACCT_NUM] IS NOT NULL;")
+        elif derived:
+            raise ValueError(f"Unknown derivation {derived} for {entity}.")
         else:
-            if not key:
-                raise ValueError(f"{entity} reads {len(files)} files but no key field is mapped, so their rows cannot be joined.")
-            keyed = [i for i, p in enumerate(per_file) if key in p]
-            keys = " UNION ".join(f"SELECT {_q(key)} AS k FROM f{i} WHERE {_q(key)} IS NOT NULL" for i in keyed)
-            cols = []
-            for c in mapped:
-                sources = [f"f{i}.{_q(c)}" for i, p in enumerate(per_file) if c in p and i in keyed]
-                cols.append(f"COALESCE({', '.join(sources)})" if len(sources) > 1 else (sources[0] if sources else "NULL"))
-            joins = " ".join(f"LEFT JOIN f{i} ON f{i}.{_q(key)} = k.k AND f{i}.[xodus_rn] = 1" for i in keyed)
-            unkeyed = " UNION ALL ".join(
-                "SELECT " + ", ".join((f"f{i}.{_q(c)}" if c in per_file[i] else "NULL") for c in mapped) + f", @BatchId, @RunId FROM f{i} WHERE f{i}.{_q(key)} IS NULL"
-                for i in keyed)
-            select = (f"WITH {', '.join(selects)}, k AS ({keys})\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_batch_id], [xodus_run_id])\n"
-                      f"SELECT {', '.join(cols)}, @BatchId, @RunId FROM k {joins}\nUNION ALL {unkeyed};")
+            files = [fn for fn in e["files"] if fn in columns_of]
+            if not files:
+                raise ValueError(f"{entity} has no approved source file to read.")
+            # Which canonical field each file supplies (a field can come from several files: the first non-blank wins, as in memory).
+            per_file: List[Dict[str, str]] = []
+            for i, fn in enumerate(files):
+                alias = f"f{i}"
+                exprs = {}
+                for src, m in sorted(e["mappings"].items()):
+                    if src in columns_of[fn] and m["canonical_field"] in cfields:
+                        exprs[m["canonical_field"]] = source_expression(m["expression"], src, rules, "s", lookup_ref)
+                per_file.append(exprs)
+            mapped = [c for c in cfields if any(c in p for p in per_file)]
+            key = e.get("key") if e.get("key") in mapped else None
+            selects = []
+            for i, (fn, exprs) in enumerate(zip(files, per_file)):
+                body = ", ".join(f"{exprs[c]} AS {_q(c)}" for c in mapped if c in exprs)
+                part = f"ROW_NUMBER() OVER (PARTITION BY {exprs[key]} ORDER BY (SELECT NULL)) AS [xodus_rn]" if key and key in exprs else "1 AS [xodus_rn]"
+                selects.append(f"f{i} AS (SELECT {body}, {part} FROM [{RAW}].[{raw_names[fn]}] AS s WHERE s.[xodus_batch_id] = @BatchId)")
+            if len(files) == 1:
+                exprs = per_file[0]
+                pick = f"WHERE (f0.{_q(key)} IS NULL OR f0.[xodus_rn] = 1)" if key and key in exprs else ""
+                select = (f"WITH {selects[0]}\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_batch_id], [xodus_run_id])\n"
+                          f"SELECT {', '.join('f0.' + _q(c) for c in mapped if c in exprs)}, @BatchId, @RunId FROM f0 {pick};")
+            else:
+                if not key:
+                    raise ValueError(f"{entity} reads {len(files)} files but no key field is mapped, so their rows cannot be joined.")
+                keyed = [i for i, p in enumerate(per_file) if key in p]
+                keys = " UNION ".join(f"SELECT {_q(key)} AS k FROM f{i} WHERE {_q(key)} IS NOT NULL" for i in keyed)
+                cols = []
+                for c in mapped:
+                    sources = [f"f{i}.{_q(c)}" for i, p in enumerate(per_file) if c in p and i in keyed]
+                    cols.append(f"COALESCE({', '.join(sources)})" if len(sources) > 1 else (sources[0] if sources else "NULL"))
+                joins = " ".join(f"LEFT JOIN f{i} ON f{i}.{_q(key)} = k.k AND f{i}.[xodus_rn] = 1" for i in keyed)
+                unkeyed = " UNION ALL ".join(
+                    "SELECT " + ", ".join((f"f{i}.{_q(c)}" if c in per_file[i] else "NULL") for c in mapped) + f", @BatchId, @RunId FROM f{i} WHERE f{i}.{_q(key)} IS NULL"
+                    for i in keyed)
+                select = (f"WITH {', '.join(selects)}, k AS ({keys})\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_batch_id], [xodus_run_id])\n"
+                          f"SELECT {', '.join(cols)}, @BatchId, @RunId FROM k {joins}\nUNION ALL {unkeyed};")
         derive = []
         for d in e.get("derivations", []):
             rule = rules.get(str(d["rule_expression"]).strip().upper())
@@ -331,11 +346,28 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 applied_codes.setdefault(entity, {})[field] = code_set
                 derive.append(f"UPDATE c SET c.{_q(field)} = m.[canonical_code] FROM [{CANON}].[{ctable}] AS c JOIN [{REF}].[code_map] AS m "
                               f"ON m.[migration_slug] = {_lit(s)} AND m.[code_set] = {_lit(code_set)} AND m.[source_value] = UPPER(LTRIM(RTRIM(c.{_q(field)})));")
+        # References to an entity resolved earlier in the load order point at its surviving record (the crosswalk below).
+        for field, (ref_entity, _) in sorted((entity_resolution.REFERENCES.get(entity) or {}).items()):
+            if field in filled | set(mapped) and ref_entity in resolved:
+                derive.append(f"UPDATE c SET c.{_q(field)} = x.[survivor_key] FROM [{CANON}].[{ctable}] AS c JOIN [{CANON}].[{resolved[ref_entity]}] AS x "
+                              f"ON x.[source_key] = c.{_q(field)} WHERE x.[survivor_key] <> x.[source_key];")
+        # Entity resolution: rows the approved match rules link become one record (most complete survives); the crosswalk keeps every source key.
+        if e.get("resolution"):
+            if not key:
+                raise ValueError(f"{entity} has match rules but its key field is not mapped, so its rows cannot be resolved.")
+            xtable = f"{s}_{entity}_xref"
+            per_migration.append(_drop_create(CANON, xtable, ["[source_key] nvarchar(400) NOT NULL", "[survivor_key] nvarchar(400) NOT NULL",
+                                                              "[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL"]))
+            objects["tables"].append(f"{CANON}.{xtable}")
+            derive += entity_resolution.sql_resolve(CANON, ctable, xtable, key, [c for c in mapped if c in cfields] +
+                                                    [c for c in filled if c in cfields and c not in mapped], e["resolution"])
+            resolved[entity] = xtable
         log = f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'canonical', N'{CANON}', N'{ctable}';"
         per_migration.append(_proc(f"[{CANON}].[usp_canon_{s}_{entity}]", "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64)",
                                    [f"TRUNCATE TABLE [{CANON}].[{ctable}];", select] + derive + [log]))
         objects["procedures"].append(f"{CANON}.usp_canon_{s}_{entity}")
-        canon_counts[entity] = {"table": ctable, "files": [raw_names[f] for f in files], "key": key}
+        canon_counts[entity] = {"table": ctable, "files": [raw_names[f] for f in files], "key": key, "xref": resolved.get(entity),
+                                "resolution": e.get("resolution") or [], "derived": derived}
 
     # Canonical -> mirror: one mirror table per live table, filled by one procedure (all tables in one transaction).
     mirror_body: List[str] = []

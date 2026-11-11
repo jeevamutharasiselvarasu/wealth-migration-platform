@@ -43,7 +43,7 @@ def test_dashboard_renders_only_entities_selected_in_migration_setup():
     dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text()
     app = (ROOT / "ui" / "app.py").read_text()
     assert 'for entity in in_scope_entities|default([])' in dashboard
-    assert '"in_scope_entities": [entity for entity in ("Account", "Household", "Client") if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])]' in app
+    assert '"in_scope_entities": [entity for entity in P0_ENTITIES if entity in state_store.questionnaire_data.get("migration_setup", {}).get("entities", [])]' in app
     assert 'Account, Household, Client</div>' not in dashboard
     assert 'ENTITY 02</span><span' not in dashboard
 
