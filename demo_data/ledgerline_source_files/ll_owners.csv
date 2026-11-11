@@ -1,0 +1,9 @@
+PORT_NO,PARTY_NO,OWNER_TYPE
+LL-0001,P100,Primary Owner
+LL-0001,P101,Joint
+LL-0002,P100,Primary Owner
+LL-0003,P101,Primary Owner
+LL-0004,P200,Primary Owner
+LL-0005,P201,Beneficiary
+LL-0005,P200,Custodian-Adult
+LL-0006,P300,Primary Owner

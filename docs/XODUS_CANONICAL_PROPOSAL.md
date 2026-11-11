@@ -1,6 +1,6 @@
 # Proposal: a universal canonical model, with logic where it belongs
 
-Status: agreed 2026-11-11 (entity list agreed with two changes: no Party layer, Client sits in a Household; the representative is the Advisor). Phasing steps 1 and 2 are built: `platform_knowledge/canonical_model_v2.yaml` (released on the Canonical model page), code-set mapping (stage 03, Code sets), target code values (Platform setup → Target code values), the `xodus_ref` code maps in the generated SQL and the stage 10 check `VALUES_IN_CODE_SET`.
+Status: agreed 2026-11-11 (entity list agreed with two changes: no Party layer, Client sits in a Household; the representative is the Advisor). Phasing steps 1 to 5 are built: `platform_knowledge/canonical_model_v2.yaml` (released on the Canonical model page), code-set mapping (stage 03, Code sets), target code values (Platform setup → Target code values), the `xodus_ref` code maps in the generated SQL and the stage 10 check `VALUES_IN_CODE_SET` (steps 1, 2); the Advisor and AccountRole entities, entity resolution with survivorship (stage 04, check `DUPLICATES_RESOLVED`) and the Platform Admin's versioned target adapter, adopted by stage 06 (steps 3, 4). Step 5: a second source, "Ledgerline" (`demo_data/ledgerline_source_files`, another file split, column names, date and money formats and code spellings than CoreCap), goes through the same model, code sets, entity resolution and unchanged pipelines (`tests/test_second_source.py`). Values the code sets do not know (for example `SPS`, `DEP`, `Custodian-Adult`) are left for a person to decide, not guessed.
 
 ## Why change
 
@@ -76,4 +76,4 @@ analyst's work goes. Both remain generated stored procedures run by the same sta
 1. ~~Agree the principles and the entity list~~: agreed 2026-11-11 with the two changes above. Holdings and transactions can follow in a later phase.
 2. ~~Which code sets first~~: decided 2026-11-11: registration type, tax status, custodian, account status, household role.
 3. ~~Who owns the target adapter~~: decided 2026-11-11: the Platform Admin (platform level, reused by every migration into that target).
-4. ~~Entity resolution in phase 1 or 2~~: decided 2026-11-11: phase 2. Not built yet: the first build covers phasing steps 1 and 2 (model, code sets, code maps). AccountRole and Advisor are defined in v2; discovery and mapping for them come with entity resolution.
+4. ~~Entity resolution in phase 1 or 2~~: decided 2026-11-11: phase 2. Built (commit fc1b4ff): Advisor and AccountRole are in the canonical config 1.2.0, and entity resolution covers Client and Advisor.
