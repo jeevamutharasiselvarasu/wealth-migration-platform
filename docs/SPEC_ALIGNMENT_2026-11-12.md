@@ -75,3 +75,15 @@ The "where HouseholdOrder = 1" pattern (household fields taken from the head con
 | 5 HOUSEHOLD_FIRST_NAME | Reopened and approved from HH_NAME with rule INF_SPLIT_PART_F1044D@1 (part after the comma). |
 
 Effects: the saved ADF package is stale (the approved set changed) and the pipeline shows stage 06 needing approval again. Regenerate the package, open a pull request, merge, publish, and rerun the batch and stage 10 before relying on these. These four came from target adapter version 2, so the adapter itself still holds the old choices; a Platform Admin should correct it so new migrations start right. Items 4, 6, 7 and 8 and the order-1 head-contact fields are still open.
+
+## 6. Open items answered from the source specs, and applied (Run 2)
+
+| Item | Answer in the specs | Applied |
+|---|---|---|
+| 4 OPEN_CLOSED | MCL sheet: if ClosedDate is NULL then Open, else Closed; data dictionary: ClosedDate null (73%) means the account is open | CLOSED_DATE with rule INF_IF_BLANK_E9903B@1, approved. No canonical change needed. |
+| 6 HOUSEHOLD_NAME | Data dictionary: HouseholdProperName is the formatted display name ("Ms. Suzanne Smith"); HouseholdName is the internal sortable "Last, First" | HH_DISPLAY_NAME, DIRECT_COPY, approved. HouseholdProperName is empty for 0.6% of households; watch for blanks at validation. |
+| 7 REGISTRATION_NAME | MCL sheet: FirstName + LastName | FIRST_NAME with rule INF_CONCAT_D9CCCC@1 (first and last joined by a space), approved. Middle name is no longer included. |
+| 8 CUSTODIAN | MCL sheet: Direct Match from CustodianName; tooltip: custom custodians may be added; source has 73 custodian names | CUSTODIAN_NAME, DIRECT_COPY, approved. The custodian-code business rule and CUSTODIAN_CODE decisions no longer feed the target. |
+| HOUSEHOLD_DOB, HOUSEHOLD_SSN | Household_Contacts.DateOfBirth and TaxId of the contact with HouseholdOrder = 1 (1 = primary/head per the dictionary); both optional | Not applied: the canonical Household has no such fields. Needs canonical change requests, then a head-contact derivation. |
+
+Everything in section 5 and 6 changed the approved set, so the package, pull request, publish, batch and stage 10 must be rerun for Run 2. The target adapter version 2 still carries the old choices and should be corrected by a Platform Admin.
