@@ -143,6 +143,7 @@ def test_preview_applies_rules_reports_findings_and_contains_no_values(conn, spe
 @pytest.mark.sqlite_only
 def test_routes_are_role_gated_and_flow_from_proposal_to_preview(conn, tmp_path, monkeypatch, target_service):
     import ui.app as app_module
+    monkeypatch.setattr(app_module, "_stage_blocker", lambda stage: "")  # this test is about roles and mapping, not the stage gate
     import ui.state as state_module
     from ui.state import WorkspaceStateStore
 

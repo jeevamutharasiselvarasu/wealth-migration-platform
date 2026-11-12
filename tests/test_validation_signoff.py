@@ -46,6 +46,7 @@ def test_signoff_form_and_route_for_the_validation_specialist(tmp_path, monkeypa
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "signoff.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
+    monkeypatch.setattr(app_module, "_stage_blocker", lambda stage: "")  # this test is about the sign-off, not the stage gate
     app_module.state_store.questionnaire_data["migration_id"] = "MIG-SO"
     for sid, role in (("sid-v", "Validation Specialist"), ("sid-a", "Migration Analyst")):
         monkeypatch.setitem(app_module.session_mgr.active_sessions, sid, {"email": f"{sid}@example.invalid", "name": role, "role": role})

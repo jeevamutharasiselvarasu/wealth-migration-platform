@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
-from ui.role_policy import POST_POLICY, RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, platform_only_page
+from ui.role_policy import POST_POLICY, RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, gated_stage_for, platform_only_page
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
@@ -82,6 +82,14 @@ async def enforce_role_policy(request: Request, call_next):
             if "text/html" in request.headers.get("accept", ""):
                 return RedirectResponse(url="/setup?error=" + quote_plus(detail), status_code=status.HTTP_303_SEE_OTHER)
             return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
+    gate = gated_stage_for(request.method, request.url.path)
+    if gate is not None and session_mgr.get_session(request) is not None:
+        blocker = _stage_blocker(gate)
+        if blocker:
+            if "text/html" in request.headers.get("accept", ""):
+                path = urlparse(request.headers.get("referer", "/")).path or "/"
+                return RedirectResponse(url=f"{path}?error=" + quote_plus(blocker), status_code=status.HTTP_303_SEE_OTHER)
+            return JSONResponse({"detail": blocker}, status_code=status.HTTP_409_CONFLICT)
     return await call_next(request)
 
 ui_dir = os.path.dirname(os.path.abspath(__file__))
@@ -174,6 +182,22 @@ def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, sour
         return value
 
     return remove_samples(payload)
+
+
+def _stage_blocker(stage: str) -> str:
+    """Why an action of `stage` cannot run yet: the first earlier stage that is not done (empty when it may run)."""
+    try:
+        stages = workflow_progress().get("stages", [])
+    except Exception:
+        logger.exception("Could not check the stage gate")
+        return ""
+    for item in stages:
+        if item["number"] >= stage:
+            break
+        if item["state"] != "done":
+            return (f"Stage {item['number']} {item['title']} is not complete yet. Finish it before stage {stage} actions "
+                    f"(for example approve and confirm every business rule).")
+    return ""
 
 
 def workflow_progress() -> dict:

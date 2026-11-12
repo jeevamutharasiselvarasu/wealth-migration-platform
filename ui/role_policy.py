@@ -168,3 +168,31 @@ def allowed_roles_for(method: str, path: str) -> Optional[Set[str]]:
 
 def is_classified(path: str) -> bool:
     return path in OPEN_POST_PATHS or any(pattern.match(path) for pattern, _ in _COMPILED)
+
+
+# Later-phase actions are blocked until every earlier pipeline stage is done: {route pattern: the stage the action belongs to}.
+STAGE_GATES = [
+    (r"^/api/target-mapping/(adf-package|stage-canonical|create-scripts)$", "07"),
+    (r"^/api/packages/generate$", "07"),
+    (r"^/api/git/(publish|pull-request)$", "08"),
+    (r"^/api/git/pull-request/[^/]+/merge$", "08"),
+    (r"^/api/data-plane/(setup|deployment-check)$", "08"),
+    (r"^/api/data-plane/start$", "09"),
+    (r"^/api/execution/(run|start-pipeline)$", "09"),
+    (r"^/api/adf/(trigger|simulated-(deploy|trigger))$", "09"),
+    (r"^/api/data-plane/promote$", "10"),
+    (r"^/api/execution/runs/[^/]+/promote$", "10"),
+    (r"^/api/target-validation/(run|signoff)$", "10"),
+    (r"^/api/live-validation/run$", "10"),
+]
+_GATES = [(re.compile(pattern), stage) for pattern, stage in STAGE_GATES]
+
+
+def gated_stage_for(method: str, path: str) -> Optional[str]:
+    """The pipeline stage a state-changing route belongs to, when its earlier stages must be done first."""
+    if method.upper() != "POST":
+        return None
+    for pattern, stage in _GATES:
+        if pattern.match(path):
+            return stage
+    return None
