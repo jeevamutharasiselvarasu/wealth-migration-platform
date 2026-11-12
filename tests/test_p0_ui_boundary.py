@@ -63,7 +63,7 @@ def test_global_ui_shell_matches_agentic_demo_visual_language():
     shell = _shell_source()
     for token in ("suite.css", "dm.css", "Inter", 'class="xtop', 'class="pbar"', 'class="side"', 'class="main'):
         assert token in shell
-    assert "{% for e in pilot_entities %}" in shell  # the pilot scope lists the canonical entities from the firm configuration
+    assert "{% for e in target_scope %}" in shell  # the scope lists what the migration populates in the target, not canonical entities
 
 
 def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():

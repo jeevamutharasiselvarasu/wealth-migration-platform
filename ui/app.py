@@ -37,7 +37,7 @@ from control_plane.services.wave_rules import CohortConditionEngine, WaveConditi
 from control_plane.services.adf_client import AzureDataFactoryClient
 from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import database_kind, get_db_connection, using_postgres
-from control_plane.services.firm_config import CORE_ENTITIES, P0_ENTITIES, FirmConfigError, load_firm_config
+from control_plane.services.firm_config import CORE_ENTITIES, P0_ENTITIES, SUPPORTING_ENTITIES, FirmConfigError, load_firm_config, with_supporting_entities
 from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
 
@@ -431,10 +431,37 @@ def _azure_cfg_for_display():
         conn.close()
 
 
+def _target_scope() -> List[str]:
+    """What this migration populates in the target (the user's choice), for display."""
+    setup = state_store.questionnaire_data.get("migration_setup") or {}
+    return list(setup.get("target_entities") or [e for e in setup.get("entities", []) if e in CORE_ENTITIES])
+
+
+def _supporting_scope() -> List[str]:
+    """Canonical entities added for the selection (not chosen by the user), for display."""
+    setup = state_store.questionnaire_data.get("migration_setup") or {}
+    return [e for e in setup.get("entities", []) if e not in _target_scope()]
+
+
+def _target_entity_choices(conn=None) -> List[Dict[str, str]]:
+    """The entities the confirmed target system receives, in canonical order, with their target table. Falls back to the core three."""
+    own = conn is None
+    conn = conn or get_db_connection()
+    try:
+        spec = target_connector.spec(conn)
+    finally:
+        if own:
+            conn.close()
+    ents = (spec or {}).get("entities") or {}
+    names = [e for e in P0_ENTITIES if e in ents] or list(CORE_ENTITIES)
+    return [{"name": e, "table": str((ents.get(e) or {}).get("target_table") or "")} for e in names]
+
+
 def render_template_with_context(request: Request, template_name: str, extra_context: dict):
     base_context = {
         "request": request,
         "pilot_entities": list(P0_ENTITIES), "core_entities": list(CORE_ENTITIES),
+        "target_scope": _target_scope(), "supporting_scope": _supporting_scope(),
         "migration_id": state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"),
         "firm_name": state_store.questionnaire_data.get("firm_name", "New Migration"),
         "adls_connected": state_store.adls_connected,
@@ -1138,14 +1165,10 @@ async def migration_setup_page(request: Request, demo_loaded: str = "", error: s
     prefilled = bool(template_prefill) and not setup
     if prefilled:
         setup = template_prefill  # pre-fills the form only; nothing is in scope or approved until the setup is saved
-    _conn = get_db_connection()
-    try:
-        _spec = target_connector.spec(_conn)
-    finally:
-        _conn.close()
-    entity_targets = {e: (b.get("target_table") or "") for e, b in ((_spec or {}).get("entities") or {}).items()}  # the confirmed target's table per entity
+    choices = _target_entity_choices()
+    chosen = list(setup.get("target_entities") or [e for e in setup.get("entities", list(CORE_ENTITIES)) if e in {c["name"] for c in choices}])
     return render_template_with_context(request, "migration_setup.html", {
-        "entity_targets": entity_targets,
+        "target_choices": choices, "chosen_targets": chosen, "supporting_info": {k: v["why"] for k, v in SUPPORTING_ENTITIES.items()},
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup, "prefilled": prefilled,
         "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": _can_load_demo(user),
         "target_connection": _target_connection_status(),
@@ -1258,10 +1281,11 @@ async def save_migration_setup(request: Request):
     user = get_current_user(request)
     form = await request.form()
     # Explicit scope selection controls downstream P0 workflows.
-    allowed_entities = set(P0_ENTITIES)
-    selected_entities = [entity for entity in form.getlist("entities") if entity in allowed_entities]
-    if not selected_entities:
-        raise HTTPException(status_code=400, detail="Select at least one in-scope entity: Account, Household, or Client.")
+    allowed_entities = {c["name"] for c in _target_entity_choices()}  # the user chooses among what the target receives
+    selected_targets = [entity for entity in form.getlist("entities") if entity in allowed_entities]
+    if not selected_targets:
+        raise HTTPException(status_code=400, detail="Select at least one target entity to populate: " + ", ".join(sorted(allowed_entities)) + ".")
+    selected_entities = with_supporting_entities(selected_targets)  # plus the supporting data those need, added for the user
     setup = {
         "migration_name": str(form.get("migration_name", "")).strip(),
         "source_firm": str(form.get("source_firm", "CoreCap")).strip() or "CoreCap",
@@ -1275,6 +1299,7 @@ async def save_migration_setup(request: Request):
         "source_acquisition": str(form.get("source_acquisition", "SAMPLE_FILES")).strip(),
         "source_details": str(form.get("source_details", "")).strip(),
         "entities": selected_entities,
+        "target_entities": [e for e in P0_ENTITIES if e in selected_targets],
         "configured_by": user["name"],
         "configuration_status": "CONFIGURED",
     }

@@ -142,7 +142,7 @@ def test_an_earlier_migration_can_be_opened_and_stays_active_after_restart(tmp_p
     assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
     assert _second_setup(app_module, sid).status_code == 303
     second_id = state.questionnaire_data["migration_id"]
-    assert second_id != first_id and state.questionnaire_data["migration_setup"]["entities"] == ["Household"]
+    assert second_id != first_id and state.questionnaire_data["migration_setup"]["entities"] == ["Household", "Advisor"] and state.questionnaire_data["migration_setup"]["target_entities"] == ["Household"]
 
     page = _call(app_module, sid, "GET", "/migrations").text
     assert page.count('action="/api/migration/open"') == 2  # only the earlier one offers Open and Setup (the active one links to them)
@@ -407,3 +407,11 @@ def test_firm_knowledge_asset_can_be_removed_and_stays_removed_after_a_restart(t
     state.firm_knowledge_docs.clear()
     state.hydrate_from_durable_state()  # a restart replays the log: the removed asset must not come back
     assert [d["id"] for d in state.firm_knowledge_docs if d["id"].startswith("DOC-9")] == ["DOC-902"]
+
+
+def test_user_selects_target_entities_and_supporting_data_is_added_for_them():
+    from control_plane.services.firm_config import with_supporting_entities
+    assert with_supporting_entities(["Account", "Client", "Household"]) == ["Account", "Client", "Household", "Advisor", "AccountRole"]
+    assert with_supporting_entities(["Household"]) == ["Household", "Advisor"]
+    assert with_supporting_entities(["Account"]) == ["Account"]  # an account owner needs a client too
+    assert with_supporting_entities([]) == []

@@ -12,7 +12,7 @@
   {% set _tc = target_connection.config %}
   <section class="kpis" aria-label="Configuration summary">
     <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if _tc and _tc.status == 'CONFIRMED' else 'Needs setup' }}</b><span>{{ _tc.target_name if _tc else 'one-time Platform Admin step' }}</span></div>
-    <div class="kpi"><small>Entities in scope</small><b>{{ (setup.get('entities') or [])|length }} of {{ pilot_entities|length }}</b><span>{{ (entity_targets.values()|select)|list|length }} load to the target; the rest are supporting data</span></div>
+    <div class="kpi"><small>Entities in scope</small><b>{{ chosen_targets|length }} of {{ target_choices|length }}</b><span>target entities to populate{% if supporting_scope %} · plus supporting data: {{ supporting_scope|join(', ') }}{% endif %}</span></div>
     <div class="kpi"><small>Knowledge assets</small><b>{{ knowledge_docs|length }}</b><span>registered</span></div>
     <div class="kpi"><small>Your access</small><b>{{ 'You can edit' if can_configure else 'Read-only' }}</b><span>{{ user_role }}</span></div>
   </section>
@@ -74,8 +74,9 @@
       </div>
       <div class="ins" style="border-left-color:var(--blue)">
         <b>Migration entity scope</b>
-        Select what is included in this migration, by what the target needs. An entity that has a target table is loaded there; the others are supporting data the target fields depend on (for example the advisor name for Representative Name). Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
-        <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for entity in pilot_entities %}<label class="lt"><input type="checkbox" name="entities" value="{{ entity }}" {% if entity in setup.get('entities', core_entities) %}checked{% endif %}><span><strong>{{ entity }}</strong><span>{% if entity_targets.get(entity) %}Loads to the target table <span class="font-mono">{{ entity_targets[entity] }}</span>{% else %}Supporting data for the target (not loaded by itself){% endif %}</span></span></label>{% endfor %}</div>
+        Select the target entities this migration populates. Unselected entities are excluded from discovery, mapping, review and validation. Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
+        <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for c in target_choices %}<label class="lt"><input type="checkbox" name="entities" value="{{ c.name }}" {% if c.name in chosen_targets %}checked{% endif %}><span><strong>{{ c.name }}</strong><span>{% if c.table %}Populates <span class="font-mono">{{ c.table }}</span>{% else %}Populated in the target{% endif %}</span></span></label>{% endfor %}</div>
+        <p class="fh" style="margin-top:8px">Pick what you want to populate in the target system. Anything else the platform needs to fill those fields is added for you and loaded only as supporting data:{% for k, why in supporting_info.items() %} {{ k }} ({{ why }}){{ ',' if not loop.last }}{% endfor %}, when the selection needs it.</p>
       </div>
     </section>
 

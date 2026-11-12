@@ -11,7 +11,7 @@ import json
 from typing import Any, Dict, List
 
 # Configuration that is the same for the next migration into the same target.
-CARRIED_FIELDS = ("target_system", "canonical_version", "target_owner", "entities", "knowledge_schema_ref", "knowledge_rules_ref",
+CARRIED_FIELDS = ("target_system", "canonical_version", "target_owner", "entities", "target_entities", "knowledge_schema_ref", "knowledge_rules_ref",
                   "knowledge_sme", "relationship_notes", "source_acquisition")
 
 

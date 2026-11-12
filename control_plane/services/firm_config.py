@@ -14,6 +14,22 @@ from pydantic import BaseModel, ValidationError, field_validator, model_validato
 
 P0_ENTITIES = ("Account", "Client", "Household", "Advisor", "AccountRole")
 CORE_ENTITIES = ("Account", "Household", "Client")  # the default scope of a new migration; Advisor and AccountRole are opt-in
+
+# Canonical entities the platform needs to fill a target entity, which the user never chooses: the user selects what the target
+# will receive (Account, Client, Household) and these are added when the selection needs them.
+SUPPORTING_ENTITIES = {
+    "Advisor": {"needs": ("Household",), "why": "the advisor name that fills Representative Name"},
+    "AccountRole": {"needs": ("Account", "Client"), "why": "which client owns each account"},
+}
+
+
+def with_supporting_entities(selected_targets) -> List[str]:
+    """The canonical scope for a selection of target entities: the selection plus the supporting entities it needs, in canonical order."""
+    chosen = set(selected_targets)
+    chosen |= {name for name, d in SUPPORTING_ENTITIES.items() if all(n in chosen for n in d["needs"])}
+    return [e for e in P0_ENTITIES if e in chosen]
+
+
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "firm_config.yaml"
 CONFIG_PATH_ENV = "XODUS_FIRM_CONFIG"
 

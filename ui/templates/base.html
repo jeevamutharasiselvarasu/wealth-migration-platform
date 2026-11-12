@@ -108,8 +108,8 @@
     {{ stage('10', 'Target validation', '/validation-rules', 'validate', 'VS', path == '/validation-rules') }}
     {% endif %}
     <div class="sh">Scope</div>
-    <div class="scope">{% for e in pilot_entities %}<span>{{ e }}</span>{% endfor %}</div>
-    <div class="fh" style="color:#8FA9BC;padding:6px 10px">Advisor and AccountRole are opt-in (Migration setup); they load to the canonical model only, since the target has no tables for them. Other entities and reverse mapping are deferred.</div>
+    <div class="scope">{% for e in target_scope %}<span>{{ e }}</span>{% else %}<span>Not chosen yet</span>{% endfor %}</div>
+    {% if supporting_scope %}<div class="fh" style="color:#8FA9BC;padding:6px 10px">Supporting data added for you: {{ supporting_scope|join(', ') }}.</div>{% endif %}
     {% endif %}
     {% endif %}
   </aside>{% endif %}
