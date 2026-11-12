@@ -61,7 +61,8 @@ Target Registration SSN comes from Client TaxId
 Target Registration DOB comes from Client DateOfBirth
 Target Registration First Name comes from Client FirstName
 Target Registration Last Name comes from Client LastName
-Target Registration Name comes from Client FirstName using the rule "Concatenate FirstName and LastName with a space"
+# Registration Name is the canonical LEGAL_NAME, which the migration derives from the source FirstName and LastName with the rule above (a derived field).
+Target Registration Name comes from Client LEGAL_NAME
 Target HH Grouping Code comes from Household Id
 Target Household Name comes from Household HouseholdProperName
 Target Household First Name comes from Household HouseholdName using the rule "Household first name is the part after the comma in the combined name"

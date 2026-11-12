@@ -3255,8 +3255,13 @@ def _apply_business_hints(conn, migration_id: str, spec: Dict[str, Any], actor: 
         rid = rule_inference.rule_id_for(hit["rule_type"], hit["params"])
         return transformation_rules.make_expression(rid, approved[rid]) if rid in approved else None
 
-    return target_mapping.apply_hints(conn, migration_id, spec, hints, lambda e, f: source_map.get((e.lower(), f.lower())), rule_expression, actor,
-                                      _canonical_field_lists())
+    known = _canonical_field_lists()
+
+    def resolve(entity: str, field: str):
+        """The canonical field a source field maps to in this migration; a name that already is a canonical field of the entity is itself."""
+        return source_map.get((entity.lower(), field.lower())) or next((k for k in known.get(entity, []) if k.upper() == field.upper()), None)
+
+    return target_mapping.apply_hints(conn, migration_id, spec, hints, resolve, rule_expression, actor, known)
 
 
 @app.post("/api/target-mapping/propose")
