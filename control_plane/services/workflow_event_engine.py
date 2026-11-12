@@ -84,6 +84,8 @@ def _apply_projection(conn, event: Dict[str, Any]) -> None:
     elif event["event_type"] == "KNOWLEDGE_ASSET_REGISTERED":
         assets = state.setdefault("knowledge_assets", {})
         assets[event["aggregate_id"]] = payload
+    elif event["event_type"] == "KNOWLEDGE_ASSET_REMOVED":
+        state.setdefault("knowledge_assets", {}).pop(event["aggregate_id"], None)
     elif event["event_type"] == "MAPPING_PROPOSALS_GENERATED":
         state["mapping_proposal_run"] = payload
     elif event["event_type"] == "MCL_EXECUTION_SUMMARY_PERSISTED":

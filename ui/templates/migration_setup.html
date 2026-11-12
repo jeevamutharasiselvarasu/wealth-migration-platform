@@ -12,7 +12,7 @@
   {% set _tc = target_connection.config %}
   <section class="kpis" aria-label="Configuration summary">
     <div class="kpi"><small>Target system</small><b>{{ 'Confirmed' if _tc and _tc.status == 'CONFIRMED' else 'Needs setup' }}</b><span>{{ _tc.target_name if _tc else 'one-time Platform Admin step' }}</span></div>
-    <div class="kpi"><small>Entities in scope</small><b>{{ (setup.get('entities') or [])|length }} of 3</b><span>Account, Household, Client</span></div>
+    <div class="kpi"><small>Entities in scope</small><b>{{ (setup.get('entities') or [])|length }} of {{ pilot_entities|length }}</b><span>{{ (entity_targets.values()|select)|list|length }} load to the target; the rest are supporting data</span></div>
     <div class="kpi"><small>Knowledge assets</small><b>{{ knowledge_docs|length }}</b><span>registered</span></div>
     <div class="kpi"><small>Your access</small><b>{{ 'You can edit' if can_configure else 'Read-only' }}</b><span>{{ user_role }}</span></div>
   </section>
@@ -74,8 +74,8 @@
       </div>
       <div class="ins" style="border-left-color:var(--blue)">
         <b>Migration entity scope</b>
-        Select the entities included in this migration. Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
-        <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for entity in pilot_entities %}<label class="lt"><input type="checkbox" name="entities" value="{{ entity }}" {% if entity in setup.get('entities', core_entities) %}checked{% endif %}><span><strong>{{ entity }}</strong><span>Include in this migration</span></span></label>{% endfor %}</div>
+        Select what is included in this migration, by what the target needs. An entity that has a target table is loaded there; the others are supporting data the target fields depend on (for example the advisor name for Representative Name). Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
+        <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for entity in pilot_entities %}<label class="lt"><input type="checkbox" name="entities" value="{{ entity }}" {% if entity in setup.get('entities', core_entities) %}checked{% endif %}><span><strong>{{ entity }}</strong><span>{% if entity_targets.get(entity) %}Loads to the target table <span class="font-mono">{{ entity_targets[entity] }}</span>{% else %}Supporting data for the target (not loaded by itself){% endif %}</span></span></label>{% endfor %}</div>
       </div>
     </section>
 

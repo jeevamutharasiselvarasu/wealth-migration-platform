@@ -390,3 +390,20 @@ def test_template_brings_stages_one_to_three_and_a_plain_new_migration_is_empty(
     third_id = state.questionnaire_data["migration_id"]
     assert [e["event_type"] for e in read_events(third_id, limit=100) if e["event_type"] in ("SOURCE_FILE_UPLOADED", "KNOWLEDGE_ASSET_REGISTERED")] == []
     assert state.firm_knowledge_docs == [] and state.entity_sample_files == {}
+
+
+def test_firm_knowledge_asset_can_be_removed_and_stays_removed_after_a_restart(tmp_path, monkeypatch):
+    from control_plane.services.workflow_event_engine import publish_event
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "kremove")
+    assert _post_setup(app_module, sid).status_code == 303
+    mid = state.questionnaire_data["migration_id"]
+    for doc in ({"id": "DOC-901", "filename": "old_rules.md", "category": "business_rules"}, {"id": "DOC-902", "filename": "spec_rules.md", "category": "business_rules"}):
+        state.firm_knowledge_docs.append(dict(doc))
+        publish_event("KNOWLEDGE_ASSET_REGISTERED", mid, "knowledge_asset", doc["id"], dict(doc), "tester")
+    page = _call(app_module, sid, "GET", "/firm-knowledge").text
+    assert "old_rules.md" in page and 'action="/api/knowledge/remove"' in page
+    assert _call(app_module, sid, "POST", "/api/knowledge/remove", [("doc_id", "DOC-901")]).status_code == 303
+    assert [d["id"] for d in state.firm_knowledge_docs if d["id"].startswith("DOC-9")] == ["DOC-902"]
+    state.firm_knowledge_docs.clear()
+    state.hydrate_from_durable_state()  # a restart replays the log: the removed asset must not come back
+    assert [d["id"] for d in state.firm_knowledge_docs if d["id"].startswith("DOC-9")] == ["DOC-902"]

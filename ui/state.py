@@ -175,6 +175,8 @@ class WorkspaceStateStore:
                     doc = dict(payload)
                     if doc and not any(existing.get("id") == doc.get("id") for existing in self.firm_knowledge_docs):
                         self.firm_knowledge_docs.append(doc)
+                elif event["event_type"] == "KNOWLEDGE_ASSET_REMOVED":
+                    self.firm_knowledge_docs[:] = [d for d in self.firm_knowledge_docs if d.get("id") != event["aggregate_id"]]
 
         conn = get_db_connection()
         try:

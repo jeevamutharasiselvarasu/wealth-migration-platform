@@ -1138,7 +1138,14 @@ async def migration_setup_page(request: Request, demo_loaded: str = "", error: s
     prefilled = bool(template_prefill) and not setup
     if prefilled:
         setup = template_prefill  # pre-fills the form only; nothing is in scope or approved until the setup is saved
+    _conn = get_db_connection()
+    try:
+        _spec = target_connector.spec(_conn)
+    finally:
+        _conn.close()
+    entity_targets = {e: (b.get("target_table") or "") for e, b in ((_spec or {}).get("entities") or {}).items()}  # the confirmed target's table per entity
     return render_template_with_context(request, "migration_setup.html", {
+        "entity_targets": entity_targets,
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup, "prefilled": prefilled,
         "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": _can_load_demo(user),
         "target_connection": _target_connection_status(),
@@ -6604,6 +6611,23 @@ async def upload_firm_file(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     destination = return_to if return_to in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
     return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/knowledge/remove")
+async def remove_firm_knowledge_asset(request: Request):
+    """Take a firm (migration) knowledge asset out of this migration. Platform knowledge is not touched here. Rules already
+    inferred from the asset stay in the rule register (they are platform-wide and are retired on the Business rules page)."""
+    user = get_current_user(request)
+    form = await request.form()
+    doc_id = str(form.get("doc_id", "")).strip()
+    doc = next((d for d in state_store.firm_knowledge_docs if str(d.get("id")) == doc_id), None)
+    if not doc:
+        return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    state_store.firm_knowledge_docs[:] = [d for d in state_store.firm_knowledge_docs if str(d.get("id")) != doc_id]
+    publish_event("KNOWLEDGE_ASSET_REMOVED", migration_id, "knowledge_asset", doc_id,
+                  {"filename": doc.get("filename"), "category": doc.get("category"), "removed_by": user["name"]}, user["name"])
+    return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/knowledge/confluence")

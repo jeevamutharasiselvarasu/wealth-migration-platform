@@ -102,7 +102,7 @@ POST_POLICY = [
     (r"^/api/entity-resolution/suggest$", DISCOVERY_ROLES),
     (r"^/api/entity-resolution/(decide|account-roles)$", APPROVAL_ROLES),
     (r"^/api/entity-resolution/preview$", TARGET_PREVIEW_ROLES),
-    (r"^/api/knowledge/(submit-questionnaire|file-upload|confluence)$", DISCOVERY_ROLES),
+    (r"^/api/knowledge/(submit-questionnaire|file-upload|confluence|remove)$", DISCOVERY_ROLES),
     (r"^/api/platform-knowledge(/[^/]+/retire)?$", PLATFORM_KNOWLEDGE_ROLES),
     (r"^/api/agents/analyze/[^/]+$", DISCOVERY_ROLES),
     (r"^/api/relationships/review$", DISCOVERY_ROLES),
