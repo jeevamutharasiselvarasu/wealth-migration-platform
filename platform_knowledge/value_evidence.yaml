@@ -1,0 +1,81 @@
+# Evidence the platform may use to propose which source column holds a canonical field: words in the column name, and what the values look like.
+# Proposals only (a person approves). Key fields and date fields come from the firm configuration; this file adds the words, vocabularies and
+# patterns of a domain. With no file, nothing is proposed from evidence (columns named like a canonical field still map to it).
+name_hints:
+  ACCT_NUM:
+  - ACCOUNT
+  - ACCT
+  OPEN_DATE:
+  - OPEN
+  - OPENED
+  - OPENING
+  REG_TYPE:
+  - REG
+  - REGISTRATION
+  HH_ID:
+  - GROUP
+  - HH
+  - HOUSEHOLD
+  HH_NAME:
+  - GROUP
+  - HH
+  - HOUSEHOLD
+  CLIENT_ID:
+  - CLIENT
+  - CUSTOMER
+  - PARTY
+  LEGAL_NAME:
+  - DISPLAY
+  - LEGAL
+  - NAME
+  - NM
+  CLIENT_TYPE:
+  - CLASS
+  - KIND
+  - TYPE
+  TAX_ID:
+  - EIN
+  - SSN
+  - TAX
+  - TIN
+id_tokens:
+- ID
+- KEY
+- 'NO'
+- NUM
+- NUMBER
+- REF
+name_tokens:
+- LABEL
+- NAME
+- NM
+- TITLE
+vocabularies:
+  REG_TYPE:
+  - INDIVIDUAL
+  - IRA
+  - JOINT
+  - JTWROS
+  - ROTH
+  - ROTH_IRA
+  - SEP_IRA
+  - TOD
+  - TRUST
+  - UTMA
+  CLIENT_TYPE:
+  - CORP
+  - CORPORATION
+  - ENTITY
+  - ESTATE
+  - INDIVIDUAL
+  - INDV
+  - JOINT
+  - LLC
+  - TRUST
+patterns:
+  TAX_ID: ^(\d{3}-?\d{2}-?\d{4}|\d{2}-?\d{7})$
+text_fields:
+- HH_NAME
+- LEGAL_NAME
+needs_name_token:
+- HH_NAME

@@ -68,7 +68,7 @@ def test_spine_referential_integrity():
 
     assert res["status"] == "WARN"
     assert res["relationship_checks"][0]["status"] == "PASS"
-    assert res["relationship_checks"][1]["status"] == "PASS"
+    assert res["relationship_checks"][1]["status"] == "NOT_EVALUATED"  # Client.HH_ID is a reference in the configuration but is not mapped here
     client_household = next(
         item for item in res["relationship_checks"]
         if item["check"] == "RELATIONSHIP_CANDIDATE"

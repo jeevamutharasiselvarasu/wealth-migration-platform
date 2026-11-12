@@ -137,11 +137,15 @@ def _translate_core(expression: str, column: str, rule: Optional[Dict[str, Any]]
     return f"CASE WHEN {blank} THEN {col} ELSE {body} END"
 
 
-KEY_FIELDS = {"ACCT_NUM", "ACCOUNT_ID", "HH_ID", "CLIENT_ID", "CONTACT_ID"}  # identifiers of the thing a row represents (not TAX_ID, ADVISOR_ID, ...)
-
-
-def _is_key_field(canonical: str) -> bool:
-    return (canonical or "").upper() in KEY_FIELDS
+def _is_key_field(canonical: str, entity: Optional[str] = None) -> bool:
+    """Is this canonical field a key of the entity (as the firm configuration marks keys)? With no entity, a key of any entity."""
+    from control_plane.services.firm_config import FirmConfigError, get_firm_config, key_fields
+    try:
+        cfg = get_firm_config()
+        keys = set(key_fields(entity, cfg)) if entity else {k for e in cfg.entities for k in key_fields(e, cfg)}
+    except FirmConfigError:
+        return False
+    return (canonical or "").upper() in keys
 
 
 def _merge(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, Any]], mappings: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -149,7 +153,7 @@ def _merge(schema: str, entity: str, table: str, fields: Dict[str, Dict[str, Any
     built = _insert(schema, entity, table, fields, mappings, rules)
     rows = sorted(mappings, key=lambda r: r["target_field"])
     cols = [_ident(fields[m["target_field"]]["column"]) for m in rows]
-    keys = [c for c, m in zip(cols, rows) if _is_key_field(m["canonical_field"] or "")]
+    keys = [c for c, m in zip(cols, rows) if _is_key_field(m["canonical_field"] or "", entity)]
     insert_only = not keys  # no identifier is mapped: add rows that are not already there, never update
     if insert_only:
         keys = list(cols)

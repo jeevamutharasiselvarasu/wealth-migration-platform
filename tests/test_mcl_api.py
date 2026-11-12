@@ -36,7 +36,7 @@ def test_mcl_batch_endpoint_runs_three_entities_and_persists_summary(tmp_path, m
         records = {
             "Account": [{"ACCT_NUM": "A1", "HH_ID": "H1", "CLIENT_ID": "P1"}],
             "Household": [{"HH_ID": "H1"}],
-            "Client": [{"CLIENT_ID": "P1"}],
+            "Client": [{"CLIENT_ID": "P1", "HH_ID": "H1"}],
         }[entity_name]
         fields = sorted(records[0].keys())
         mapping = {

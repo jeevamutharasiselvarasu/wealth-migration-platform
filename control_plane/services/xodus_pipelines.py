@@ -333,7 +333,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 derive.append(f"UPDATE c SET c.{_q(field)} = m.[canonical_code] FROM [{CANON}].[{ctable}] AS c JOIN [{REF}].[code_map] AS m "
                               f"ON m.[migration_slug] = {_lit(s)} AND m.[code_set] = {_lit(code_set)} AND m.[source_value] = UPPER(LTRIM(RTRIM(c.{_q(field)})));")
         # References to an entity resolved earlier in the load order point at its surviving record (the crosswalk below).
-        for field, (ref_entity, _) in sorted((entity_resolution.REFERENCES.get(entity) or {}).items()):
+        for field, (ref_entity, _) in sorted((entity_resolution.references().get(entity) or {}).items()):
             if field in filled | set(mapped) and ref_entity in resolved:
                 derive.append(f"UPDATE c SET c.{_q(field)} = x.[survivor_key] FROM [{CANON}].[{ctable}] AS c JOIN [{CANON}].[{resolved[ref_entity]}] AS x "
                               f"ON x.[source_key] = c.{_q(field)} WHERE x.[survivor_key] <> x.[source_key];")
@@ -385,7 +385,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                          f"AND t.[code_set] = {_lit(code_set)} AND t.[canonical_code] = {e}), {e})")
                 exprs.append(f"{e} AS {_q(col)}")
                 cols.append(col)
-                if sql_package._is_key_field(m["canonical_field"]):
+                if sql_package._is_key_field(m["canonical_field"], entity):
                     keys.append(e)
             # Each mirror row keeps the canonical key of the source row it came from (xodus_source_key): stage 10 names failing rows by it.
             ckey = canon_counts[entity]["key"]
@@ -400,7 +400,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 f"    SELECT {', '.join(exprs)}, {source_key} AS [xodus_source_key], {dedupe}\n    FROM [{CANON}].[{canon_counts[entity]['table']}] AS s\n) AS x"
                 " WHERE x.[xodus_rn] = 1;")
             mirror_body.append(f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'mirror', N'{MIRROR}', N'{mtable}';")
-            key_cols = [c for c, m in zip(cols, trows) if sql_package._is_key_field(m["canonical_field"])]
+            key_cols = [c for c, m in zip(cols, trows) if sql_package._is_key_field(m["canonical_field"], entity)]
             types = {c: t for c, t in all_cols}
             live_tables.append({"entity": entity, "live_table": table, "mirror_table": mtable, "columns": cols, "key_columns": key_cols,
                                 "all_columns": [c for c, _ in all_cols], "types": {c: types.get(c, "string") for c in cols}})

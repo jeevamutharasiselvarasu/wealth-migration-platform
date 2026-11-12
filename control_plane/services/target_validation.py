@@ -15,7 +15,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from control_plane.services import entity_resolution, run_monitor, sql_target
 
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
-RELATIONSHIPS = (("Account", "HH_ID", "Household", "HH_ID"), ("Client", "HH_ID", "Household", "HH_ID"))
+def _relationships() -> tuple:
+    from control_plane.services.firm_config import FirmConfigError, reference_fields
+    try:
+        return tuple((e, f, o, k) for e, fields in reference_fields().items() for f, (o, k) in fields.items())
+    except FirmConfigError:
+        return ()
 MAX_LIST_CODES = 1000  # a reference list longer than this is not checked inline
 MAX_ROW_KEYS = 50  # for a failed check, the identifiers (keys only, never other values) of at most this many failing rows are kept
 # Live column types a text value must convert to (checked value by value on the mirror, which holds every value as text).
@@ -134,7 +139,7 @@ def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str
         if e.get("unmapped_required"):
             add("REQUIRED_FIELDS_MAPPED", entity, "", ", ".join(e["unmapped_required"]), None, "warn_static",
                 detail="Required target field(s) with no approved mapping: " + ", ".join(e["unmapped_required"]) + ".")
-    for src_e, src_f, dst_e, dst_f in RELATIONSHIPS:
+    for src_e, src_f, dst_e, dst_f in _relationships():
         s, d = entities.get(src_e), entities.get(dst_e)
         if not s or not d:
             continue

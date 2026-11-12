@@ -72,3 +72,24 @@ Not yet generic (still wealth-shaped code, found by grepping for HH_ID, ACCT_NUM
 
 These do not stop a second domain from being configured and inferred (the proof above), but running a second domain through source-to-canonical
 mapping, validation and the generated pipelines needs them moved to configuration, one module at a time, each proven by extending the library test.
+
+## 6. Remaining wealth-shaped modules: progress (2026-11-13)
+
+Moved to configuration or data, each proven in `tests/test_second_domain.py` (the library runs through them in a fresh process):
+- Mapper source-name aliases, per-entity aliases and the one linking column: `platform_knowledge/source_aliases.yaml` (no fixed list in the mapper;
+  required fields come only from the firm configuration).
+- Entity-resolution suggested match rules: `platform_knowledge/match_rules.yaml`; the references it repoints are derived from the key and field
+  names of the firm configuration.
+- Merge keys in the generated SQL: the entity's own key fields from the firm configuration.
+- Evidence for proposing mappings (name words, vocabularies, patterns): `platform_knowledge/value_evidence.yaml`; key and date fields come from the
+  firm configuration.
+- Key and relationship validation (Account to Household to Client checks and the validation run's relationship checks): derived from the firm
+  configuration's keys and references; a reference is judged only when both entities are in the run.
+
+Still wealth-shaped (found by grepping for HH_ID, ACCT_NUM, ADVISOR_ID, Household, AccountRole, custodian):
+- `entity_resolution.py`: the derived account-role method "the household head owns every account" (a recipe tied to household order and roles)
+  and `canonical_derivations.py`; these need a general "derive an entity from another" description before they can be data.
+- `xodus_pipelines.py`: the SQL for that derivation and a few entity names; `adf_exporter.py` (legacy ADF export), `control_plane/kernel/wealth_kernel.py`,
+  `agents/p0_agent_suite.py`.
+- `ui/app.py` (about 20 places: pages and labels naming Household, Advisor and so on), `ui/state.py`, `rule_suggestions.py`, example text in
+  `transformation_rules.py`.

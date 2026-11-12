@@ -107,7 +107,7 @@ def test_source_codes_reach_canonical_codes_through_the_same_code_sets(conn, mod
 
 def test_the_same_person_in_two_party_records_is_resolved_by_the_same_rules():
     clients = canonical_rows()["Client"]
-    out, xref, stats = er.resolve(clients, "CLIENT_ID", er.SUGGESTED_RULES["Client"])
+    out, xref, stats = er.resolve(clients, "CLIENT_ID", er.suggested_rules()["Client"])
     assert stats["merged"] == 1 and xref["P102"] == xref["P101"] == "P101"
     survivor = next(r for r in out if r["CLIENT_ID"] == "P101")
     assert survivor["EMAIL"] == "louis@example.test" and survivor["DATE_OF_BIRTH"] == "1959-09-30"  # the most complete record, blanks filled from the other

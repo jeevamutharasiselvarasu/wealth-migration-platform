@@ -3795,7 +3795,7 @@ def _resolve_in_memory(migration_id: str, rows: Dict[str, List[Dict[str, Any]]],
     for entity in _load_order(list(rows)):
         if entity == "AccountRole" and join_info.get(entity, {}).get("derived"):
             rows[entity] = entity_resolution.derive_account_roles(rows.get("Account", []), rows.get("Client", []))
-        for field, (ref, _) in (entity_resolution.REFERENCES.get(entity) or {}).items():
+        for field, (ref, _) in (entity_resolution.references().get(entity) or {}).items():
             if ref in xrefs:
                 entity_resolution.repoint(rows[entity], field, xrefs[ref])
         key = (join_info.get(entity) or {}).get("key")
@@ -4717,7 +4717,7 @@ def _er_context(request: Request, user: Dict[str, str], preview=None, notice: st
         conn.close()
     entities = []
     for e in scope:
-        suggested = entity_resolution.SUGGESTED_RULES.get(e, [])
+        suggested = entity_resolution.suggested_rules().get(e, [])
         if not suggested:
             continue
         entities.append({"name": e, "rules": [r for r in all_rules if r["entity_name"] == e], "suggested": suggested,

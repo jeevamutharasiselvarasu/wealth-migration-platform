@@ -14,26 +14,28 @@ BASE_EVIDENCE_CONFIDENCE = 0.50
 STRONG_EVIDENCE_BONUS = 0.10
 EVIDENCE_REVIEW_THRESHOLD = 0.70  # below this a proposal needs individual review, never bulk approval
 
-# Tokens in a source column name that support a canonical field. Name alone is never enough.
-NAME_HINTS: Dict[str, set] = {
-    "ACCT_NUM": {"ACCT", "ACCOUNT"},
-    "OPEN_DATE": {"OPEN", "OPENED", "OPENING"},
-    "REG_TYPE": {"REG", "REGISTRATION"},
-    "HH_ID": {"GROUP", "HOUSEHOLD", "HH"},
-    "HH_NAME": {"GROUP", "HOUSEHOLD", "HH"},
-    "CLIENT_ID": {"CLIENT", "PARTY", "CUSTOMER"},
-    "LEGAL_NAME": {"NAME", "NM", "LEGAL", "DISPLAY"},
-    "CLIENT_TYPE": {"TYPE", "KIND", "CLASS"},
-    "TAX_ID": {"TAX", "TIN", "SSN", "EIN"},
-}
-ID_TOKENS = {"REF", "ID", "NUM", "NO", "KEY", "NUMBER"}
-NAME_TOKENS = {"LABEL", "NAME", "NM", "TITLE"}
-KEY_FIELDS = {"ACCT_NUM", "HH_ID", "CLIENT_ID"}
+def _evidence_data() -> Dict:
+    """Words, vocabularies and patterns (platform_knowledge/value_evidence.yaml); none are built in."""
+    import yaml
+    from control_plane.paths import platform_knowledge_dir
+    try:
+        return yaml.safe_load((platform_knowledge_dir() / "value_evidence.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
 
-REG_VOCAB = {"IRA", "ROTH", "ROTH_IRA", "TOD", "JOINT", "INDIVIDUAL", "TRUST", "UTMA", "SEP_IRA", "JTWROS"}
-CLIENT_TYPE_VOCAB = {"INDIVIDUAL", "INDV", "TRUST", "CORP", "CORPORATION", "LLC", "JOINT", "ENTITY", "ESTATE"}
-VOCABULARIES = {"REG_TYPE": REG_VOCAB, "CLIENT_TYPE": CLIENT_TYPE_VOCAB}
-TAX_ID_PATTERN = re.compile(r"^(\d{3}-?\d{2}-?\d{4}|\d{2}-?\d{7})$")
+
+def _config_fields() -> tuple:
+    """(key fields, date fields) of the canonical entities, from the firm configuration."""
+    from control_plane.services.firm_config import FirmConfigError, get_firm_config
+    try:
+        cfg = get_firm_config()
+    except FirmConfigError:
+        return set(), set()
+    keys = {f.name for d in cfg.entities.values() for f in d.fields if f.is_key}
+    dates = {f.name for d in cfg.entities.values() for f in d.fields if f.type == "date"}
+    return keys, dates
+
+
 DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d")
 
 
@@ -59,33 +61,39 @@ def _value_evidence(field: str, column: str, values: List[str], total_rows: int)
     """Return (description, is_strong) when the values support the canonical field, else None."""
     if not values:
         return None
-    if field in KEY_FIELDS:
+    data = _evidence_data()
+    keys, dates = _config_fields()
+    if field in keys:
         if len(values) == total_rows and len(set(values)) == len(values):
             return ("values are unique and non-null", True)
         return None
-    if field == "OPEN_DATE":
+    if field in dates:
         return ("all values parse as dates", True) if all(_is_date(v) for v in values) else None
-    if field in VOCABULARIES:
-        share = sum(1 for v in values if v.upper() in VOCABULARIES[field]) / len(values)
+    vocab = {k: {str(x).upper() for x in v} for k, v in (data.get("vocabularies") or {}).items()}
+    if field in vocab:
+        share = sum(1 for v in values if v.upper() in vocab[field]) / len(values)
         if share >= 0.6:
             return (f"{share:.0%} of values are known {field} vocabulary", share >= 0.8)
         return None
-    if field == "TAX_ID":
-        return ("all values match a tax-identifier pattern", True) if all(TAX_ID_PATTERN.match(v) for v in values) else None
-    if field in {"HH_NAME", "LEGAL_NAME"}:
+    pattern = (data.get("patterns") or {}).get(field)
+    if pattern:
+        return (f"all values match the {field} pattern", True) if all(re.match(pattern, v) for v in values) else None
+    if field in set(data.get("text_fields") or []):
         textual = all(re.search(r"[A-Za-z]", v) and " " in v for v in values)
         return ("values are multi-word text", False) if textual else None
     return None
 
 
 def _name_hint(field: str, column: str) -> Optional[str]:
+    data = _evidence_data()
+    keys, _dates = _config_fields()
     tokens = _tokens(column)
-    hits = tokens & NAME_HINTS.get(field, set())
+    hits = tokens & {str(x).upper() for x in (data.get("name_hints") or {}).get(field, [])}
     if not hits:
         return None
-    if field in KEY_FIELDS and not (tokens & ID_TOKENS):
+    if field in keys and not (tokens & {str(x).upper() for x in data.get("id_tokens") or []}):
         return None
-    if field == "HH_NAME" and not (tokens & NAME_TOKENS):
+    if field in set(data.get("needs_name_token") or []) and not (tokens & {str(x).upper() for x in data.get("name_tokens") or []}):
         return None
     return "/".join(sorted(hits))
 

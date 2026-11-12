@@ -1,0 +1,7 @@
+# Field sets worth proposing as entity match rules (records equal on all of these fields are the same real-world record).
+# Knowledge a Platform Admin edits; a person approves every rule per migration. An entity not listed gets no suggestion.
+Client:
+- [TAX_ID]
+- [FIRST_NAME, LAST_NAME, DATE_OF_BIRTH]
+Advisor:
+- [EMAIL]

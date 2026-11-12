@@ -157,12 +157,12 @@ def test_mapper_required_fields_come_from_firm_config():
     assert "TAX_ID" in SchemaMapperAgent.required_fields("Client")
 
 
-def test_mapper_required_fields_fall_back_when_firm_config_unavailable(tmp_path, monkeypatch):
+def test_mapper_knows_no_required_fields_when_firm_config_is_unavailable(tmp_path, monkeypatch):
     from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 
     monkeypatch.setenv("XODUS_FIRM_CONFIG", str(tmp_path / "absent.yaml"))
-    assert SchemaMapperAgent.required_fields("Household") == SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS["Household"]
-    assert SchemaMapperAgent.required_fields("Sleeve") == SchemaMapperAgent.MANDATORY_CANONICAL_FIELDS["Sleeve"]
+    assert SchemaMapperAgent.required_fields("Household") == []  # no built-in list: the firm configuration is the only source
+    assert SchemaMapperAgent.required_fields("Sleeve") == []
 
 
 def test_columns_named_like_canonical_fields_map_to_themselves_without_false_gaps():

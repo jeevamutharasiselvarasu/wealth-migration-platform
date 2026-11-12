@@ -12,10 +12,13 @@ from control_plane.services.validation_scenarios import evaluate as scenario_eva
 from control_plane.services.mcl_validation import _key_check, _present, _relationship_check
 
 ENTITIES = _P0
-RELATIONSHIPS = (
-    ("Account", "HH_ID", "Household", "HH_ID"),
-    ("Client", "HH_ID", "Household", "HH_ID"),
-)
+def relationships() -> tuple:
+    """(entity, field, other entity, other key) for every reference in the firm configuration (not a list kept here)."""
+    from control_plane.services.firm_config import FirmConfigError, reference_fields
+    try:
+        return tuple((e, f, o, k) for e, fields in reference_fields().items() for f, (o, k) in fields.items())
+    except FirmConfigError:
+        return ()
 
 
 def _canonical_rows(rows: List[Dict[str, Any]], source_to_canonical: Dict[str, str]) -> List[Dict[str, Any]]:
@@ -80,7 +83,9 @@ def run_checks(
                         "status": res["status"], "detail": res["message"],
                     })
         merged[entity] = entity_rows
-    for src_entity, src_field, dst_entity, dst_field in RELATIONSHIPS:
+    for src_entity, src_field, dst_entity, dst_field in relationships():
+        if src_entity not in merged or dst_entity not in merged:
+            continue  # a reference is judged only when both entities were part of this run
         # Only rows from files that carry the column take part; other files cannot be judged on it.
         src_rows = [r for r in merged.get(src_entity, []) if src_field in r]
         dst_rows = [r for r in merged.get(dst_entity, []) if dst_field in r]

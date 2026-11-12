@@ -17,16 +17,25 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 SURVIVORSHIP = "MOST_COMPLETE"
-SUGGESTED_RULES = {
-    "Client": [["TAX_ID"], ["FIRST_NAME", "LAST_NAME", "DATE_OF_BIRTH"]],
-    "Advisor": [["EMAIL"]],
-}
-REFERENCES = {  # field -> (entity, key field) it points at; resolution repoints these to the survivor
-    "Household": {"ADVISOR_ID": ("Advisor", "ADVISOR_ID")},
-    "Account": {"HH_ID": ("Household", "HH_ID")},
-    "Client": {"HH_ID": ("Household", "HH_ID")},
-    "AccountRole": {"CLIENT_ID": ("Client", "CLIENT_ID"), "ACCT_NUM": ("Account", "ACCT_NUM")},
-}
+def suggested_rules() -> Dict[str, List[List[str]]]:
+    """Field sets worth proposing as match rules per entity (platform_knowledge/match_rules.yaml); none are built in."""
+    import yaml
+    from control_plane.paths import platform_knowledge_dir
+    try:
+        return yaml.safe_load((platform_knowledge_dir() / "match_rules.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def references() -> Dict[str, Dict[str, tuple]]:
+    """field -> (entity, key field) it points at, per entity, from the firm configuration; resolution repoints these to the survivor."""
+    from control_plane.services.firm_config import FirmConfigError, reference_fields
+    try:
+        return reference_fields()
+    except FirmConfigError:
+        return {}
+
+
 ROLE_DERIVATION = "HOUSEHOLD_HEAD_OWNS"
 ROLE_DERIVATION_TEXT = "The head of each household (household order 1) owns every account of that household (role OWNER)."
 STRIP = " -.,/'()[]"  # removed before comparing (the generated SQL removes the same characters)
@@ -60,7 +69,7 @@ def suggest(conn: sqlite3.Connection, migration_id: str, entity: str, available:
     """Propose the suggested match rules whose fields this migration fills. Existing rules keep their decision. Returns rules added."""
     ensure_tables(conn)
     added = 0
-    for fields in SUGGESTED_RULES.get(entity, []):
+    for fields in suggested_rules().get(entity, []):
         if not all(f in available for f in fields):
             continue
         cur = conn.execute("INSERT INTO entity_match_rules (migration_id, entity_name, rule_id, fields_json, status, proposed_utc) "

@@ -102,7 +102,8 @@ def test_real_package_creates_the_target_schema_and_uses_the_managed_identity_fo
 
 def test_merge_key_is_an_identifier_field_and_a_table_without_one_inserts_missing_rows_only():
     from control_plane.services import sql_package as sp
-    assert sp._is_key_field("ACCT_NUM") and sp._is_key_field("HH_ID") and not sp._is_key_field("TAX_ID") and not sp._is_key_field("ADVISOR_ID")
+    assert sp._is_key_field("ACCT_NUM", "Account") and sp._is_key_field("HH_ID", "Household") and not sp._is_key_field("TAX_ID", "Client")
+    assert sp._is_key_field("ADVISOR_ID", "Advisor") and not sp._is_key_field("ADVISOR_ID", "Household")  # a key of its own entity, not a reference to another
     fields = {"T.A": {"table": "T", "column": "A", "name": "T.A"}, "T.B": {"table": "T", "column": "B", "name": "T.B"}}
     maps = lambda c: [{"target_field": "T.A", "canonical_field": c, "transformation_expression": "DIRECT_COPY"},
                       {"target_field": "T.B", "canonical_field": "FIRST_NAME", "transformation_expression": "DIRECT_COPY"}]

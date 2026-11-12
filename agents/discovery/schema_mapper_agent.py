@@ -13,130 +13,17 @@ class SchemaMapperAgent:
 
     INFERENCE_CONFIDENCE_CAP = 0.85  # inferred (not catalogued) proposals never look as certain as a known mapping
 
-    DEFAULT_CATALOG = {
-        # Account Attributes
-        "LEGACY_ACCT_NO": "ACCT_NUM",
-        "ACCT_NUM": "ACCT_NUM",
-        "ACCOUNT_ID": "ACCT_NUM",
-        "CUST_CODE_SRC": "CUSTODIAN_CODE",
-        "CUSTODIAN": "CUSTODIAN_CODE",
-        "ADVISOR_REP_NUM": "REP_CODE",
-        "PRIMARY_REP_NUM": "REP_CODE",
-        "REGISTRATION_SRC_TYPE": "REG_TYPE",
-        "ACCOUNT_OPEN_DT": "OPEN_DATE",
-        "LEGACY_HH_ID": "HH_ID",
-        "HOUSEHOLD_ID": "HH_ID",
-        "HHOLD_ID": "HH_ID",
-        "HOUSEHOLD_LINK_ID": "HH_ID",
-        "HH_ID": "HH_ID",
-        "ACCOUNT_HOUSEHOLD_ID": "HH_ID",
+    @staticmethod
+    def _aliases() -> Dict[str, Any]:
+        """Source-name knowledge (platform_knowledge/source_aliases.yaml); none is built in, and a missing file means no aliases."""
+        import yaml
+        from control_plane.paths import platform_knowledge_dir
+        try:
+            return yaml.safe_load((platform_knowledge_dir() / "source_aliases.yaml").read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return {}
 
-        # Household Attributes
-        "SRC_HH_ID": "HH_ID",
-        "HH_NAME": "HH_NAME",
-        "HOUSEHOLD_NAME": "HH_NAME",
-        "HH_TITLE": "HH_NAME",
-
-        # Client Attributes
-        "LEGACY_CLIENT_ID": "CLIENT_ID",
-        "CLIENT_ID": "CLIENT_ID",
-        "PARTY_SRC_ID": "CLIENT_ID",
-        "FULL_LEGAL_NAME": "LEGAL_NAME",
-        "PARTY_NAME": "LEGAL_NAME",
-        "CLIENT_NAME": "LEGAL_NAME",
-        "LEGAL_NAME": "LEGAL_NAME",
-        "CLIENT_FIRST_NAME": "FIRST_NAME",
-        "FIRST_NAME": "FIRST_NAME",
-        "CLIENT_LAST_NAME": "LAST_NAME",
-        "LAST_NAME": "LAST_NAME",
-        "TAX_IDENTIFIER": "TAX_ID",
-        "TAX_ID": "TAX_ID",
-        "SSN_TIN": "TAX_ID",
-        "CLIENT_TYPE_RAW": "CLIENT_TYPE",
-        "CLIENT_TYPE": "CLIENT_TYPE",
-        "CLIENT_TYPE_SRC": "CLIENT_TYPE",
-        "EMAIL_ADDR": "EMAIL",
-        "PRIMARY_EMAIL": "EMAIL",
-        "PHONE_NUM": "PHONE",
-        "MOBILE_PHONE": "PHONE",
-
-        # Sleeve Attributes
-        "REP_CODE_RAW": "REP_CODE",
-        "SRC_ACCOUNT_NO": "ACCT_NUM",
-        "SUB_SLEEVE_ID": "SLEEVE_ID",
-        "STRATEGY_MODEL_ID": "MODEL_CODE",
-        "TARGET_WEIGHT_PCT": "TARGET_PCT",
-
-        # Transaction Attributes
-        "TRANSACTION_REF_ID": "TRANS_ID",
-        "TXN_ACTION_TYPE": "TRANS_CODE",
-        "SETTLEMENT_AMT": "AMOUNT",
-        "TRADE_EVENT_DATE": "TRADE_DATE",
-
-        # Position Attributes
-        "CUSIP": "CUSIP",
-        "TICKER": "TICKER",
-        "QUANTITY": "QUANTITY",
-        "market_value": "MARKET_VALUE",
-
-        # CoreCap (Amplify) extract headers, canonical model v1.1
-        "AccountNumber": "ACCT_NUM",
-        "AccountName": "ACCT_NAME",
-        "CustodianName": "CUSTODIAN_NAME",
-        "RegistrationType": "REG_TYPE",
-        "RepCode": "REP_CODE",
-        "CustodialStartDate": "OPEN_DATE",
-        "Balance": "BALANCE",
-        "ReportedAsOfDate": "BALANCE_AS_OF",
-        "TaxStatus": "TAX_STATUS",
-        "ClosedDate": "CLOSED_DATE",
-        "HouseholdId": "HH_ID",
-        "HouseholdName": "HH_NAME",
-        "HouseholdProperName": "HH_DISPLAY_NAME",
-        "AdvisorId": "ADVISOR_ID",
-        "CreatedDate": "CREATED_DATE",
-        "DeletedDate": "DELETED_DATE",
-        "ContactId": "CLIENT_ID",
-        "FirstName": "FIRST_NAME",
-        "MiddleName": "MIDDLE_NAME",
-        "LastName": "LAST_NAME",
-        "DateOfBirth": "DATE_OF_BIRTH",
-        "TaxId": "TAX_ID",
-        "EntityType": "CLIENT_TYPE",
-        "HouseholdOrder": "HH_ORDER",
-        "HouseholdRelationshipType": "HH_RELATIONSHIP",
-        "Address1": "ADDRESS_LINE_1",
-        "Address2": "ADDRESS_LINE_2",
-        "City": "CITY",
-        "State": "STATE",
-        "Zip": "POSTAL_CODE",
-        "Country": "COUNTRY",
-        "Phone": "PHONE",
-        "Email": "EMAIL",
-        "EmployerName": "EMPLOYER_NAME",
-
-        # Terminated / Archival Attributes
-        "TERMINATION_EFFECTIVE_DT": "CLOSE_DATE",
-        "CLOSURE_CATEGORY": "ARCHIVE_REASON"
-    }
-
-    # Headers that mean different things in different files (the Households key is "Id"; the Accounts system id is "AccountId").
-    ENTITY_CATALOG = {
-        "Account": {"AccountId": "ACCOUNT_ID"},
-        "Household": {"Id": "HH_ID"},
-        "Advisor": {"Id": "ADVISOR_ID", "Name": "ADVISOR_NAME", "Title": "TITLE", "Email": "EMAIL", "IsActive": "IS_ACTIVE", "RepCodes": "REP_CODES"},
-        "AccountRole": {"AccountNumber": "ACCT_NUM", "ContactId": "CLIENT_ID", "ClientId": "CLIENT_ID", "Role": "ROLE", "RoleType": "ROLE",
-                        "RoleOrder": "ROLE_ORDER"},
-    }
-
-    MANDATORY_CANONICAL_FIELDS = {
-        "Account": ["ACCT_NUM", "CUSTODIAN_CODE", "OPEN_DATE"],
-        "Household": ["HH_ID", "HH_NAME"],
-        "Client": ["CLIENT_ID", "LEGAL_NAME", "CLIENT_TYPE"],
-        "Sleeve": ["ACCT_NUM", "SLEEVE_ID", "TARGET_PCT"],
-        "Position": ["ACCT_NUM", "CUSIP", "MARKET_VALUE"],
-        "Transaction": ["TRANS_ID", "ACCT_NUM", "AMOUNT"]
-    }
+    _ALIAS_DATA: Dict[str, Any] = {}
 
     MAPPING_KINDS = ("DIRECT", "DERIVED", "LOOKUP", "RELATIONSHIP", "EXCLUDED", "UNRESOLVED")
 
@@ -156,18 +43,14 @@ class SchemaMapperAgent:
 
     @classmethod
     def required_fields(cls, entity_name: str) -> List[str]:
-        """Required canonical fields: the firm configuration is the source of truth for P0 entities.
-
-        The legacy table above is only a fallback for non-P0 entities, or if the firm
-        configuration cannot be loaded (the migration setup gate reports that case).
-        """
+        """Required canonical fields: the firm configuration is the only source. An entity it does not define has none."""
         try:
             config = get_firm_config()
             if entity_name in config.entities:
                 return config.required_fields(entity_name)
         except FirmConfigError as exc:
-            logger.warning("Firm configuration unavailable; using legacy required fields: %s", exc)
-        return list(cls.MANDATORY_CANONICAL_FIELDS.get(entity_name, []))
+            logger.warning("Firm configuration unavailable; no required fields known: %s", exc)
+        return []
 
     @classmethod
     def _identity_target(cls, entity_name: str, source_field: str) -> Optional[str]:
@@ -313,15 +196,16 @@ class SchemaMapperAgent:
             canonical_row = {}
             for raw_key, raw_val in raw_row.items():
                 source_fields_seen.add(raw_key)
-                if entity_name == "Client" and raw_key == "HOUSEHOLD_LINK_ID":
-                    source_key = next((raw_row.get(key) for key in ("LEGACY_CLIENT_ID", "CLIENT_ID", "PARTY_SRC_ID") if raw_row.get(key) not in (None, "")), None)
+                link = next((r for r in self.RELATIONSHIP_COLUMNS if r.get("entity") == entity_name and r.get("source_field") == raw_key), None)
+                if link:
+                    source_key = next((raw_row.get(key) for key in link.get("source_key_fields", []) if raw_row.get(key) not in (None, "")), None)
                     relationship_candidates.append({
-                        "relationship": "CLIENT_HOUSEHOLD_MEMBERSHIP",
-                        "source_entity": "Client",
+                        "relationship": link["relationship"],
+                        "source_entity": entity_name,
                         "source_key": str(source_key) if source_key is not None else None,
                         "source_field": raw_key,
-                        "target_entity": "Household",
-                        "target_field": "HH_ID",
+                        "target_entity": link["target_entity"],
+                        "target_field": link["target_field"],
                         "target_key_value": str(raw_val).strip() if raw_val is not None else "",
                         "status": "PROPOSED_REQUIRES_SOURCE_CONFIRMATION",
                     })
@@ -492,3 +376,9 @@ class SchemaMapperAgent:
             "field_lineages": field_lineages,
             "warnings": warnings
         }
+
+
+SchemaMapperAgent._ALIAS_DATA = SchemaMapperAgent._aliases()
+SchemaMapperAgent.DEFAULT_CATALOG = dict(SchemaMapperAgent._ALIAS_DATA.get("catalog") or {})
+SchemaMapperAgent.ENTITY_CATALOG = {e: dict(m) for e, m in (SchemaMapperAgent._ALIAS_DATA.get("entity_catalog") or {}).items()}
+SchemaMapperAgent.RELATIONSHIP_COLUMNS = list(SchemaMapperAgent._ALIAS_DATA.get("relationships") or [])

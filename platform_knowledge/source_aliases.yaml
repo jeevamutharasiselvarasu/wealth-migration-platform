@@ -1,0 +1,124 @@
+# How source column names map to canonical fields: knowledge a Platform Admin edits, not code.
+#   catalog          a source column name that means the same canonical field in every file
+#   entity_catalog   a header whose meaning depends on the file's entity (an "Id" column is a different key in each file)
+#   relationships    a source column that links one entity to another (a candidate relationship a person confirms)
+# A deployment for another domain supplies its own file (or none: columns named like a canonical field still map to it).
+catalog:
+  LEGACY_ACCT_NO: ACCT_NUM
+  ACCT_NUM: ACCT_NUM
+  ACCOUNT_ID: ACCT_NUM
+  CUST_CODE_SRC: CUSTODIAN_CODE
+  CUSTODIAN: CUSTODIAN_CODE
+  ADVISOR_REP_NUM: REP_CODE
+  PRIMARY_REP_NUM: REP_CODE
+  REGISTRATION_SRC_TYPE: REG_TYPE
+  ACCOUNT_OPEN_DT: OPEN_DATE
+  LEGACY_HH_ID: HH_ID
+  HOUSEHOLD_ID: HH_ID
+  HHOLD_ID: HH_ID
+  HOUSEHOLD_LINK_ID: HH_ID
+  HH_ID: HH_ID
+  ACCOUNT_HOUSEHOLD_ID: HH_ID
+  SRC_HH_ID: HH_ID
+  HH_NAME: HH_NAME
+  HOUSEHOLD_NAME: HH_NAME
+  HH_TITLE: HH_NAME
+  LEGACY_CLIENT_ID: CLIENT_ID
+  CLIENT_ID: CLIENT_ID
+  PARTY_SRC_ID: CLIENT_ID
+  FULL_LEGAL_NAME: LEGAL_NAME
+  PARTY_NAME: LEGAL_NAME
+  CLIENT_NAME: LEGAL_NAME
+  LEGAL_NAME: LEGAL_NAME
+  CLIENT_FIRST_NAME: FIRST_NAME
+  FIRST_NAME: FIRST_NAME
+  CLIENT_LAST_NAME: LAST_NAME
+  LAST_NAME: LAST_NAME
+  TAX_IDENTIFIER: TAX_ID
+  TAX_ID: TAX_ID
+  SSN_TIN: TAX_ID
+  CLIENT_TYPE_RAW: CLIENT_TYPE
+  CLIENT_TYPE: CLIENT_TYPE
+  CLIENT_TYPE_SRC: CLIENT_TYPE
+  EMAIL_ADDR: EMAIL
+  PRIMARY_EMAIL: EMAIL
+  PHONE_NUM: PHONE
+  MOBILE_PHONE: PHONE
+  REP_CODE_RAW: REP_CODE
+  SRC_ACCOUNT_NO: ACCT_NUM
+  SUB_SLEEVE_ID: SLEEVE_ID
+  STRATEGY_MODEL_ID: MODEL_CODE
+  TARGET_WEIGHT_PCT: TARGET_PCT
+  TRANSACTION_REF_ID: TRANS_ID
+  TXN_ACTION_TYPE: TRANS_CODE
+  SETTLEMENT_AMT: AMOUNT
+  TRADE_EVENT_DATE: TRADE_DATE
+  CUSIP: CUSIP
+  TICKER: TICKER
+  QUANTITY: QUANTITY
+  market_value: MARKET_VALUE
+  AccountNumber: ACCT_NUM
+  AccountName: ACCT_NAME
+  CustodianName: CUSTODIAN_NAME
+  RegistrationType: REG_TYPE
+  RepCode: REP_CODE
+  CustodialStartDate: OPEN_DATE
+  Balance: BALANCE
+  ReportedAsOfDate: BALANCE_AS_OF
+  TaxStatus: TAX_STATUS
+  ClosedDate: CLOSED_DATE
+  HouseholdId: HH_ID
+  HouseholdName: HH_NAME
+  HouseholdProperName: HH_DISPLAY_NAME
+  AdvisorId: ADVISOR_ID
+  CreatedDate: CREATED_DATE
+  DeletedDate: DELETED_DATE
+  ContactId: CLIENT_ID
+  FirstName: FIRST_NAME
+  MiddleName: MIDDLE_NAME
+  LastName: LAST_NAME
+  DateOfBirth: DATE_OF_BIRTH
+  TaxId: TAX_ID
+  EntityType: CLIENT_TYPE
+  HouseholdOrder: HH_ORDER
+  HouseholdRelationshipType: HH_RELATIONSHIP
+  Address1: ADDRESS_LINE_1
+  Address2: ADDRESS_LINE_2
+  City: CITY
+  State: STATE
+  Zip: POSTAL_CODE
+  Country: COUNTRY
+  Phone: PHONE
+  Email: EMAIL
+  EmployerName: EMPLOYER_NAME
+  TERMINATION_EFFECTIVE_DT: CLOSE_DATE
+  CLOSURE_CATEGORY: ARCHIVE_REASON
+entity_catalog:
+  Account:
+    AccountId: ACCOUNT_ID
+  Household:
+    Id: HH_ID
+  Advisor:
+    Id: ADVISOR_ID
+    Name: ADVISOR_NAME
+    Title: TITLE
+    Email: EMAIL
+    IsActive: IS_ACTIVE
+    RepCodes: REP_CODES
+  AccountRole:
+    AccountNumber: ACCT_NUM
+    ContactId: CLIENT_ID
+    ClientId: CLIENT_ID
+    Role: ROLE
+    RoleType: ROLE
+    RoleOrder: ROLE_ORDER
+relationships:
+- entity: Client
+  source_field: HOUSEHOLD_LINK_ID
+  relationship: CLIENT_HOUSEHOLD_MEMBERSHIP
+  target_entity: Household
+  target_field: HH_ID
+  source_key_fields:
+  - LEGACY_CLIENT_ID
+  - CLIENT_ID
+  - PARTY_SRC_ID

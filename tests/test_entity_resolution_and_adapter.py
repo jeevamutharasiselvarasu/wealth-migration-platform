@@ -37,7 +37,7 @@ def test_the_five_entities_are_in_the_canonical_config():
 
 
 def test_resolution_is_transitive_most_complete_survives_and_placeholders_never_match():
-    rows, xref, stats = er.resolve(CLIENTS, "CLIENT_ID", er.SUGGESTED_RULES["Client"])
+    rows, xref, stats = er.resolve(CLIENTS, "CLIENT_ID", er.suggested_rules()["Client"])
     # C1~C2 by tax id, C1~C3 by name + birth date; C4 and C5 share only masked values, so they stay apart
     assert stats == {"rows": 5, "records": 3, "merged": 2, "clusters": 1, "examples": [["C1", "C2", "C3"]]}
     assert xref == {"C1": "C1", "C2": "C1", "C3": "C1", "C4": "C4", "C5": "C5"}
@@ -46,7 +46,7 @@ def test_resolution_is_transitive_most_complete_survives_and_placeholders_never_
 
 
 def test_references_point_at_the_survivor_and_account_roles_are_derived_from_household_heads():
-    _, xref, _ = er.resolve(CLIENTS, "CLIENT_ID", er.SUGGESTED_RULES["Client"])
+    _, xref, _ = er.resolve(CLIENTS, "CLIENT_ID", er.suggested_rules()["Client"])
     roles = [{"ACCT_NUM": "A1", "CLIENT_ID": "C2"}]
     assert er.repoint(roles, "CLIENT_ID", xref) == 1 and roles[0]["CLIENT_ID"] == "C1"
     derived = er.derive_account_roles([{"ACCT_NUM": "A1", "HH_ID": "H1"}, {"ACCT_NUM": "A2", "HH_ID": "H9"}], CLIENTS)

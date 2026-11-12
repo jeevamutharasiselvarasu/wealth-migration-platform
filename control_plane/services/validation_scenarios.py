@@ -120,7 +120,14 @@ def retire_scenario(conn: sqlite3.Connection, scenario_id: str) -> None:
         raise ValueError("No active or suggested scenario with that id.")
 
 
-BUSINESS_KEYS = {"Account": "ACCT_NUM", "Client": "CLIENT_ID", "Household": "HH_ID"}
+def _business_key(entity: str):
+    """The entity's first key field in the firm configuration, or None."""
+    from control_plane.services.firm_config import FirmConfigError, key_fields
+    try:
+        keys = key_fields(entity)
+    except FirmConfigError:
+        return None
+    return keys[0] if keys else None
 
 
 def suggest_defaults(spec: Optional[Dict[str, Any]], mappings: List[Dict[str, Any]], existing: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -141,8 +148,8 @@ def suggest_defaults(spec: Optional[Dict[str, Any]], mappings: List[Dict[str, An
         for m in mappings:
             if m["entity_name"] == entity and m["status"] == "APPROVED" and m["target_field"] in required and m.get("canonical_field"):
                 add(entity, "NOT_BLANK", m["canonical_field"], f"Suggested from the target contract: {m['target_field']} is required.")
-        if entity in BUSINESS_KEYS:
-            add(entity, "UNIQUE", BUSINESS_KEYS[entity], f"Suggested: {entity} business key should be unique within a file.")
+        if _business_key(entity):
+            add(entity, "UNIQUE", _business_key(entity), f"Suggested: {entity} business key should be unique within a file.")
     return out
 
 

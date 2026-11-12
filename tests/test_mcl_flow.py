@@ -54,7 +54,7 @@ def test_mcl_validation_passes_for_resolvable_keys_and_relationships():
             {"HH_ID": "HH-01", "PRIMARY_CLIENT_ID": "00017"}
         ]},
         "Client": {"mapped_records": [
-            {"CLIENT_ID": "00017"}
+            {"CLIENT_ID": "00017", "HH_ID": "HH-01"}
         ]},
     })
 

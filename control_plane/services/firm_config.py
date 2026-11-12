@@ -41,6 +41,22 @@ def _reference_map(cfg) -> Dict[str, Dict[str, str]]:
     return refs
 
 
+def key_fields(entity: str, cfg=None) -> List[str]:
+    """The entity's own key fields, as the firm configuration marks them."""
+    cfg = cfg or get_firm_config()
+    return [f.name for f in cfg.entities[entity].fields if f.is_key] if entity in cfg.entities else []
+
+
+def reference_fields(cfg=None) -> Dict[str, Dict[str, tuple]]:
+    """{entity: {field: (other entity, other entity's key field)}}: every field that points at another entity's key."""
+    cfg = cfg or get_firm_config()
+    out: Dict[str, Dict[str, tuple]] = {}
+    for e, others in _reference_map(cfg).items():
+        for other, field in others.items():
+            out.setdefault(e, {})[field] = (other, field)
+    return out
+
+
 def supporting_plan(selected_targets, target_entities=None, cfg=None) -> Dict[str, str]:
     """Canonical entities the platform adds for a selection of target entities, with the reason. The user never chooses these.
 

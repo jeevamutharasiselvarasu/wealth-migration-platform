@@ -89,6 +89,8 @@ def _relationship_candidate_check(
     target_records: List[Dict[str, Any]],
     target_entity: str,
     target_field: str,
+    from_entity: str = "",
+    from_field: str = "",
 ) -> Dict[str, Any]:
     target_keys = set(_key_values(target_records, target_field))
     values = [str(item.get("target_key_value")).strip() for item in candidates if _present(item.get("target_key_value"))]
@@ -97,8 +99,8 @@ def _relationship_candidate_check(
     status = "FAIL" if orphans else ("WARN" if missing else "PROPOSED")
     return {
         "check": "RELATIONSHIP_CANDIDATE",
-        "from_entity": "Client",
-        "from_field": "HOUSEHOLD_LINK_ID",
+        "from_entity": from_entity,
+        "from_field": from_field,
         "to_entity": target_entity,
         "to_field": target_field,
         "status": status,
@@ -108,34 +110,40 @@ def _relationship_candidate_check(
         "orphan_count": len(orphans),
         "orphan_values": orphans[:50],
         "message": (
-            f"{len(orphans)} Client-to-Household candidate reference(s) do not resolve."
+            f"{len(orphans)} {from_entity}-to-{target_entity} candidate reference(s) do not resolve."
             if orphans else (f"{missing} candidate relationship value(s) are missing." if missing else "Candidate references resolve, but the source relationship meaning still requires confirmation and approval.")
         ),
     }
 
 
 def validate_mcl_relationships(mapped_by_entity: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    """Validate MCL key uniqueness and only those cross-entity links evidenced by mapped fields.
+    """Validate key uniqueness and only those cross-entity links evidenced by mapped fields.
 
-    Client is a source entity whose identity fields map to canonical Client fields. Missing
-    relationship columns are reported as NOT_EVALUATED rather than guessed.
+    Which fields are keys, and which fields point at another entity's key, come from the firm configuration (not from a list here).
+    Missing relationship columns are reported as NOT_EVALUATED rather than guessed. A source column a person must confirm as a link
+    (a relationship candidate the mapper found) is reported as a candidate, never as a fact.
     """
-    account = (mapped_by_entity.get("Account") or {}).get("mapped_records", [])
-    household = (mapped_by_entity.get("Household") or {}).get("mapped_records", [])
-    client = (mapped_by_entity.get("Client") or {}).get("mapped_records", [])
+    from control_plane.services.firm_config import FirmConfigError, key_fields, reference_fields
+    records = {e: (m or {}).get("mapped_records", []) for e, m in mapped_by_entity.items()}
+    try:
+        refs = reference_fields()
+        keys = {e: key_fields(e) for e in records}
+    except FirmConfigError:
+        refs, keys = {}, {e: [] for e in records}
 
-    key_checks = [
-        _key_check("Account", account, "ACCT_NUM"),
-        _key_check("Household", household, "HH_ID"),
-        _key_check("Client (canonical Client)", client, "CLIENT_ID"),
-    ]
+    key_checks = [_key_check(entity, records[entity], key) for entity in records for key in keys.get(entity, [])]
     relationship_checks = [
-        _relationship_check("Account", account, "HH_ID", "Household", household, "HH_ID"),
-        _relationship_check("Account", account, "CLIENT_ID", "Client (canonical Client)", client, "CLIENT_ID"),
+        _relationship_check(entity, records[entity], field, other, records[other], other_key)
+        for entity in records for field, (other, other_key) in (refs.get(entity) or {}).items() if other in records
     ]
-    client_relationship_candidates = (mapped_by_entity.get("Client") or {}).get("relationship_candidates", [])
-    if client_relationship_candidates:
-        relationship_checks.append(_relationship_candidate_check(client_relationship_candidates, household, "Household", "HH_ID"))
+    for entity, mapped in mapped_by_entity.items():
+        by_target: Dict[tuple, List[Dict[str, Any]]] = {}
+        for item in (mapped or {}).get("relationship_candidates", []) or []:
+            by_target.setdefault((item.get("target_entity"), item.get("target_field"), item.get("source_field")), []).append(item)
+        for (target_entity, target_field, source_field), items in by_target.items():
+            if target_entity in records:
+                relationship_checks.append(_relationship_candidate_check(items, records[target_entity], target_entity, target_field,
+                                                                         entity, source_field))
     all_checks = key_checks + relationship_checks
     statuses = {check["status"] for check in all_checks}
     if "FAIL" in statuses:

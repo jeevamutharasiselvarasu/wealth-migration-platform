@@ -14,6 +14,8 @@ import csv, json, sys
 from pathlib import Path
 fix = Path(sys.argv[1])
 from control_plane.services import firm_config as fc, target_inference as ti, entity_classification_agent as ca, rule_inference as ri, sql_package as sp
+from control_plane.services import mcl_validation as mv, entity_resolution as er, value_evidence as ve
+from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 cfg = fc.load_firm_config()
 canonical = {e: {f.name: f.type for f in d.fields} for e, d in cfg.entities.items()}
 model = ti.infer(json.loads((fix / "target_schema.json").read_text(encoding="utf-8")), canonical)
@@ -27,6 +29,11 @@ rules = [r for r in ri.infer(text) if r["recognised"]]
 hints = ri.split_hints(text)
 blank = next(r for r in rules if r["rule_type"] == "IF_BLANK")
 sql = sp.translate("RULE:X@1", "RETURNED_ON", {"status": "APPROVED", "rule_type": "IF_BLANK", "params": blank["params"]})
+members = [{"MEMBER_ID": "P-1", "FULL_NAME": "Ada"}, {"MEMBER_ID": "P-2", "FULL_NAME": "Alan"}]
+items = [{"ITEM_ID": "B-1", "TITLE": "x"}]
+loans = [{"LOAN_ID": "L-1", "MEMBER_ID": "P-1", "ITEM_ID": "B-1"}, {"LOAN_ID": "L-2", "MEMBER_ID": "P-9", "ITEM_ID": "B-1"}]
+valid = mv.validate_mcl_relationships({"Member": {"mapped_records": members}, "Item": {"mapped_records": items}, "Loan": {"mapped_records": loans}})
+mapped = SchemaMapperAgent().map_source_to_canonical("Member", [{"MEMBER_ID": "P-1", "FULL_NAME": "Ada", "Shoe": "9"}])
 everything = [t for b in model["entities"].values() for t in b["table_columns"]] + model["unassigned_tables"]
 print(json.dumps({
     "entities": list(fc.P0_ENTITIES),
@@ -38,6 +45,12 @@ print(json.dumps({
     "hints": [(h["target_field"], h["entity"], h["source_field"]) for h in hints],
     "supporting": fc.supporting_plan(["Loan"], ["Loan"], cfg),
     "sql": sql,
+    "validation": [valid["status"], [(c["entity"], c["field"], c["status"]) for c in valid["key_checks"]],
+                   [(c["from_entity"], c["from_field"], c["to_entity"], c["status"]) for c in valid["relationship_checks"]]],
+    "mapper": [mapped["mapped_records"], mapped["unmapped_fields"], SchemaMapperAgent.required_fields("Loan")],
+    "resolution": [er.suggested_rules(), {e: sorted(v) for e, v in er.references().items()}],
+    "merge_keys": [sp._is_key_field("LOAN_ID", "Loan"), sp._is_key_field("MEMBER_ID", "Loan")],
+    "evidence": ve.propose_from_evidence(["MEMBER_ID"], {"card": ["P-1", "P-2"]}, 2),
     "unassigned_name": ti.entity_name_for_table(model["unassigned_tables"][0], everything) if model["unassigned_tables"] else "",
 }))
 '''
@@ -62,6 +75,13 @@ def test_a_library_runs_through_the_same_code_with_only_its_own_files():
     assert set(r["rule_types"]) == {"IF_BLANK", "VALUE_MAP", "CONCAT", "COPY"}
     assert r["hints"] == [["RETURN_STATUS", "Loan", "RETURNED_ON"]]
     assert r["sql"] == "CASE WHEN NULLIF(LTRIM(RTRIM(s.[RETURNED_ON])), N'') IS NULL THEN N'Out' ELSE N'Returned' END"  # the rule becomes SQL for this domain too
+    assert r["validation"][0] == "FAIL"  # keys of every entity are checked, and Loan.MEMBER_ID P-9 points at no member
+    assert r["validation"][1] == [["Member", "MEMBER_ID", "PASS"], ["Item", "ITEM_ID", "PASS"], ["Loan", "LOAN_ID", "PASS"]]
+    assert r["validation"][2] == [["Loan", "MEMBER_ID", "Member", "FAIL"], ["Loan", "ITEM_ID", "Item", "PASS"]]
+    assert r["mapper"][0] == [{"MEMBER_ID": "P-1", "FULL_NAME": "Ada"}] and r["mapper"][1] == ["Shoe"]  # a column named like a canonical field maps to it
+    assert "LOAN_ID" in r["mapper"][2]  # required fields come from the configuration
+    assert r["resolution"] == [{}, {"Loan": ["ITEM_ID", "MEMBER_ID"]}]  # no suggested rules without a file; references derived from keys
+    assert r["merge_keys"] == [True, False] and r["evidence"] == []
     text = json.dumps(r).lower()
     assert not any(word in text for word in ("household", "advisor", "custodian", "account", "client", "wealth"))  # nothing from the first domain leaks in
     assert r["supporting"] == {"Member": "Loan.MEMBER_ID points at it", "Item": "Loan.ITEM_ID points at it"}  # from key names, not from a list
