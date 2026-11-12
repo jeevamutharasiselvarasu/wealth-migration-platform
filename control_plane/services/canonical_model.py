@@ -15,7 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
-DEFINITION = Path(__file__).resolve().parents[2] / "platform_knowledge" / "canonical_model_v2.yaml"
+from control_plane.paths import platform_knowledge_dir
+
+DEFINITION = platform_knowledge_dir() / "canonical_model_v2.yaml"
 TYPES = {"string", "date", "integer", "decimal", "boolean"}
 NAME = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")

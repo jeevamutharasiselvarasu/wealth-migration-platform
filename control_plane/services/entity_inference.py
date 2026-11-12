@@ -12,7 +12,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-RULES_PATH = Path(__file__).resolve().parents[2] / "knowledge" / "entity_inference_rules.json"
+from control_plane.paths import knowledge_dir
+
+RULES_PATH = knowledge_dir() / "entity_inference_rules.json"
 
 
 @lru_cache(maxsize=1)

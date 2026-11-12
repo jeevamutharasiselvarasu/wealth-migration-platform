@@ -12,7 +12,9 @@ from typing import Any, Dict, List, Optional
 
 from control_plane.services import document_text
 
-ROOT = Path(__file__).resolve().parents[2] / "platform_knowledge"
+from control_plane.paths import platform_knowledge_dir
+
+ROOT = platform_knowledge_dir()
 CATEGORIES = ("vocabulary", "canonical_contract", "mapping_notes", "domain_research", "other")
 ALLOWED_SUFFIXES = {".md", ".txt", ".csv", ".json", ".yaml", ".yml", ".docx", ".pptx", ".pdf"}
 MAX_BYTES = 5 * 1024 * 1024

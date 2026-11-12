@@ -16,7 +16,9 @@ import yaml
 
 from control_plane.services import target_inference
 
-SRC_VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "source_vocabulary.yaml"
+from control_plane.paths import platform_knowledge_dir
+
+SRC_VOCAB_PATH = platform_knowledge_dir() / "source_vocabulary.yaml"
 MATCH_THRESHOLD = 0.3
 _cache: Optional[Dict[str, Any]] = None
 _TYPE_GROUPS = {"string": "text", "date": "date", "integer": "number", "number": "number", "decimal": "number", "boolean": "bool"}
@@ -26,9 +28,10 @@ def _vocab() -> Dict[str, Any]:
     global _cache
     if _cache is None:
         base = target_inference._vocab()
-        extra = yaml.safe_load(SRC_VOCAB_PATH.read_text(encoding="utf-8"))
+        extra = target_inference.read_yaml(SRC_VOCAB_PATH)
+        extra.setdefault("tokens", {})
         _cache = {"weak": set(base.get("weak", [])), "stop": set(extra.get("stop", [])),
-                  "tokens": {**base["tokens"], **extra["tokens"]}, "shapes": extra.get("shapes", {}),
+                  "tokens": {**base.get("tokens", {}), **extra["tokens"]}, "shapes": extra.get("shapes", {}),
                   "value_hints": extra.get("value_hints", {})}
     return _cache
 

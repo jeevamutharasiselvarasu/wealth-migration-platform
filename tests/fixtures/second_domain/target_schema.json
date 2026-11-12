@@ -1,0 +1,8 @@
+{"system": "LibraryCatalog",
+ "tables": [
+  {"name": "LIB_MEMBER", "columns": [{"name": "MEMBER_NO", "type": "string", "required": true}, {"name": "FULL_NAME", "type": "string", "required": true}, {"name": "EMAIL_ADDRESS", "type": "string", "required": false}, {"name": "JOINED_ON", "type": "date", "required": false}]},
+  {"name": "LIB_ITEM", "columns": [{"name": "ITEM_NO", "type": "string", "required": true}, {"name": "TITLE", "type": "string", "required": true}, {"name": "AUTHOR_NAME", "type": "string", "required": false}, {"name": "ISBN", "type": "string", "required": false}]},
+  {"name": "LIB_LOAN", "columns": [{"name": "LOAN_NO", "type": "string", "required": true}, {"name": "MEMBER_NO", "type": "string", "required": true}, {"name": "ITEM_NO", "type": "string", "required": true}, {"name": "DUE_ON", "type": "date", "required": false}, {"name": "RETURNED_ON", "type": "date", "required": false}]},
+  {"name": "LIB_SHELF_AUDIT", "columns": [{"name": "AUDIT_ID", "type": "string", "required": true}, {"name": "SHELF_CODE", "type": "string", "required": false}, {"name": "CHECKED_ON", "type": "date", "required": false}]}
+ ],
+ "code_lists": {}}

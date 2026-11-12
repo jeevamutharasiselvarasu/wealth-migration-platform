@@ -1,4 +1,4 @@
-"""Evidence-based wealth source-file classification for the XODUS P0 entities.
+"""Evidence-based source-file classification for the canonical entities of the firm configuration.
 
 This is a deterministic, explainable discovery agent, not an auto-approval mechanism.
 It uses header semantics and observed record shape; optional dictionary/context is enrichment.
@@ -9,28 +9,48 @@ import re
 from collections import Counter
 from typing import Any
 
-ENTITY_TERMS = {
-    "Account": {
-        "id": {"account", "acct", "accountref", "acctref", "accountnumber", "acctnum", "acctno", "accountid", "accountkey"},
-        "attributes": {"registration", "regcode", "regtype", "openedon", "opendate", "custodian", "status", "repcode", "accounttype"},
-    },
-    "Household": {
-        "id": {"household", "householdid", "hhid", "groupref", "groupid", "familygroup", "householdref"},
-        "attributes": {"householdname", "hhname", "grouplabel", "groupname", "leadref", "reviewdate"},
-    },
-    "Client": {
-        "id": {"client", "clientid", "clientref", "party", "partyref", "partyid", "personid", "individualid", "contactid", "contactref"},
-        "attributes": {"salutation", "nickname", "middlename", "dateofbirth", "dob", "birthdate", "jobtitle", "employername", "employer", "designations", "legalname", "fullname", "displaytxt", "displayname", "givenname", "givennm", "firstname", "surname", "lastname", "email", "emailtxt", "taxid", "clienttype", "recordkind", "activeflag", "channelcd", "updatedat"},
-    },
-    "Advisor": {
-        "id": {"advisor", "advisorid", "advisorref", "representative", "repid"},
-        "attributes": {"repcodes", "smsphone", "isactive", "advisorname", "title"},
-    },
-    "AccountRole": {
-        "id": {"accountrole", "accountroleid", "ownershipid"},
-        "attributes": {"role", "roletype", "roleorder", "ownershiptype", "ownershippct"},
-    },
-}
+import yaml
+
+def _split_words(name: str) -> set:
+    return {w for w in re.split(r"[^a-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", str(name)).lower()) if w}
+
+
+def _derived_terms(entity: str, definition: Any) -> dict[str, set]:
+    """Header words for an entity taken only from its definition in the firm configuration: its name, its key fields (the identifier
+    words) and the names of its other fields (the attributes)."""
+    ids = {_token(entity), _token(entity) + "id", _token(entity) + "ref"}
+    attrs: set = set()
+    for f in definition.fields:
+        token = _token(f.name)
+        (ids if f.is_key else attrs).add(token)
+        if f.is_key:
+            ids |= {w for w in _split_words(f.name) if len(w) > 3}
+    return {"id": ids, "attributes": attrs - ids}
+
+
+def entity_terms() -> dict[str, dict[str, set]]:
+    """{entity: {"id": words, "attributes": words}}: the data file first, then the firm configuration for any entity it does not list."""
+    from control_plane.paths import platform_knowledge_dir
+    from control_plane.services.firm_config import FirmConfigError, get_firm_config
+    try:
+        raw = yaml.safe_load((platform_knowledge_dir() / "entity_terms.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        raw = {}
+    try:
+        cfg = get_firm_config()
+        names = list(cfg.entities)
+    except FirmConfigError:
+        cfg, names = None, list(raw)
+    out: dict[str, dict[str, set]] = {}
+    for entity in names:
+        if entity in raw:
+            out[entity] = {k: set(raw[entity].get(k, [])) for k in ("id", "attributes")}
+            out[entity]["vocab"] = False  # hand-tuned words: matched as written
+        elif cfg is not None:
+            out[entity] = {**_derived_terms(entity, cfg.entities[entity]), "vocab": True}  # from the definition: the source vocabulary may translate headers
+    return out
+
+
 RELATIONSHIP_TERMS = {
     "owner", "ownerref", "object", "objectref", "link", "linkkind", "relationship",
     "relationshiptype", "relatedid", "fromid", "toid", "sourceid", "targetid",
@@ -42,6 +62,15 @@ GENERIC_ID_TERMS = {"id", "ref", "key", "code", "type", "kind", "status", "activ
 
 def _token(value: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+def _vocab_token(header: Any) -> str:
+    """The header with each word replaced by the concept the platform's source vocabulary gives it (patron -> member), so a firm's own
+    words reach the canonical terms. With no vocabulary the header is unchanged."""
+    from control_plane.services import source_inference as si
+    vocab = si._vocab().get("tokens", {})
+    words = si._split(header)
+    return "".join((vocab.get(w) or [w])[0] for w in words)
 
 
 def _value_stats(headers: list[str], records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -71,7 +100,10 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
     """Return candidate, confidence, evidence, competing candidates, review reasons and profile."""
     records = records or []
     header_tokens = {header: _token(header) for header in headers}
-    tokens = set(header_tokens.values())
+    header_alts = {header: {header_tokens[header], _vocab_token(header)} for header in headers}  # the header as written, and as the vocabulary reads it
+    plain_tokens = set(header_tokens.values())
+    all_tokens = set().union(*header_alts.values()) if header_alts else set()
+    tokens = plain_tokens
     stats = _value_stats(headers, records)
     relationships = sorted(t for t in tokens if t in RELATIONSHIP_TERMS or any(term in t for term in ("linkkind", "relationship", "validfrom", "validto")))
     endpoint_like = sum(any(mark in t for mark in ("ownerref", "objectref", "fromid", "toid", "sourceid", "targetid")) for t in tokens)
@@ -80,7 +112,11 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
 
     scores: dict[str, float] = {}
     evidence: dict[str, dict[str, Any]] = {}
+    ENTITY_TERMS = entity_terms()
     for entity, categories in ENTITY_TERMS.items():
+        use_vocab = bool(categories.get("vocab"))
+        tokens = all_tokens if use_vocab else plain_tokens
+        alts = (lambda h: header_alts[h]) if use_vocab else (lambda h: {header_tokens[h]})
         # a prefixed column counts as an identifier only when what follows is key-like (householdid, clientref);
         # householdorder or householdrelationshiptype describe membership and are not identifiers of the household
         id_hits = sorted(t for t in tokens if t in categories["id"] or any(t.startswith(alias) and t[len(alias):] in _KEY_SUFFIXES for alias in categories["id"] if len(alias) >= 5))
@@ -89,8 +125,7 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
         score = 3.0 * len(id_hits) + 1.2 * len(attr_hits)
         unique_id_hits = []
         for header in headers:
-            token = header_tokens[header]
-            if token in id_hits and stats[header]["uniqueness_ratio"] >= 0.8 and stats[header]["null_rate"] is not None and stats[header]["null_rate"] <= 0.2:
+            if alts(header) & set(id_hits) and stats[header]["uniqueness_ratio"] >= 0.8 and stats[header]["null_rate"] is not None and stats[header]["null_rate"] <= 0.2:
                 unique_id_hits.append(header)
                 score += 0.8
         if context:
@@ -102,7 +137,7 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
             "matched_fields": id_hits + attr_hits,
             "signature_fields": id_hits,
             "unique_candidate_key_fields": unique_id_hits,
-            "sample_profile": {h: stats[h] for h in headers if header_tokens[h] in id_hits + attr_hits},
+            "sample_profile": {h: stats[h] for h in headers if alts(h) & set(id_hits + attr_hits)},
             "score": round(score, 2),
         }
 
@@ -119,7 +154,7 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
         candidate = None
         status = "NEEDS_CLARIFICATION"
         confidence = 0.0
-        reasons.append("No strong wealth-entity identity evidence was found in the headers and observed profile.")
+        reasons.append("No strong entity identity evidence was found in the headers and observed profile.")
     elif best_score - second_score < 1.0:
         candidate = best
         status = "NEEDS_REVIEW"
@@ -133,7 +168,7 @@ def classify_source_file(headers: list[str], records: list[dict[str, Any]] | Non
         if not has_key:
             reasons.append("Entity semantics are present, but no sufficiently complete, unique candidate key was observed.")
         if status == "INFERRED":
-            reasons.append("Distinctive wealth-management header semantics and a plausible candidate key support this proposal.")
+            reasons.append("Distinctive header semantics and a plausible candidate key support this proposal.")
     if not records:
         reasons.append("No sample rows were available; classification relies on column names only.")
     if candidate == "Relationship":

@@ -49,3 +49,26 @@ Prove it by running a second, unrelated source and target (the existing Ledgerli
 
 Acceptance for each phase: change the target or the source in the UI (or in the markdown), and the entity list, mappings and rules change with it,
 with no code edit.
+
+## 5. Status after phases 0 to 4 (2026-11-13)
+
+Done and covered by tests:
+- Target database is `Simplicity` / `simplicity`; scope choices come from the confirmed target; supporting data comes from canonical key names.
+- No demo data in the platform; no fixed entity names; domain value maps and by-field-name transforms are out of the code.
+- Rule language: conditions (`where Field = value`), `COPY`, mapping statements.
+- Knowledge locations are settings (`XODUS_FIRM_CONFIG`, `XODUS_PLATFORM_KNOWLEDGE_DIR`, `XODUS_KNOWLEDGE_DIR`); entity header terms are a data file
+  (`platform_knowledge/entity_terms.yaml`) and, for an entity with none, come from its own definition; the source vocabulary reaches classification.
+- Proof: `tests/test_second_domain.py` runs a public library (members, books, loans) in a fresh process with only its own configuration,
+  target schema, vocabulary, source files and rules file: entities, target-table matching, an unmatched table, file classification, rule inference,
+  mapping statements, supporting entities and SQL generation all work with no code change and no wealth words in any output.
+
+Not yet generic (still wealth-shaped code, found by grepping for HH_ID, ACCT_NUM, ADVISOR_ID, Household, AccountRole, custodian):
+- `agents/discovery/schema_mapper_agent.py` (`DEFAULT_CATALOG` source-name aliases, canonical field checks, about 34 references)
+- `control_plane/services/entity_resolution.py` (`SUGGESTED_RULES` per entity, household-head derivation), `canonical_derivations.py`
+- `control_plane/services/mcl_validation.py` and `migration_validation.py` (Account to Household to Client relationship checks)
+- `control_plane/services/sql_package.py` (`KEY_FIELDS` set of identifier names used to choose MERGE keys)
+- `control_plane/services/xodus_pipelines.py`, `adf_exporter.py` (legacy), `control_plane/kernel/wealth_kernel.py`, `agents/p0_agent_suite.py`
+- about 20 places in `ui/app.py`
+
+These do not stop a second domain from being configured and inferred (the proof above), but running a second domain through source-to-canonical
+mapping, validation and the generated pipelines needs them moved to configuration, one module at a time, each proven by extending the library test.

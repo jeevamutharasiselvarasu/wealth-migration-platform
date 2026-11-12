@@ -1,0 +1,34 @@
+# A second, unrelated domain (a public library) to prove the platform has no wealth knowledge in its code.
+schema_version: 1
+firm_id: LIBRARY
+firm_name: City Library
+config_version: "1.0.0"
+scope_direction: source_to_canonical
+canonical_contract_ref: Library-v1
+target_system:
+  name: LibraryCatalog
+  kind: LIBRARY_SYSTEM
+  load_strategy: CURATED_FILE_OUTPUT
+entities:
+  Member:
+    grain: One library member
+    fields:
+      - {name: MEMBER_ID, type: string, nullable: false, is_key: true, description: "Member card identifier."}
+      - {name: FULL_NAME, type: string, nullable: false, description: "Member's full name."}
+      - {name: EMAIL, type: string, nullable: true, description: "Contact email."}
+      - {name: JOINED_ON, type: date, nullable: true, description: "Date the member joined."}
+  Item:
+    grain: One catalogued book
+    fields:
+      - {name: ITEM_ID, type: string, nullable: false, is_key: true, description: "Catalogue number of the book."}
+      - {name: TITLE, type: string, nullable: false, description: "Book title."}
+      - {name: AUTHOR, type: string, nullable: true, description: "Author name."}
+      - {name: ISBN, type: string, nullable: true, description: "International standard book number."}
+  Loan:
+    grain: One book lent to one member
+    fields:
+      - {name: LOAN_ID, type: string, nullable: false, is_key: true, description: "Loan identifier."}
+      - {name: MEMBER_ID, type: string, nullable: false, description: "The member who borrowed the book."}
+      - {name: ITEM_ID, type: string, nullable: false, description: "The book lent."}
+      - {name: DUE_DATE, type: date, nullable: true, description: "Date the book is due back."}
+      - {name: RETURNED_ON, type: date, nullable: true, description: "Date it came back; empty while it is out."}

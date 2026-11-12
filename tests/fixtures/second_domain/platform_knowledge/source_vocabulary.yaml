@@ -1,0 +1,6 @@
+# The library's own words for its concepts. Platform knowledge, edited by a Platform Admin; the platform's code knows none of them.
+tokens:
+  patron: [member]
+  checkout: [loan]
+  book: [item]
+stop: []

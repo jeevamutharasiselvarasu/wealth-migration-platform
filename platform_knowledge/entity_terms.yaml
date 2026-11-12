@@ -1,0 +1,104 @@
+# Header words that point at each canonical entity: "id" words identify the entity (account number, household id), "attributes"
+# are words only that entity's files carry. This is knowledge a Platform Admin edits. An entity with no entry here is recognised
+# from its own definition in the firm configuration (its name, key fields and field names), so a new domain works without this file.
+Account:
+  id:
+  - account
+  - accountid
+  - accountkey
+  - accountnumber
+  - accountref
+  - acct
+  - acctno
+  - acctnum
+  - acctref
+  attributes:
+  - accounttype
+  - custodian
+  - opendate
+  - openedon
+  - regcode
+  - registration
+  - regtype
+  - repcode
+  - status
+Household:
+  id:
+  - familygroup
+  - groupid
+  - groupref
+  - hhid
+  - household
+  - householdid
+  - householdref
+  attributes:
+  - grouplabel
+  - groupname
+  - hhname
+  - householdname
+  - leadref
+  - reviewdate
+Client:
+  id:
+  - client
+  - clientid
+  - clientref
+  - contactid
+  - contactref
+  - individualid
+  - party
+  - partyid
+  - partyref
+  - personid
+  attributes:
+  - activeflag
+  - birthdate
+  - channelcd
+  - clienttype
+  - dateofbirth
+  - designations
+  - displayname
+  - displaytxt
+  - dob
+  - email
+  - emailtxt
+  - employer
+  - employername
+  - firstname
+  - fullname
+  - givenname
+  - givennm
+  - jobtitle
+  - lastname
+  - legalname
+  - middlename
+  - nickname
+  - recordkind
+  - salutation
+  - surname
+  - taxid
+  - updatedat
+Advisor:
+  id:
+  - advisor
+  - advisorid
+  - advisorref
+  - repid
+  - representative
+  attributes:
+  - advisorname
+  - isactive
+  - repcodes
+  - smsphone
+  - title
+AccountRole:
+  id:
+  - accountrole
+  - accountroleid
+  - ownershipid
+  attributes:
+  - ownershippct
+  - ownershiptype
+  - role
+  - roleorder
+  - roletype

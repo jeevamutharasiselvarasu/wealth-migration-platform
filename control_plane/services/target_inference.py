@@ -13,18 +13,30 @@ from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
-VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "field_vocabulary.yaml"
-EXTRA_VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "source_vocabulary.yaml"
+from control_plane.paths import platform_knowledge_dir
+
+VOCAB_PATH = platform_knowledge_dir() / "field_vocabulary.yaml"
+EXTRA_VOCAB_PATH = platform_knowledge_dir() / "source_vocabulary.yaml"
 _TYPE_GROUPS = {"string": "text", "date": "date", "integer": "number", "number": "number", "decimal": "number", "boolean": "bool"}
 MATCH_THRESHOLD = 0.3
 _vocab_cache: Optional[Dict[str, Any]] = None
 
 
+def read_yaml(path: Path) -> Dict[str, Any]:
+    """A vocabulary file; a deployment with no vocabulary for its domain simply has none (words then match by their own spelling)."""
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
 def _vocab() -> Dict[str, Any]:
     global _vocab_cache
     if _vocab_cache is None:
-        base = yaml.safe_load(VOCAB_PATH.read_text(encoding="utf-8"))
-        extra = yaml.safe_load(EXTRA_VOCAB_PATH.read_text(encoding="utf-8"))
+        base = read_yaml(VOCAB_PATH)
+        extra = read_yaml(EXTRA_VOCAB_PATH)
+        base.setdefault("tokens", {})
+        extra.setdefault("tokens", {})
         # the extra vocabulary only adds words the base one does not know, so existing behaviour is unchanged
         base["tokens"] = {**extra["tokens"], **base["tokens"]}
         base["stop"] = list(extra.get("stop", []))

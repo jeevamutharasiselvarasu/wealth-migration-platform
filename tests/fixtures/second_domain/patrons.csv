@@ -1,0 +1,4 @@
+patron_id,full_name,email,joined_on
+P-1,Ada Lovelace,ada@example.org,2020-01-05
+P-2,Alan Turing,alan@example.org,2021-03-09
+P-3,Grace Hopper,grace@example.org,2019-11-30
