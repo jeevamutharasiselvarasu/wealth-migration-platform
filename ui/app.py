@@ -1551,8 +1551,8 @@ def seed_demo_if_empty() -> str:
         earlier = migration_registry.list_migrations(conn, str(state_store.questionnaire_data.get("migration_id", "")))
     finally:
         conn.close()
-    if any(m["configured"] for m in earlier):
-        return "skipped: an earlier migration exists"  # e.g. a new migration was started and not configured yet; do not add a second demo
+    if earlier:
+        return "skipped: a migration exists"  # including one started and not configured yet: a restart must never add a demo to it
     try:
         result = _run_demo_load({"name": "System seed"})
     except HTTPException as exc:

@@ -74,7 +74,7 @@
       </div>
       <div class="ins" style="border-left-color:var(--blue)">
         <b>Migration entity scope</b>
-        Select the target entities this migration populates. Unselected entities are excluded from discovery, mapping, review and validation. Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
+        Select the target entities this migration populates. Unselected entities are excluded from discovery, mapping, review and validation. Source-file classification still requires evidence and authorised reviewer confirmation.
         <div class="lvt" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px">{% for c in target_choices %}<label class="lt"><input type="checkbox" name="entities" value="{{ c.name }}" {% if c.name in chosen_targets %}checked{% endif %}><span><strong>{{ c.name }}</strong><span>{% if c.table %}Populates <span class="font-mono">{{ c.table }}</span>{% else %}Populated in the target{% endif %}</span></span></label>{% endfor %}</div>
         <p class="fh" style="margin-top:8px">Pick what you want to populate in the target system. Anything else the platform needs to fill those fields is added for you and loaded only as supporting data:{% for k, why in supporting_info.items() %} {{ k }} ({{ why }}){{ ',' if not loop.last }}{% endfor %}, when the selection needs it.</p>
       </div>

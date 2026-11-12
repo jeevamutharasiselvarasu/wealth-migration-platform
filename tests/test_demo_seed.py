@@ -63,5 +63,5 @@ def test_seed_does_not_add_a_demo_when_a_new_migration_was_started_but_not_confi
     # Restart: the active migration is the unconfigured one. The seed must not create a second demo migration.
     monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
     monkeypatch.setenv("XODUS_SEED_DEMO", "1")
-    assert app_module.seed_demo_if_empty() == "skipped: an earlier migration exists"
+    assert app_module.seed_demo_if_empty() == "skipped: a migration exists"
     assert app_module.state_store.questionnaire_data["migration_id"] == started_id
