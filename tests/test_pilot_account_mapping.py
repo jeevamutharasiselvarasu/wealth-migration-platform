@@ -39,7 +39,7 @@ def test_schema_mapper_account_pilot():
     assert record0["CUSTODIAN_CODE"] == "SCHW"  # no built-in value map: codes change only through approved rules
     assert str(record0["REP_CODE"]) == "9981"
     assert record0["REG_TYPE"] == "INDV_TAXABLE"
-    assert record0["OPEN_DATE"] == "2021-03-15"
+    assert record0["OPEN_DATE"] == "03/15/2021"  # no built-in date rule by field name: a date format is a governed rule
 
 
 def test_missing_mandatory_fields_penalty():
