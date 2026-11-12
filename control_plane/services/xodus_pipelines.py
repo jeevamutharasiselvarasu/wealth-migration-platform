@@ -321,7 +321,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 raise ValueError(f"The derivation of {entity}.{d['canonical_field']} pins {d['rule_expression']}, which is not approved.")
             if d["canonical_field"] not in cfields:
                 continue
-            derive.append(f"UPDATE c SET c.{_q(d['canonical_field'])} = {translate(d['rule_expression'], d['input_field'], rule, 'c', lookup_ref)} "
+            derive.append(f"UPDATE c SET c.{_q(d['canonical_field'])} = {translate(d['rule_expression'], d['input_field'], rule, 'c', lookup_ref, cfields)} "
                           f"FROM [{CANON}].[{ctable}] AS c;")
         # Coded fields: the approved source value -> canonical code map (data in xodus_ref.code_map). A value with no approved code is left
         # as received and fails the stage 10 conformance check (VALUES_IN_CODE_SET).

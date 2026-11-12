@@ -42,3 +42,17 @@ def test_bad_conditions_are_refused():
     for bad in ({"field": "a;drop", "op": "=", "value": "1"}, {"field": "A", "op": "LIKE", "value": "1"}, {"field": "A", "op": "=", "value": ""}):
         with pytest.raises(ValueError):
             tr.validate_params("COPY", {"condition": bad})
+
+
+def test_a_field_named_in_a_sentence_finds_the_record_field_whatever_its_spelling():
+    """'Concatenate FirstName and LastName' is read on a canonical row (FIRST_NAME) and in SQL over canonical columns."""
+    hit = _one("Concatenate FirstName and LastName with a space")
+    params = tr.validate_params("CONCAT", hit["params"])
+    assert tr.apply_rule("CONCAT", params, "x", {"FIRST_NAME": "Ada", "LAST_NAME": "Lovelace"}) == ("Ada Lovelace", None)
+    assert tr.apply_rule("CONCAT", params, "x", {"FirstName": "Alan", "last name": "Turing"}) == ("Alan Turing", None)
+    rule = {"status": "APPROVED", "rule_type": "CONCAT", "params": params}
+    sql = sp.translate("RULE:X@1", "FIRST_NAME", rule, "c", None, ["FIRST_NAME", "LAST_NAME", "HH_ID"])
+    assert "c.[FIRST_NAME]" in sql and "c.[LAST_NAME]" in sql and "FIRSTNAME" not in sql
+    cond = tr.validate_params("COPY", {"condition": {"field": "household order", "op": "=", "value": "1"}})
+    assert tr.apply_rule("COPY", cond, "v", {"HOUSEHOLD_ORDER": 1}) == ("v", None)
+    assert "c.[HH_ORDER]" in sp.translate("RULE:X@1", "TAX_ID", {"status": "APPROVED", "rule_type": "COPY", "params": {"condition": {"field": "HHORDER", "op": "=", "value": "1"}}}, "c", None, ["HH_ORDER", "TAX_ID"])

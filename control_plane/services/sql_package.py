@@ -56,8 +56,18 @@ def columns_used(expression: str, column: str, rule: Optional[Dict[str, Any]]) -
     return cols
 
 
-def _condition_sql(cond: Dict[str, str], alias: str) -> str:
-    col = f"{_ident(alias)}.{_q(re.sub(r'[^A-Za-z0-9_]', '_', cond['field']))}"
+def _pick(name: str, available: Optional[Any]) -> str:
+    """The column a rule's field name refers to: the available column with the same name ignoring case, spaces and underscores, else the name."""
+    if available:
+        want = tr.norm_name(name)
+        for col in available:
+            if tr.norm_name(col) == want:
+                return str(col)
+    return re.sub(r"[^A-Za-z0-9_]", "_", str(name))
+
+
+def _condition_sql(cond: Dict[str, str], alias: str, available: Optional[Any] = None) -> str:
+    col = f"{_ident(alias)}.{_q(_pick(cond['field'], available))}"
     t = f"LTRIM(RTRIM({col}))"
     if cond["op"] == "IS_BLANK":
         return f"NULLIF({t}, N'') IS NULL"
@@ -67,16 +77,17 @@ def _condition_sql(cond: Dict[str, str], alias: str) -> str:
     return f"UPPER({t}) {sign} {_lit(str(cond['value']).strip().upper())}"
 
 
-def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None) -> str:
-    """T-SQL expression for one approved mapping. A rule with a condition gives a value only for the rows that meet it."""
-    expr = _translate_core(expression, column, rule, alias, lookup_ref)
+def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None, available: Optional[Any] = None) -> str:
+    """T-SQL expression for one approved mapping. A rule with a condition gives a value only for the rows that meet it.
+    `available` names the columns the expression can read (a canonical table's), so a rule written with a source's spelling still finds them."""
+    expr = _translate_core(expression, column, rule, alias, lookup_ref, available)
     cond = (rule or {}).get("params", {}).get("condition") if rule and rule.get("status") == "APPROVED" else None
     if cond:
-        return f"CASE WHEN {_condition_sql(tr.validate_condition(cond), alias)} THEN {expr} END"
+        return f"CASE WHEN {_condition_sql(tr.validate_condition(cond), alias, available)} THEN {expr} END"
     return expr
 
 
-def _translate_core(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None) -> str:
+def _translate_core(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None, available: Optional[Any] = None) -> str:
     """T-SQL expression for one approved mapping. Raises ValueError for anything unregistered.
     lookup_ref(parent_file) names the table a LOOKUP reads (default: the staging lookup table)."""
     a = _ident(alias)
@@ -102,7 +113,7 @@ def _translate_core(expression: str, column: str, rule: Optional[Dict[str, Any]]
     if kind == "IF_BLANK":
         return f"CASE WHEN {blank} THEN {_lit(p['when_blank'])} ELSE {_lit(p['when_filled'])} END"
     if kind == "CONCAT":
-        return f"CONCAT_WS({_lit(p['separator'])}, " + ", ".join(f"LTRIM(RTRIM({a}.{_q(s)}))" for s in p["sources"]) + ")"
+        return f"CONCAT_WS({_lit(p['separator'])}, " + ", ".join(f"LTRIM(RTRIM({a}.{_q(_pick(s, available))}))" for s in p["sources"]) + ")"
     if kind == "VALUE_MAP":
         key = f"UPPER({t})" if p["case_insensitive"] else t
         whens = " ".join(f"WHEN {_lit(str(k).upper() if p['case_insensitive'] else k)} THEN {_lit(v)}" for k, v in p["map"].items())

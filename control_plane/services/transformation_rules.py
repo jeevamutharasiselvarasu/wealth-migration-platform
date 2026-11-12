@@ -100,11 +100,16 @@ def validate_condition(cond: Any) -> Dict[str, str]:
     return out
 
 
+def norm_name(name: Any) -> str:
+    """A field name as compared in rules: upper case, letters and digits only (FirstName, FIRST_NAME and 'first name' are one name)."""
+    return re.sub(r"[^A-Z0-9]", "", str(name).upper())
+
+
 def condition_met(cond: Optional[Dict[str, str]], record: Optional[Dict[str, Any]]) -> bool:
     if not cond:
         return True
-    low = {str(k).strip().upper(): v for k, v in (record or {}).items()}
-    actual = _text(low.get(str(cond["field"]).strip().upper())).strip()
+    low = {norm_name(k): v for k, v in (record or {}).items()}
+    actual = _text(low.get(norm_name(cond["field"]))).strip()
     if cond["op"] == "IS_BLANK":
         return actual == ""
     if cond["op"] == "NOT_BLANK":
@@ -272,8 +277,8 @@ def _apply_core(rule_type: str, params: Dict[str, Any], value: Any, record: Opti
     if rule_type == "IF_BLANK":
         return (params["when_blank"] if blank else params["when_filled"]), None
     if rule_type == "CONCAT":
-        rec = {str(k).strip().upper(): v for k, v in (record or {}).items()}
-        parts = [_text(rec.get(s)).strip() for s in params["sources"]]
+        rec = {norm_name(k): v for k, v in (record or {}).items()}
+        parts = [_text(rec.get(norm_name(s))).strip() for s in params["sources"]]
         missing = [s for s, p in zip(params["sources"], parts) if not p]
         joined = params["separator"].join(p for p in parts if p)
         return joined, (f"blank source field(s): {', '.join(missing)}" if missing else None)
