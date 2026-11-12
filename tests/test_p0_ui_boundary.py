@@ -91,7 +91,7 @@ def test_migration_setup_collects_target_azure_knowledge_and_source_before_disco
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
     for token in ("Target system and canonical contract",
                   "Knowledge and mapping evidence", "Source acquisition method",
-                  "SAMPLE_FILES", "AZURE_CONNECTION", "Account", "Household", "Client"):
+                  "SAMPLE_FILES", "AZURE_CONNECTION", "target_choices"):  # the entities come from the target, not from names in the page
         assert token in setup
     assert "Azure environment and access" not in setup  # Azure details are entered on the Azure connection page only
     assert "P0" not in setup

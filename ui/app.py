@@ -1298,7 +1298,7 @@ async def save_migration_setup(request: Request):
         raise HTTPException(status_code=409, detail=f"Firm configuration is required before migration setup. {exc}")
     setup = {
         "migration_name": str(form.get("migration_name", "")).strip(),
-        "source_firm": str(form.get("source_firm", "CoreCap")).strip() or "CoreCap",
+        "source_firm": str(form.get("source_firm", "")).strip(),
         "target_system": str(form.get("target_system", "")).strip(),
         "canonical_version": str(form.get("canonical_version", "")).strip(),
         "target_owner": str(form.get("target_owner", "")).strip(),
@@ -3322,7 +3322,7 @@ async def generate_deployment_package(request: Request):
                  for rec in group.values() if rec.get("inference_approval_status") == "APPROVED"]
         try:
             body = package_contract.build_body(
-                migration_id=migration_id, source_system=str(setup.get("source_firm") or "CoreCap"), target_system=str(setup.get("target_system") or tcfg["target_name"]),
+                migration_id=migration_id, source_system=str(setup.get("source_firm") or ""), target_system=str(setup.get("target_system") or tcfg["target_name"]),
                 firm={"firm_id": cfg_firm.firm_id, "config_version": str(cfg_firm.config_version), "canonical_contract_ref": str(cfg_firm.canonical_contract_ref)},
                 target={"name": tcfg["target_name"], "model_version": str(tcfg["schema_hash"]), "confirmed_by": tcfg["confirmed_by"] or "", "confirmed_utc": tcfg["confirmed_utc"] or ""},
                 source_files=files, source_mappings=source_maps, spec=spec, approved_target=approved, rules=rules, scenarios=scenarios,
@@ -4902,11 +4902,11 @@ async def save_entity_scopes(request: Request):
 def _blob_container() -> str:
     """The container the user named on the Azure connection page, else the server default (so the emulator works before anything is entered)."""
     setup = state_store.questionnaire_data.get("migration_setup", {})
-    return str(setup.get("blob_container") or "").strip() or os.environ.get("AZURE_BLOB_SOURCE_CONTAINER", "corecap-source")
+    return str(setup.get("blob_container") or "").strip() or os.environ.get("AZURE_BLOB_SOURCE_CONTAINER", "")
 
 
 def _source_firm() -> str:
-    return str(state_store.questionnaire_data.get("migration_setup", {}).get("source_firm") or "CoreCap")
+    return str(state_store.questionnaire_data.get("migration_setup", {}).get("source_firm") or "")
 
 
 def _blob_panel(with_files: bool = True) -> dict:

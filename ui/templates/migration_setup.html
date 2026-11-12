@@ -6,7 +6,7 @@
     <div>
       <div class="ey dm">Data migration · Workspace configuration</div>
       <h1>Set up the migration</h1>
-      <p>Configure the CoreCap source and Simplicity target, select Account, Household and/or Client in scope, then provide knowledge and source access. File classification remains evidence-based and requires reviewer confirmation.</p>
+      <p>Name the migration and its source, choose which target entities to populate, then provide knowledge and source access. File classification remains evidence-based and requires reviewer confirmation.</p>
     </div>
   </div>
   {% set _tc = target_connection.config %}
@@ -55,10 +55,10 @@
     <section class="card">
       <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Target system and canonical contract</h2><p>Capture the destination and target schema requirements before mapping. This configures the intended contract;</p></div></div>
       <div class="fgrid" style="margin-top:12px">
-        <div class="field"><label for="f-migration-name">Migration name</label><input id="f-migration-name" class="input" name="migration_name" value="{{ setup.get('migration_name', '' if prefilled else 'CoreCap to Simplicity - Wealth Migration Demo') }}" required placeholder="e.g. CoreCap to Simplicity"></div>
+        <div class="field"><label for="f-migration-name">Migration name</label><input id="f-migration-name" class="input" name="migration_name" value="{{ setup.get('migration_name', '') }}" required placeholder="e.g. Source firm to target system"></div>
         <div class="field"><label for="f-target-system">Target system / platform</label><input id="f-target-system" class="input" name="target_system" value="{{ platform_defaults.target_system or setup.get('target_system','Simplicity') }}" required placeholder="Target platform name"{% if platform_defaults.target_system %} readonly data-testid="from-platform-target"{% endif %}>{% if platform_defaults.target_system %}<small class="fh">From platform setup (confirmed target system).</small>{% endif %}</div>
         <div class="field"><label for="f-canonical-version">Canonical schema / contract version</label><input id="f-canonical-version" class="input" name="canonical_version" value="{{ platform_defaults.canonical_version or setup.get('canonical_version','Simplicity-MCL-v1') }}" required placeholder="Version or target schema document reference"{% if platform_defaults.canonical_version %} readonly{% endif %}>{% if platform_defaults.canonical_version %}<small class="fh">From platform setup (firm contract).</small>{% endif %}</div>
-        <div class="field"><label for="f-source-firm">Source firm</label><input id="f-source-firm" class="input" name="source_firm" value="{{ setup.get('source_firm', '' if prefilled else 'CoreCap') }}" required placeholder="CoreCap"></div>
+        <div class="field"><label for="f-source-firm">Source firm</label><input id="f-source-firm" class="input" name="source_firm" value="{{ setup.get('source_firm', '') }}" required placeholder="Name of the firm the data comes from"></div>
         <div class="field"><label for="f-target-owner">Target owner / SME</label><input id="f-target-owner" class="input" name="target_owner" value="{{ platform_defaults.target_owner or setup.get('target_owner','') }}" placeholder="Name or team responsible for target rules"{% if platform_defaults.target_owner %} readonly{% endif %}>{% if platform_defaults.target_owner %}<small class="fh">From platform setup.</small>{% endif %}</div>
       </div>
       <div class="ins" style="border-left-color:var(--blue)">
@@ -72,8 +72,8 @@
     <section class="card">
       <div class="sech"><div><span class="num">02</span><h2 style="font-size:18px">Knowledge and mapping evidence</h2><p>Register where the platform should find the data dictionary, target schema, business rules and SME knowledge. Add knowledge references here as part of the migration setup. Source-specific clarifications will be requested during discovery when evidence is insufficient.</p></div></div>
       <div class="fgrid" style="margin-top:12px">
-        <div class="field"><label for="f-k-schema">Data dictionary / schema reference</label><input id="f-k-schema" class="input" name="knowledge_schema_ref" value="{{ setup.get('knowledge_schema_ref','platform_knowledge/canonical_contract.md') }}" placeholder="Document URL, repository path or asset name"></div>
-        <div class="field"><label for="f-k-rules">Business rules / Confluence / Drive references</label><input id="f-k-rules" class="input" name="knowledge_rules_ref" value="{{ setup.get('knowledge_rules_ref','platform_knowledge/source_mapping_notes.md') }}" placeholder="URLs or document references"></div>
+        <div class="field"><label for="f-k-schema">Data dictionary / schema reference</label><input id="f-k-schema" class="input" name="knowledge_schema_ref" value="{{ setup.get('knowledge_schema_ref','') }}" placeholder="Document URL, repository path or asset name"></div>
+        <div class="field"><label for="f-k-rules">Business rules / Confluence / Drive references</label><input id="f-k-rules" class="input" name="knowledge_rules_ref" value="{{ setup.get('knowledge_rules_ref','') }}" placeholder="URLs or document references"></div>
         <div class="field"><label for="f-k-sme">Business/data SME</label><input id="f-k-sme" class="input" name="knowledge_sme" value="{{ setup.get('knowledge_sme','') }}" placeholder="Name or team"></div>
         <div class="field"><label for="f-k-rel">Known identifiers and relationship notes</label><textarea id="f-k-rel" class="input" name="relationship_notes" rows="2" placeholder="Known keys, household/client/account relationships, unresolved semantics">{{ setup.get('relationship_notes','') }}</textarea></div>
       </div>
@@ -89,7 +89,7 @@
         <label class="lt"><input type="radio" name="source_acquisition" value="SAMPLE_FILES" {% if setup.get('source_acquisition','SAMPLE_FILES') == 'SAMPLE_FILES' %}checked{% endif %}><span><strong>Upload representative sample files</strong><span>CSV, TSV, Excel or JSON. Platform infers the likely entity and proposes mappings.</span></span></label>
         <label class="lt"><input type="radio" name="source_acquisition" value="AZURE_CONNECTION" {% if setup.get('source_acquisition') == 'AZURE_CONNECTION' %}checked{% endif %}><span><strong>Read from the platform's Azure source storage</strong><span>{% if platform_defaults.source_storage %}Storage <span class="font-mono">{{ platform_defaults.source_storage }}</span>, set up by the Platform Admin. After you save, load the files in stage 01.{% else %}The Platform Admin has not set up Azure source storage yet; upload sample files meanwhile.{% endif %}</span></span></label>
       </div>
-      <div class="field" style="margin-top:12px"><label for="f-source-details">Source systems / locations</label><input id="f-source-details" class="input" name="source_details" value="{{ setup.get('source_details', '' if prefilled else 'CoreCap sample files') }}" placeholder="CoreCap sample files, ADLS paths or folders"></div>
+      <div class="field" style="margin-top:12px"><label for="f-source-details">Source systems / locations</label><input id="f-source-details" class="input" name="source_details" value="{{ setup.get('source_details', '') }}" placeholder="Sample files, storage paths or folders"></div>
     </section>
 
     {% if can_configure %}

@@ -18,16 +18,16 @@
         <div class="card" style="display:grid;gap:14px;align-content:start">
             <div style="display:grid;gap:8px;justify-items:start">
                 <div>
-                    <h3 style="font-size:15px">Built-In Wealth Kernel</h3>
-                    <p class="text-[10px] text-[#8a97b2]">Core Knowledge & Invariants</p>
+                    <h3 style="font-size:15px">Canonical model</h3>
+                    <p class="text-[10px] text-[#8a97b2]">The entities this platform maps into</p>
                 </div>
                 <a href="/canonical-changes" class="chip b" style="white-space:normal">Changes via canonical change requests →</a>
             </div>
 
             <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
-                <div class="flex justify-between items-center"><span class="font-bold text-[#1c2a4a]">Canonical entity scope</span><span class="text-[9px] text-[#8a97b2] font-mono">FIXED</span></div>
-                <div class="text-[11px] text-[#5a6a88]">Account · Client · Household</div>
-                <p class="text-[10px] text-[#5a6a88]">Sleeve allocation, performance reconciliation, AUM drift gates, trading, and target packaging are outside this phase.</p>
+                <div class="flex justify-between items-center"><span class="font-bold text-[#1c2a4a]">Canonical entities</span><span class="text-[9px] text-[#8a97b2] font-mono">FROM THE FIRM CONFIGURATION</span></div>
+                <div class="text-[11px] text-[#5a6a88]">{{ pilot_entities|join(" · ") }}</div>
+                <p class="text-[10px] text-[#5a6a88]">Which of these a migration populates is chosen on Workspace configuration, from what the target system receives. Anything the canonical model lacks is raised as a change request.</p>
             </div>
 
             <!-- Supplementary Data Attachments -->
