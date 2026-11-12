@@ -344,10 +344,10 @@ def test_migration_users_get_platform_setup_through_the_migration_setup_not_the_
     monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
     monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid-a3", {"email": "a3@example.invalid", "name": "Ana", "role": "Migration Analyst"})
     monkeypatch.setattr(app_module, "publish_event", lambda *a, **k: None)
+    from tests.sample_loader import seed_confirmed_target
+    seed_confirmed_target(app_module)  # a confirmed target with its inferred model, then the name and owner this test checks
     conn = db.get_db_connection()
-    target_connector.ensure_table(conn)
-    conn.execute("INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, owner, status, configured_by, configured_utc, confirmed_by, confirmed_utc) "
-                 "VALUES (1, 'Simplicity SQL', 'azure-sql', 'srv/db', 'Target Team', 'CONFIRMED', 'Admin', '2026-11-06', 'Admin', '2026-11-06')")
+    conn.execute("UPDATE target_system_config SET target_name = 'Simplicity SQL', owner = 'Target Team' WHERE config_id = 1")
     conn.commit()
     conn.close()
 

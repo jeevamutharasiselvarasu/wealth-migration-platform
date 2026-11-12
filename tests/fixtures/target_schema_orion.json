@@ -1,0 +1,156 @@
+{
+ "system": "Simplicity",
+ "tables": [
+  {
+   "name": "ORION_MCL_ACCOUNT",
+   "columns": [
+    {
+     "name": "ACCOUNT_NUMBER",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "CUSTODIAN",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "FUND_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "OPEN_CLOSED",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "OUTSIDE_ID",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REGISTRATION_TYPE",
+     "type": "string",
+     "required": false
+    }
+   ]
+  },
+  {
+   "name": "ORION_MCL_CLIENT",
+   "columns": [
+    {
+     "name": "ADDRESS_LINE_1",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "ADDRESS_LINE_2",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "CITY",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "EMAIL_ADDRESS",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "PHONE_BUSINESS",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "PHONE_HOME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REGISTRATION_DOB",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REGISTRATION_FIRST_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REGISTRATION_LAST_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REGISTRATION_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REGISTRATION_SSN",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "STATE",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "ZIP_CODE",
+     "type": "string",
+     "required": false
+    }
+   ]
+  },
+  {
+   "name": "ORION_MCL_HOUSEHOLD",
+   "columns": [
+    {
+     "name": "HH_GROUPING_CODE",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "HOUSEHOLD_DOB",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "HOUSEHOLD_FIRST_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "HOUSEHOLD_LAST_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "HOUSEHOLD_NAME",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "HOUSEHOLD_SSN",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "ORION_HOUSEHOLD_ID",
+     "type": "string",
+     "required": false
+    },
+    {
+     "name": "REPRESENTATIVE_NAME",
+     "type": "string",
+     "required": false
+    }
+   ]
+  }
+ ],
+ "code_lists": {}
+}

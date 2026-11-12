@@ -409,9 +409,34 @@ def test_firm_knowledge_asset_can_be_removed_and_stays_removed_after_a_restart(t
     assert [d["id"] for d in state.firm_knowledge_docs if d["id"].startswith("DOC-9")] == ["DOC-902"]
 
 
-def test_user_selects_target_entities_and_supporting_data_is_added_for_them():
-    from control_plane.services.firm_config import with_supporting_entities
-    assert with_supporting_entities(["Account", "Client", "Household"]) == ["Account", "Client", "Household", "Advisor", "AccountRole"]
-    assert with_supporting_entities(["Household"]) == ["Household", "Advisor"]
-    assert with_supporting_entities(["Account"]) == ["Account"]  # an account owner needs a client too
-    assert with_supporting_entities([]) == []
+def test_user_selects_target_entities_and_supporting_data_is_derived_from_the_canonical_keys():
+    from control_plane.services.firm_config import load_firm_config, supporting_plan, with_supporting_entities
+    cfg = load_firm_config()
+    three = ["Account", "Client", "Household"]
+    assert with_supporting_entities(three, three, cfg) == ["Account", "Client", "Household", "Advisor", "AccountRole"]
+    assert with_supporting_entities(["Household"], three, cfg) == ["Household", "Advisor"]
+    assert with_supporting_entities(["Account"], three, cfg) == ["Account"]  # an account role needs a client too
+    assert with_supporting_entities([], three, cfg) == []
+    assert supporting_plan(three, three, cfg)["Advisor"] == "Household.ADVISOR_ID points at it"
+    # a target that has its own advisor table makes Advisor the user's choice, not supporting data
+    assert "Advisor" not in supporting_plan(["Household"], ["Household", "Advisor"], cfg)
+
+
+def test_the_choices_follow_the_target_schema_not_a_fixed_list():
+    """A different target system lists different entities; a table no canonical entity matches is listed greyed, not dropped."""
+    from control_plane.services import target_inference as ti
+    from control_plane.services.firm_config import load_firm_config
+    cfg = load_firm_config()
+    canonical = {e: {f.name: f.type for f in d.fields} for e, d in cfg.entities.items()}
+
+    def schema(tables):
+        return {"system": "T", "tables": [{"name": n, "columns": [{"name": c, "type": "string", "required": False} for c in cols]} for n, cols in tables.items()]}
+
+    first = ti.infer(schema({"ORION_MCL_ACCOUNT": ["ACCOUNT_NUMBER", "CUSTODIAN", "REGISTRATION_TYPE"],
+                             "ORION_MCL_HOUSEHOLD": ["HH_GROUPING_CODE", "HOUSEHOLD_NAME", "REPRESENTATIVE_NAME"]}), canonical)
+    second = ti.infer(schema({"WM_CLIENT": ["FIRST_NAME", "LAST_NAME", "TAX_ID", "DATE_OF_BIRTH"],
+                              "WM_MODEL_WEIGHTS": ["MODEL_ID", "SYMBOL", "WEIGHT_PCT"]}), canonical)
+    assert set(first["entities"]) == {"Account", "Household"}
+    assert "Client" in second["entities"] and "Account" not in second["entities"]
+    assert second["unassigned_tables"] == ["WM_MODEL_WEIGHTS"]
+    assert ti.entity_name_for_table("WM_MODEL_WEIGHTS", ["WM_CLIENT", "WM_MODEL_WEIGHTS"]) == "ModelWeights"

@@ -124,6 +124,8 @@ def test_manual_migration_setup_survives_restart(tmp_path, monkeypatch):
     from ui.state import WorkspaceStateStore
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "setup-restart.db")
+    from tests.sample_loader import seed_confirmed_target as _seed_target
+    _seed_target(__import__('ui.app', fromlist=['app']))
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
     session_id = "phase1-setup-test-session"

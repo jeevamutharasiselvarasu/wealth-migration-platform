@@ -12,26 +12,70 @@ from typing import Dict, List, Literal
 import yaml
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
-P0_ENTITIES = ("Account", "Client", "Household", "Advisor", "AccountRole")
-CORE_ENTITIES = ("Account", "Household", "Client")  # the default scope of a new migration; Advisor and AccountRole are opt-in
-
-# Canonical entities the platform needs to fill a target entity, which the user never chooses: the user selects what the target
-# will receive (Account, Client, Household) and these are added when the selection needs them.
-SUPPORTING_ENTITIES = {
-    "Advisor": {"needs": ("Household",), "why": "the advisor name that fills Representative Name"},
-    "AccountRole": {"needs": ("Account", "Client"), "why": "which client owns each account"},
-}
-
-
-def with_supporting_entities(selected_targets) -> List[str]:
-    """The canonical scope for a selection of target entities: the selection plus the supporting entities it needs, in canonical order."""
-    chosen = set(selected_targets)
-    chosen |= {name for name, d in SUPPORTING_ENTITIES.items() if all(n in chosen for n in d["needs"])}
-    return [e for e in P0_ENTITIES if e in chosen]
-
-
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "firm_config.yaml"
 CONFIG_PATH_ENV = "XODUS_FIRM_CONFIG"
+
+
+def _canonical_entity_names() -> tuple:
+    """The canonical entities, as the firm configuration file defines them (in file order). Nothing about them is written in code."""
+    try:
+        path = Path(os.environ.get(CONFIG_PATH_ENV) or DEFAULT_CONFIG_PATH)
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return tuple((raw.get("entities") or {}).keys())
+    except (OSError, yaml.YAMLError, AttributeError):
+        return ()
+
+
+P0_ENTITIES = _canonical_entity_names()
+
+
+def _reference_map(cfg) -> Dict[str, Dict[str, str]]:
+    """{entity: {other entity: the field that points at it}}: a field named like another entity's key refers to that entity."""
+    keys = {e: {f.name for f in d.fields if f.is_key} for e, d in cfg.entities.items()}
+    refs: Dict[str, Dict[str, str]] = {}
+    for e, d in cfg.entities.items():
+        for f in d.fields:
+            for other, k in keys.items():
+                if other != e and f.name in k and not f.is_key:
+                    refs.setdefault(e, {}).setdefault(other, f.name)
+    return refs
+
+
+def supporting_plan(selected_targets, target_entities=None, cfg=None) -> Dict[str, str]:
+    """Canonical entities the platform adds for a selection of target entities, with the reason. The user never chooses these.
+
+    Only canonical entities the target has no table for qualify (a target entity is the user's own choice). One qualifies when
+    a selected entity has a field that points at it (a household's advisor), or when it only links entities that are all selected
+    (an account role links accounts and clients). Both come from the key and field names in the firm configuration."""
+    cfg = cfg or get_firm_config()
+    refs = _reference_map(cfg)
+    targets = set(target_entities if target_entities is not None else selected_targets)
+    chosen, why = set(selected_targets), {}
+    changed = True
+    while changed:
+        changed = False
+        for e in list(chosen):
+            for other, field in refs.get(e, {}).items():
+                if other not in targets and other not in chosen:
+                    chosen.add(other)
+                    why[other] = f"{e}.{field} points at it"
+                    changed = True
+        for e in cfg.entities:
+            if e in targets or e in chosen:
+                continue
+            linked = refs.get(e, {})
+            if linked and all(o in chosen for o in linked):
+                chosen.add(e)
+                why[e] = "it links " + " and ".join(sorted(linked)) + " records"
+                changed = True
+    return {e: why[e] for e in P0_ENTITIES if e in why}
+
+
+def with_supporting_entities(selected_targets, target_entities=None, cfg=None) -> List[str]:
+    """The canonical scope for a selection of target entities: the selection plus the supporting entities it needs, in file order."""
+    plan = supporting_plan(selected_targets, target_entities, cfg)
+    chosen = set(selected_targets) | set(plan)
+    return [e for e in P0_ENTITIES if e in chosen]
 
 
 class FirmConfigError(Exception):
@@ -88,10 +132,8 @@ class FirmConfig(BaseModel):
     @field_validator("entities")
     @classmethod
     def _p0_entities_only(cls, value):
-        unexpected = sorted(set(value) - set(P0_ENTITIES))
-        missing = sorted(set(P0_ENTITIES) - set(value))
-        if unexpected or missing:
-            raise ValueError(f"entities must be exactly {list(P0_ENTITIES)}; unexpected={unexpected} missing={missing}")
+        if not value:
+                raise ValueError("entities must define at least one canonical entity")
         return value
 
     @property

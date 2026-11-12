@@ -36,13 +36,12 @@ def test_required_fields_match_platform_kernel_required_fields():
             assert sorted(config.required_fields(item["entity_name"])) == sorted(item["required_fields"])
 
 
-def test_rejects_party_or_missing_entity(tmp_path):
+def test_entities_are_whatever_the_configuration_defines(tmp_path):
     path = _write_variant(tmp_path, lambda raw: raw["entities"].update({"Party": copy.deepcopy(raw["entities"]["Client"])}))
+    assert "Party" in load_firm_config(path).entities  # no fixed list of entity names
+    path = _write_variant(tmp_path, lambda raw: raw["entities"].clear())
     with pytest.raises(FirmConfigError):
-        load_firm_config(path)
-    path = _write_variant(tmp_path, lambda raw: raw["entities"].pop("Household"))
-    with pytest.raises(FirmConfigError):
-        load_firm_config(path)
+        load_firm_config(path)  # but a configuration must define at least one
 
 
 @pytest.mark.parametrize("mutate", [
@@ -85,6 +84,8 @@ def _setup_client(tmp_path, monkeypatch, name):
                         {"email": "test@example.invalid", "name": "Firm Config Test", "role": "Migration Analyst"})
     state = WorkspaceStateStore()
     monkeypatch.setattr(app_module, "state_store", state)
+    from tests.sample_loader import seed_confirmed_target
+    seed_confirmed_target(app_module)  # the entities a migration can choose come from a confirmed target system
     return app_module, session_id, state
 
 

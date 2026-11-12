@@ -12,8 +12,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from control_plane.services import transformation_rules
 
-ENTITIES = ("Account", "Client", "Household")
-
 _DDL = """
 CREATE TABLE IF NOT EXISTS target_mappings (
     target_mapping_id TEXT PRIMARY KEY,

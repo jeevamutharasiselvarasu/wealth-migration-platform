@@ -15,7 +15,6 @@ import yaml
 
 VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "field_vocabulary.yaml"
 EXTRA_VOCAB_PATH = Path(__file__).resolve().parents[2] / "platform_knowledge" / "source_vocabulary.yaml"
-ENTITIES = ("Account", "Client", "Household")
 _TYPE_GROUPS = {"string": "text", "date": "date", "integer": "number", "number": "number", "decimal": "number", "boolean": "bool"}
 MATCH_THRESHOLD = 0.3
 _vocab_cache: Optional[Dict[str, Any]] = None
@@ -112,8 +111,8 @@ def infer(schema: Dict[str, Any], canonical: Dict[str, Dict[str, str]], scope_ta
     scores: Dict[str, Dict[str, float]] = {}
     for t in tables:
         per = {}
-        for e in ENTITIES:
-            if e in canonical:
+        for e in canonical:
+            if True:
                 assigned = _assign(t, e, canonical)
                 # a table named for an entity (ORION_MCL_HOUSEHOLD, SIMP_CUSTOMER) is strong evidence for that entity
                 name_bonus = 1.0 if e.lower() in concepts(t["name"]) else 0.0
@@ -209,7 +208,7 @@ def move_table(model: Dict[str, Any], table: str, entity: Optional[str], canonic
     if entity is None:
         model["unassigned_tables"] = unassigned + [table]
         return
-    if entity not in ENTITIES or entity not in canonical:
+    if entity not in canonical:
         raise ValueError("Entity must be Account, Client or Household.")
     if not cols:  # table was unassigned: its columns are not in the model yet, so it must be re-inferred
         raise ValueError("This table was not matched at inference; re-read the target to include it.")
@@ -226,6 +225,16 @@ def move_table(model: Dict[str, Any], table: str, entity: Optional[str], canonic
             "suggested_canonical_field": None if m else suggest_canonical_name(entity, col["name"], list(canonical.get(entity, {}))),
             "confidence": m["score"] if m else 0.0, "evidence": m["evidence"] if m else [],
             "code_list": col.get("code_list"), "codes": col.get("codes", [])})
+
+
+def entity_name_for_table(table: str, all_tables) -> str:
+    """A readable entity name for a target table no canonical entity matches: the table name without the prefix every table shares."""
+    tokens = [t.split("_") for t in all_tables]
+    common = 0
+    while tokens and all(len(t) > common + 1 and t[common] == tokens[0][common] for t in tokens):
+        common += 1
+    rest = table.split("_")[common:] or table.split("_")
+    return "".join(p.capitalize() for p in rest if p)
 
 
 def to_spec(model: Dict[str, Any], status: str, include_rejected: bool = False) -> Dict[str, Any]:

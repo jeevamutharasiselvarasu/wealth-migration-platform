@@ -58,6 +58,7 @@ def test_validation_run_is_role_gated_persisted_and_shown(tmp_path, monkeypatch)
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     store = WorkspaceStateStore()
     store.questionnaire_data["migration_id"] = "MIG-V"
+    store.questionnaire_data["migration_setup"] = {"entities": ["Account", "Client", "Household"]}  # no scope fallback: a migration validates what it was set up for
     monkeypatch.setattr(app_module, "state_store", store)
     monkeypatch.setitem(app_module.session_mgr.active_sessions, "sid",
                         {"email": "t@example.invalid", "name": "Val Specialist", "role": "Validation Specialist"})
@@ -153,6 +154,7 @@ def test_exception_proposed_by_validator_approved_by_analyst_never_the_proposer(
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     store = WorkspaceStateStore()
     store.questionnaire_data["migration_id"] = "MIG-V"
+    store.questionnaire_data["migration_setup"] = {"entities": ["Account", "Client", "Household"]}  # no scope fallback: a migration validates what it was set up for
     monkeypatch.setattr(app_module, "state_store", store)
     sessions = app_module.session_mgr.active_sessions
     monkeypatch.setitem(sessions, "sid", {"email": "v@example.invalid", "name": "Val", "role": "Validation Specialist"})

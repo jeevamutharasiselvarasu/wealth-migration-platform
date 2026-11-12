@@ -17,7 +17,6 @@ def load_sample_migration(app, user: Dict[str, str]) -> Dict[str, Any]:
     root_dir = app.root_dir
     load_firm_config = app.load_firm_config
     FirmConfigError = app.FirmConfigError
-    CORE_ENTITIES = app.CORE_ENTITIES
     P0_ENTITIES = app.P0_ENTITIES
     state_store = app.state_store
     publish_event = app.publish_event
@@ -48,7 +47,7 @@ def load_sample_migration(app, user: Dict[str, str]) -> Dict[str, Any]:
     setup["firm_id"] = firm_config.firm_id
     setup["firm_config_version"] = firm_config.version_id
 
-    selected_entities = [entity for entity in setup.get("entities", list(CORE_ENTITIES)) if entity in set(P0_ENTITIES)]
+    selected_entities = [entity for entity in setup.get("entities", []) if entity in set(P0_ENTITIES)]
     if not selected_entities:
         raise HTTPException(status_code=500, detail="Sample migration must configure at least one in-scope entity.")
     setup["entities"] = selected_entities
@@ -186,3 +185,26 @@ def load_sample_migration(app, user: Dict[str, str]) -> Dict[str, Any]:
         "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
     })
     return {"loaded_files": loaded_files, "registered_knowledge": registered_knowledge, "target_note": target_note}
+
+
+def seed_confirmed_target(app) -> None:
+    """Tests only: store a confirmed target system (an Orion-shaped schema from tests/fixtures) as a Platform Admin would after inferring it."""
+    from control_plane.services import target_connector as tc
+    from control_plane.services import target_inference as ti
+    from control_plane.services.firm_config import load_firm_config
+    cfg = load_firm_config()
+    canonical = {e: {f.name: f.type for f in d.fields} for e, d in cfg.entities.items()}
+    schema = json.loads((Path(__file__).resolve().parent / "fixtures" / "target_schema_orion.json").read_text(encoding="utf-8"))
+    model = ti.infer(schema, canonical)
+    now = datetime.now(timezone.utc).isoformat()
+    conn = app.get_db_connection()
+    try:
+        tc.ensure_table(conn)
+        conn.execute("DELETE FROM target_system_config")
+        conn.execute("INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, status, "
+                     "connection_checked_utc, connection_detail, schema_hash, inferred_model, configured_by, configured_utc, inferred_utc, confirmed_by, confirmed_utc) "
+                     "VALUES (1, 'Simplicity', 'AZURE_SQL', 'azure-sql://test/Simplicity/simplicity', '[]', 1, '', 'CONFIRMED', ?, 'test', ?, ?, 'test', ?, ?, 'test', ?)",
+                     (now, model["schema_hash"], json.dumps(model), now, now, now))
+        conn.commit()
+    finally:
+        conn.close()
