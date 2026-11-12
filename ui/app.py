@@ -232,6 +232,9 @@ def workflow_progress() -> dict:
             _dc = deployment_check.latest(conn, migration_id)
             # The package must carry the approved code values (canonical model v2): a newly decided value makes it stale until regenerated.
             sql_ready = not _code_map_stale(conn, migration_id, _xpkg["manifest"])
+            _adf_now = _adf_status(conn, migration_id)
+            if _adf_now and _adf_now["stale_reasons"]:
+                sql_ready = False  # the approved mappings or rules changed since the package was built: build it again
             published = bool(_merged_pr(conn, migration_id, _v)) and bool(_dc and _dc.get("version") == _v and _dc.get("status") == "PASS")
             _promo = adf_runs.latest(conn, migration_id, "PL_XODUS_Promote")
             data_plane = {"xodus": True, "promoted": bool(_promo and _promo["status"] == "SUCCEEDED"),

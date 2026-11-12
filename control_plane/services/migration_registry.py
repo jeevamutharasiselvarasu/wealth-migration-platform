@@ -65,7 +65,7 @@ def list_migrations(conn, active_id: str = "") -> List[Dict[str, Any]]:
     out.sort(key=lambda m: not m["active"])  # the active workspace first, then newest to oldest
     names = {m["id"]: m["name"] for m in out}
     for m in out:
-        m["template_name"] = names.get(m["template_id"], m["template_id"])
+        m["template_name"] = names.get(m["template_id"], "")  # an earlier workspace that was deleted is not named
     return out
 
 
