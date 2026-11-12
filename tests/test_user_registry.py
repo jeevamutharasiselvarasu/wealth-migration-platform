@@ -118,7 +118,6 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             login = await go(admin, "POST", "/login", {"email": "root@example.com", "password": PW})
             assert login.headers["location"] == "/suite"
             assert set(app_module.session_mgr.assigned_roles("root@example.com")) == {"Platform Admin"}  # infrastructure-only persona
-            assert app_module.session_mgr.can_load_demo("root@example.com") is True  # bootstrap admin can load the demo data set
             page = await go(admin, "GET", "/admin/users")
             assert page.status_code == 200 and "ann@example.com" in page.text and "PENDING" in page.text and "password_hash" not in page.text and "scrypt" not in page.text
             await go(admin, "POST", "/persona-selection", {"role": "Platform Admin"})
@@ -127,7 +126,6 @@ def test_registration_and_approval_flow_through_the_real_routes(tmp_path, monkey
             assert "notice=" in r.headers["location"] and "ACTIVE" in r.headers["location"]
             assert (await go(ann, "POST", "/login", {"email": "ann@example.com", "password": PW})).headers["location"] == "/suite"
             assert app_module.session_mgr.assigned_roles("ann@example.com") == {"Migration Analyst"}
-            assert app_module.session_mgr.can_load_demo("ann@example.com") is False
             await go(ann, "POST", "/persona-selection", {"role": "Migration Analyst"})
             assert (await go(ann, "POST", "/api/users/root@example.com/decision", {"action": "DISABLE"})).status_code in (303, 403)
             assert "root@example.com" in [u["email"] for u in __import__("control_plane.services.user_registry", fromlist=["x"]).list_users(db.get_db_connection())]
@@ -160,7 +158,7 @@ def test_demo_email_without_a_host_hash_signs_in_through_the_registry_when_named
     monkeypatch.setattr(SessionManager, "DEMO_DIR", tmp_path)
     import json, shutil
     from pathlib import Path
-    shutil.copy(Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json", tmp_path / "demo_users.json")  # no password hashes file: nobody has a host hash
+    shutil.copy(Path(__file__).resolve().parents[1] / "config" / "auth" / "demo_users.json", tmp_path / "demo_users.json")  # no password hashes file: nobody has a host hash
     mgr = SessionManager()
     assert mgr.authorized_users["jeeva@simplicitywealth.com"]["password_sha256"] == ""
     assert mgr.authenticate("jeeva@simplicitywealth.com", PW, "Platform Admin") is None  # not registered yet
@@ -169,7 +167,7 @@ def test_demo_email_without_a_host_hash_signs_in_through_the_registry_when_named
     conn.commit()
     sid = mgr.authenticate("jeeva@simplicitywealth.com", PW, mgr.default_role_for("jeeva@simplicitywealth.com"))
     assert sid and mgr.active_sessions[sid]["email"] == "jeeva@simplicitywealth.com"
-    assert mgr.assigned_roles("jeeva@simplicitywealth.com") == {"Platform Admin"} and mgr.can_load_demo("jeeva@simplicitywealth.com") is True
+    assert mgr.assigned_roles("jeeva@simplicitywealth.com") == {"Platform Admin"}
     assert mgr.authenticate("jeeva@simplicitywealth.com", "wrong-password-1", "Platform Admin") is None
 
 

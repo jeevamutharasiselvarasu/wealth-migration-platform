@@ -12,9 +12,9 @@ simulated_target_service/data/
 .env
 .env.*
 !.env.example
-demo_data/demo_passwords*
-demo_data/*.local.json
-demo_data/*.local.json.bak
+config/auth/demo_passwords*
+config/auth/*.local.json
+config/auth/*.local.json.bak
 
 # Company root CA for the container (organisation-specific)
 certs/*.crt

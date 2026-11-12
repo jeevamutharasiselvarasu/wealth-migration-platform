@@ -55,11 +55,11 @@ python -m simulated_target_service      # http://127.0.0.1:8100 (override with S
 
 A Platform Admin then completes the one-time setup on **Target system & mapping**: configure the connection (loopback endpoints only in this POC), infer the target system from its schema, and confirm the inferred model. Setup locks after confirmation. The platform never reads the service's seed file; it learns the target by inspecting the running service. The service's database is created on first start under `simulated_target_service/data/` (git-ignored); delete that folder to recreate it.
 
-## Demo data
+## Sign-in and sample data
 
-On **Migration Setup**, use **Load demo data set** to load the migration configuration from `demo_data/demo_migration.json`, the nine synthetic Account/Household/Client source files under `demo_data/source_files/`, and platform knowledge documents under `platform_knowledge/`. The manifest and data files are editable inputs; inferred classifications remain pending human confirmation.
+The platform ships no sample migration: a migration starts empty, and its knowledge (the business-rules markdown, the data dictionary) and source files are added by people through the pages. Test fixtures live in `tests/fixtures/` and are used by tests only.
 
-The local demo identities (email, name, personas) live in `demo_data/demo_users.json`; password hashes are not committed. People normally sign up at `/register` (accounts are stored in the database, scrypt-hashed, and a Platform Admin approves them; `XODUS_BOOTSTRAP_ADMIN_EMAIL` names the first admin). Optionally, a git-ignored `demo_data/demo_passwords.local.json` (email to SHA-256 hex of the password) or `XODUS_DEMO_PASSWORD_HASHES` gives the built-in demo identities a password; demo accounts without one use the registry. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
+The local demo identities (email, name, personas) live in `config/auth/demo_users.json`; password hashes are not committed. People normally sign up at `/register` (accounts are stored in the database, scrypt-hashed, and a Platform Admin approves them; `XODUS_BOOTSTRAP_ADMIN_EMAIL` names the first admin). Optionally, a git-ignored `config/auth/demo_passwords.local.json` (email to SHA-256 hex of the password) or `XODUS_DEMO_PASSWORD_HASHES` gives the built-in demo identities a password; demo accounts without one use the registry. Demo authentication is for local demonstration only. Disable demo mode and configure a proper identity provider before any shared or production deployment. Never place real client data or secrets in demo fixtures.
 
 ## Repository map
 
@@ -68,8 +68,8 @@ The local demo identities (email, name, personas) live in `demo_data/demo_users.
 - `control_plane/` — canonical kernel, inference, profiling, validation, workflow event engine, SQLite persistence, ADF client/exporter scaffolding.
 - `agents/` — schema-mapping agent and the P0 agent suite (agents recommend; deterministic services check).
 - `knowledge/` — runtime configuration assets: entity inference rules, dictionary, discovery questionnaire, firm profiles.
-- `platform_knowledge/` — platform-provided domain knowledge (canonical contract, mapping notes, wealth-management research). Kept separate from demo data.
-- `demo_data/` — synthetic CoreCap sample files, demo manifest and demo users. Never place real client data here.
+- `platform_knowledge/` — platform-provided domain knowledge (canonical contract, mapping notes, wealth-management research). Kept separate from test fixtures.
+- `config/auth/` — sign-in account list for local rehearsal; `tests/fixtures/` — synthetic files for tests only. Never place real client data in either.
 - `tests/` — contract, UI-boundary, role-policy, inference, mapping and workflow tests.
 - `data_plane/` — local source-file storage (`storage_manager.py`, imported by `ui/app.py`). Target loading and legacy connectors are out of P0.
 - `docs/` — P0 correctness notes (`P0_FOUNDATION_CORRECTNESS.md`), the canonical proposal, data plane and Azure hosting notes, walk findings and handoffs, and `docs/project/` (project brief).

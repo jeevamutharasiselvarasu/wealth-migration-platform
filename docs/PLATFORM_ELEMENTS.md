@@ -11,14 +11,14 @@ Walked 2026-11-06 in workspace **MIG-DF760032C3** ("Platform walk - CoreCap to O
 | Page | Purpose | Elements |
 |---|---|---|
 | /migrations | Workspaces of the firm | Active card with Open workspace and Setup; per other workspace Open, Setup, Archive (hides, keeps audit log; active cannot be archived), Start a new migration from this (copies configuration only); + New migration |
-| /migration-setup | Define a migration | Migration name, target system, canonical version, source firm, target owner, entities (Account, Household, Client), knowledge schema and rules references, SME, relationship notes, source acquisition (sample files or Azure connection), source details; Load demo data set; Save setup |
+| /migration-setup | Define a migration | Migration name, target system, canonical version, source firm, target owner, entities (Account, Household, Client), knowledge schema and rules references, SME, relationship notes, source acquisition (sample files or Azure connection), source details; Save setup |
 | /setup | Setup hub | Cards linking Workspace configuration, Target system, Firm knowledge, Azure storage & factory, Target database (Azure SQL), GitHub integration |
 | /firm-knowledge | Knowledge assets | Built-in wealth kernel; supplementary data assets (Attach Data Asset by category, Import Confluence page); acquisition discovery questionnaire (firm, source systems, data owner, mapping approver, identifier notes); Save Mapping Context |
 | /azure-setup | Azure connection | Blob (container, folders: Create folders), Data Factory (subscription, resource group, factory, tenant, client id, secret env var), staging/target resources, Azure SQL (server, database, schema, key vault refs), Test connection, Save, Test SQL connection; CONNECTED badge |
 | /github-setup | GitHub integration | Repository, branch, ADF folder, token env var; Save, Test connection |
 | /models | Target and canonical models | Supplied target system tables, canonical model tables (read only) |
 | /canonical-changes | Change control | Raise a change request (entity, field, type, proposal, reason); list of requests; approve and apply by the Domain SME |
-| /admin/users | Users and access | Registered users, approve/disable, role checkboxes (Save roles), access history, built-in demo users |
+| /admin/users | Users and access | Registered users, approve/disable, role checkboxes (Save roles), access history |
 | /governance | Oversight (template preview plus live links) | Governance administration card (Canonical change requests, Users & access with waiting count for platform roles); KPIs; gate chain D1 to C2; integrity checks with Test the skip; policy in force; audit trail with filters; access matrix |
 | /deal-room, /tenant, /migration-workspaces | Template preview spaces | Sample data only |
 

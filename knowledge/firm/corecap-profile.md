@@ -38,4 +38,4 @@ See `platform_knowledge/wealth_management_research.md` for the supporting resear
 - **Keys:** GUIDs (AccountId, Id, ContactId). Accounts and contacts link to households by HouseholdId; there is no account-to-contact link, so ownership is a business decision, not a join.
 - **Known quality issues:** AccountNumber rows holding name text, mixed-type RiskScore, about 29% null RegistrationType, orphan household ids, redacted last name, DOB, tax id and email in the dictionary export, and a misaligned sample workbook.
 - **Deferred tables:** advisors, strategies, models, sleeves, holdings, transactions and performance, plus the Risk Score concept.
-- Registered migration knowledge: `demo_data/knowledge/corecap_source_dictionary.json` and `corecap_migration_decisions.md`.
+- Registered migration knowledge: the source dictionary and migration decisions the analyst registers on Firm knowledge.

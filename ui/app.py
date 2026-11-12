@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
-from ui.role_policy import POST_POLICY, RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEMO_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, platform_only_page
+from ui.role_policy import POST_POLICY, RUN_FAILURE_ROLES, PLATFORM_KNOWLEDGE_ROLES, DEFINITION_ROLES, TARGET_PREVIEW_ROLES, VALIDATION_ROLES, APPROVAL_ROLES, CANONICAL_ROLES, CHANGE_REQUEST_ROLES, DISCOVERY_ROLES, PLATFORM_ROLES, SETUP_ROLES, admin_may_view, allowed_roles_for, platform_only_page
 from ui.state import state_store
 from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 from control_plane import file_store
@@ -159,10 +159,6 @@ def get_current_user(request: Request) -> Dict[str, str]:
     return session
 
 
-def _can_load_demo(user: Dict[str, str]) -> bool:
-    return user.get("role") in DEMO_ROLES and session_mgr.can_load_demo(user.get("email", ""))
-
-
 def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, source_role: str) -> Dict[str, Any]:
     """Persist source metadata and evidence without duplicating sampled client values in the event log."""
     payload = {**record, "entity": entity_name, "source_role": source_role}
@@ -278,7 +274,7 @@ def workflow_progress() -> dict:
     if not scope:
         nxt = {"label": "Set up the migration", "detail": "Choose the entities in scope and register knowledge.", "href": "/migration-setup", "step": "setup"}
     elif files_total == 0:
-        nxt = {"label": "Add source files", "detail": "Upload CoreCap files or load the demo data set.", "href": "/entity-sample-files", "step": "discover"}
+        nxt = {"label": "Add source files", "detail": "Upload the source files or load them from storage.", "href": "/entity-sample-files", "step": "discover"}
     elif files_pending:
         nxt = {"label": f"Confirm {files_pending} source file{'s' if files_pending != 1 else ''}", "detail": "Review the inferred entity for each file.", "href": "/discovery", "step": "discover"}
     elif proposals_pending:
@@ -1158,7 +1154,7 @@ async def setup_hub(request: Request):
 
 
 @app.get("/migration-setup", response_class=HTMLResponse)
-async def migration_setup_page(request: Request, demo_loaded: str = "", error: str = "", new_migration: str = ""):
+async def migration_setup_page(request: Request, error: str = "", new_migration: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
     template_prefill = state_store.questionnaire_data.get("migration_template") or {}
@@ -1170,10 +1166,9 @@ async def migration_setup_page(request: Request, demo_loaded: str = "", error: s
     return render_template_with_context(request, "migration_setup.html", {
         "target_choices": choices, "chosen_targets": chosen, "supporting_info": {k: v["why"] for k, v in SUPPORTING_ENTITIES.items()},
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup, "prefilled": prefilled,
-        "error": error, "can_configure": user["role"] in SETUP_ROLES, "can_load_demo": _can_load_demo(user),
+        "error": error, "can_configure": user["role"] in SETUP_ROLES,
         "target_connection": _target_connection_status(),
-        "demo_loaded": demo_loaded == "1", "new_migration": new_migration == "1",
-        "demo_available": session_mgr.demo_mode,
+        "new_migration": new_migration == "1",
         "knowledge_docs": state_store.firm_knowledge_docs,
         "platform_defaults": _platform_setup_defaults(),
     })
@@ -1363,208 +1358,6 @@ async def save_migration_setup(request: Request):
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.post("/api/demo/load")
-async def load_demo_migration(request: Request):
-    """Load the sample migration from editable JSON/CSV/Markdown inputs, not code constants."""
-    user = get_current_user(request)
-    if not session_mgr.demo_mode:
-        raise HTTPException(status_code=404, detail="Demo mode is disabled.")
-    if not _can_load_demo(user):
-        raise HTTPException(status_code=403, detail="The one-click demo load is not enabled for this account.")
-    result = _run_demo_load(user)
-    loaded_files, registered_knowledge, target_note = result["loaded_files"], result["registered_knowledge"], result["target_note"]
-    return RedirectResponse(url="/?notice=" + quote_plus(f"Demo loaded: {len(loaded_files)} source files and {len(registered_knowledge)} knowledge assets registered.{target_note} Continue to source discovery to review each inferred file."), status_code=status.HTTP_303_SEE_OTHER)
-
-
-def _run_demo_load(user: Dict[str, str]) -> Dict[str, Any]:
-    """Create the demo migration from demo_data/ (shared by the one-click route and the first-start seed). Authorisation is the caller's job."""
-    manifest_path = Path(root_dir) / "demo_data" / "demo_migration.json"
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail="Demo migration configuration could not be loaded.") from exc
-
-    setup = dict(manifest.get("migration_setup", {}))
-    if not setup.get("target_system") or not setup.get("canonical_version"):
-        raise HTTPException(status_code=500, detail="Demo migration configuration is missing target contract details.")
-    # Same gate as /api/migration/setup: no migration without a firm configuration.
-    try:
-        firm_config = load_firm_config()
-    except FirmConfigError as exc:
-        raise HTTPException(status_code=409, detail=f"Firm configuration is required before migration setup. {exc}")
-    if setup["canonical_version"] != firm_config.canonical_contract_ref:
-        raise HTTPException(status_code=400, detail=f"Canonical contract reference must match the configured firm contract ({firm_config.canonical_contract_ref}).")
-    setup["firm_id"] = firm_config.firm_id
-    setup["firm_config_version"] = firm_config.version_id
-
-    selected_entities = [entity for entity in setup.get("entities", list(CORE_ENTITIES)) if entity in set(P0_ENTITIES)]
-    if not selected_entities:
-        raise HTTPException(status_code=500, detail="Demo migration must configure at least one in-scope entity.")
-    setup["entities"] = selected_entities
-    migration_id = f"MIG-{uuid.uuid4().hex[:10].upper()}"
-    state_store.questionnaire_data["migration_setup"] = setup
-    state_store.questionnaire_data["migration_id"] = migration_id
-    state_store.update_questionnaire_from_form({
-        "firm_name": setup.get("migration_name", ""),
-        "migration_name": setup.get("migration_name", ""),
-        "target_system": setup.get("target_system", ""),
-        "source_systems": setup.get("source_details", ""),
-    })
-    state_store.entity_sample_files.clear()
-    state_store.entity_source_files.clear()
-    state_store.firm_knowledge_docs.clear()
-    for entity in set(P0_ENTITIES):
-        state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"
-
-    context_payload = {
-        "migration_id": migration_id,
-        "firm_name": setup.get("migration_name", ""),
-        "migration_name": setup.get("migration_name", ""),
-        "source_systems": setup.get("source_details", ""),
-        "target_system": setup.get("target_system", ""),
-        "migration_setup": setup,
-    }
-    state_store.questionnaire_data.update(context_payload)
-    publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
-    publish_event(
-        "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
-        {"scopes": {entity: state_store.entity_scopes[entity] for entity in P0_ENTITIES}},
-        user["name"],
-    )
-
-    loaded_files = []
-    for item in manifest.get("source_files", []):
-        source_path = (Path(root_dir) / item["path"]).resolve()
-        if not source_path.is_relative_to(Path(root_dir).resolve()):
-            raise HTTPException(status_code=400, detail="Demo source path is outside the repository.")
-        try:
-            content = source_path.read_bytes()
-            records = read_source_records(source_path.name, content)
-        except (OSError, ValueError) as exc:
-            raise HTTPException(status_code=500, detail=f"Demo source file could not be read: {source_path.name}") from exc
-        headers = list(records[0].keys()) if records else []
-        source_context = str(item.get("context", ""))
-        dictionary_notes = str(item.get("dictionary_notes", ""))
-        from control_plane.services.entity_classification_agent import classify_source_file
-        inference = classify_source_file(
-            headers, records=records,
-            context=" ".join(part for part in (source_context, dictionary_notes) if part).strip(),
-        )
-        entity_name = inference.get("entity")
-        if inference.get("status") == "NEEDS_CLARIFICATION" or entity_name not in set(P0_ENTITIES):
-            entity_name = "Needs clarification"
-        elif entity_name not in selected_entities:
-            loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": "EXCLUDED_OUT_OF_SCOPE"})
-            continue
-        inferred_role = (
-            "RELATIONSHIP_EXTRACT" if inference.get("classification_type") == "RELATIONSHIP"
-            else "ACCOUNT_MASTER" if entity_name == "Account"
-            else "ENTITY_MASTER"
-        )
-        source_role = str(item.get("source_role") or inferred_role)
-        record = state_store.attach_entity_sample_file(entity_name, source_path.name, content, source_role=source_role)
-        record["inference"] = inference
-        record["inferred_entity"] = entity_name
-        record["inference_approval_status"] = "PENDING"
-        record["discovery_status"] = "PENDING_REVIEW"
-        record["source_context"] = source_context
-        record["data_dictionary_notes"] = dictionary_notes
-        publish_event(
-            "SOURCE_FILE_UPLOADED", migration_id, "source_file", str(record["file_id"]),
-            _workflow_safe_source_payload(record, entity_name, source_role), user["name"],
-        )
-        loaded_files.append({"filename": source_path.name, "inferred_entity": entity_name, "status": record["inference_approval_status"]})
-
-    knowledge_items = manifest.get("knowledge_files") or [
-        {"path": setup.get("knowledge_schema_ref", ""), "category": "data_dictionary"},
-        {"path": setup.get("knowledge_rules_ref", ""), "category": "transformation_rule"},
-        {"path": "demo_data/knowledge/corecap_business_rules.md", "category": "business_rules"},
-        {"path": "demo_data/knowledge/corecap_source_dictionary.json", "category": "data_dictionary"},
-        {"path": "demo_data/knowledge/simplicity_target_layouts.json", "category": "target_schema"},
-        {"path": "demo_data/knowledge/corecap_migration_decisions.md", "category": "source_analysis"},
-    ]
-    registered_knowledge = []
-    for item in knowledge_items:
-        relative_path = str(item.get("path", "")).strip()
-        if not relative_path:
-            continue
-        knowledge_path = (Path(root_dir) / relative_path).resolve()
-        if not knowledge_path.is_relative_to(Path(root_dir).resolve()):
-            raise HTTPException(status_code=400, detail="Demo knowledge path is outside the repository.")
-        try:
-            knowledge_content = knowledge_path.read_bytes()
-        except OSError as exc:
-            raise HTTPException(status_code=500, detail=f"Demo knowledge asset could not be read: {knowledge_path.name}") from exc
-        try:
-            doc = state_store.add_firm_file(knowledge_path.name, str(item.get("category", "mapping_reference")), knowledge_content)
-        except ValueError as exc:
-            raise HTTPException(status_code=500, detail=f"Demo knowledge asset could not be registered: {knowledge_path.name}") from exc
-        doc["source_path"] = relative_path
-        publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", doc["id"], doc, user["name"])
-        registered_knowledge.append(doc)
-
-    target_note = ""
-    target_audit = None
-    canonical_types = _canonical_types()  # read before the write transaction below: it opens its own connection
-    conn = get_db_connection()
-    try:
-        if target_connector.get_config(conn) is None:
-            if sql_target.get_config(conn) is None:
-                target_note = " Target system: save the target database on the Azure connection page, then choose Use the Azure SQL database as the target on Target mapping."
-            else:
-                try:
-                    cfg = target_connector.configure_azure_sql(conn, user["name"], "")
-                    if cfg["status"] == "CONNECTED":
-                        target_connector.infer_model(conn, canonical_types)
-                        target_note = " Target system connected and inferred; an admin confirms it once on Target mapping."
-                    else:
-                        target_note = f" Target database is not ready ({cfg['connection_detail']}) Fix it, then finish the one-time target setup."
-                    target_audit = cfg["status"]
-                except ValueError as exc:
-                    target_note = f" Target setup needs attention: {exc}"
-        conn.commit()
-    finally:
-        conn.close()
-    if target_audit:  # after the transaction is closed: the audit log writes through its own connection
-        state_store.audit_log.append({"event": "TARGET_SYSTEM_CONFIGURED", "actor": user["name"],
-                                      "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": {"via": "DEMO_LOAD", "status": target_audit}})
-    state_store.audit_log.append({
-        "event": "DEMO_MIGRATION_LOADED",
-        "actor": user["name"],
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "details": {"migration_name": setup.get("migration_name"), "source_files": loaded_files},
-    })
-    return {"loaded_files": loaded_files, "registered_knowledge": registered_knowledge, "target_note": target_note}
-
-
-def seed_demo_if_empty() -> str:
-    """First-start seed: when XODUS_SEED_DEMO=1, demo mode is on and no migration exists yet, load the demo template once.
-    Never overwrites an existing migration. Returns a short status string."""
-    if os.getenv("XODUS_SEED_DEMO", "").strip().lower() not in {"1", "true", "yes"}:
-        return "disabled"
-    if not session_mgr.demo_mode:
-        return "skipped: demo mode is off"
-    if state_store.questionnaire_data.get("migration_setup"):
-        return "skipped: a migration already exists"
-    conn = get_db_connection()
-    try:
-        earlier = migration_registry.list_migrations(conn, str(state_store.questionnaire_data.get("migration_id", "")))
-    finally:
-        conn.close()
-    if earlier:
-        return "skipped: a migration exists"  # including one started and not configured yet: a restart must never add a demo to it
-    try:
-        result = _run_demo_load({"name": "System seed"})
-    except HTTPException as exc:
-        return f"failed: {exc.detail}"
-    return f"seeded: {len(result['loaded_files'])} source files, {len(result['registered_knowledge'])} knowledge assets"
-
-
-@app.on_event("startup")
-async def _seed_on_startup() -> None:
-    logging.getLogger("xodus.seed").info("demo seed: %s", seed_demo_if_empty())
-
-
 @app.post("/api/relationships/review")
 async def review_relationship_candidate(request: Request, child: str = Form(...), parent: str = Form(...), decision: str = Form(...), reason: str = Form("")):
     """Analyst/Admin confirms or rejects a detected relationship. Confirmation is evidence only: nothing is joined or merged."""
@@ -1665,8 +1458,7 @@ async def dashboard_overview(request: Request):
             "canonical_notice": _canonical_notice(),
             "can_adopt": user["role"] in APPROVAL_ROLES,
             "my_queue": build_queue(user["role"], workflow_progress()),
-            "can_load_demo": _can_load_demo(user),
-            "notice": request.query_params.get("notice", ""),
+                "notice": request.query_params.get("notice", ""),
             "user_name": user["name"],
             "user_role": user["role"],
             "dashboard": state_store.generated_dashboard,
@@ -5278,20 +5070,6 @@ async def load_blob_source_files(request: Request):
     except Exception as exc:
         return RedirectResponse(url="/entity-sample-files?error=" + quote_plus(f"Could not read from blob storage: {exc}"), status_code=status.HTTP_303_SEE_OTHER)
     return await upload_entity_sample_file(request, files=files, source_role="ENTITY_MASTER", source_context="", data_dictionary_notes="")
-
-
-@app.post("/api/blob/seed-demo")
-async def seed_blob_with_demo_files(request: Request):
-    """Local emulator only: create the folders and put the CoreCap sample files in sample-raw/<source firm>/ (that folder is reset; others are untouched)."""
-    get_current_user(request)
-    folder = (Path(root_dir) / "demo_data" / "corecap_source_files").resolve()
-    files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file() and p.suffix.lower() in blob_source.SOURCE_SUFFIXES}
-    firm = _source_firm()
-    try:
-        n = blob_source.seed(_blob_container(), files, prefix=blob_source.sample_prefix(firm), source_firm=firm)
-    except Exception as exc:
-        return RedirectResponse(url="/azure-setup?error=" + quote_plus(str(exc)[:300]), status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/azure-setup?notice=" + quote_plus(f"{n} CoreCap sample files placed in {blob_source.sample_prefix(firm)}."), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/entities/upload-sample-file")

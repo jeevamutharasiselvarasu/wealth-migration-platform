@@ -8,9 +8,9 @@ App_Data
 __pycache__
 *.pyc
 .pytest_cache
-demo_data/*.local.json
-demo_data/*.local.json.bak
-demo_data/demo_passwords*
+config/auth/*.local.json
+config/auth/*.local.json.bak
+config/auth/demo_passwords*
 deploy/azure/app.settings.env
 audio
 Claude outputs

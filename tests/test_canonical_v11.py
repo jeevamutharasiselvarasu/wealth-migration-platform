@@ -9,7 +9,7 @@ from control_plane.services.entity_inference import infer_entity_from_headers
 from control_plane.services.firm_config import load_firm_config
 
 ROOT = Path(__file__).resolve().parents[1]
-KNOWLEDGE = ROOT / "demo_data" / "knowledge"
+KNOWLEDGE = ROOT / "tests" / "fixtures" / "knowledge"
 CONFIG = load_firm_config(ROOT / "config" / "firm_config.yaml")
 TARGETS = {"ORION_MCL", "SPARC"}
 ENTITY_OF_TABLE = {"Accounts": "Account", "Households": "Household", "Household_Contacts": "Client"}

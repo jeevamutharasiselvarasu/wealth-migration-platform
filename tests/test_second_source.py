@@ -1,6 +1,6 @@
 """Canonical phasing step 5: a second source with its own layout and coding goes through the same canonical model.
 
-"Ledgerline" (demo_data/ledgerline_source_files) shares nothing with CoreCap: other file split (parties, portfolios, owners, families,
+"Ledgerline" (tests/fixtures/ledgerline_source_files) shares nothing with CoreCap: other file split (parties, portfolios, owners, families,
 managers), other column names, other date and money formats, and its own spellings of codes. Nothing in the canonical model, the code
 sets, entity resolution or the pipelines changes for it: only the mappings and the approved code values are new.
 """
@@ -17,7 +17,7 @@ from control_plane.services import transformation_rules as tr
 from control_plane.services import xodus_pipelines as xp
 from tests.test_xodus_pipelines import ENV, SPEC, TARGET, build
 
-DATA = Path(__file__).resolve().parents[1] / "demo_data" / "ledgerline_source_files"
+DATA = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "ledgerline_source_files"
 DATE = {"input_formats": ["MM/DD/YYYY"]}
 MONEY = {"strip_chars": "$,", "decimals": 2, "parentheses_negative": True}
 

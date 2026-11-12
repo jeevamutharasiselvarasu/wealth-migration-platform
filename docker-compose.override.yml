@@ -12,6 +12,5 @@ services:
       - ./agents:/app/agents
       - ./data_plane:/app/data_plane
       - ./config:/app/config
-      - ./demo_data:/app/demo_data
       - ./platform_knowledge:/app/platform_knowledge
       - ./scripts:/app/scripts

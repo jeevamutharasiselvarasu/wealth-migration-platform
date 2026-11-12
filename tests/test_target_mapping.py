@@ -464,58 +464,9 @@ def test_gap_becomes_change_request_the_sme_approves_then_proposals_resolve(conn
     assert after["canonical_field"] == "CLIENT_ONBOARD_DATE" and after["status"] == "PROPOSED"
 
 
-def test_demo_load_is_restricted_to_flagged_account_and_infers_but_does_not_confirm_target(tmp_path, monkeypatch, target_service):
-    import asyncio
-    import httpx
-    import control_plane.db as db
-    import ui.app as app_module
-    import ui.state as state_module
-    from ui.state import WorkspaceStateStore
-
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "gate.db")
-    monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
-    monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
-    mgr = app_module.session_mgr
-    monkeypatch.setattr(mgr, "demo_mode", True)
-    monkeypatch.setitem(mgr.authorized_users, "flagged@example.invalid", {"can_load_demo": True})
-    monkeypatch.setitem(mgr.authorized_users, "plain@example.invalid", {"can_load_demo": False})
-    for sid, email in (("s-flag", "flagged@example.invalid"), ("s-plain", "plain@example.invalid")):
-        monkeypatch.setitem(mgr.active_sessions, sid, {"email": email, "name": "T", "role": "Migration Analyst"})
-
-    from control_plane.services import sql_target as st  # the target is the Azure SQL database; its catalog is stood in by the demo schema
-    c0 = db.get_db_connection()
-    st.save(c0, "T", {"server": "s.database.windows.net", "database_name": "xodus", "username": "u", "password_env_var": "", "schema_name": ""})
-    c0.commit()
-    c0.close()
-    monkeypatch.setattr(st, "test_connection", lambda c: {"status": "CONNECTED", "found_tables": "T", "check_detail": "Signed in."})
-    monkeypatch.setattr(st, "read_schema", lambda c: tc._http_get("http://127.0.0.1:8100/schema"))
-
-    async def post(sid):
-        t = httpx.ASGITransport(app=app_module.app)
-        async with httpx.AsyncClient(transport=t, base_url="http://testserver", cookies={"session_id": sid}) as c:
-            return await c.post("/api/demo/load", follow_redirects=False)
-
-    assert asyncio.run(post("s-plain")).status_code == 403
-    ok = asyncio.run(post("s-flag"))
-    assert ok.status_code == 303 and "inferred" in ok.headers["location"]
-    conn = db.get_db_connection() if hasattr(db, "get_db_connection") else sqlite3.connect(tmp_path / "gate.db")
-    conn.row_factory = sqlite3.Row
-    cfg = tc.get_config(conn)
-    assert cfg["status"] == "INFERRED" and cfg["confirmed_by"] is None  # a human confirms the target model, not the demo button
-    conn.close()
-    assert mgr.can_load_demo("flagged@example.invalid") and not mgr.can_load_demo("plain@example.invalid")
 
 
-def test_jeeva_is_the_only_demo_load_account_in_users_file():
-    import json
-    from pathlib import Path
-    users = json.loads((Path(__file__).resolve().parents[1] / "demo_data" / "demo_users.json").read_text(encoding="utf-8"))
-    items = users if isinstance(users, list) else users.get("users", users)
-    flagged = [u.get("email") for u in items if isinstance(u, dict) and u.get("can_load_demo")]
-    assert flagged == ["jeeva@simplicitywealth.com"]
-
-
-def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch):
+def test_target_connection_panel_renders(tmp_path, monkeypatch):
     import asyncio
     import httpx
     import control_plane.db as db
@@ -528,7 +479,7 @@ def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch
     monkeypatch.setattr(app_module, "state_store", WorkspaceStateStore())
     mgr = app_module.session_mgr
     monkeypatch.setattr(mgr, "demo_mode", True)
-    monkeypatch.setitem(mgr.authorized_users, "jeeva@simplicitywealth.com", {"can_load_demo": True, "roles": ["Platform Admin"]})
+    monkeypatch.setitem(mgr.authorized_users, "jeeva@simplicitywealth.com", {"roles": ["Platform Admin"]})
     monkeypatch.setitem(mgr.active_sessions, "s-j", {"email": "jeeva@simplicitywealth.com", "name": "J", "role": "Migration Analyst"})
     monkeypatch.setitem(mgr.active_sessions, "s-a", {"email": "analyst.demo@simplicitywealth.com", "name": "A", "role": "Migration Analyst"})
 
@@ -540,8 +491,7 @@ def test_demo_load_card_and_target_connection_panel_render(tmp_path, monkeypatch
     home_j = asyncio.run(get("s-j", "/")).text
     home_a = asyncio.run(get("s-a", "/")).text
     setup_a = asyncio.run(get("s-a", "/migration-setup"))
-    assert 'aria-label="Demo load"' in home_j and "/api/demo/load" in home_j
-    assert 'aria-label="Demo load"' not in home_a
+    assert 'aria-label="Demo load"' not in home_j and 'aria-label="Demo load"' not in home_a  # no demo loader in the platform
     assert 'aria-label="Target system connection"' in setup_a.text
 
 

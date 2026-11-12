@@ -179,8 +179,8 @@ def test_migration_setup_persists_explicit_entity_scope_selection():
     app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
     assert 'form.getlist("entities")' in app
-    assert "Select at least one in-scope entity" in app
-    assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY" if entity in selected_entities else "OUT_OF_SCOPE"' in app
+    assert "Select at least one target entity" in app
+    assert 'state_store.entity_scopes[entity] = "PENDING_DISCOVERY"' in app
     assert 'name="entities"' in setup
     assert "Unselected entities are excluded" in setup
     assert 'href="/firm-knowledge"' in setup  # knowledge assets are uploaded and listed there, not duplicated in Setup
@@ -210,7 +210,7 @@ def test_entity_scope_screen_redirects_into_source_discovery():
 
 def test_demo_login_is_loaded_from_configuration_and_password_is_not_plaintext():
     auth = (ROOT / "ui" / "auth.py").read_text(encoding="utf-8")
-    users = __import__("json").loads((ROOT / "demo_data" / "demo_users.json").read_text(encoding="utf-8"))
+    users = __import__("json").loads((ROOT / "config" / "auth" / "demo_users.json").read_text(encoding="utf-8"))
     assert "XODUS_DEMO_MODE" in auth
     assert "hashlib.sha256" in auth
     assert "password123" not in auth
@@ -218,14 +218,13 @@ def test_demo_login_is_loaded_from_configuration_and_password_is_not_plaintext()
     assert all("password" not in key for user in users["users"] for key in user), "no credential material in tracked fixtures"
     import fnmatch
     patterns = [l.strip() for l in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith(("#", "!"))]
-    assert any(fnmatch.fnmatch("demo_data/demo_passwords.local.json", p) for p in patterns), "local password file must stay git-ignored"
+    assert any(fnmatch.fnmatch("config/auth/demo_passwords.local.json", p) for p in patterns), "local password file must stay git-ignored"
 
 
 def test_demo_migration_is_input_data_not_values_embedded_in_routes():
     app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
-    manifest = __import__("json").loads((ROOT / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
-    assert '@app.post("/api/demo/load")' in app
-    assert 'demo_migration.json' in app
+    manifest = __import__("json").loads((ROOT / "tests" / "fixtures" / "sample_migration.json").read_text(encoding="utf-8"))
+    assert "/api/demo/load" not in app  # no demo loader
     assert len(manifest["source_files"]) >= 6
     assert "platform_knowledge/canonical_contract.md" in manifest["migration_setup"]["knowledge_schema_ref"]
     assert "platform_knowledge/source_mapping_notes.md" in manifest["migration_setup"]["knowledge_rules_ref"]
@@ -237,7 +236,7 @@ def test_demo_migration_is_input_data_not_values_embedded_in_routes():
 
 
 def test_demo_source_inputs_have_no_real_personal_identifiers():
-    for path in (ROOT / "demo_data" / "source_files").glob("*.csv"):
+    for path in (ROOT / "tests" / "fixtures" / "source_files").glob("*.csv"):
         content = path.read_text(encoding="utf-8")
         assert "example.test" in content or path.name != "clients.csv"
 
@@ -255,7 +254,7 @@ def test_entity_inference_business_rules_are_externalized_to_configuration():
 
 def test_demo_manifest_includes_multiple_files_for_each_supported_entity():
     import json
-    manifest = json.loads((ROOT / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
+    manifest = json.loads((ROOT / "tests" / "fixtures" / "sample_migration.json").read_text(encoding="utf-8"))
     paths = [item["path"] for item in manifest["source_files"]]
     assert len(paths) >= 6
     assert any("account_" in path for path in paths)
@@ -516,14 +515,14 @@ def test_target_mapping_wide_tables_scroll_inside_their_own_container():
 def test_git_ignored_local_users_add_rehearsal_accounts_without_replacing_tracked_ones(tmp_path, monkeypatch):
     import json, shutil
     from ui.auth import SessionManager
-    shutil.copy(ROOT / "demo_data" / "demo_users.json", tmp_path / "demo_users.json")
+    shutil.copy(ROOT / "config" / "auth" / "demo_users.json", tmp_path / "demo_users.json")
     (tmp_path / "demo_passwords.local.json").write_text(json.dumps({"extra@example.invalid": "h1", "jeeva@simplicitywealth.com": "h2"}))
     (tmp_path / "demo_users.local.json").write_text(json.dumps({"users": [
-        {"email": "extra@example.invalid", "name": "Extra", "default_role": "Platform Admin", "can_load_demo": True},
+        {"email": "extra@example.invalid", "name": "Extra", "default_role": "Platform Admin"},
         {"email": "jeeva@simplicitywealth.com", "name": "Impostor", "default_role": "Domain SME"}]}))
     monkeypatch.setattr(SessionManager, "DEMO_DIR", tmp_path)
     mgr = SessionManager()
-    assert mgr.authorized_users["extra@example.invalid"]["name"] == "Extra" and mgr.authorized_users["extra@example.invalid"]["can_load_demo"] is False
+    assert mgr.authorized_users["extra@example.invalid"]["name"] == "Extra"
     assert mgr.authorized_users["jeeva@simplicitywealth.com"]["name"] != "Impostor"  # a local file cannot override a tracked user
     (tmp_path / "demo_users.local.json").unlink()
     assert "extra@example.invalid" not in SessionManager().authorized_users  # absent file is fine

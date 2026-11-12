@@ -26,7 +26,6 @@ def test_every_post_route_is_classified_by_the_role_policy():
 def test_policy_matrix_matches_the_documented_responsibilities():
     a = policy.allowed_roles_for
     assert a("POST", "/api/migration/setup") == {"IMO Lead", "Migration Analyst"}
-    assert a("POST", "/api/demo/load") == {"Migration Analyst"}  # fills a migration workspace, so not an admin action
     assert a("POST", "/api/kernel/update") == {"Platform Admin", "Domain SME"}
     assert a("POST", "/api/entities/upload-sample-file") == {"Migration Analyst", "IMO Lead"}
     assert a("POST", "/api/entities/confirm-inference") == {"Migration Analyst", "IMO Lead"}
@@ -50,7 +49,7 @@ def test_template_roles_imo_lead_configures_and_compliance_reviewer_is_read_only
     for path in ("/api/mapping-suggestions/approve-entity", "/api/entities/confirm-inference", "/api/validation/run", "/api/data-plane/start",
                  "/api/target-validation/signoff", "/api/live-validation/run", "/api/git/pull-request/1/merge"):
         assert "IMO Lead" in policy.allowed_roles_for("POST", path)
-    for path in ("/api/kernel/update", "/api/demo/load", "/api/azure/connection", "/api/live-target", "/api/canonical-releases"):
+    for path in ("/api/kernel/update", "/api/azure/connection", "/api/live-target", "/api/canonical-releases"):
         assert "IMO Lead" not in policy.allowed_roles_for("POST", path)
 
 

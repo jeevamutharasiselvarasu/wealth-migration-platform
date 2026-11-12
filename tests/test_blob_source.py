@@ -30,7 +30,6 @@ def test_status_never_raises_and_says_when_nothing_is_configured(monkeypatch):
 
 def test_blob_routes_are_role_gated():
     assert allowed_roles_for("POST", "/api/blob/load") == {"Migration Analyst", "IMO Lead"}
-    assert allowed_roles_for("POST", "/api/blob/seed-demo") == {"Platform Admin"}
 
 
 def test_loading_with_nothing_ticked_is_an_error_not_a_crash():
@@ -191,7 +190,7 @@ def test_preview_shows_the_start_of_text_files_only(monkeypatch):
 def _scenario(name):
     import csv
     from pathlib import Path
-    d = Path(__file__).resolve().parents[1] / "demo_data" / "scenarios" / name
+    d = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "scenarios" / name
     return {f: list(csv.DictReader(open(d / f, newline=""))) for f in ("corecap_households.csv", "corecap_household_contacts.csv", "corecap_accounts.csv", "corecap_advisors.csv")}
 
 
@@ -218,7 +217,7 @@ def test_gaps_b_scenario_contains_each_kind_of_gap():
 def test_committed_scenarios_match_the_generator():
     import importlib.util
     from pathlib import Path
-    p = Path(__file__).resolve().parents[1] / "demo_data" / "scenarios" / "generate.py"
+    p = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "scenarios" / "generate.py"
     spec = importlib.util.spec_from_file_location("gen_scn", p); g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
     hh, con, acc = g.build("gaps_b", 45, True)
     assert [r["Id"] for r in _scenario("gaps_b")["corecap_households.csv"]] == [r["Id"] for r in hh]

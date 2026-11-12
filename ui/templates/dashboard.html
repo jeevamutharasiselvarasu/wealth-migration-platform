@@ -17,14 +17,6 @@
     This workspace is on release {{ canonical_notice.pinned }}. New: {% for r in canonical_notice.releases %}{% for c in r.changes %}{{ c.entity }}.{{ c.field }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}.
     {% if can_adopt %}<form action="/api/canonical-releases/adopt" method="post" class="inline"><input type="hidden" name="return_to" value="/"><button class="btn p sm">Adopt release {{ canonical_notice.latest }}</button></form>{% else %}A Migration Analyst adopts it.{% endif %}</div>{% endif %}
 
-  {% if can_load_demo %}
-  <section class="card" aria-label="Demo load">
-    <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center">
-      <div style="min-width:0;max-width:760px"><h3>Load demo data set</h3><p class="d" style="margin:0">One click: configures the CoreCap → Simplicity migration, registers sample knowledge, infers the sample source files and connects and infers the simulated target system (an admin confirms it once). Reviews and approvals stay with people. Starts a new migration each time.</p></div>
-      <form action="/api/demo/load" method="post"><button type="submit" class="btn p">Load demo data set →</button></form>
-    </div>
-  </section>
-  {% endif %}
 
   {% if progress %}
   <section class="gate" style="position:static" aria-label="Next step">

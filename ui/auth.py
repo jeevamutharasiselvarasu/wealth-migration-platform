@@ -15,16 +15,16 @@ from control_plane.services import user_registry
 class SessionManager:
     """Manages local demo sessions and role permissions.
 
-    Demo accounts (email, name, roles) are data-driven from demo_data/demo_users.json.
+    Demo accounts (email, name, roles) are data-driven from config/auth/demo_users.json.
     Password hashes are never committed: they come from the git-ignored file
-    demo_data/demo_passwords.local.json or the XODUS_DEMO_PASSWORD_HASHES environment
+    config/auth/demo_passwords.local.json or the XODUS_DEMO_PASSWORD_HASHES environment
     variable (JSON map of email to SHA-256 hex). Accounts without a hash cannot sign in. Disable demo
     authentication outside local/demo environments with XODUS_DEMO_MODE=false.
     Production deployments should replace this provider with the organisation's
     approved identity provider.
     """
 
-    DEMO_DIR = Path(__file__).resolve().parents[1] / "demo_data"
+    DEMO_DIR = Path(__file__).resolve().parents[1] / "config" / "auth"
 
     def __init__(self):
         self.active_sessions: Dict[str, Dict[str, str]] = {}
@@ -53,7 +53,6 @@ class SessionManager:
                             "name": str(item.get("name", email)),
                             "default_role": str(item.get("default_role", "Migration Analyst")),
                             "roles": [str(r) for r in item.get("roles", [])] or [str(item.get("default_role", "Migration Analyst"))],
-                            "can_load_demo": bool(item.get("can_load_demo", False)) and not extra,
                         }
             except (OSError, ValueError, TypeError):
                 # A missing or invalid demo-user configuration fails closed.
@@ -118,14 +117,6 @@ class SessionManager:
         return session_id
 
     ALL_ROLES = ("Platform Admin", "IMO Lead", "Migration Analyst", "Domain SME", "Validation Specialist", "Compliance Reviewer")
-
-    def can_load_demo(self, email: str) -> bool:
-        """One-click demo load is granted per account in demo_data/demo_users.json (never by role alone)."""
-        email = str(email or "").strip().lower()
-        if self.demo_mode and self.authorized_users.get(email, {}).get("can_load_demo"):
-            return True
-        reg = self._registry_user(email) if email and email not in self.authorized_users else None
-        return bool(self.demo_mode and reg and reg.get("can_load_demo"))
 
     def assigned_roles(self, email: str) -> set:
         """Personas a user may act under: their configured roles. A Platform Admin is infrastructure-only and holds just

@@ -21,7 +21,6 @@ VALIDATOR = "Validation Specialist"
 # capabilities below and none of the migration-side ones, so it never sees or acts on migration data.
 # The IMO Lead persona carries both the Migration Analyst and the Validation Specialist rights. Rules that need two different people
 # (an exception is decided by someone other than its proposer) still apply by person, whatever the persona.
-DEMO_ROLES: Set[str] = {ANALYST}                      # one-click demo load fills a migration workspace (still needs the per-account can_load_demo grant)
 PLATFORM_ROLES: Set[str] = {ADMIN}                    # platform setup (Azure, Git, SQL, blob, target system), users, demo load, replay
 SETUP_ROLES: Set[str] = {IMO_LEAD, ANALYST}                     # migration setup, scope, source environments
 DISCOVERY_ROLES: Set[str] = {ANALYST, IMO_LEAD}       # upload, profiling, mapping generation
@@ -78,7 +77,6 @@ POST_POLICY = [
     (r"^/api/live-validation/run$", VALIDATION_ROLES),
     (r"^/api/data-plane/runs/[^/]+/refresh$", TARGET_PREVIEW_ROLES),
     (r"^/api/git/publish$", APPROVAL_ROLES),
-    (r"^/api/demo/load$", DEMO_ROLES),
     (r"^/api/users/[^/]+/(decision|delete)$", PLATFORM_ROLES),
     (r"^/api/migration/new$", SETUP_ROLES),
     (r"^/api/migration/open$", SETUP_ROLES),
@@ -108,7 +106,6 @@ POST_POLICY = [
     (r"^/api/relationships/review$", DISCOVERY_ROLES),
     (r"^/api/entities/upload-sample-file$", DISCOVERY_ROLES),
     (r"^/api/blob/load$", DISCOVERY_ROLES),
-    (r"^/api/blob/seed-demo$", PLATFORM_ROLES),
     (r"^/api/blob/layout$", PLATFORM_ROLES),
     (r"^/api/blob/(container|test)$", PLATFORM_ROLES),
     (r"^/api/entities/map-(uploaded-file|approved-files|mcl)$", DISCOVERY_ROLES),

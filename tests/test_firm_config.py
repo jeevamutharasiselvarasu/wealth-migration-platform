@@ -80,7 +80,6 @@ def _setup_client(tmp_path, monkeypatch, name):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / f"{name}.db")
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     monkeypatch.setattr(app_module.session_mgr, "demo_mode", True)
-    monkeypatch.setattr(app_module.session_mgr, "can_load_demo", lambda email: True)
     session_id = f"firm-config-{name}"
     monkeypatch.setitem(app_module.session_mgr.active_sessions, session_id,
                         {"email": "test@example.invalid", "name": "Firm Config Test", "role": "Migration Analyst"})
@@ -527,14 +526,16 @@ def test_low_confidence_evidence_proposals_need_individual_review(tmp_path, monk
 
 
 def _post_demo_load(app_module, session_id):
-    import httpx
-
-    async def run():
-        transport = httpx.ASGITransport(app=app_module.app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
-                                     cookies={"session_id": session_id}) as client:
-            return await client.post("/api/demo/load", follow_redirects=False)
-    return asyncio.run(run())
+    """Load the sample migration from tests/fixtures as the signed-in test user (the platform has no demo loader of its own)."""
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from tests.sample_loader import load_sample_migration
+    user = app_module.session_mgr.active_sessions[session_id]
+    try:
+        result = load_sample_migration(app_module, user)
+    except HTTPException as exc:
+        return SimpleNamespace(status_code=exc.status_code, headers={})
+    return SimpleNamespace(status_code=303, headers={"location": "/?notice=sample"}, result=result)
 
 
 def test_demo_load_is_stamped_with_firm_config_version_and_survives_restart(tmp_path, monkeypatch):

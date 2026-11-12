@@ -9,7 +9,6 @@ if not exist .venv\Scripts\python.exe (
 call .venv\Scripts\activate.bat
 python -m pip install -q -r requirements.txt || goto :fail
 if "%XODUS_BOOTSTRAP_ADMIN_EMAIL%"=="" set XODUS_BOOTSTRAP_ADMIN_EMAIL=jeeva@simplicitywealth.com
-if "%XODUS_SEED_DEMO%"=="" set XODUS_SEED_DEMO=1
 echo.
 echo XODUS is starting at http://127.0.0.1:8000
 echo First time: open /register and register %XODUS_BOOTSTRAP_ADMIN_EMAIL% (it becomes Platform Admin).

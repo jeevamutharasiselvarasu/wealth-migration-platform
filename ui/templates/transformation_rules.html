@@ -36,7 +36,7 @@
       <a href="/firm-knowledge" class="ml-2 text-xs text-blue-700">Register business rules as a knowledge asset</a>
     </form>
     <form action="/api/transformation-rules/infer" method="post" class="mt-3"><textarea name="rule_text" rows="5" required aria-label="Business rule text" class="input w-full font-mono" placeholder="- Map SCH to SCHWAB, FID to FIDELITY&#10;- Dates are MM/DD/YYYY"></textarea><button class="btn p sm">Infer draft rules</button> <button class="btn g sm" formaction="/api/transformation-rules/infer-preview">Show what is inferred</button></form>
-    <p class="mt-2 text-[10px] text-[#8A97B2]">Write only rule lines (and "#" comment lines) in the file. A plain prose line is read as a rule and reported as not recognised. Example file: <span class="font-mono">demo_data/knowledge/corecap_business_rules.md</span>.</p>
+    <p class="mt-2 text-[10px] text-[#8A97B2]">Write only rule lines (and "#" comment lines) in the file. A plain prose line is read as a rule and reported as not recognised. Example file: <span class="font-mono">docs/source_specs/orion_mcl_business_rules.md</span>.</p>
   </section>
 
   {% if inferred is not none %}

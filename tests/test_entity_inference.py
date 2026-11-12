@@ -30,7 +30,7 @@ def test_demo_manifest_source_files_have_entity_inference_evidence():
     from control_plane.services.source_file_adapter import read_source_records
 
     root = Path(__file__).resolve().parents[1]
-    manifest = json.loads((root / "demo_data" / "demo_migration.json").read_text(encoding="utf-8"))
+    manifest = json.loads((root / "tests" / "fixtures" / "sample_migration.json").read_text(encoding="utf-8"))
     assert manifest["source_files"], "Demo manifest must contain source files"
 
     for item in manifest["source_files"]:

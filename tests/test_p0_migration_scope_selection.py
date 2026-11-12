@@ -48,13 +48,13 @@ def test_dashboard_renders_only_entities_selected_in_migration_setup():
 
 
 def test_platform_knowledge_is_not_stored_under_demo_data_or_registered_as_migration_input():
-    manifest = (ROOT / "demo_data" / "demo_migration.json").read_text(encoding="utf-8")
+    manifest = (ROOT / "tests" / "fixtures" / "sample_migration.json").read_text(encoding="utf-8")
     app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     setup = (ROOT / "ui" / "templates" / "migration_setup.html").read_text(encoding="utf-8")
     assert (ROOT / "platform_knowledge" / "canonical_contract.md").exists()
     assert (ROOT / "platform_knowledge" / "source_mapping_notes.md").exists()
-    assert not (ROOT / "demo_data" / "knowledge" / "canonical_contract.md").exists()
-    assert not (ROOT / "demo_data" / "knowledge" / "source_mapping_notes.md").exists()
+    assert not (ROOT / "tests" / "fixtures" / "knowledge" / "canonical_contract.md").exists()
+    assert not (ROOT / "tests" / "fixtures" / "knowledge" / "source_mapping_notes.md").exists()
     assert '"knowledge_files"' not in manifest
     assert 'platform_knowledge/canonical_contract.md' in manifest
     assert 'platform_knowledge/source_mapping_notes.md' in manifest

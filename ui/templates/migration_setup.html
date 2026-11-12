@@ -19,9 +19,6 @@
 
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   {% if not can_configure %}<div class="exc">Read-only for {{ user_role }}. Migration setup is configured by the Migration Analyst or the IMO Lead; your persona can review the saved setup.</div>{% endif %}
-  {% if demo_loaded %}
-  <div class="ins"><b>Demo inputs loaded.</b> Migration details, knowledge assets and synthetic source files have been populated from the editable demo data set. Save the setup to open the Migration Dashboard, then continue to source discovery.</div>
-  {% endif %}
   {% if new_migration %}
   <div class="ins" role="status"><b>New migration started.</b> Source files, mappings and requests from earlier migrations are kept separately and no longer shown. Firm knowledge starts empty too: register this migration's knowledge on Firm knowledge. Fill in the setup below to begin.</div>
   {% endif %}
@@ -51,14 +48,6 @@
     <a href="{% if tc and tc.status == 'CONFIRMED' %}/target-mapping#target-system{% else %}/target-setup{% endif %}" class="btn g sm" style="margin-top:8px">{% if tc and tc.status == 'CONFIRMED' %}Open Target mapping →{% else %}Go to one-time target setup →{% endif %}</a>
   </section>
 
-  {% if demo_available and can_load_demo %}
-  <section class="card">
-    <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center">
-      <div style="max-width:720px"><h3>Load demo migration inputs</h3><p class="d" style="margin:0">Populate this form from the demo data files, register sample knowledge and infer the three source files. The values are editable inputs; no live Azure connection or target load is started.</p></div>
-      <form action="/api/demo/load" method="post"><button type="submit" class="btn p">Load demo data set →</button></form>
-    </div>
-  </section>
-  {% endif %}
 
   <form id="migration-setup-form" action="/api/migration/setup" method="post" style="display:grid;gap:16px">
     <fieldset {% if not can_configure %}disabled{% endif %} style="margin:0;min-width:0;border:0;padding:0;display:grid;gap:16px">
