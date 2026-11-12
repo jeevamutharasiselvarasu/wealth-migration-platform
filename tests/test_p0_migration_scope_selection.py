@@ -31,7 +31,6 @@ def test_agent_assistance_is_integrated_into_source_discovery():
     discovery = (ROOT / "ui" / "templates" / "entity_sample_files.html").read_text(encoding="utf-8")
     app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert 'href="/agent-studio"' not in nav
-    assert "Agent assistance runs inside Source Discovery automatically." in nav
     assert "Agent-assisted analysis · automatic" in discovery
     assert "Suggested source → canonical fields" in discovery
     assert 'MigrationAgentCoordinator().analyze(' in app

@@ -45,7 +45,7 @@
     {% if platform_only %}
     {# Platform Admin: platform setup only, never migration workspaces or their pipeline. #}
     <div class="sh">Platform setup</div>
-    <a href="/setup" class="nv {% if path == '/setup' %}on{% endif %}" {% if path == '/setup' %}aria-current="page"{% endif %}>Platform setup</a>
+    <a href="/setup" class="nv {% if path == '/setup' %}on{% endif %}" {% if path == '/setup' %}aria-current="page"{% endif %}>Overview</a>
     <a href="/target-setup" class="nv {% if path == '/target-setup' %}on{% endif %}" {% if path == '/target-setup' %}aria-current="page"{% endif %}>Target system</a>
     <a href="/azure-setup" class="nv {% if path == '/azure-setup' %}on{% endif %}" {% if path == '/azure-setup' %}aria-current="page"{% endif %}>Azure connection</a>
     <a href="/github-setup" class="nv {% if path == '/github-setup' %}on{% endif %}" {% if path == '/github-setup' %}aria-current="page"{% endif %}>GitHub integration</a>
@@ -63,7 +63,13 @@
     {% else %}
     <a href="/migrations" class="nv">← Migration workspaces</a>
     <a href="/" class="nv {% if path == '/' %}on{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}>Overview</a>
-    <a href="/setup" class="nv {% if path in ('/setup', '/migration-setup', '/firm-knowledge') %}on{% endif %}" {% if path in ('/setup', '/migration-setup', '/firm-knowledge') %}aria-current="page"{% endif %}>Setup</a>
+    <div class="sh">Setup</div>
+    <a href="/setup" class="nv {% if path == '/setup' %}on{% endif %}" {% if path == '/setup' %}aria-current="page"{% endif %}>Setup overview</a>
+    <a href="/migration-setup" class="nv {% if path == '/migration-setup' %}on{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}>Workspace configuration</a>
+    <a href="/firm-knowledge" class="nv {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
+    <a href="/platform-knowledge" class="nv {% if path == '/platform-knowledge' %}on{% endif %}" {% if path == '/platform-knowledge' %}aria-current="page"{% endif %}>Platform knowledge</a>
+    <a href="/models" class="nv {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
+    <a href="/canonical-model" class="nv {% if path == '/canonical-model' %}on{% endif %}" {% if path == '/canonical-model' %}aria-current="page"{% endif %}>Canonical model</a>
     {% if pg and pg.steps %}
     {% set done_n = pg.stages_done %}
     <div class="sh">{{ pg.facts.name }}</div>
@@ -80,9 +86,9 @@
       {% set s = st.get(ix, 'todo') %}
       <a class="stg {% if active %}on{% endif %}" href="{{ href }}" {% if active %}aria-current="page"{% endif %}>
         <span class="ix">{{ ix }}</span>
-        <span><strong>{{ name }}</strong><small>{{ {'done':'Complete','current':'Needs attention','todo':'Not started'}[s] }}</small></span>
+        <span><strong>{{ name }}</strong><small{% if s == 'failed' %} style="color:#FF8A8A;font-weight:700"{% endif %}>{{ {'done':'Complete','current':'Needs attention','failed':'Failed','todo':'Not started'}[s] }}</small></span>
         <span class="own" title="Owner persona">{{ owner }}</span>
-        <span class="dot {{ {'done':'approved','current':'review','todo':''}[s] }}" aria-hidden="true"></span>
+        <span class="dot {{ {'done':'approved','current':'review','failed':'failed','todo':''}[s] }}" aria-hidden="true"></span>
       </a>
     {% endmacro %}
     <div class="zg landing"><i></i>Landing</div>
@@ -103,11 +109,12 @@
     {% endif %}
     <div class="sh">Pilot scope</div>
     <div class="scope">{% for e in pilot_entities %}<span>{{ e }}</span>{% endfor %}</div>
-    <div class="fh" style="color:#8FA9BC;padding:6px 10px">Advisor and AccountRole are opt-in (Migration setup); they load to the canonical model only, since the target has no tables for them. Other entities and reverse mapping are deferred. Agent assistance runs inside Source Discovery automatically. Target loading and wave assignment are not active in this pilot.</div>
+    <div class="fh" style="color:#8FA9BC;padding:6px 10px">Advisor and AccountRole are opt-in (Migration setup); they load to the canonical model only, since the target has no tables for them. Other entities and reverse mapping are deferred.</div>
     {% endif %}
     {% endif %}
   </aside>{% endif %}
   <main class="main xa-legacy" id="main-content">
+    {% for _ci in (connection_issues() if connection_issues is defined else []) %}<div role="alert" data-testid="connection-banner" style="background:#FEF2F2;color:#7F1D1D;border:1px solid #FECACA;border-left:4px solid #E5484D;border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12px;font-weight:700">Connection failed: {{ _ci.name }} after {{ _ci.attempts }} attempts. {{ _ci.message }}</div>{% endfor %}
     {% block content %}{% endblock %}
   </main>
 </div>
@@ -244,6 +251,36 @@
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
     });
   }
+  /* In-app confirmation. A form with data-confirm="..." asks inside the page (never the browser's own dialog, which sits outside the
+     platform and blocks automation) and is submitted only after Confirm. */
+  function askConfirm(text, ok) {
+    var prev = document.activeElement;
+    var wrap = document.createElement("div");
+    wrap.setAttribute("data-xconfirm", "1");
+    wrap.style.cssText = "position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px";
+    var box = document.createElement("div");
+    box.setAttribute("role", "alertdialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-label", "Please confirm");
+    box.style.cssText = "background:var(--panel,#fff);color:var(--head,#0F172A);border:1px solid var(--line,#E2E8F0);border-radius:14px;max-width:440px;width:100%;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25)";
+    var h = document.createElement("div"); h.textContent = "Please confirm"; h.style.cssText = "font-size:15px;font-weight:800;margin-bottom:8px";
+    var p = document.createElement("p"); p.textContent = text; p.style.cssText = "font-size:13px;line-height:1.5;margin:0 0 16px;color:var(--muted,#475569)";
+    var row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+    var no = document.createElement("button"); no.type = "button"; no.className = "btn g"; no.textContent = "Cancel";
+    var yes = document.createElement("button"); yes.type = "button"; yes.className = "btn p"; yes.textContent = "Confirm"; yes.setAttribute("data-xconfirm-ok", "1");
+    function close(go) { document.removeEventListener("keydown", key, true); wrap.remove(); if (prev && prev.focus) try { prev.focus(); } catch (e) {} if (go) ok(); }
+    function key(e) { if (e.key === "Escape") { e.preventDefault(); close(false); } else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === yes ? no : yes).focus(); } }
+    no.onclick = function () { close(false); }; yes.onclick = function () { close(true); };
+    wrap.onclick = function (e) { if (e.target === wrap) close(false); };
+    document.addEventListener("keydown", key, true);
+    row.appendChild(no); row.appendChild(yes); box.appendChild(h); box.appendChild(p); box.appendChild(row); wrap.appendChild(box);
+    document.body.appendChild(wrap); yes.focus();
+  }
+  document.addEventListener("submit", function (ev) {
+    var f = ev.target, sub = ev.submitter;
+    if (!f || !f.getAttribute || !f.hasAttribute("data-confirm") || ev.defaultPrevented) return;
+    if (f.__xok) { f.__xok = false; return; }
+    ev.preventDefault();
+    askConfirm(f.getAttribute("data-confirm"), function () { f.__xok = true; if (f.requestSubmit) f.requestSubmit(sub || undefined); else f.submit(); });
+  }, true);
   document.addEventListener("submit", function (ev) {
     var f = ev.target, sub = ev.submitter;
     if (ev.defaultPrevented || !f || (f.method || "get").toLowerCase() !== "post" || f.hasAttribute("data-full-reload") || busy) return;

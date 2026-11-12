@@ -10,9 +10,9 @@ def test_p0_ui_does_not_render_deferred_wealth_modules_or_assign_waves():
     for deferred in ("Sleeve Math Agent", "Sleeve / Allocation", "Position (Snapshot)", "Execute 9-Agent Pipeline", "Restricted Models"):
         assert deferred not in pipeline
     assert "Primary Custodian Rails" not in dashboard
-    assert "Condition-based wave segregation" in dashboard
-    assert "CONFIGURED · NOT EVALUATED" in dashboard
-    assert "No records or entities are assigned to a wave by this dashboard." in dashboard
+    assert "Condition-based wave segregation" not in dashboard
+    assert "CONFIGURED · NOT EVALUATED" not in dashboard
+    assert "P0" not in dashboard
     assert "name=\"sleeve_invariant\"" not in knowledge
     assert "name=\"aum_drift_gate\"" not in knowledge
 
@@ -56,7 +56,7 @@ def test_dashboard_exposes_only_the_three_entity_p0_flow():
         "Validate & record",
     ):
         assert stage in dashboard
-    assert "Target loading and wave assignment are not executed in this phase." in dashboard
+    assert "P0" not in dashboard
 
 
 def test_global_ui_shell_matches_agentic_demo_visual_language():
@@ -70,9 +70,7 @@ def test_mapping_studio_does_not_claim_unverified_readiness_or_target_loading():
     pipeline = (ROOT / "ui" / "templates" / "agent_pipeline.html").read_text(encoding="utf-8")
     assert ">98%</div>" not in pipeline
     assert "HIGH QUALITY · READY" not in pipeline
-    assert "P0 · APPROVAL REQUIRED" in pipeline
-    assert "target loading" in pipeline.lower()
-    assert "wave assignment" in pipeline.lower()
+    assert "Approval required" in pipeline and "P0" not in pipeline
 
 
 
@@ -96,7 +94,7 @@ def test_migration_setup_collects_target_azure_knowledge_and_source_before_disco
                   "SAMPLE_FILES", "AZURE_CONNECTION", "Account", "Household", "Client"):
         assert token in setup
     assert "Azure environment and access" not in setup  # Azure details are entered on the Azure connection page only
-    assert "target loading" in setup.lower()
+    assert "P0" not in setup
 
 
 def test_source_discovery_does_not_ask_user_to_assign_entity():
@@ -299,11 +297,8 @@ def test_dashboard_explains_wave_conditions_without_assigning_p0_records():
     dashboard = (ROOT / "ui" / "templates" / "dashboard.html").read_text(encoding="utf-8")
     app = (ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     assert '"wave_conditions": CohortConditionEngine.get_condition_catalog()' in app
-    assert "condition.condition_name" in dashboard
-    assert "condition.parameter" in dashboard
-    assert "condition.threshold_value" in dashboard
-    assert "condition.business_rationale" in dashboard
-    assert "No records or entities are assigned to a wave by this dashboard." in dashboard
+    assert "condition.condition_name" not in dashboard  # wave conditions are no longer shown
+    assert "P0" not in dashboard
 
 
 def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_navigation_step():
@@ -314,7 +309,7 @@ def test_agent_assistance_is_integrated_into_source_discovery_not_a_separate_nav
     assert 'record["agent_analysis"] = agent_analysis' in app
     assert 'return RedirectResponse(url="/entity-sample-files", status_code=status.HTTP_303_SEE_OTHER)' in app
     assert 'href="/agent-studio"' not in navigation
-    assert "Agent assistance runs inside Source Discovery automatically." in navigation
+    assert "not active in this pilot" not in navigation
     assert "Agent-assisted analysis · automatic" in discovery
     assert "Suggested source → canonical fields" in discovery
     assert "Confirm selected" in discovery and "Reject selected" in discovery
@@ -555,8 +550,7 @@ def test_suite_shell_links_all_spaces_and_keeps_governance_and_tenant_pages_out_
     assert 'class="dm{% if suite_cur == \'dm\' %} on{% endif %}" href="/migrations"' in base  # the top-bar Data Migration tab opens the workspaces list
     assert 'href="/setup"' in base  # setup inputs sit behind one Setup item in the Data Migration rail
     tabs = (Path(__file__).resolve().parents[1] / "ui" / "templates" / "_setup_tabs.html").read_text(encoding="utf-8")
-    for href in ("/migration-setup", "/target-setup", "/firm-knowledge"):
-        assert f'href="{href}"' in tabs  # the three setup pages share one tab strip
+    assert "<nav" not in tabs  # the side rail is the only setup navigation, no top tab strip
     for href in ("/validation-rules", "/execution", "/reconciliation", "/target-mapping"):
         assert f"'{href}'" in base  # stages 05, 06 and 07 (mapping validation review, execution, validation rules)
     rail = base[base.index('<aside class="side"'):base.index("</aside>")]
@@ -657,3 +651,72 @@ def test_assistant_tenant_and_workspace_views_follow_the_template(tmp_path, monk
             assert "/migration-workspaces?view=validation" not in rail  # Validation rules is a real stage now, not a template preview
     asyncio.run(run())
     app_module.session_mgr.active_sessions.pop("sid-v", None)
+
+
+def test_no_native_browser_dialogs_all_confirmations_are_in_app():
+    """The browser's own confirm/alert/prompt boxes sit outside the platform and block automation; confirmations use data-confirm."""
+    import re
+    from pathlib import Path
+
+    ui = Path(__file__).resolve().parents[1] / "ui"
+    native = re.compile(r"(?<![\w.])(?:window\.)?(?:confirm|alert|prompt)\s*\(")
+    offenders = [str(p.relative_to(ui)) for p in ui.rglob("*") if p.suffix in {".html", ".js"} and native.search(p.read_text(encoding="utf-8"))]
+    assert not offenders, offenders
+    assert "askConfirm" in (ui / "templates" / "base.html").read_text(encoding="utf-8")
+    assert 'data-confirm="Archive this workspace?' in (ui / "templates" / "migrations.html").read_text(encoding="utf-8")
+
+
+def test_failed_stage_is_marked_failed_not_just_current():
+    """A stage whose check ran and failed shows red ('failed'); later stages stay 'todo'."""
+    import importlib
+
+    app_module = importlib.import_module("ui.app")
+    base = {"files_total": 4, "files_pending": 0, "mappings_approved": 43, "proposals_pending": 0, "rfi_open": 0, "er_pending": 0,
+            "roles_needed": False, "codes_pending": 0, "codes_needed": False, "target_provisioned": True, "target_pending": 0,
+            "validation_status": "PASS", "target_validation_status": "FAIL", "run_status": "SUCCEEDED",
+            "data_plane": {"xodus": True, "promoted": False, "live_validation": ""}}
+    view = app_module.build_stage_view(base, 16, 0, 22, True, 1, True)
+    states = {s["number"]: s["state"] for s in view["stages"]}
+    assert states["05"] == "done" and states["09"] == "done" and states["10"] == "failed"
+    assert view["stage_current"].startswith("10")
+    view = app_module.build_stage_view({**base, "validation_status": "FAIL"}, 16, 0, 22, True, 1, True)
+    states = {s["number"]: s["state"] for s in view["stages"]}
+    assert states["05"] == "failed" and states["06"] == "todo" and states["10"] == "todo"
+
+
+def test_database_connection_is_retried_three_times_and_failure_is_reported(monkeypatch):
+    """A dropped connection is retried up to three times; when all fail the health state is set so a banner is shown."""
+    from control_plane import mssql_compat as m
+
+    class Down(Exception):
+        pass
+
+    attempts = {"new": 0}
+
+    class Pool:
+        def discard(self, conn):
+            pass
+
+        def _new(self):
+            attempts["new"] += 1
+            return Dead()
+
+    class Dead:
+        def cursor(self):
+            raise Down("Not connected to any MS SQL server")
+
+    monkeypatch.setattr(m, "connection_errors", lambda: (Down,))
+    monkeypatch.setattr(m, "RETRY_WAIT_S", 0)
+    m.health.ok()
+    c = m.MssqlConnection.__new__(m.MssqlConnection)
+    c._pool, c._dirty, c._conn = Pool(), False, Dead()
+    try:
+        c.execute("SELECT 1")
+        raise AssertionError("expected the error after the retries")
+    except Down:
+        pass
+    snap = m.health.snapshot()
+    assert snap["failed"] is True and snap["attempts"] == 3 and "3 attempts" in snap["message"]
+    assert attempts["new"] == 2  # first try on the pooled connection, then two fresh connections
+    m.health.ok()
+    assert m.health.snapshot()["failed"] is False

@@ -88,8 +88,8 @@ def save(conn: sqlite3.Connection, actor: str, values: Dict[str, str]) -> Dict[s
 
 
 def _default_http(method: str, url: str, **kw) -> httpx.Response:
-    with httpx.Client(timeout=20.0, follow_redirects=False) as client:
-        return client.request(method, url, **kw)
+    from control_plane import connection_health
+    return connection_health.http_request("GitHub", lambda: httpx.Client(timeout=20.0, follow_redirects=False), method, url, **kw)
 
 
 def _headers(cfg: Dict[str, Any]) -> Dict[str, str]:

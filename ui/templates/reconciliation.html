@@ -12,18 +12,18 @@
             {% elif view == 'execution' %}
             <div class="ey dm">Stage 09 · Data plane · ADF Execution</div>
             <h1>ADF Execution</h1>
-            <p>{% if dp and dp.pkg %}Start a batch through Data Factory and follow it here: raw files to canonical to the mirror in the XODUS database. Nothing reaches the live tables until stage 10.{% else %}Run the pipeline by hand in Data Factory and follow it here. Nothing is loaded into a target system in this POC.{% endif %}</p>
+            <p>{% if dp and dp.pkg %}Start a batch through Data Factory and follow it here: raw files to canonical to the mirror in the XODUS database. Nothing reaches the live tables until stage 10.{% else %}Run the pipeline by hand in Data Factory and follow it here.{% endif %}</p>
             {% else %}
             <div class="ey dm">Stage 05 · Transformed · Mapping Validation Review</div>
             <h1>Mapping Validation Review</h1>
-            <p>Review source-to-canonical readiness for {{ (in_scope_entities or pilot_entities)|join(', ') }}. P0 validates mappings and documented relationships; target-side financial reconciliation is deferred.</p>
+            <p>Review source-to-canonical readiness for {{ (in_scope_entities or pilot_entities)|join(', ') }}.</p>
             {% endif %}
         </div>
         <div style="display:flex;gap:6px;align-items:flex-start"><span class="chip c">{{ {'rules': 'Validation', 'reconcile': 'Transformed'}.get(view, 'Data plane') }}</span></div>
     </div>
     {% if view == 'rules' %}<div class="ins"><b>Target validation.</b> Rules are defined after execution and check the data that was run. Post-execution checks use the Execution results; adopting or retiring a rule is recorded in the audit log.</div>
     {% elif view == 'execution' %}<div class="ins"><b>Data plane.</b> {% if dp and dp.pkg %}A Migration Analyst or IMO Lead starts a batch below; XODUS starts PL_XODUS_Run in Data Factory and reads the run log (xodus_ops) to show each step.{% else %}Manual run in ADF for now. The platform writes the canonical files, you start the pipeline in Data Factory, and the platform reads the pipeline's run log to see the result.{% endif %}</div>
-    {% else %}<div class="ins"><b>Validation.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced; target loading is not part of this POC.</div>{% endif %}
+    {% else %}<div class="ins"><b>Validation.</b> Runs the approved mappings over the sample files and checks the result. Only validation and reconciliation results are produced.</div>{% endif %}
     {% if view == 'rules' %}<section class="kpis" aria-label="Validation rules summary">
         <div class="kpi"><small>Active rules</small><b>{{ scenarios|selectattr('status','equalto','ACTIVE')|list|length }}</b><span>run with every validation</span></div>
         <div class="kpi"><small>Drafts to review</small><b>{{ scenarios|selectattr('status','equalto','DRAFT')|list|length }}</b><span>not evaluated until adopted</span></div>
@@ -54,7 +54,7 @@
             <thead><tr><th>Entity</th><th>Source field</th><th>Canonical field</th><th>Transformation</th><th>Confidence</th><th>Reviewer</th><th>Approved at</th></tr></thead>
             <tbody>
             {% for mapping in approved_mappings %}
-            <tr><td class="font-bold">{{ mapping.entity_name }}</td><td class="font-mono">{{ mapping.source_field }}</td><td class="font-mono font-bold">{{ mapping.canonical_field|default('—', true) }}</td><td class="font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td>{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td>{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td>{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
+            <tr><td class="font-bold">{{ mapping.entity_name }}</td><td class="font-mono">{{ mapping.source_field }}</td><td class="font-mono font-bold">{{ mapping.canonical_field|default('—', true) }}</td><td class="font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td>{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="nw">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="nw">{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
             {% endfor %}
             </tbody></table></div>
         {% else %}
@@ -279,7 +279,7 @@
         <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding-bottom:12px">
             <div>
                 <h3 style="font-size:16px">What is checked</h3>
-                <p class="mt-1 text-[10px] text-[#5A6A88]">Checks to review during the current pilot; results must come from an executed profile or mapping run.</p>
+                <p class="mt-1 text-[10px] text-[#5A6A88]">Checks to review; results must come from an executed profile or mapping run.</p>
             </div>
             <a href="/discovery" class="btn g sm">Open source profiles →</a>
         </div>
@@ -295,9 +295,6 @@
                     <tr><td class="font-bold">Lineage & approval</td><td>Each mapping has source-field evidence and review status.</td><td>Return to mapping review and retain audit history.</td></tr>
                 </tbody>
             </table>
-        </div>
-        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">
-            <b>Not part of P0:</b> target load verification, target-side AUM drift gates and wave/cohort assignment. These should not be represented as passed until the corresponding future execution path exists.
         </div>
     </section>
     {% endif %}

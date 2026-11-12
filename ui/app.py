@@ -95,6 +95,33 @@ os.makedirs(static_dir, exist_ok=True)
 os.makedirs(templates_dir, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+def _register_db_error_handlers() -> None:
+    """When the database stays unreachable after the retries, show a clear banner page instead of 'Internal Server Error'."""
+    try:
+        import pymssql
+    except ImportError:  # local SQLite runs have no pymssql
+        return
+
+    async def _db_down(request: Request, exc: Exception):
+        from control_plane import mssql_compat
+        mssql_compat.health.fail(exc)
+        page = ("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Database unreachable</title>"
+                "<body style='font-family:Inter,system-ui,sans-serif;background:#F4F7FB;margin:0'>"
+                "<div role='alert' style='background:#FEF2F2;color:#7F1D1D;border-bottom:3px solid #E5484D;padding:14px 20px;font-weight:700'>"
+                f"Database connection failed after {mssql_compat.RETRIES} attempts</div>"
+                "<main style='max-width:620px;margin:40px auto;padding:0 16px;color:#0F172A'><h1 style='font-size:20px'>The platform could not reach its database</h1>"
+                "<p style='line-height:1.6'>Nothing was lost: no change from this page was saved. Check that the Azure SQL database is running (a paused serverless "
+                "database wakes on the first connection) and that this machine's IP is allowed in the database firewall, then try again.</p>"
+                "<p><a href='' style='display:inline-block;background:#0B6FC4;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:700'>Try again</a></p></main>")
+        return HTMLResponse(page, status_code=503)
+
+    app.add_exception_handler(pymssql.InterfaceError, _db_down)
+    app.add_exception_handler(pymssql.OperationalError, _db_down)
+
+
+_register_db_error_handlers()
 templates = Jinja2Templates(directory=templates_dir)
 canonical_overlay.ACTIVE_MIGRATION = lambda: str(state_store.questionnaire_data.get("migration_id") or "") or None
 def _asset_version(name: str) -> str:
@@ -106,6 +133,14 @@ def _asset_version(name: str) -> str:
 
 
 templates.env.globals["asset_v"] = _asset_version
+
+
+def _connection_issues() -> list:
+    from control_plane import connection_health
+    return connection_health.failing()
+
+
+templates.env.globals["connection_issues"] = _connection_issues
 templates.env.filters["mapping_kind"] = lambda rule, field=None: SchemaMapperAgent.mapping_kind(rule, field)
 
 schema_mapper = SchemaMapperAgent()
@@ -165,6 +200,7 @@ def workflow_progress() -> dict:
     er_pending = 0
     roles_needed = False
     sql_ready = published = False
+    run_status = ""
     data_plane: Dict[str, Any] = {}
     conn = get_db_connection()
     try:
@@ -181,6 +217,7 @@ def workflow_progress() -> dict:
                 "SELECT entity_name, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall())
         sql_ready = bool(package_contract.list_packages(conn, migration_id))
         runs_n = 1 if run_monitor.succeeded(conn, migration_id) else 0
+        run_status = ((run_monitor.stored(conn, migration_id) or {}).get("status") or "")
         _tv = target_validation.latest(conn, migration_id)
         target_validation_status = ""
         if _tv:
@@ -262,11 +299,11 @@ def workflow_progress() -> dict:
         "proposals_pending": proposals_pending, "mappings_approved": mappings_approved, "rfi_open": rfi_open,
         "changes_open": changes_open, "next": nxt, "target_provisioned": target_provisioned, "target_pending": target_pending,
         "validation_status": validation_status, "validation_when": validation_when, "target_validation_status": target_validation_status,
-        "data_plane": data_plane, "codes_pending": codes_pending, "codes_needed": codes_needed, "er_pending": er_pending, "roles_needed": roles_needed,
+        "run_status": run_status, "data_plane": data_plane, "codes_pending": codes_pending, "codes_needed": codes_needed, "er_pending": er_pending, "roles_needed": roles_needed,
     }
     progress.update(build_workflow_view(progress, setup, migration_id))
     progress.update(build_stage_view(progress, rules_approved, rules_draft, target_approved, sql_ready, runs_n, published))
-    _current = next((s["number"] for s in progress.get("stages", []) if s["state"] == "current"), None)
+    _current = next((s["number"] for s in progress.get("stages", []) if s["state"] in ("current", "failed")), None)
     _later = {"05": ("Review mapping validation", "Run the validation checks on the approved mappings.", "/reconciliation", "validate"),
               "06": ("Approve the target mappings", "Map each canonical field to the target.", "/target-mapping", "map"),
               "07": ("Generate the pipeline package", "Build the pipelines and SQL from the approved mappings.", "/transformation-sql", "map"),
@@ -298,6 +335,8 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
         ("10", "Target validation", runs_n > 0 and p.get("target_validation_status") == "PASS"
          and (not p.get("data_plane", {}).get("xodus") or (p["data_plane"]["promoted"] and p["data_plane"]["live_validation"] == "PASS"))),
     ]
+    # A stage whose own check ran and failed is shown red ("failed"), not just "needs attention".
+    failed_stages = {"05": p.get("validation_status") == "FAIL", "09": p.get("run_status") == "FAILED", "10": p.get("target_validation_status") == "FAIL"}
     stages, current_seen = [], False
     for num, title, ok in done_flags:
         if current_seen:
@@ -305,9 +344,9 @@ def build_stage_view(p: dict, rules_approved: int, rules_draft: int, target_appr
         elif ok:
             state = "done"
         else:
-            state, current_seen = "current", True
+            state, current_seen = ("failed" if failed_stages.get(num) else "current"), True
         stages.append({"number": num, "title": title, "state": state})
-    cur = next((s for s in stages if s["state"] == "current"), None)
+    cur = next((s for s in stages if s["state"] in ("current", "failed")), None)
     return {"stages": stages, "stages_done": sum(1 for s in stages if s["state"] == "done"),
             "stage_current": cur["number"] + " " + cur["title"] if cur else "All stages complete"}
 
@@ -1109,8 +1148,8 @@ async def migration_setup_page(request: Request, demo_loaded: str = "", error: s
 
 @app.post("/api/migration/new")
 async def start_new_migration(request: Request):
-    """Begin a clean migration. Earlier migrations stay stored but isolated by migration_id;
-    firm knowledge assets are kept because they are platform knowledge, not migration data."""
+    """Begin a migration. Earlier migrations stay stored but isolated by migration_id. Without a template it is empty;
+    from a template it brings stages 01 to 03 (files, entity decisions, knowledge, code sets) and nothing after."""
     user = get_current_user(request)
     form = await request.form()
     template_id = str(form.get("template_id", "")).strip()
@@ -1136,12 +1175,20 @@ async def start_new_migration(request: Request):
     state_store.questionnaire_data["migration_id"] = migration_id
     for entity in P0_ENTITIES:
         state_store.entity_scopes[entity] = "OUT_OF_SCOPE"
+    state_store.firm_knowledge_docs.clear()  # a new migration starts empty; a template brings its own knowledge assets back below
     context_payload = {"migration_id": migration_id, "migration_setup": {}, "previous_migration_id": previous_id, "migration_template": prefill, "firm_name": "", "migration_name": "", "source_systems": ""}
     publish_event("MIGRATION_CONTEXT_UPDATED", migration_id, "migration", migration_id, context_payload, user["name"])
     publish_event(
         "ENTITY_SCOPES_UPDATED", migration_id, "migration", migration_id,
         {"scopes": {entity: "OUT_OF_SCOPE" for entity in P0_ENTITIES}}, user["name"],
     )
+    if template_id:
+        conn = get_db_connection()
+        try:
+            migration_registry.copy_foundation(conn, template_id, migration_id, user["name"])
+        finally:
+            conn.close()
+        state_store.hydrate_from_durable_state()
     return RedirectResponse(url="/migration-setup?new_migration=1" + ("&from_template=1" if prefill else ""), status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -2942,7 +2989,7 @@ async def trigger_adf_pipeline():
         {
             "status": "DEFERRED_SCOPE",
             "mode": "NOT_SUBMITTED",
-            "message": "Target-side ADF execution is disabled in P0. Generate and review deployment artifacts separately.",
+            "message": "Target-side ADF execution is not run from this endpoint. Generate and review deployment artifacts separately.",
         },
         status_code=409,
     )
@@ -5283,7 +5330,7 @@ async def confirm_entity_scope_bulk(request: Request, entity_name: str = Form(..
     """Approve all files for an entity in one action only when every file has clear inference evidence."""
     user = get_current_user(request)
     if entity_name not in set(P0_ENTITIES):
-        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
+        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported here.")
     entity_files = state_store.entity_source_files.get(entity_name, {})
     if not entity_files:
         return RedirectResponse(url="/discovery?notice=" + quote_plus(f"No source files are registered for {entity_name}.") + "#discovered-source-inventory", status_code=status.HTTP_303_SEE_OTHER)
@@ -5668,7 +5715,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
     """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
     scope_entity = "Client" if entity_name == "Client" else entity_name
     if scope_entity not in set(P0_ENTITIES):
-        raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the P0 MCL workflow.")
+        raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the MCL workflow.")
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
         raise HTTPException(status_code=409, detail=f"{entity_name} maps to {scope_entity}, which is not explicitly IN_SCOPE.")
     entity_files = state_store.entity_source_files.get(entity_name, {})
@@ -5790,7 +5837,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
 async def map_uploaded_entity_file(entity_name: str = Form(...), request: Request = None):
     """Profile and map an uploaded MCL CSV or another explicitly supported canonical source entity."""
     if entity_name not in set(P0_ENTITIES):
-        raise HTTPException(status_code=409, detail="P0 uploaded-file mapping currently supports MCL: Account, Household, and Client.")
+        raise HTTPException(status_code=409, detail="Uploaded-file mapping currently supports MCL: Account, Household, and Client.")
     try:
         form = await request.form() if request is not None else {}
         file_id = str(form.get("file_id", "")).strip()
@@ -6326,7 +6373,7 @@ async def approve_entity_mapping_suggestions(
         raise HTTPException(status_code=403, detail="Only Migration Analyst or Platform Admin may approve entity mappings.")
     reviewer_name = str(user.get("name", "")).strip()
     if entity_name not in set(P0_ENTITIES):
-        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported in P0.")
+        raise HTTPException(status_code=400, detail="Only Account, Household and Client are supported here.")
     if not reviewer_name:
         raise HTTPException(status_code=400, detail="Reviewer is required.")
     migration_id = str(state_store.questionnaire_data.get("migration_id", "UNCONFIGURED"))
@@ -6552,7 +6599,7 @@ async def execute_agent_pipeline(request: Request, rep_code: str = Form("REP-998
     raise HTTPException(
         status_code=409,
         detail=(
-            "The legacy cohort pipeline is retired from P0. Use Source Discovery, "
+            "The legacy cohort pipeline is retired. Use Source Discovery, "
             "Mapping Studio, and Mapping Review for Account, Household, and Client. "
             "No cohort execution, target loading, or wave assignment is available."
         ),
@@ -6581,14 +6628,14 @@ async def override_agent_logic(
 async def approve_cohort(request: Request):
     """Cohort cutover approval is explicitly deferred from the P0 mapping pilot."""
     get_current_user(request)
-    raise HTTPException(status_code=409, detail="Cohort/cutover approval is deferred in P0. Review source-to-canonical mappings in Mapping Studio.")
+    raise HTTPException(status_code=409, detail="Cohort/cutover approval is not available. Review source-to-canonical mappings in Mapping Studio.")
 
 
 @app.post("/api/hitl/reject")
 async def reject_cohort(request: Request):
     """Cohort rejection is explicitly deferred from the P0 mapping pilot."""
     get_current_user(request)
-    raise HTTPException(status_code=409, detail="Cohort/cutover review is deferred in P0. Reject mapping proposals in Mapping Studio with a reason.")
+    raise HTTPException(status_code=409, detail="Cohort/cutover review is not available. Reject mapping proposals in Mapping Studio with a reason.")
 
 
 @app.post("/api/pilot/household/profile")

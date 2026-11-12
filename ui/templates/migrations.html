@@ -5,9 +5,9 @@
     <div>
       <div class="ey dm">Data Migration · Migration workspaces</div>
       <h1>Migration workspaces</h1>
-      <p>Each acquisition or conversion is its own migration with its own sources, scope, mappings and approvals. When one is finished, the next one can start from it as a template: the target, contract, scope and knowledge references are copied. Mappings, approvals and files are never copied; the new source firm is mapped and approved from scratch.</p>
+      <p>Each acquisition or conversion is its own migration with its own sources, scope, mappings and approvals. When one is finished, the next one can start from it: stages 01 to 03 (source files, entity decisions, knowledge, code sets and business rules) come across and only the workspace configuration is changed. Mappings and every later stage start empty. A new migration started without a template is completely empty.</p>
     </div>
-    {% if can_start %}<form action="/api/migration/new" method="post" onsubmit="return confirm('Start a blank migration? The current files, mappings and requests will no longer be shown (they remain stored).');"><button class="btn p" type="submit">+ New migration</button></form>{% endif %}
+    {% if can_start %}<form action="/api/migration/new" method="post" data-confirm="Start a blank migration? The current files, mappings and requests will no longer be shown (they remain stored)."><button class="btn p" type="submit">+ New migration</button></form>{% endif %}
   </div>
   {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
 
@@ -30,11 +30,11 @@
         {% elif can_start and m.configured %}<form action="/api/migration/open" method="post" data-full-reload><input type="hidden" name="migration_id" value="{{ m.id }}"><button class="btn p sm" type="submit">Open workspace</button></form>
         <form action="/api/migration/open" method="post" data-full-reload><input type="hidden" name="migration_id" value="{{ m.id }}"><input type="hidden" name="next" value="/setup"><button class="btn g sm" type="submit">Setup</button></form>{% endif %}
         {% if can_start and not m.active %}
-        <form action="/api/migration/archive" method="post" onsubmit="return confirm('Archive this workspace? It leaves this list. Its records stay in the audit log.');">
+        <form action="/api/migration/archive" method="post" data-confirm="Archive this workspace? It leaves this list. Its records stay in the audit log.">
           <input type="hidden" name="migration_id" value="{{ m.id }}"><button class="btn g sm" type="submit">Archive</button>
         </form>{% endif %}
         {% if can_start and m.configured %}
-        <form action="/api/migration/new" method="post" onsubmit="return confirm('Start a new migration from this one as a template? The target, contract, scope and knowledge references are copied. Mappings, approvals and files are not.');">
+        <form action="/api/migration/new" method="post" data-confirm="Start a new migration from this one? Stages 01 to 03 are copied (source files, entity decisions, knowledge, code sets and the business rules); you then change only the workspace configuration. Mappings and everything after start empty.">
           <input type="hidden" name="template_id" value="{{ m.id }}"><button class="btn g sm" type="submit">Start a new migration from this</button>
         </form>
         {% endif %}

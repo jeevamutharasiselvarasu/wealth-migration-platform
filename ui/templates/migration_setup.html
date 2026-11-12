@@ -27,14 +27,14 @@
   {% endif %}
 
   {% if prefilled %}
-  <div class="ins" role="status"><b>Pre-filled from an earlier migration.</b> The target system, contract reference, entity scope and knowledge references were copied from <span class="font-mono">{{ setup.template_migration_id }}</span>. Enter the new migration name and source firm, review the values, then save. Nothing is in scope and nothing is approved until you save, and no mappings, approvals or files are carried over.</div>
+  <div class="ins" role="status"><b>Pre-filled from an earlier migration.</b> The target system, contract reference, entity scope and knowledge references were copied from <span class="font-mono">{{ setup.template_migration_id }}</span>. Stages 01 to 03 also came across: the source files, entity decisions, knowledge assets, code sets and business rules. Enter the new migration name and source firm, review the values, then save. Mappings and every later stage start empty.</div>
   {% endif %}
 
   {% if can_configure %}
   <section class="card">
     <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center">
       <div style="max-width:720px"><h3>Start a new migration</h3><p class="d" style="margin:0">Begin with no source files, mappings or information requests. Earlier migrations are kept for audit but are not carried over.</p></div>
-      <form action="/api/migration/new" method="post" onsubmit="return confirm('Start a new migration? Current files, mappings and requests will no longer be shown (they remain stored).');"><button type="submit" class="btn g">Start new migration</button></form>
+      <form action="/api/migration/new" method="post" data-confirm="Start a new migration? Current files, mappings and requests will no longer be shown (they remain stored)."><button type="submit" class="btn g">Start new migration</button></form>
     </div>
   </section>
   {% endif %}
@@ -64,7 +64,7 @@
     <fieldset {% if not can_configure %}disabled{% endif %} style="margin:0;min-width:0;border:0;padding:0;display:grid;gap:16px">
 
     <section class="card">
-      <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Target system and canonical contract</h2><p>Capture the destination and target schema requirements before mapping. This configures the intended contract; it does not enable target loading in P0.</p></div></div>
+      <div class="sech"><div><span class="num">01</span><h2 style="font-size:18px">Target system and canonical contract</h2><p>Capture the destination and target schema requirements before mapping. This configures the intended contract;</p></div></div>
       <div class="fgrid" style="margin-top:12px">
         <div class="field"><label for="f-migration-name">Migration name</label><input id="f-migration-name" class="input" name="migration_name" value="{{ setup.get('migration_name', '' if prefilled else 'CoreCap to Simplicity - Wealth Migration Demo') }}" required placeholder="e.g. CoreCap to Simplicity"></div>
         <div class="field"><label for="f-target-system">Target system / platform</label><input id="f-target-system" class="input" name="target_system" value="{{ platform_defaults.target_system or setup.get('target_system','Simplicity') }}" required placeholder="Target platform name"{% if platform_defaults.target_system %} readonly data-testid="from-platform-target"{% endif %}>{% if platform_defaults.target_system %}<small class="fh">From platform setup (confirmed target system).</small>{% endif %}</div>
@@ -104,7 +104,7 @@
 
     {% if can_configure %}
     <div class="gate">
-      <div class="t">Saving records the selected entity scope and migration configuration. Unselected entities are excluded from downstream P0 workflows. No Azure connection is opened and no target load is triggered by this form.</div>
+      <div class="t">Saving records the selected entity scope and migration configuration. Unselected entities are excluded from downstream workflows. No Azure connection is opened and no target load is triggered by this form.</div>
       <div class="a"><button form="migration-setup-form" type="submit" class="btn ok">Save setup &amp; open Migration Dashboard →</button></div>
     </div>
     {% endif %}

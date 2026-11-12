@@ -53,7 +53,7 @@ def _service(conn_str: Optional[str] = None):
     cs = conn_str or connection_string()
     if not cs:
         raise ValueError(f"No blob storage is configured on the server ({ENV_VAR} is not set).")
-    return BlobServiceClient.from_connection_string(cs)
+    return BlobServiceClient.from_connection_string(cs, retry_total=3, retry_connect=3, retry_read=3, retry_status=3)  # the SDK retries 3 times
 
 
 def account_name(conn_str: Optional[str]) -> str:
@@ -289,3 +289,23 @@ def preview(container: str, name: str, max_lines: int = 25, max_bytes: int = 655
     lines = text.splitlines()
     shown = lines[:max_lines]
     return {"name": name, "size": len(data), "text": "\n".join(shown), "truncated": len(data) > max_bytes or len(lines) > max_lines, "shown_lines": len(shown)}
+
+
+def _blob_transient(exc: Exception) -> bool:
+    try:
+        from azure.core.exceptions import ServiceRequestError, ServiceResponseError
+    except ImportError:
+        return False
+    return isinstance(exc, (ServiceRequestError, ServiceResponseError))
+
+
+def _track_blob_calls() -> None:
+    """The Azure SDK retries a failed call three times itself; record the outcome so a red banner names Blob storage when it stays down."""
+    from control_plane import connection_health
+    for fn in ("status", "ensure_layout", "tree", "list_source_blobs", "read_blob", "seed", "write_stage_run", "write_canonical_stage",
+               "write_ready_marker", "promote_to_curated"):
+        if fn in globals():
+            globals()[fn] = connection_health.tracked("Blob storage", _blob_transient)(globals()[fn])
+
+
+_track_blob_calls()

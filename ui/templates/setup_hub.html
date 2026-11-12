@@ -5,7 +5,7 @@
   <div class="ph">
     <div>
       {% if platform_only %}
-      <div class="ey dm">Platform setup</div>
+      <div class="ey dm">Data migration · Platform</div>
       <h1>Platform Setup</h1>
       <p>What every migration relies on, set up once by the Platform Admin: the target system, the Azure storage and factory, the target database, GitHub and the platform knowledge. Migration workspaces pick these up automatically; no migration data is shown here.</p>
       {% else %}
@@ -15,7 +15,7 @@
       {% endif %}
     </div>
   </div>
-  <section class="kpis k6" aria-label="Setup summary">
+  <section class="kpis{% if not platform_only %} k6{% endif %}" aria-label="Setup summary">
     {% if not platform_only %}
     <div class="kpi"><small>Workspace configuration</small><b>{{ 'Saved' if configured else 'Needs setup' }}</b><span>{{ setup_entities|length }} entit{{ 'y' if setup_entities|length == 1 else 'ies' }} in scope</span></div>
     {% endif %}

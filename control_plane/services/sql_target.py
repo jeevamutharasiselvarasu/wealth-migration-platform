@@ -77,7 +77,16 @@ def save(conn: sqlite3.Connection, actor: str, values: Dict[str, str]) -> Dict[s
 
 def _default_connect(cfg: Dict[str, Any], password: str):
     import pymssql  # imported here so the rest of the platform runs without the driver
-    return pymssql.connect(server=cfg["server"], user=cfg["username"], password=password, database=cfg["database_name"], login_timeout=15, timeout=20, tds_version="7.4")
+    from control_plane import connection_health
+
+    def connect():
+        return pymssql.connect(server=cfg["server"], user=cfg["username"], password=password, database=cfg["database_name"], login_timeout=15, timeout=20, tds_version="7.4")
+
+    # Only a connection that could not be made is retried; a wrong password or a firewall refusal (40615) is final and reported at once.
+    def transient(exc: Exception) -> bool:
+        return isinstance(exc, (pymssql.InterfaceError, pymssql.OperationalError)) and not any(code in str(exc) for code in ("18456", "40615", "40613", "Login failed"))
+
+    return connection_health.retry("Azure SQL target database", connect, transient)
 
 
 def explain(exc: Exception, password: str = "") -> str:

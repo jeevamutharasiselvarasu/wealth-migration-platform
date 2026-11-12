@@ -98,8 +98,9 @@ def save(conn: sqlite3.Connection, actor: str, values: Dict[str, str]) -> Dict[s
 
 
 def _default_http(method: str, url: str, **kw) -> httpx.Response:
-    with httpx.Client(timeout=15.0, follow_redirects=False) as client:
-        return client.request(method, url, **kw)
+    from control_plane import connection_health
+    name = "Microsoft Entra sign-in" if "login.microsoftonline.com" in url else "Azure Data Factory"
+    return connection_health.http_request(name, lambda: httpx.Client(timeout=15.0, follow_redirects=False), method, url, **kw)
 
 
 def acquire_token(cfg: Dict[str, Any], scope: str, http: Callable[..., httpx.Response] = _default_http) -> str:

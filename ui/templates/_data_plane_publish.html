@@ -17,7 +17,7 @@
   {% for p in dp.prs[:6] %}
     <tr><td><a class="text-blue-700" href="{{ p.url }}" target="_blank" rel="noopener">#{{ p.number }}</a></td><td class="font-mono">{{ p.package_version }}</td><td class="font-mono">{{ p.branch }}</td>
       <td><span class="pill {{ 'approved' if p.state == 'MERGED' else ('failed' if p.state == 'CLOSED' else 'review') }}">{{ p.state }}</span>{% if p.state == 'OPEN' and p.mergeable_state %} <span class="fh">{{ p.mergeable_state }}</span>{% endif %}</td>
-      <td>{{ p.opened_by }} · {{ p.opened_utc[:16] }}</td><td>{{ p.approved_by or '—' }}{% if p.merged_utc %} · {{ p.merged_utc[:16] }}{% endif %}</td>
+      <td class="nw">{{ p.opened_by }} · {{ p.opened_utc[:16] }}</td><td class="nw">{{ p.approved_by or '—' }}{% if p.merged_utc %} · {{ p.merged_utc[:16] }}{% endif %}</td>
       <td class="whitespace-nowrap">
         <form action="/api/git/pull-request/{{ p.number }}/refresh" method="POST" class="inline"><button class="btn g sm">Refresh</button></form>
         {% if p.state == 'OPEN' and can_publish %}

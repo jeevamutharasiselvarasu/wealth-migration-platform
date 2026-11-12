@@ -1,9 +1,11 @@
 """Registry of migrations, derived from the durable workflow event log (no new tables).
 
 Every saved setup publishes MIGRATION_CONTEXT_UPDATED with the migration_setup it saved, so the earlier migrations and
-their configuration can be listed and reused. A migration used as a TEMPLATE contributes only configuration (target,
-contract, scope, knowledge references). Mappings, approvals, files and rule decisions are never copied: a new migration
-from a different firm is mapped and approved by people from scratch.
+their configuration can be listed and reused. A migration used as a TEMPLATE contributes its configuration (target,
+contract, scope, knowledge references) and the work of stages 01 to 03: the loaded source files, the entity decisions on them,
+the knowledge assets and the approved code sets (business rules are platform-wide, so they are shared already). Everything
+from stage 04 on (mappings, match rules, validation, runs) is never copied: it is mapped and approved by people from scratch.
+A migration started without a template is empty.
 """
 import json
 from typing import Any, Dict, List
@@ -87,3 +89,34 @@ def latest_context(conn, migration_id: str) -> Dict[str, Any]:
         if ev["id"] == migration_id:
             context.update(ev["payload"])
     return context if context.get("migration_setup") else {}
+
+
+# Event types that make up stages 01 to 03 of a migration; replayed under the new migration id.
+FOUNDATION_EVENTS = ("SOURCE_FILE_UPLOADED", "ENTITY_INFERENCE_REVIEWED", "KNOWLEDGE_ASSET_REGISTERED")
+
+
+def copy_foundation(conn, from_id: str, to_id: str, actor: str) -> Dict[str, int]:
+    """Copy stages 01 to 03 of `from_id` into `to_id`: files, entity decisions, knowledge assets and code sets (scope is set when the new workspace configuration is saved).
+    Source files are shared by their stored location (never rewritten). Returns counts for the confirmation message."""
+    from control_plane.services.workflow_event_engine import publish_event, read_events
+
+    counts = {"events": 0, "code_values": 0}
+    for ev in read_events(from_id, limit=5000):
+        if ev["event_type"] not in FOUNDATION_EVENTS:
+            continue
+        payload = dict(ev.get("payload") or {})
+        if "migration_id" in payload:
+            payload["migration_id"] = to_id
+        publish_event(ev["event_type"], to_id, ev["aggregate_type"], ev["aggregate_id"], payload, ev.get("actor") or actor)
+        counts["events"] += 1
+    from control_plane.services import code_mappings
+    code_mappings.ensure_tables(conn)
+    rows = conn.execute("SELECT code_set, source_value, canonical_code, status, reason, fields, row_count, proposed_utc, decided_by, decided_utc "
+                        "FROM code_mappings WHERE migration_id = ?", (from_id,)).fetchall()
+    for r in rows:
+        conn.execute("INSERT INTO code_mappings (migration_id, code_set, source_value, canonical_code, status, reason, fields, row_count, "
+                     "proposed_utc, decided_by, decided_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     (to_id, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]))
+        counts["code_values"] += 1
+    conn.commit()
+    return counts

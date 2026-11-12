@@ -366,7 +366,22 @@ class MssqlConnection:
         self._pool, self._conn, self._dirty = pool, pool.get(), False
 
     def execute(self, sql: str, params=None) -> _Cursor:
-        return _Cursor(self._conn.cursor(), self).execute(sql, params)
+        # A dropped connection is retried on a fresh one (up to RETRIES attempts) as long as nothing has been written in this
+        # transaction yet; after a write the statement cannot be replayed safely, so the error is raised.
+        attempt = 0
+        while True:
+            try:
+                cur = _Cursor(self._conn.cursor(), self).execute(sql, params)
+                health.ok()
+                return cur
+            except connection_errors() as exc:
+                attempt += 1
+                if self._dirty or attempt >= RETRIES:
+                    health.fail(exc)
+                    raise
+                self._pool.discard(self._conn)
+                time.sleep(RETRY_WAIT_S * attempt)
+                self._conn = self._pool._new()
 
     def executemany(self, sql: str, seq) -> _Cursor:
         return _Cursor(self._conn.cursor(), self).executemany(sql, seq)
@@ -411,6 +426,39 @@ def parse_url(url: str) -> Dict[str, Any]:
             "database": u.path.strip("/")}
 
 
+RETRIES = 3          # connection attempts before the platform reports the database as unreachable
+RETRY_WAIT_S = 1.5   # grows with each attempt
+
+
+DB_NAME = "XODUS database"
+
+
+class _Health:
+    """The platform database's state in the shared connection registry (see connection_health)."""
+
+    def ok(self) -> None:
+        from control_plane import connection_health
+        connection_health.ok(DB_NAME)
+
+    def fail(self, exc: Exception) -> None:
+        from control_plane import connection_health
+        connection_health.fail(DB_NAME, exc)
+
+    def snapshot(self) -> Dict[str, Any]:
+        from control_plane import connection_health
+        mine = [v for v in connection_health.failing() if v["name"] == DB_NAME]
+        return {"failed": bool(mine), "message": mine[0]["message"] if mine else "", "when": mine[0]["when"] if mine else 0.0, "attempts": RETRIES}
+
+
+health = _Health()
+
+
+def connection_errors() -> tuple:
+    """Errors that mean the connection (not the SQL) failed, so the statement may be retried on a fresh connection."""
+    import pymssql
+    return (pymssql.InterfaceError, pymssql.OperationalError)
+
+
 class _Pool:
     def __init__(self, url: str, size: int = 8, idle_check_s: int = 60):
         self._cfg, self._idle, self._q = parse_url(url), idle_check_s, queue.LifoQueue(maxsize=size)
@@ -418,8 +466,19 @@ class _Pool:
     def _new(self):
         import pymssql
         c = self._cfg
-        return pymssql.connect(server=c["server"], port=c["port"], user=c["user"], password=c["password"], database=c["database"],
-                               login_timeout=20, timeout=120, tds_version="7.4", autocommit=False)
+        last: Optional[Exception] = None
+        for attempt in range(1, RETRIES + 1):
+            try:
+                conn = pymssql.connect(server=c["server"], port=c["port"], user=c["user"], password=c["password"], database=c["database"],
+                                       login_timeout=20, timeout=120, tds_version="7.4", autocommit=False)
+                health.ok()
+                return conn
+            except connection_errors() as exc:
+                last = exc
+                if attempt < RETRIES:
+                    time.sleep(RETRY_WAIT_S * attempt)
+        health.fail(last)
+        raise last
 
     def get(self):
         while True:

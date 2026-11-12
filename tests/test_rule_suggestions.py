@@ -29,7 +29,7 @@ def test_business_rules_file_has_only_recognised_rule_lines():
     text = (ROOT / "demo_data" / "knowledge" / "corecap_business_rules.md").read_text(encoding="utf-8")
     results = ri.infer(text)
     assert results and all(r["recognised"] for r in results), [r for r in results if not r["recognised"]]
-    assert {r["rule_type"] for r in results} == {"VALUE_MAP", "DATE_FORMAT", "NUMBER_CLEAN", "CONCAT"}
+    assert {r["rule_type"] for r in results} == {"VALUE_MAP", "DATE_FORMAT", "NUMBER_CLEAN", "CONCAT", "IF_BLANK", "SPLIT_PART"}
     assert not any(r["rule_type"] == "DEFAULT_IF_BLANK" for r in results)  # decisions note: never invent defaults
 
 

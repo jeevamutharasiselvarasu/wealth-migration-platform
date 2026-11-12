@@ -7,7 +7,7 @@
         <div>
             <div class="ey dm">Governance inputs · Firm knowledge</div>
             <h1>Knowledge assets &amp; discovery form</h1>
-            <p>Capture firm context and governance thresholds. P0 does not assign migration waves.</p>
+            <p>Capture firm context and governance thresholds.</p>
             <p class="text-[11px] text-[#5A6A88]">These documents belong to this migration only. Knowledge shared by every migration (vocabularies, canonical contract) is under <a href="/platform-knowledge" class="font-bold text-blue-700">Platform knowledge</a>.</p>
         </div>
         <span class="chip mono">Last saved: {{ form.last_updated }}</span>
@@ -25,7 +25,7 @@
             </div>
 
             <div class="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] space-y-2 text-xs">
-                <div class="flex justify-between items-center"><span class="font-bold text-[#1c2a4a]">P0 Canonical Entity Scope</span><span class="text-[9px] text-[#8a97b2] font-mono">FIXED</span></div>
+                <div class="flex justify-between items-center"><span class="font-bold text-[#1c2a4a]">Canonical entity scope</span><span class="text-[9px] text-[#8a97b2] font-mono">FIXED</span></div>
                 <div class="text-[11px] text-[#5a6a88]">Account · Client · Household</div>
                 <p class="text-[10px] text-[#5a6a88]">Sleeve allocation, performance reconciliation, AUM drift gates, trading, and target packaging are outside this phase.</p>
             </div>
@@ -83,7 +83,7 @@
             {% if not can_edit_knowledge %}<p class="rounded-lg bg-[#F8FAFD] p-2 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin submits the questionnaire.</p>{% endif %}
             <form action="/api/knowledge/submit-questionnaire" method="POST" class="space-y-6"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-6 border-0 p-0">
                 
-                <!-- P0 discovery context: only details that help source-to-canonical mapping -->
+                <!-- Discovery context: only details that help source-to-canonical mapping -->
                 <div class="space-y-3">
                     <h3 class="text-xs font-bold text-[#41506b] uppercase tracking-wider">1. Firm & Source Context</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -111,7 +111,7 @@
                     <textarea name="identifier_relationship_notes" aria-label="Identifier and relationship notes" rows="3" placeholder="e.g. source key names, documented account-to-client ownership, household grouping evidence" class="input w-full">{{ form.identifier_relationship_notes or '' }}</textarea>
                 </div>
                 <div class="flex justify-between items-center border-t border-[#e9eff9] pt-4">
-                    <div class="text-[11px] text-[#5a6a88]">Only source-to-canonical discovery context is captured in P0. Custody, trading, performance, sleeve, AUM wave-sizing, and restricted-model questions are deferred.</div>
+                    <div class="text-[11px] text-[#5a6a88]">Only source-to-canonical discovery context is captured. Custody, trading, performance, sleeve, AUM wave-sizing, and restricted-model questions are deferred.</div>
                     <button type="submit" class="btn p sm">
                         Save Mapping Context →
                     </button>

@@ -199,7 +199,8 @@ def test_setup_button_opens_an_earlier_migration_on_the_setup_hub_and_ignores_fr
         assert f'href="{href}"' in hub
     assert 'href="/target-setup"' not in hub  # target system setup is the Platform Admin's page
     for path in ("/migration-setup", "/firm-knowledge"):
-        assert 'aria-label="Setup navigation"' in _call(app_module, sid, "GET", path).text
+        page = _call(app_module, sid, "GET", path).text
+        assert 'aria-label="Setup navigation"' not in page and f'href="{path}" class="nv on"' in page  # the side rail is the only setup navigation
     target_page = _call(app_module, sid, "GET", "/target-mapping").text     # stage 06 now, not a Setup tab
     assert 'aria-label="Migration stage navigation"' not in target_page and 'aria-label="Setup navigation"' not in target_page  # the side rail is the only stage navigation
 
@@ -352,3 +353,40 @@ def test_archiving_hides_a_workspace_but_never_the_active_one(tmp_path, monkeypa
     page = _call(app_module, sid, "GET", "/migrations").text
     assert "Harbor RIA to Simplicity" in page and "CoreCap to Simplicity" not in page
     assert _call(app_module, sid, "POST", "/api/migration/archive", [("migration_id", "MIG-NOPE")]).status_code == 404
+
+
+def test_template_brings_stages_one_to_three_and_a_plain_new_migration_is_empty(tmp_path, monkeypatch):
+    from control_plane.services.workflow_event_engine import publish_event, read_events
+    app_module, sid, state = _setup_client(tmp_path, monkeypatch, "tplcopy")
+    assert _post_setup(app_module, sid).status_code == 303
+    first_id = state.questionnaire_data["migration_id"]
+    publish_event("SOURCE_FILE_UPLOADED", first_id, "source_file", "FILE-1", {"filename": "accounts.csv", "entity": "Account", "source_role": "ENTITY_MASTER"}, "Ann")
+    publish_event("ENTITY_INFERENCE_REVIEWED", first_id, "source_file", "FILE-1", {"file_id": "FILE-1", "status": "APPROVED"}, "Ann")
+    publish_event("KNOWLEDGE_ASSET_REGISTERED", first_id, "knowledge_asset", "DOC-001", {"id": "DOC-001", "filename": "rules.md"}, "Ann")
+    publish_event("MAPPING_REVIEWED", first_id, "mapping", "M-1", {"status": "APPROVED"}, "Ann")  # stage 04: must not travel
+    conn = app_module.get_db_connection()
+    try:
+        from control_plane.services import code_mappings
+        code_mappings.ensure_tables(conn)
+        conn.execute("INSERT INTO code_mappings (migration_id, code_set, source_value, canonical_code, status, row_count, proposed_utc) "
+                     "VALUES (?, 'registration_type', 'IRA', 'IRA_TRADITIONAL', 'APPROVED', 3, '2026-11-12T00:00:00+00:00')", (first_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert _call(app_module, sid, "POST", "/api/migration/new", [("template_id", first_id)]).status_code == 303
+    second_id = state.questionnaire_data["migration_id"]
+    types = [e["event_type"] for e in read_events(second_id, limit=100)]
+    assert types.count("SOURCE_FILE_UPLOADED") == 1 and "ENTITY_INFERENCE_REVIEWED" in types and "KNOWLEDGE_ASSET_REGISTERED" in types
+    assert "MAPPING_REVIEWED" not in types
+    assert [d["id"] for d in state.firm_knowledge_docs] == ["DOC-001"]
+    conn = app_module.get_db_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM code_mappings WHERE migration_id = ?", (second_id,)).fetchone()[0] == 1
+    finally:
+        conn.close()
+
+    assert _call(app_module, sid, "POST", "/api/migration/new").status_code == 303
+    third_id = state.questionnaire_data["migration_id"]
+    assert [e["event_type"] for e in read_events(third_id, limit=100) if e["event_type"] in ("SOURCE_FILE_UPLOADED", "KNOWLEDGE_ASSET_REGISTERED")] == []
+    assert state.firm_knowledge_docs == [] and state.entity_sample_files == {}

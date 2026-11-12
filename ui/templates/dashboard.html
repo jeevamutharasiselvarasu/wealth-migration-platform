@@ -61,7 +61,7 @@
   <section class="card" aria-label="Pipeline by plane">
     <h3 style="margin:0">Pipeline by plane</h3>
     <p class="fh" style="margin:4px 0 12px">The control plane sets the migration up and publishes one artifact bundle. The data plane runs it on the real data, as many times as needed.</p>
-    {% macro prow(label, href, key) %}{% set s = (((progress or {}).stages or [])|selectattr('number', 'equalto', label[:2])|map(attribute='state')|first) or 'todo' %}<a href="{{ href }}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;color:inherit"><span>{{ label }}</span><span class="dot {{ {'done':'approved','current':'review','todo':''}[s] }}" title="{{ {'done':'Complete','current':'Needs attention','todo':'Not started'}[s] }}"></span></a>{% endmacro %}
+    {% macro prow(label, href, key) %}{% set s = (((progress or {}).stages or [])|selectattr('number', 'equalto', label[:2])|map(attribute='state')|first) or 'todo' %}<a href="{{ href }}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;color:inherit"><span>{{ label }}</span><span class="dot {{ {'done':'approved','current':'review','failed':'failed','todo':''}[s] }}" title="{{ {'done':'Complete','current':'Needs attention','failed':'Failed','todo':'Not started'}[s] }}"></span></a>{% endmacro %}
     <div class="two">
       <div class="card" style="border-top:3px solid var(--cyan,#08A6D8)"><b>Control plane · setup</b>
         {{ prow('01 Loader & Inspector', '/entity-sample-files', 'discover') }}
@@ -93,10 +93,10 @@
     </div>
 
     <div class="card" aria-label="Pilot scope">
-      <h3>About this pilot</h3>
+      <h3>Scope</h3>
       <p class="d">Scope, direction and governance.</p>
       <div class="list">
-        <div class="li"><b>E</b><span><strong>Selected P0 Entities</strong><span>{{ in_scope_entities|default([])|join(", ") if in_scope_entities|default([]) else "None selected" }} · from the saved Migration Setup</span></span><span></span></div>
+        <div class="li"><b>E</b><span><strong>Entities in scope</strong><span>{{ in_scope_entities|default([])|join(", ") if in_scope_entities|default([]) else "None selected" }} · from the saved Migration Setup</span></span><span></span></div>
         <div class="li"><b>→</b><span><strong>Mapping Direction</strong><span>Source → Canonical · target mapping deferred</span></span><span></span></div>
         <div class="li"><b>✓</b><span><strong>Review Governance</strong><span>Human approval · no automatic canonical output</span></span><span></span></div>
       </div>
@@ -139,24 +139,6 @@
     {% endfor %}
   </section>
 
-  <details class="card"><summary class="dsum">Next phase · wave segregation conditions <span class="chip ex" style="margin-left:8px">Not active in P0</span></summary>
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0">
-      <div><h3>Condition-based wave segregation</h3><p class="d" style="margin:0;max-width:760px">Wave criteria are visible for planning, but assignment remains disabled in P0. In the full framework, approved ADLS telemetry will evaluate these conditions; waves must be derived from business conditions, not arbitrary sequence numbers.</p></div>
-      <span class="chip ex">CONFIGURED · NOT EVALUATED</span>
-    </div>
-    <div class="tiles">
-      {% for condition in wave_conditions %}
-      <article class="tl">
-        <div class="top"><strong style="font-size:13px">{{ condition.condition_name }}</strong><i>{{ condition.condition_id }}</i></div>
-        <span class="st"><b>{{ condition.parameter }}</b> {{ condition.operator }} <span class="mono">{{ condition.threshold_value }}</span></span>
-        <span class="ds">{{ condition.business_rationale }}</span>
-        <span class="ds">Telemetry: {{ condition.telemetry_source }}</span>
-      </article>
-      {% endfor %}
-    </div>
-    <p class="exc" style="margin-top:12px">No records or entities are assigned to a wave by this dashboard. Thresholds are candidate configuration and must be validated with business owners before telemetry-based actuation is enabled.</p>
-  </details>
-
   <details class="card"><summary class="dsum">Platform flow <span class="chip" style="margin-left:8px">what each stage does</span></summary>
     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin:12px 0">
       <p class="d" style="margin:0;max-width:760px">Configure the target contract first, register Azure and knowledge references, then let discovery infer source entities before mapping.</p>
@@ -168,7 +150,6 @@
       <div class="tl"><div class="top"><i>03</i></div><strong style="font-size:13.5px">Review & approve</strong><span class="ds">Review mapping evidence and rules; keep unapproved previews from becoming approved output.</span></div>
       <div class="tl"><div class="top"><i>04</i></div><strong style="font-size:13.5px">Validate & record</strong><span class="ds">Check canonical keys and evidenced relationships; persist run status, lineage and remediation findings.</span></div>
     </div>
-    <p class="d" style="margin:12px 0 0">P0 stops at reviewed source-to-canonical mapping. Target loading and wave assignment are not executed in this phase.</p>
   </details>
 </div>
 {% endblock %}

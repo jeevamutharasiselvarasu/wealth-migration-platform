@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_legacy_cohort_pipeline_is_retired_and_p0_workflow_remains_explicit():
     app = (ROOT / "ui" / "app.py").read_text()
     assert "from agents.orchestrator import AgenticOrchestrator" not in app
-    assert "The legacy cohort pipeline is retired from P0." in app
+    assert "The legacy cohort pipeline is retired." in app
     assert "No cohort execution, target loading, or wave assignment is available." in app
     assert '"/api/pipeline/run"' in app
     for route in (

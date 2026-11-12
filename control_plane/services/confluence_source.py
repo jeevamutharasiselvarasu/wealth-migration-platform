@@ -76,8 +76,9 @@ def storage_to_text(markup: str) -> str:
 
 
 def _get(url: str, auth: Tuple[str, str]) -> Dict:
-    with httpx.Client(timeout=20.0, follow_redirects=False) as client:
-        resp = client.get(url, auth=auth, headers={"Accept": "application/json"})
+    from control_plane import connection_health
+    resp = connection_health.http_request("Confluence", lambda: httpx.Client(timeout=20.0, follow_redirects=False), "GET", url,
+                                          auth=auth, headers={"Accept": "application/json"})
     if resp.status_code in (401, 403):
         raise ConfluenceError("Confluence refused the configured account for this page.")
     if resp.status_code == 404:
