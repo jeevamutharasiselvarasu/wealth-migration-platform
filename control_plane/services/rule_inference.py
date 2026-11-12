@@ -19,6 +19,26 @@ _SEPARATORS = {"space": " ", "comma": ",", "dash": "-", "hyphen": "-", "undersco
 _ORDINALS = {"first": 0, "second": 1, "third": 2, "fourth": 3, "last": None}
 
 
+# A statement that says where a target field comes from (a mapping choice, not a transformation):
+#   Target Fund Name comes from Account CustodianName
+#   Target Open/Closed comes from Account ClosedDate using the rule "If ClosedDate is NULL, then Open Else Closed"
+_HINT = re.compile(r"^\s*target\s+(?P<target>.+?)\s+comes\s+from\s+(?P<entity>[A-Za-z]+)\s+(?P<source>[A-Za-z_]\w*)"
+                   r"(?:\s+using\s+the\s+rule\s+[\"'“‘](?P<rule>.+?)[\"'”’])?\s*\.?\s*$", re.I)
+
+
+def parse_hint(statement: str) -> Optional[Dict[str, Any]]:
+    m = _HINT.match(statement or "")
+    if not m:
+        return None
+    label = re.sub(r"[^A-Za-z0-9]+", "_", m.group("target")).strip("_").upper()
+    return {"statement": statement.strip(), "target_field": label, "entity": m.group("entity").capitalize(),
+            "source_field": m.group("source"), "rule_statement": (m.group("rule") or "").strip()}
+
+
+def split_hints(text: str) -> List[Dict[str, Any]]:
+    return [h for h in (parse_hint(s) for s in split_statements(text)) if h]
+
+
 def split_statements(text: str) -> List[str]:
     out = []
     for line in str(text or "").splitlines():
@@ -196,6 +216,8 @@ def infer(text: str, relationships: Optional[List[Dict[str, str]]] = None) -> Li
     """One result per statement: a validated proposal or an explicit 'not recognised'."""
     results = []
     for stmt in split_statements(text):
+        if parse_hint(stmt):
+            continue  # a mapping choice, read by target mapping (split_hints), not a transformation rule
         hit = _lookup(stmt, relationships or [])
         for matcher in (() if hit else _MATCHERS):
             hit = matcher(stmt)

@@ -9,6 +9,7 @@
 # of sentence forms and becomes a DRAFT governed rule that a person approves.
 
 If ClosedDate is NULL, then Open Else Closed
+If DeletedDate is NULL, then Active Else Deleted
 Map 'Rollover IRA' -> 'IRA Rollover'; anything else is rejected
 Household last name is the part before the comma in the combined name
 Household first name is the part after the comma in the combined name

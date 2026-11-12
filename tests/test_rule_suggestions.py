@@ -137,3 +137,32 @@ def test_orion_spec_business_rules_file_is_fully_inferred():
     results = ri.infer(text, [{"child": "households.AdvisorId", "parent": "advisors.Id"}])
     assert results and all(r["recognised"] for r in results), [r for r in results if not r["recognised"]]
     assert {r["rule_type"] for r in results} == {"IF_BLANK", "VALUE_MAP", "SPLIT_PART", "CONCAT", "LOOKUP"}
+
+
+def test_mapping_statements_in_the_spec_file_are_read_as_hints_and_not_as_rules():
+    text = (ROOT / "docs" / "source_specs" / "orion_mcl_business_rules.md").read_text(encoding="utf-8")
+    hints = ri.split_hints(text)
+    by_target = {h["target_field"]: h for h in hints}
+    assert len(hints) == 23 and by_target["FUND_NAME"]["source_field"] == "CustodianName" and by_target["CUSTODIAN"]["source_field"] == "CustodianName"
+    assert by_target["PHONE_HOME"]["entity"] == "Client" and by_target["OPEN_CLOSED"]["rule_statement"].startswith("If ClosedDate is NULL")
+    assert not any(r["statement"].startswith("Target ") for r in ri.infer(text))  # hints are not transformation rules
+
+
+def test_apply_hints_proposes_from_the_statements_and_reopens_a_decided_row_that_disagrees():
+    import sqlite3
+    from control_plane.services import target_mapping as tm
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    spec = {"spec_version": "1", "target_system": "T", "entities": {"Account": {"target_table": "A", "fields": [
+        {"name": "FUND_NAME", "type": "string", "required": True}, {"name": "CUSTODIAN", "type": "string", "required": True}]}}}
+    tm.propose(conn, "MIG-1", {"Account": ["ACCT_NAME", "CUSTODIAN_NAME"]}, spec)
+    first = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-1", spec)}
+    conn.execute("UPDATE target_mappings SET status='APPROVED', canonical_field='ACCT_NAME', reviewer='x', review_comments='c', reviewed_utc='t' WHERE target_mapping_id=?",
+                 (first["FUND_NAME"]["target_mapping_id"],))
+    hints = ri.split_hints("Target Fund Name comes from Account CustodianName\nTarget Custodian comes from Account CustodianName\nTarget Phone Home comes from Client Phone")
+    out = tm.apply_hints(conn, "MIG-1", spec, hints, lambda e, f: {("Account", "CustodianName"): "CUSTODIAN_NAME"}.get((e, f)), lambda s: None, "tester",
+                         {"Account": ["ACCT_NAME", "CUSTODIAN_NAME"]})
+    got = {m["target_field"]: m for m in tm.list_mappings(conn, "MIG-1", spec)}
+    assert out["applied"] == 2 and out["reopened"] == 1 and len(out["skipped"]) == 1
+    assert got["FUND_NAME"]["canonical_field"] == "CUSTODIAN_NAME" and got["FUND_NAME"]["status"] == "PROPOSED"
+    assert got["CUSTODIAN"]["canonical_field"] == "CUSTODIAN_NAME"

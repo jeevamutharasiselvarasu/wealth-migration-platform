@@ -8,7 +8,7 @@ into any target system.
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from control_plane.services import transformation_rules
 
@@ -294,3 +294,49 @@ def preview(spec: Dict[str, Any], approved: List[Dict[str, Any]], canonical_rows
             "warnings": [f"{note} ({n} value{'s' if n != 1 else ''})" for note, n in sorted(warnings.items())][:10],
         }
     return out
+
+
+def apply_hints(conn: sqlite3.Connection, migration_id: str, spec: Dict[str, Any], hints: List[Dict[str, Any]], resolve, rule_expression,
+                actor: str, known: Optional[Dict[str, List[str]]] = None) -> Dict[str, Any]:
+    """Make target mappings follow the business-rules statements ('Target Fund Name comes from Account CustodianName').
+    `resolve(entity, source_field)` gives the canonical field the migration's approved source mapping puts that source field in;
+    `rule_expression(statement)` gives the approved 'RULE:id@n' expression for a quoted rule statement, or None.
+    A PROPOSED row is updated; an APPROVED or REJECTED row that disagrees is reopened first (history kept). Nothing is approved here:
+    a person approves every row. Returns counts and the hints that could not be applied, with the reason."""
+    ensure_table(conn)
+    rows = {(m["entity_name"], m["target_field"]): m for m in list_mappings(conn, migration_id, spec)}
+    by_field: Dict[str, List[Tuple[str, str]]] = {}
+    for entity, field in rows:
+        by_field.setdefault(field.split(".")[-1], []).append((entity, field))
+    applied = reopened = 0
+    skipped: List[Dict[str, str]] = []
+    for h in hints:
+        wanted = h["target_field"]
+        keys = [k for fld, ks in by_field.items() if fld == wanted or fld.endswith("_" + wanted) or wanted.endswith("_" + fld) for k in ks]
+        keys = [k for k in keys if k[1] == wanted] or keys
+        if len(keys) != 1:
+            skipped.append({"statement": h["statement"], "reason": "no target field of that name" if not keys else "the target field name is ambiguous"})
+            continue
+        canonical = resolve(h["entity"], h["source_field"])
+        if not canonical:
+            skipped.append({"statement": h["statement"], "reason": f"{h['entity']} {h['source_field']} has no approved source mapping yet"})
+            continue
+        expr = "DIRECT_COPY"
+        if h.get("rule_statement"):
+            expr = rule_expression(h["rule_statement"])
+            if not expr:
+                skipped.append({"statement": h["statement"], "reason": "the rule it names is not an approved rule yet"})
+                continue
+        m = rows[keys[0]]
+        if known is not None and canonical not in known.get(m["entity_name"], []):
+            skipped.append({"statement": h["statement"], "reason": f"{canonical} is not a canonical field of {m['entity_name']}"})
+            continue
+        if m["canonical_field"] == canonical and m["transformation_expression"] == expr and m["status"] == "APPROVED":
+            continue
+        if m["status"] in ("APPROVED", "REJECTED"):
+            revise(conn, m["target_mapping_id"], actor, "Business rules say: " + h["statement"])
+            reopened += 1
+        conn.execute("UPDATE target_mappings SET canonical_field = ?, transformation_expression = ? WHERE target_mapping_id = ? AND status = 'PROPOSED'",
+                     (canonical, expr, m["target_mapping_id"]))
+        applied += 1
+    return {"applied": applied, "reopened": reopened, "skipped": skipped}

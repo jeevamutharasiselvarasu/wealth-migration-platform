@@ -3463,6 +3463,31 @@ async def raise_gap_change_requests(request: Request, entity_name: str = Form(..
     return _target_redirect("notice", f"{len(raised)} canonical change request(s) raised ({', '.join(raised)}). The Domain SME approves and applies them; then regenerate target proposals.")
 
 
+def _apply_business_hints(conn, migration_id: str, spec: Dict[str, Any], actor: str) -> Dict[str, Any]:
+    """Target mappings follow the business-rules statements ("Target Fund Name comes from Account CustodianName"). Rows are
+    left PROPOSED for a person to approve; a decided row that disagrees is reopened with the statement as the reason."""
+    text = chr(10).join(str(d.get("full_text", "")) for d in state_store.firm_knowledge_docs if d.get("category") == "business_rules")
+    hints = rule_inference.split_hints(text)
+    if not hints:
+        return {"applied": 0, "reopened": 0, "skipped": []}
+    source_map = {(r["entity_name"].lower(), r["source_field"].lower()): r["canonical_field"] for r in conn.execute(
+        "SELECT entity_name, source_field, canonical_field FROM canonical_mappings WHERE migration_id = ? AND is_confirmed = 1", (migration_id,)).fetchall()}
+    approved = {}
+    for r in transformation_rules.list_rules(conn):
+        if r["status"] == "APPROVED" and r["rule_id"] not in approved:
+            approved[r["rule_id"]] = r["version"]  # list is newest version first
+
+    def rule_expression(statement: str):
+        hit = next((x for x in rule_inference.infer(statement, _confirmed_relationships(conn)) if x["recognised"]), None)
+        if not hit:
+            return None
+        rid = rule_inference.rule_id_for(hit["rule_type"], hit["params"])
+        return transformation_rules.make_expression(rid, approved[rid]) if rid in approved else None
+
+    return target_mapping.apply_hints(conn, migration_id, spec, hints, lambda e, f: source_map.get((e.lower(), f.lower())), rule_expression, actor,
+                                      _canonical_field_lists())
+
+
 @app.post("/api/target-mapping/propose")
 async def propose_target_mappings(request: Request):
     user = get_current_user(request)
@@ -3479,6 +3504,7 @@ async def propose_target_mappings(request: Request):
             return _target_redirect("error", str(exc))
         unresolved_after = sum(1 for m in target_mapping.list_mappings(conn, migration_id, spec) if not m["canonical_field"])
         resolved = max(0, unresolved_before - unresolved_after)
+        hinted = _apply_business_hints(conn, migration_id, spec, user["name"])
         conn.commit()
     finally:
         conn.close()
@@ -3489,6 +3515,10 @@ async def propose_target_mappings(request: Request):
         parts.append(f"{created} target mapping proposal(s) created")
     if resolved:
         parts.append(f"{resolved} unresolved field(s) now have a canonical source")
+    if hinted["applied"]:
+        parts.append(f"{hinted['applied']} followed the business rules" + (f" ({hinted['reopened']} reopened)" if hinted["reopened"] else ""))
+    if hinted["skipped"]:
+        parts.append(f"{len(hinted['skipped'])} business-rule mapping statement(s) not applied: " + "; ".join(h["reason"] for h in hinted["skipped"][:3]))
     if parts:
         return _target_redirect("notice", "; ".join(parts) + ". Each needs human approval.")
     return _target_redirect("notice", "Nothing to refresh: every target field already has a proposal and a canonical source.")
@@ -4805,12 +4835,14 @@ async def adopt_target_adapter(request: Request):
         except ValueError as exc:
             conn.rollback()
             return _target_redirect("error", str(exc))
+        hinted = _apply_business_hints(conn, migration_id, spec, user["name"])
         conn.commit()
     finally:
         conn.close()
     publish_event("TARGET_ADAPTER_ADOPTED", migration_id, "migration", migration_id, res, user["name"])
+    extra = f" The business rules then changed {hinted['applied']} mapping(s) (each needs approval)." if hinted["applied"] else ""
     return _target_redirect("notice", f"Target adapter version {res['version']} adopted: {res['applied']} mapping(s) set from the adapter, "
-                                      f"{res['unchanged']} already matched, {res['open']} left for this migration to review.")
+                                      f"{res['unchanged']} already matched, {res['open']} left for this migration to review." + extra)
 
 
 # ---- Entity resolution (canonical model phase 2): match rules, survivorship preview, the derived account roles ----
