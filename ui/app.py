@@ -4056,9 +4056,7 @@ def _rule_suggestions() -> List[Dict[str, Any]]:
         conn.commit()
     finally:
         conn.close()
-    cross = {"custodian": SchemaMapperAgent.COMMON_CUSTODIAN_CROSSWALK, "registration": SchemaMapperAgent.REGISTRATION_TYPE_CROSSWALK,
-             "client_type": SchemaMapperAgent.CLIENT_TYPE_CROSSWALK}
-    return rule_suggestions.suggest(_source_columns(), rules, cross)
+    return rule_suggestions.suggest(_source_columns(), rules, {})  # no value maps are known to the platform: they come from the business rules
 
 
 def _rules_page(request: Request, notice: str = "", error: str = "", inferred=None, inferred_label: str = "", inferred_source=None):

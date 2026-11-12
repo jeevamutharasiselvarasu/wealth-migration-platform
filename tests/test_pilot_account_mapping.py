@@ -36,9 +36,9 @@ def test_schema_mapper_account_pilot():
 
     record0 = res["mapped_records"][0]
     assert record0["ACCT_NUM"] == "ACC-99812"
-    assert record0["CUSTODIAN_CODE"] == "SCHWAB"
-    assert record0["REP_CODE"] == "REP-9981"
-    assert record0["REG_TYPE"] == "INDIVIDUAL"
+    assert record0["CUSTODIAN_CODE"] == "SCHW"  # no built-in value map: codes change only through approved rules
+    assert str(record0["REP_CODE"]) == "9981"
+    assert record0["REG_TYPE"] == "INDV"
     assert record0["OPEN_DATE"] == "2021-03-15"
 
 

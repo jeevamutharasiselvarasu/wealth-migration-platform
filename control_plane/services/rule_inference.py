@@ -48,6 +48,32 @@ def split_statements(text: str) -> List[str]:
     return out[:MAX_STATEMENTS]
 
 
+_WHERE = re.compile(r"\s*,?\s*\bwhere\s+(?P<field>[A-Za-z][A-Za-z0-9_ ]*?)\s+(?:(?P<op>=|==|<>|!=|is\s+not\s+blank|is\s+blank|is\s+not|is)\s*(?P<value>[\"'“‘][^\"'”’]+[\"'”’]|[\w.\-]+)?)\s*\.?\s*$", re.I)
+
+
+def split_condition(statement: str):
+    """'Take TaxId where HouseholdOrder = 1' -> ('Take TaxId', {'field': 'HouseholdOrder', 'op': '=', 'value': '1'}); no clause -> (statement, None)."""
+    m = _WHERE.search(statement or "")
+    if not m:
+        return statement, None
+    op = re.sub(r"\s+", " ", m.group("op").lower())
+    value = (m.group("value") or "").strip().strip("\"'“”‘’")
+    if op in ("is blank", "is not blank"):
+        cond = {"field": m.group("field").strip(), "op": "IS_BLANK" if op == "is blank" else "NOT_BLANK"}
+    elif value and op in ("=", "==", "is"):
+        cond = {"field": m.group("field").strip(), "op": "=", "value": value}
+    elif value and op in ("<>", "!=", "is not"):
+        cond = {"field": m.group("field").strip(), "op": "<>", "value": value}
+    else:
+        return statement, None
+    return statement[:m.start()].rstrip(" ,"), cond
+
+
+def _copy(s: str) -> Optional[Dict[str, Any]]:
+    """'Copy the value', 'Use the value as is' (usually with a where clause) -> COPY."""
+    return {"type": "COPY", "params": {}} if re.search(r"^\s*(?:copy|use|take)\b.*\b(?:as[- ]is|unchanged|the value|as it is)\b|^\s*copy\b", s, re.I) else None
+
+
 def _clean(v: str) -> str:
     return v.strip().strip("\"'“”‘’ ").strip()
 
@@ -186,11 +212,27 @@ def _lookup(s: str, relationships: List[Dict[str, str]]) -> Optional[Dict[str, A
     return None
 
 
-_MATCHERS = (_default, _if_blank, _concat, _split, _split_words, _date, _number, _if_equals, _value_map)
+_MATCHERS = (_default, _if_blank, _concat, _split, _split_words, _date, _number, _if_equals, _value_map, _copy)
+
+
+def _when_text(p: Dict[str, Any]) -> str:
+    c = p.get("condition")
+    if not c:
+        return ""
+    if c["op"] == "IS_BLANK":
+        return f", only for rows where {c['field']} is blank"
+    if c["op"] == "NOT_BLANK":
+        return f", only for rows where {c['field']} is filled"
+    return f", only for rows where {c['field']} {'=' if c['op'] == '=' else 'is not'} {c['value']}"
 
 
 def meaning(rule_type: str, p: Dict[str, Any]) -> str:
     """One plain-English sentence saying exactly what the validated rule will do (shown beside each business-rule line)."""
+    text = _meaning_core(rule_type, p)
+    return text if rule_type == "COPY" or not p.get("condition") else text.rstrip(".") + _when_text(p) + "."
+
+
+def _meaning_core(rule_type: str, p: Dict[str, Any]) -> str:
     if rule_type == "VALUE_MAP":
         pairs = list(p["map"].items())
         shown = ", ".join(f"{k} becomes {v}" for k, v in pairs[:4]) + (f" and {len(pairs) - 4} more" if len(pairs) > 4 else "")
@@ -207,6 +249,8 @@ def meaning(rule_type: str, p: Dict[str, Any]) -> str:
         return f"Uses '{p['default']}' only when the source value is empty."
     if rule_type == "IF_BLANK":
         return f"Writes '{p['when_blank']}' when the source value is empty, otherwise '{p['when_filled']}'."
+    if rule_type == "COPY":
+        return "Uses the source value unchanged" + _when_text(p) + "."
     if rule_type == "LOOKUP":
         return f"Uses the mapped value as the key and returns {p['return_column']} from {p['parent_file']} where {p['parent_key']} matches. No match, or a blank key, is reported."
     return f"Replaces '{p['when_equals']}' with '{p['then']}'; other values are kept."
@@ -218,11 +262,16 @@ def infer(text: str, relationships: Optional[List[Dict[str, str]]] = None) -> Li
     for stmt in split_statements(text):
         if parse_hint(stmt):
             continue  # a mapping choice, read by target mapping (split_hints), not a transformation rule
+        stmt_full = stmt
+        stmt, condition = split_condition(stmt)
         hit = _lookup(stmt, relationships or [])
         for matcher in (() if hit else _MATCHERS):
             hit = matcher(stmt)
             if hit:
                 break
+        if hit and condition:
+            hit = {**hit, "params": {**hit["params"], "condition": condition}}
+        stmt = stmt_full
         if not hit:
             results.append({"statement": stmt, "recognised": False, "reason": "No supported pattern matched; write it as a rule or create it manually."})
             continue

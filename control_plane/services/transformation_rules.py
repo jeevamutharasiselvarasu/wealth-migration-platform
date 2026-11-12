@@ -42,6 +42,8 @@ RULE_TYPES: Dict[str, Dict[str, str]] = {
                  "example": '{"when_blank": "Open", "when_filled": "Closed"}'},
     "LOOKUP": {"label": "Lookup from another file", "help": "Use the mapped value as a key and return a column from the matching row of another source file (a confirmed relationship, for example Households.AdvisorId to Advisors.Id). No match is reported.",
                "example": '{"parent_file": "advisors.csv", "parent_key": "Id", "return_column": "Name"}'},
+    "COPY": {"label": "Copy as is", "help": "Use the source value unchanged. Its use is the condition it carries (for example only the row where HouseholdOrder is 1).",
+             "example": '{"condition": {"field": "HouseholdOrder", "op": "=", "value": "1"}}'},
     "IF_EQUALS": {"label": "Conditional replace", "help": "Replace a value when it equals a given value; otherwise keep it (or use the else value).",
                   "example": '{"when_equals": "N/A", "then": "", "else": null}'},
 }
@@ -76,12 +78,58 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
+CONDITION_OPS = ("=", "<>", "IS_BLANK", "NOT_BLANK")
+
+
+def validate_condition(cond: Any) -> Dict[str, str]:
+    """A rule may carry one condition on a field of the same record ("where HouseholdOrder = 1"). The rule then applies to the rows
+    that meet it and yields no value for the rest. Only a column name, one of four operators and a literal are accepted."""
+    if not isinstance(cond, dict):
+        raise ValueError("condition must be an object with field, op and value.")
+    field, op = _text(cond.get("field")).strip(), _text(cond.get("op")).strip().upper()
+    if not re.match(r"^[A-Za-z][A-Za-z0-9_ .\-]{0,60}$", field):
+        raise ValueError("condition field must be a column name.")
+    if op not in CONDITION_OPS:
+        raise ValueError("condition op must be one of: " + ", ".join(CONDITION_OPS) + ".")
+    out = {"field": field, "op": op}
+    if op in ("=", "<>"):
+        value = _text(cond.get("value")).strip()
+        if not value or len(value) > 120:
+            raise ValueError("condition needs a value to compare with.")
+        out["value"] = value
+    return out
+
+
+def condition_met(cond: Optional[Dict[str, str]], record: Optional[Dict[str, Any]]) -> bool:
+    if not cond:
+        return True
+    low = {str(k).strip().upper(): v for k, v in (record or {}).items()}
+    actual = _text(low.get(str(cond["field"]).strip().upper())).strip()
+    if cond["op"] == "IS_BLANK":
+        return actual == ""
+    if cond["op"] == "NOT_BLANK":
+        return actual != ""
+    equal = actual.upper() == str(cond["value"]).strip().upper()
+    return equal if cond["op"] == "=" else not equal
+
+
 def validate_params(rule_type: str, params: Any) -> Dict[str, Any]:
+    """Return normalized params or raise ValueError. Only registered types and shapes pass. An optional "condition" is kept."""
+    if isinstance(params, dict) and "condition" in params:
+        out = _validate_core(rule_type, {k: v for k, v in params.items() if k != "condition"})
+        out["condition"] = validate_condition(params["condition"])
+        return out
+    return _validate_core(rule_type, params)
+
+
+def _validate_core(rule_type: str, params: Any) -> Dict[str, Any]:
     """Return normalized params or raise ValueError. Only registered types and shapes pass."""
     if rule_type not in RULE_TYPES:
         raise ValueError(f"Unsupported rule type '{rule_type}'.")
     if not isinstance(params, dict):
         raise ValueError("Parameters must be a JSON object.")
+    if rule_type == "COPY":
+        return {}
     if rule_type == "VALUE_MAP":
         mapping = params.get("map")
         if not isinstance(mapping, dict) or not mapping:
@@ -190,8 +238,19 @@ def build_lookup(records: List[Dict[str, Any]], params: Dict[str, Any]) -> Dict[
 
 def apply_rule(rule_type: str, params: Dict[str, Any], value: Any, record: Optional[Dict[str, Any]] = None,
                lookups: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None) -> Tuple[Any, Optional[str]]:
-    """Apply a validated rule. Returns (new_value, warning). Never raises on bad data: it warns and keeps the value."""
+    """Apply a validated rule. Returns (new_value, warning). Never raises on bad data: it warns and keeps the value.
+    A rule with a condition yields no value (and no warning) for a row that does not meet it."""
+    cond = params.get("condition")
+    if cond and not condition_met(cond, record):
+        return None, None
+    return _apply_core(rule_type, {k: v for k, v in params.items() if k != "condition"}, value, record, lookups)
+
+
+def _apply_core(rule_type: str, params: Dict[str, Any], value: Any, record: Optional[Dict[str, Any]] = None,
+                lookups: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None) -> Tuple[Any, Optional[str]]:
     blank = value is None or _text(value).strip() == ""
+    if rule_type == "COPY":
+        return value, None
     if rule_type == "LOOKUP":
         if blank:
             return None, "blank lookup key"

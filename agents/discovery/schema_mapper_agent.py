@@ -13,47 +13,6 @@ class SchemaMapperAgent:
 
     INFERENCE_CONFIDENCE_CAP = 0.85  # inferred (not catalogued) proposals never look as certain as a known mapping
 
-    COMMON_CUSTODIAN_CROSSWALK = {
-        "SCHW": "SCHWAB",
-        "SWB": "SCHWAB",
-        "SCHWAB_PAS": "SCHWAB",
-        "FID": "FIDELITY",
-        "FIDC": "FIDELITY",
-        "NFS": "FIDELITY",
-        "PERSH": "PERSHING",
-        "PER": "PERSHING",
-        "BNY_PERSHING": "PERSHING"
-    }
-
-    REGISTRATION_TYPE_CROSSWALK = {
-        "INDV_TAXABLE": "INDIVIDUAL",
-        "TAX": "INDIVIDUAL",
-        "INDV": "INDIVIDUAL",
-        "IRA_ROLL": "IRA_ROLLOVER",
-        "ROLLOVER_IRA": "IRA_ROLLOVER",
-        "IRA_TRAD": "IRA_TRADITIONAL",
-        "JT_TEN": "JOINT_TIC",
-        "JTWROS": "JOINT_TIC"
-    }
-
-    CLIENT_TYPE_CROSSWALK = {
-        "INDV": "INDIVIDUAL",
-        "INDIVIDUAL": "INDIVIDUAL",
-        "TRUST": "TRUST",
-        "CORP": "CORPORATION",
-        "CORPORATION": "CORPORATION",
-        "LLC": "ENTITY",
-        "JOINT": "JOINT"
-    }
-
-    TRANSACTION_ACTION_CROSSWALK = {
-        "BUY_EQUITY": "BUY",
-        "SELL_EQUITY": "SELL",
-        "DIV_CASH": "DIV",
-        "CLIENT_WITHDRAWAL": "WITHDRAWAL",
-        "DEP": "DEPOSIT"
-    }
-
     DEFAULT_CATALOG = {
         # Account Attributes
         "LEGACY_ACCT_NO": "ACCT_NUM",
@@ -232,8 +191,7 @@ class SchemaMapperAgent:
     # Declarative rule families emitted by discovery plus simple scalar transforms.
     # Never eval arbitrary rule text; only registered families are executable.
     SUPPORTED_APPROVED_TRANSFORMS = {
-        "DIRECT_COPY", "ALIAS", "TRIM", "UPPERCASE", "LOWERCASE", "NORMALIZE_WHITESPACE",
-        "CLIENT_TYPE_LOOKUP", "CUSTODIAN_LOOKUP", "REG_TYPE_LOOKUP", "PREFIX_FORMAT", "DATE_FORMAT",
+        "DIRECT_COPY", "ALIAS", "TRIM", "UPPERCASE", "LOWERCASE", "NORMALIZE_WHITESPACE", "DATE_FORMAT",
     }
 
     @classmethod
@@ -244,8 +202,7 @@ class SchemaMapperAgent:
             return normalized  # pinned governed rule: RULE:<ID>@<VERSION>
         if normalized in cls.SUPPORTED_APPROVED_TRANSFORMS:
             return normalized
-        # Discovery recommendations may include examples in parentheses, e.g.
-        # CLIENT_TYPE_LOOKUP (INDIVIDUAL -> INDIVIDUAL).
+        # Discovery recommendations may include examples in parentheses, e.g. DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD).
         family = normalized.split("(", 1)[0].strip()
         return family if family in cls.SUPPORTED_APPROVED_TRANSFORMS else normalized
 
@@ -297,17 +254,6 @@ class SchemaMapperAgent:
             return text_value.lower()
         if family == "NORMALIZE_WHITESPACE":
             return " ".join(text_value.split())
-        if family == "CLIENT_TYPE_LOOKUP":
-            normalized = text_value.strip().upper()
-            return cls.CLIENT_TYPE_CROSSWALK.get(normalized, normalized)
-        if family == "CUSTODIAN_LOOKUP":
-            normalized = text_value.strip().upper()
-            return cls.COMMON_CUSTODIAN_CROSSWALK.get(normalized, normalized)
-        if family == "REG_TYPE_LOOKUP":
-            normalized = text_value.strip().upper()
-            return cls.REGISTRATION_TYPE_CROSSWALK.get(normalized, normalized)
-        if family == "PREFIX_FORMAT":
-            return text_value if text_value.startswith("REP-") else f"REP-{text_value}"
         if family == "DATE_FORMAT":
             date_str = text_value.strip()
             parts = date_str.split("/")
@@ -418,42 +364,6 @@ class SchemaMapperAgent:
                     mapped_target_fields.add(target_key)
                     transformed_val = raw_val
                     applied_rule = "DIRECT_COPY"
-
-                    # Custodian Crosswalk
-                    if target_key == "CUSTODIAN_CODE":
-                        norm_cust = str(raw_val).strip().upper()
-                        if norm_cust in self.COMMON_CUSTODIAN_CROSSWALK:
-                            transformed_val = self.COMMON_CUSTODIAN_CROSSWALK[norm_cust]
-                            applied_rule = f"CUSTODIAN_LOOKUP ({raw_val} -> {transformed_val})"
-
-                    # Registration Type Crosswalk
-                    elif target_key == "REG_TYPE":
-                        norm_reg = str(raw_val).strip().upper()
-                        if norm_reg in self.REGISTRATION_TYPE_CROSSWALK:
-                            transformed_val = self.REGISTRATION_TYPE_CROSSWALK[norm_reg]
-                            applied_rule = f"REG_TYPE_LOOKUP ({raw_val} -> {transformed_val})"
-
-                    # Client / Client Type Crosswalk
-                    elif target_key == "CLIENT_TYPE":
-                        norm_client_type = str(raw_val).strip().upper()
-                        if norm_client_type in self.CLIENT_TYPE_CROSSWALK:
-                            transformed_val = self.CLIENT_TYPE_CROSSWALK[norm_client_type]
-                            applied_rule = f"CLIENT_TYPE_LOOKUP ({raw_val} -> {transformed_val})"
-
-                    # Rep Code prefix normalization
-                    elif target_key == "REP_CODE":
-                        if not str(raw_val).startswith("REP-"):
-                            transformed_val = f"REP-{raw_val}"
-                            applied_rule = f"PREFIX_FORMAT (REP-{raw_val})"
-
-                    # Date normalization (MM/DD/YYYY -> YYYY-MM-DD)
-                    elif target_key in ["OPEN_DATE", "DOB"]:
-                        date_str = str(raw_val).strip()
-                        if "/" in date_str:
-                            parts = date_str.split("/")
-                            if len(parts) == 3:
-                                transformed_val = f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
-                                applied_rule = "DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)"
 
                     approved_expression = self.approved_transformations.get(raw_key)
                     if approved_expression:

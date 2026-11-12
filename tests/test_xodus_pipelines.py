@@ -28,7 +28,7 @@ ENTITIES = {
     "Account": {"files": ["corecap_accounts.csv"], "key": "ACCT_NUM", "canonical_fields": ["ACCT_NUM", "CUSTODIAN_NAME", "CUSTODIAN_CODE", "REP_CODE", "HH_ID"],
                 "mappings": {"AccountNumber": {"canonical_field": "ACCT_NUM", "expression": "DIRECT_COPY"},
                              "CustodianName": {"canonical_field": "CUSTODIAN_NAME", "expression": "DIRECT_COPY"},
-                             "RepCode": {"canonical_field": "REP_CODE", "expression": "PREFIX_FORMAT (REP-8000000)"},
+                             "RepCode": {"canonical_field": "REP_CODE", "expression": "TRIM"},
                              "HouseholdId": {"canonical_field": "HH_ID", "expression": "DIRECT_COPY"}},
                 "derivations": [{"canonical_field": "CUSTODIAN_CODE", "input_field": "CUSTODIAN_NAME", "rule_expression": "RULE:CUSTODIAN_CODE_MAP@2"}]}}
 RAW = [{"file_name": "corecap_households.csv", "columns": ["AdvisorId", "Id", "HouseholdName"]},
@@ -59,7 +59,7 @@ def test_sql_layers_procedures_and_registry():
     sql = pkg["files"]["sql/xodus_mig00a1a6577b.sql"]
     assert "CREATE TABLE [xodus_raw].[mig00a1a6577b_corecap_accounts]" in sql and "[xodus_source_file] nvarchar(1024)" in sql
     assert "CREATE OR ALTER PROCEDURE [xodus_canon].[usp_canon_mig00a1a6577b_Account]" in sql
-    assert "N'REP-' + s.[RepCode]" in sql and "LTRIM(RTRIM(s.[HouseholdName]))" in sql  # the agent's families, in SQL
+    assert "LTRIM(RTRIM(s.[RepCode]))" in sql and "LTRIM(RTRIM(s.[HouseholdName]))" in sql  # the agent's generic families, in SQL
     assert "UPDATE c SET c.[CUSTODIAN_CODE] = " in sql and "N'TD AMERITRADE' THEN N'TDA'" in sql  # derivation after mapping
     assert "PARTITION BY s.[AccountNumber]" in sql  # one row per key, as the in-memory join does
     assert "CREATE OR ALTER PROCEDURE [xodus_mirror].[usp_mirror_mig00a1a6577b]" in sql and "OPEN_DATE" not in sql.split("usp_mirror_")[1].split("END")[0]

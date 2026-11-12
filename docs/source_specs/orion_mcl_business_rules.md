@@ -38,6 +38,10 @@ Concatenate FirstName and LastName with a space
 # Representative Name: Households.AdvisorId joins to Users_Advisors.Id, take Name (Definitions: RESOLVED; Rishi: Join / Lookup).
 Representative Name is the Name column of the Advisors file, joined through AdvisorId
 
+# Household-level fields (Household SSN, DOB, first and last name, name) come from the contact with HouseholdOrder = 1, the household head.
+# The condition travels with the rule, in the SQL as well as in memory: other contacts give no value.
+Copy the value where HouseholdOrder = 1
+
 # ====================== MAPPING STATEMENTS (read by Target mapping) ======================
 # Source: MCL - Amplify Mapping (Mapping Status: Direct Match / Derived), confirmed by MCL Target Mapping and RishiMCLMapping.
 Target Account Number comes from Account AccountNumber

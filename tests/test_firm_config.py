@@ -199,7 +199,7 @@ def test_alias_catalog_behavior_is_unchanged_for_known_aliases():
     from agents.discovery.schema_mapper_agent import SchemaMapperAgent
 
     result = SchemaMapperAgent().map_source_to_canonical("Account", [{"ADVISOR_REP_NUM": "014"}])
-    assert result["mapped_records"][0]["REP_CODE"] == "REP-014"  # existing PREFIX_FORMAT rule still applies
+    assert str(result["mapped_records"][0]["REP_CODE"]) == "014"  # values change only through approved rules; none is built in
 
 
 def test_dashboard_lists_required_fields_from_firm_config(tmp_path, monkeypatch):
@@ -395,14 +395,12 @@ def test_mapping_kinds_follow_the_registered_rule_family():
     from agents.discovery.schema_mapper_agent import SchemaMapperAgent as M
 
     assert M.mapping_kind("DIRECT_COPY", "ACCT_NUM") == "DIRECT"
-    assert M.mapping_kind("CUSTODIAN_LOOKUP (SCHWAB -> SCHW)", "CUSTODIAN_CODE") == "LOOKUP"
-    assert M.mapping_kind("REG_TYPE_LOOKUP (IRA -> IRA)", "REG_TYPE") == "LOOKUP"
-    assert M.mapping_kind("PREFIX_FORMAT (REP-1)", "REP_CODE") == "DERIVED"
+    assert M.mapping_kind("TRIM", "REP_CODE") == "DERIVED"
     assert M.mapping_kind("DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)", "OPEN_DATE") == "DERIVED"
     assert M.mapping_kind("RELATIONSHIP_CANDIDATE_PROPOSED", None) == "RELATIONSHIP"
     assert M.mapping_kind("UNRESOLVED_NO_CANONICAL_FIELD", None) == "UNRESOLVED"
     assert M.mapping_kind("DIRECT_COPY", None) == "UNRESOLVED"  # never a direct copy without a destination
-    result = M().map_source_to_canonical("Account", [{"ACCT_NUM": "A-1", "MYSTERY": "x", "ADVISOR_REP_NUM": "7"}])
+    result = M(approved_transformations={"ADVISOR_REP_NUM": "TRIM"}).map_source_to_canonical("Account", [{"ACCT_NUM": "A-1", "MYSTERY": "x", "ADVISOR_REP_NUM": "7"}])
     kinds = {l["source_field"]: l["mapping_kind"] for l in result["field_lineages"]}
     assert kinds["ACCT_NUM"] == "DIRECT" and kinds["MYSTERY"] == "UNRESOLVED" and kinds["ADVISOR_REP_NUM"] == "DERIVED"
 

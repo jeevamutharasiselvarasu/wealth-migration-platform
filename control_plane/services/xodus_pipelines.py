@@ -58,12 +58,6 @@ def _family(expression: str) -> str:
     return SchemaMapperAgent.transformation_family(expression)
 
 
-def _crosswalk_case(col: str, table: Dict[str, str]) -> str:
-    norm = f"UPPER(LTRIM(RTRIM({col})))"
-    whens = " ".join(f"WHEN {_lit(k)} THEN {_lit(v)}" for k, v in sorted(table.items()))
-    return f"CASE {norm} {whens} ELSE {norm} END" if whens else norm
-
-
 def source_expression(expression: str, column: str, rules: Dict[str, Dict[str, Any]], alias: str, lookup_ref) -> str:
     """T-SQL for one approved source-to-canonical mapping, applying exactly what the mapping agent applies in memory."""
     from agents.discovery.schema_mapper_agent import SchemaMapperAgent as A
@@ -85,14 +79,6 @@ def source_expression(expression: str, column: str, rules: Dict[str, Dict[str, A
         return f"LOWER({col})"
     if fam == "NORMALIZE_WHITESPACE":
         return f"LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE({col}, NCHAR(9), N' '), N'  ', N' '), N'  ', N' '), N'  ', N' ')))"
-    if fam == "CLIENT_TYPE_LOOKUP":
-        return _crosswalk_case(col, A.CLIENT_TYPE_CROSSWALK)
-    if fam == "CUSTODIAN_LOOKUP":
-        return _crosswalk_case(col, A.COMMON_CUSTODIAN_CROSSWALK)
-    if fam == "REG_TYPE_LOOKUP":
-        return _crosswalk_case(col, A.REGISTRATION_TYPE_CROSSWALK)
-    if fam == "PREFIX_FORMAT":
-        return f"CASE WHEN {col} IS NULL THEN NULL WHEN {col} LIKE N'REP-%' THEN {col} ELSE N'REP-' + {col} END"
     if fam == "DATE_FORMAT":
         return f"COALESCE(CONVERT(nvarchar(10), TRY_CONVERT(date, LTRIM(RTRIM({col})), 101), 23), {col})"
     raise ValueError(f"'{expression}' is not a registered transformation and cannot be turned into SQL.")

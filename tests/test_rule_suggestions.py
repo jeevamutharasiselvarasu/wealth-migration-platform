@@ -136,7 +136,7 @@ def test_orion_spec_business_rules_file_is_fully_inferred():
     text = (ROOT / "docs" / "source_specs" / "orion_mcl_business_rules.md").read_text(encoding="utf-8")
     results = ri.infer(text, [{"child": "households.AdvisorId", "parent": "advisors.Id"}])
     assert results and all(r["recognised"] for r in results), [r for r in results if not r["recognised"]]
-    assert {r["rule_type"] for r in results} == {"IF_BLANK", "VALUE_MAP", "SPLIT_PART", "CONCAT", "LOOKUP"}
+    assert {r["rule_type"] for r in results} == {"IF_BLANK", "VALUE_MAP", "SPLIT_PART", "CONCAT", "LOOKUP", "COPY"}
 
 
 def test_mapping_statements_in_the_spec_file_are_read_as_hints_and_not_as_rules():

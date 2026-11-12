@@ -51,10 +51,32 @@ def columns_used(expression: str, column: str, rule: Optional[Dict[str, Any]]) -
     cols = {_ident(column)} if column else set()
     if rule and rule.get("rule_type") == "CONCAT":
         cols |= {_ident(s) for s in tr.validate_params("CONCAT", rule["params"])["sources"]}
+    if rule and (rule.get("params") or {}).get("condition"):
+        cols.add(_ident(re.sub(r"[^A-Za-z0-9_]", "_", tr.validate_condition(rule["params"]["condition"])["field"])))
     return cols
 
 
+def _condition_sql(cond: Dict[str, str], alias: str) -> str:
+    col = f"{_ident(alias)}.{_q(re.sub(r'[^A-Za-z0-9_]', '_', cond['field']))}"
+    t = f"LTRIM(RTRIM({col}))"
+    if cond["op"] == "IS_BLANK":
+        return f"NULLIF({t}, N'') IS NULL"
+    if cond["op"] == "NOT_BLANK":
+        return f"NULLIF({t}, N'') IS NOT NULL"
+    sign = "=" if cond["op"] == "=" else "<>"
+    return f"UPPER({t}) {sign} {_lit(str(cond['value']).strip().upper())}"
+
+
 def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None) -> str:
+    """T-SQL expression for one approved mapping. A rule with a condition gives a value only for the rows that meet it."""
+    expr = _translate_core(expression, column, rule, alias, lookup_ref)
+    cond = (rule or {}).get("params", {}).get("condition") if rule and rule.get("status") == "APPROVED" else None
+    if cond:
+        return f"CASE WHEN {_condition_sql(tr.validate_condition(cond), alias)} THEN {expr} END"
+    return expr
+
+
+def _translate_core(expression: str, column: str, rule: Optional[Dict[str, Any]], alias: str = "s", lookup_ref=None) -> str:
     """T-SQL expression for one approved mapping. Raises ValueError for anything unregistered.
     lookup_ref(parent_file) names the table a LOOKUP reads (default: the staging lookup table)."""
     a = _ident(alias)
@@ -73,6 +95,8 @@ def translate(expression: str, column: str, rule: Optional[Dict[str, Any]], alia
         source = lookup_ref(p["parent_file"]) if lookup_ref else f"{_q(STAGING_SCHEMA)}.{_q(lookup_table(p['parent_file']))}"
         return (f"CASE WHEN {blank} THEN {col} ELSE (SELECT TOP (1) CAST(l.{_q(ret)} AS nvarchar(4000)) "
                 f"FROM {source} AS l WHERE LTRIM(RTRIM(l.{_q(key)})) = {t}) END")
+    if kind == "COPY":
+        return col
     if kind == "DEFAULT_IF_BLANK":
         return f"CASE WHEN {blank} THEN {_lit(p['default'])} ELSE {col} END"
     if kind == "IF_BLANK":
