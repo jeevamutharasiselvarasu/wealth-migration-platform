@@ -26,7 +26,7 @@ def ensure_table(conn: sqlite3.Connection) -> None:
 
 
 def evaluate(manifest: Dict[str, Any], xodus_version: Optional[str], existing: Dict[str, bool], landing_version: Optional[str],
-             live_columns: Dict[str, Dict[str, Dict[str, Any]]]) -> Dict[str, Any]:
+             live_columns: Dict[str, Dict[str, Dict[str, Any]]], xodus_where: str = "") -> Dict[str, Any]:
     """Pure: turn what was read into findings."""
     checks: List[Dict[str, str]] = []
 
@@ -36,7 +36,8 @@ def evaluate(manifest: Dict[str, Any], xodus_version: Optional[str], existing: D
     add("XODUS_VERSION", "PASS" if xodus_version == v else "FAIL",
         f"The XODUS database has this package's objects (version {v})." if xodus_version == v else
         (f"The XODUS database has version {xodus_version}; this package is {v}. Run {manifest['setupPipeline']}." if xodus_version
-         else f"This migration's objects are not deployed in the XODUS database yet. Run {manifest['setupPipeline']}."))
+         else f"This migration's objects are not deployed in the XODUS database{xodus_where} yet. Run {manifest['setupPipeline']}. "
+              "If the setup pipeline already succeeded, the factory's LS_SQL_Target and this platform's database connection point at different databases."))
     missing = sorted(n for n, ok in existing.items() if not ok)
     add("XODUS_OBJECTS", "PASS" if not missing else "FAIL",
         f"All {len(existing)} tables and procedures exist." if not missing else "Missing: " + ", ".join(missing[:12]) + (" ..." if len(missing) > 12 else ""))
@@ -95,7 +96,8 @@ def run(conn: sqlite3.Connection, migration_id: str, manifest: Dict[str, Any], a
         live_columns = live_target.read_columns(lcfg, connect)
     except ValueError as exc:
         raise ValueError(f"Live database: {exc}")
-    result = evaluate(manifest, xodus_version, existing, lv[0][0] if lv else None, live_columns)
+    where = f" ({xcfg.get('server')} / {xcfg.get('database_name')})" if xcfg.get("database_name") else ""
+    result = evaluate(manifest, xodus_version, existing, lv[0][0] if lv else None, live_columns, where)
     result.update({"checked_by": actor, "checked_utc": datetime.now(timezone.utc).isoformat()})
     conn.execute("INSERT INTO deployment_checks (migration_id, version, status, result_json, checked_by, checked_utc) VALUES (?, ?, ?, ?, ?, ?)",
                  (migration_id, result["version"], result["status"], json.dumps(result), actor, result["checked_utc"]))
