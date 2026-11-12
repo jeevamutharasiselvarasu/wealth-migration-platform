@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 import pytest
 import yaml
 
-from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
+from control_plane.kernel.canonical_catalog import CanonicalCatalog
 from control_plane.services.firm_config import FirmConfigError, load_firm_config
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,9 +29,9 @@ def test_seed_firm_config_is_p0_source_to_canonical_only():
     assert sorted(config.entities) == ["Account", "AccountRole", "Advisor", "Client", "Household"]
 
 
-def test_required_fields_match_platform_kernel_required_fields():
+def test_required_fields_match_the_canonical_catalog():
     config = load_firm_config(SEED)
-    for group in WealthManagementKnowledgeKernel.get_canonical_entities().values():
+    for group in CanonicalCatalog.get_canonical_entities().values():
         for item in group:
             assert sorted(config.required_fields(item["entity_name"])) == sorted(item["required_fields"])
 

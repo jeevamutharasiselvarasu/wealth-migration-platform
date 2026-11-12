@@ -34,6 +34,9 @@ items = [{"ITEM_ID": "B-1", "TITLE": "x"}]
 loans = [{"LOAN_ID": "L-1", "MEMBER_ID": "P-1", "ITEM_ID": "B-1"}, {"LOAN_ID": "L-2", "MEMBER_ID": "P-9", "ITEM_ID": "B-1"}]
 valid = mv.validate_mcl_relationships({"Member": {"mapped_records": members}, "Item": {"mapped_records": items}, "Loan": {"mapped_records": loans}})
 mapped = SchemaMapperAgent().map_source_to_canonical("Member", [{"MEMBER_ID": "P-1", "FULL_NAME": "Ada", "Shoe": "9"}])
+derived = er.derive_rows("Responsibility", {"Loan": [{"LOAN_ID": "L-1", "FAMILY_ID": "F1"}, {"LOAN_ID": "L-2", "FAMILY_ID": "F9"}],
+                                           "Member": [{"MEMBER_ID": "P-2", "FAMILY_ID": "F1", "PRIORITY": "2"}, {"MEMBER_ID": "P-1", "FAMILY_ID": "F1", "PRIORITY": "1"}]})
+derived_sql = er.derive_sql("Responsibility", "canon", "m1", "m1_Responsibility")
 everything = [t for b in model["entities"].values() for t in b["table_columns"]] + model["unassigned_tables"]
 print(json.dumps({
     "entities": list(fc.P0_ENTITIES),
@@ -45,6 +48,7 @@ print(json.dumps({
     "hints": [(h["target_field"], h["entity"], h["source_field"]) for h in hints],
     "supporting": fc.supporting_plan(["Loan"], ["Loan"], cfg),
     "sql": sql,
+    "derived": [derived, er.method("Responsibility"), er.recipe_for("AccountRole"), derived_sql],
     "validation": [valid["status"], [(c["entity"], c["field"], c["status"]) for c in valid["key_checks"]],
                    [(c["from_entity"], c["from_field"], c["to_entity"], c["status"]) for c in valid["relationship_checks"]]],
     "mapper": [mapped["mapped_records"], mapped["unmapped_fields"], SchemaMapperAgent.required_fields("Loan")],
@@ -82,6 +86,9 @@ def test_a_library_runs_through_the_same_code_with_only_its_own_files():
     assert "LOAN_ID" in r["mapper"][2]  # required fields come from the configuration
     assert r["resolution"] == [{}, {"Loan": ["ITEM_ID", "MEMBER_ID"]}]  # no suggested rules without a file; references derived from keys
     assert r["merge_keys"] == [True, False] and r["evidence"] == []
+    assert r["derived"][0] == [{"LOAN_ID": "L-1", "MEMBER_ID": "P-1", "ROLE": "PAYER"}] and r["derived"][1] == "FAMILY_HEAD_PAYS"  # a recipe of the library's own
+    assert r["derived"][2] is None  # the first domain's recipe is not there
+    assert "[canon].[m1_Loan] AS a JOIN" in r["derived"][3] and "[PRIORITY])) IN (N'1')" in r["derived"][3] and "N'PAYER'" in r["derived"][3]
     text = json.dumps(r).lower()
     assert not any(word in text for word in ("household", "advisor", "custodian", "account", "client", "wealth"))  # nothing from the first domain leaks in
     assert r["supporting"] == {"Member": "Loan.MEMBER_ID points at it", "Item": "Loan.ITEM_ID points at it"}  # from key names, not from a list

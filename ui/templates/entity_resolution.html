@@ -51,15 +51,16 @@
   {% endfor %}
   {% if not entities %}<div class="exc">No entity in this migration's scope has suggested match rules (Client and Advisor do).</div>{% endif %}
 
-  {% if needs_role_source or derivation %}
-  <section class="card" data-testid="account-roles">
-    <h3 style="font-size:16px">Account roles</h3>
-    <p class="fh">AccountRole is in scope but no source file says who holds each account. It can be derived instead: <b>{{ role_derivation_text }}</b> This is a business assumption (joint owners, trustees and beneficiaries are not known this way), so a person decides it.</p>
-    {% if derivation %}<p class="mt-1 text-[11px]">Decision: <b>{{ derivation.status }}</b> by {{ derivation.decided_by }} · {{ derivation.decided_utc[:10] }}</p>{% endif %}
+  {% for d in derivable %}
+  <section class="card" data-testid="derive-{{ d.name|lower }}">
+    <h3 style="font-size:16px">{{ d.name }}</h3>
+    <p class="fh">{{ d.name }} is in scope but no source file provides it. It can be derived instead: <b>{{ d.text }}</b> This is a business assumption, so a person decides it.</p>
+    {% if d.decision %}<p class="mt-1 text-[11px]">Decision: <b>{{ d.decision.status }}</b> by {{ d.decision.decided_by }} · {{ d.decision.decided_utc[:10] }}</p>{% endif %}
     {% if can_approve %}<form action="/api/entity-resolution/account-roles" method="post" class="mt-2 flex gap-2">
-      <button name="decision" value="APPROVE" class="btn p sm" data-testid="approve-role-derivation">Derive account roles this way</button>
+      <input type="hidden" name="entity" value="{{ d.name }}">
+      <button name="decision" value="APPROVE" class="btn p sm" data-testid="approve-role-derivation">Derive {{ d.name }} this way</button>
       <button name="decision" value="REJECT" class="btn g sm">Do not derive</button></form>{% endif %}
   </section>
-  {% endif %}
+  {% endfor %}
 </div>
 {% endblock %}

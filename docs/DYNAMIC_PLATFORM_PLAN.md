@@ -93,3 +93,14 @@ Still wealth-shaped (found by grepping for HH_ID, ACCT_NUM, ADVISOR_ID, Househol
   `agents/p0_agent_suite.py`.
 - `ui/app.py` (about 20 places: pages and labels naming Household, Advisor and so on), `ui/state.py`, `rule_suggestions.py`, example text in
   `transformation_rules.py`.
+
+## 7. Remaining modules: done (2026-11-13)
+
+- Derivations are recipes in data (`platform_knowledge/derivations.yaml`: "the first-ranked holder of a group is assigned to every parent of the group");
+  the in-memory derivation, the generated SQL, the approval page and the package all read the recipe. The library test runs a recipe of its own
+  and shows the first domain's recipe is absent.
+- The "wealth kernel" is replaced by a catalog built from the firm configuration; the legacy per-entity pilot routes and the legacy ADF exporter
+  (nothing linked to them) are removed; load order comes from the configuration's references; rule-suggestion words and example text are generic,
+  with the domain's own words in `value_evidence.yaml`.
+- What still names the first domain: the data files under `platform_knowledge/` and `config/firm_config.yaml` themselves (they are the inputs a
+  deployment replaces), the source role label ACCOUNT_MASTER, and page text in a few templates. Tests and fixtures use the first domain on purpose.

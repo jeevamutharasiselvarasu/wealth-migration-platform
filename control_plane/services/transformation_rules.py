@@ -42,8 +42,8 @@ RULE_TYPES: Dict[str, Dict[str, str]] = {
                  "example": '{"when_blank": "Open", "when_filled": "Closed"}'},
     "LOOKUP": {"label": "Lookup from another file", "help": "Use the mapped value as a key and return a column from the matching row of another source file (a confirmed relationship, for example Households.AdvisorId to Advisors.Id). No match is reported.",
                "example": '{"parent_file": "advisors.csv", "parent_key": "Id", "return_column": "Name"}'},
-    "COPY": {"label": "Copy as is", "help": "Use the source value unchanged. Its use is the condition it carries (for example only the row where HouseholdOrder is 1).",
-             "example": '{"condition": {"field": "HouseholdOrder", "op": "=", "value": "1"}}'},
+    "COPY": {"label": "Copy as is", "help": "Use the source value unchanged. Its use is the condition it carries (for example only the row where Rank is 1).",
+             "example": '{"condition": {"field": "Rank", "op": "=", "value": "1"}}'},
     "IF_EQUALS": {"label": "Conditional replace", "help": "Replace a value when it equals a given value; otherwise keep it (or use the else value).",
                   "example": '{"when_equals": "N/A", "then": "", "else": null}'},
 }
@@ -82,7 +82,7 @@ CONDITION_OPS = ("=", "<>", "IS_BLANK", "NOT_BLANK")
 
 
 def validate_condition(cond: Any) -> Dict[str, str]:
-    """A rule may carry one condition on a field of the same record ("where HouseholdOrder = 1"). The rule then applies to the rows
+    """A rule may carry one condition on a field of the same record ("where Rank = 1"). The rule then applies to the rows
     that meet it and yields no value for the rest. Only a column name, one of four operators and a literal are accepted."""
     if not isinstance(cond, dict):
         raise ValueError("condition must be an object with field, op and value.")

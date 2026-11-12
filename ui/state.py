@@ -7,7 +7,7 @@ import json
 import pandas as pd
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
+from control_plane.kernel.canonical_catalog import CanonicalCatalog
 from control_plane import file_store
 from control_plane.db import get_db_connection, init_db, table_exists
 from control_plane.services.source_file_adapter import read_source_records
@@ -46,7 +46,7 @@ class WorkspaceStateStore:
 
         # 2. Entity Scopes Storage (In Scope vs Out of Scope)
         self.entity_scopes: Dict[str, str] = {}
-        for category, entities in WealthManagementKnowledgeKernel.get_canonical_entities().items():
+        for category, entities in CanonicalCatalog.get_canonical_entities().items():
             for ent in entities:
                 self.entity_scopes[ent["entity_name"]] = ent["default_scope"]
 
@@ -487,7 +487,7 @@ class WorkspaceStateStore:
 
     def get_full_menu_card(self) -> Dict[str, List[Dict[str, Any]]]:
         """Expose only Account, Client, and Household in the P0 scope selector."""
-        catalog = WealthManagementKnowledgeKernel.get_canonical_entities()
+        catalog = CanonicalCatalog.get_canonical_entities()
         result = {}
         for class_name, entities in catalog.items():
             scoped_entities = []
@@ -504,7 +504,7 @@ class WorkspaceStateStore:
     def get_in_scope_entities(self) -> List[Dict[str, Any]]:
         """Return only explicitly in-scope P0 entities; exclude all other canonical entities."""
         in_scope_list = []
-        catalog = WealthManagementKnowledgeKernel.get_canonical_entities()
+        catalog = CanonicalCatalog.get_canonical_entities()
         for entities in catalog.values():
             for ent in entities:
                 if ent["entity_name"] not in self.P0_ENTITIES:
@@ -584,19 +584,10 @@ class WorkspaceStateStore:
         """Return in-scope source upload cards, presenting source Client as canonical Client."""
         result = []
         for entity in self.get_in_scope_entities():
-            if entity["entity_name"] == "Client":
-                alias = dict(entity)
-                alias["entity_name"] = "Client"
-                alias["canonical_entity_name"] = "Client"
-                alias["expected_file"] = "clients.csv"
-                alias["required_fields"] = ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
-                alias["sample_file_info"] = self.entity_sample_files.get("Client")
-                alias["source_files"] = self.entity_source_files.get("Client", {})
-                result.append(alias)
-            else:
-                item = dict(entity)
-                item["source_files"] = self.entity_source_files.get(entity["entity_name"], {})
-                result.append(item)
+            item = dict(entity)
+            item["source_files"] = self.entity_source_files.get(entity["entity_name"], {})
+            item["sample_file_info"] = self.entity_sample_files.get(entity["entity_name"])
+            result.append(item)
         return result
 
     def add_firm_file(self, filename: str, category: str, content_bytes: bytes) -> Dict[str, Any]:
@@ -737,7 +728,7 @@ class WorkspaceStateStore:
         return {
             "firm_name": firm_name,
             "program_status": "P0_SOURCE_TO_CANONICAL",
-            "canonical_entities": ["Account", "Client", "Household"],
+            "canonical_entities": list(self.P0_ENTITIES),
             "mapping_direction": "source_to_canonical",
             "target_mapping_status": "DEFERRED",
             "knowledge_asset_count": len(knowledge_assets),

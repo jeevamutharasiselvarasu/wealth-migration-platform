@@ -52,7 +52,7 @@ _WHERE = re.compile(r"\s*,?\s*\bwhere\s+(?P<field>[A-Za-z][A-Za-z0-9_ ]*?)\s+(?:
 
 
 def split_condition(statement: str):
-    """'Take TaxId where HouseholdOrder = 1' -> ('Take TaxId', {'field': 'HouseholdOrder', 'op': '=', 'value': '1'}); no clause -> (statement, None)."""
+    """'Take Code where Rank = 1' -> ('Take Code', {'field': 'Rank', 'op': '=', 'value': '1'}); no clause -> (statement, None)."""
     m = _WHERE.search(statement or "")
     if not m:
         return statement, None

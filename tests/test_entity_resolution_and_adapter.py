@@ -49,7 +49,7 @@ def test_references_point_at_the_survivor_and_account_roles_are_derived_from_hou
     _, xref, _ = er.resolve(CLIENTS, "CLIENT_ID", er.suggested_rules()["Client"])
     roles = [{"ACCT_NUM": "A1", "CLIENT_ID": "C2"}]
     assert er.repoint(roles, "CLIENT_ID", xref) == 1 and roles[0]["CLIENT_ID"] == "C1"
-    derived = er.derive_account_roles([{"ACCT_NUM": "A1", "HH_ID": "H1"}, {"ACCT_NUM": "A2", "HH_ID": "H9"}], CLIENTS)
+    derived = er.derive_rows("AccountRole", {"Account": [{"ACCT_NUM": "A1", "HH_ID": "H1"}, {"ACCT_NUM": "A2", "HH_ID": "H9"}], "Client": CLIENTS})
     assert derived == [{"ACCT_NUM": "A1", "CLIENT_ID": "C1", "ROLE": "OWNER", "ROLE_ORDER": "1"}]  # no head known for H9: no role invented
 
 
@@ -61,7 +61,7 @@ def test_rules_are_proposed_only_when_their_fields_are_filled_and_decided_by_a_p
     assert er.approved_rules(conn, "M") == {"Client": [["TAX_ID"]]}
     with pytest.raises(ValueError):
         er.decide(conn, "M", "Client", "MATCH_NOPE", "APPROVE", "Ann")
-    assert er.decide_derivation(conn, "M", "APPROVE", "Ann") == "APPROVED" and er.derivation(conn, "M")["method"] == er.ROLE_DERIVATION
+    assert er.decide_derivation(conn, "M", "APPROVE", "Ann") == "APPROVED" and er.derivation(conn, "M")["method"] == er.method("AccountRole")
 
 
 def test_generated_sql_resolves_clients_repoints_roles_and_derives_account_roles():
@@ -69,7 +69,7 @@ def test_generated_sql_resolves_clients_repoints_roles_and_derives_account_roles
                "canonical_fields": ["CLIENT_ID", "TAX_ID", "HH_ID", "HH_ORDER"],
                "mappings": {"ContactId": {"canonical_field": "CLIENT_ID", "expression": "DIRECT_COPY"}, "TaxId": {"canonical_field": "TAX_ID", "expression": "DIRECT_COPY"},
                             "HouseholdId": {"canonical_field": "HH_ID", "expression": "DIRECT_COPY"}, "HouseholdOrder": {"canonical_field": "HH_ORDER", "expression": "DIRECT_COPY"}}}
-    roles = {"files": [], "mappings": {}, "derivations": [], "key": None, "derived": er.ROLE_DERIVATION, "canonical_fields": ["ACCT_NUM", "CLIENT_ID", "ROLE", "ROLE_ORDER"]}
+    roles = {"files": [], "mappings": {}, "derivations": [], "key": None, "derived": er.method("AccountRole"), "canonical_fields": ["ACCT_NUM", "CLIENT_ID", "ROLE", "ROLE_ORDER"]}
     raw = RAW + [{"file_name": "corecap_household_contacts.csv", "columns": ["ContactId", "TaxId", "HouseholdId", "HouseholdOrder"]}]
     pkg = build(entities={**ENTITIES, "Client": clients, "AccountRole": roles}, raw_files=raw, load_order=["Household", "Account", "Client", "AccountRole"])
     sql = pkg["files"]["sql/xodus_mig00a1a6577b.sql"]
@@ -81,7 +81,7 @@ def test_generated_sql_resolves_clients_repoints_roles_and_derives_account_roles
             "(SELECT [HH_ID], MIN([CLIENT_ID]) AS [CLIENT_ID] FROM [xodus_canon].[mig00a1a6577b_Client]") in sql
     assert ("UPDATE c SET c.[CLIENT_ID] = x.[survivor_key] FROM [xodus_canon].[mig00a1a6577b_AccountRole] AS c JOIN [xodus_canon].[mig00a1a6577b_Client_xref] AS x") in sql
     assert pkg["manifest"]["canonical"]["Client"]["xref"] == "mig00a1a6577b_Client_xref"
-    assert pkg["manifest"]["canonical"]["AccountRole"]["derived"] == er.ROLE_DERIVATION
+    assert pkg["manifest"]["canonical"]["AccountRole"]["derived"] == er.method("AccountRole")
     with pytest.raises(ValueError, match="loaded before AccountRole"):
         build(entities={**ENTITIES, "Client": clients, "AccountRole": roles}, raw_files=raw, load_order=["Household", "AccountRole", "Account", "Client"])
 

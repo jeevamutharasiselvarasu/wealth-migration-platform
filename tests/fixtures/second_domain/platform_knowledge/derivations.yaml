@@ -1,0 +1,10 @@
+# The library's own derivation: the first-ranked member of a family is responsible for every loan of that family.
+Responsibility:
+  method: FAMILY_HEAD_PAYS
+  text: The first member of each family pays for every loan of that family.
+  parent: {entity: Loan, key: LOAN_ID, group: FAMILY_ID}
+  holder: {entity: Member, key: MEMBER_ID, group: FAMILY_ID, rank: PRIORITY, first: ["1"]}
+  columns:
+    LOAN_ID: {from: parent.key}
+    MEMBER_ID: {from: holder.key}
+    ROLE: {value: PAYER}

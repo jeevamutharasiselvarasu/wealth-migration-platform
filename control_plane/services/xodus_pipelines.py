@@ -263,16 +263,15 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                                           + ["[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL", "[xodus_loaded_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()"]))
         objects["tables"].append(f"{CANON}.{ctable}")
         derived = e.get("derived")
-        if derived == entity_resolution.ROLE_DERIVATION:
-            # AccountRole without a source file: the approved derivation (the household head owns each account of the household),
-            # read from the canonical Account and Client tables built earlier in the load order (Client already resolved).
-            if "Account" not in entities or "Client" not in entities or load_order.index(entity) < max(load_order.index("Account"), load_order.index("Client")):
-                raise ValueError("Deriving account roles needs the Account and Client entities, loaded before AccountRole.")
-            files, mapped, key = [], ["ACCT_NUM", "CLIENT_ID", "ROLE", "ROLE_ORDER"], None
-            select = (f"INSERT INTO [{CANON}].[{ctable}] ([ACCT_NUM], [CLIENT_ID], [ROLE], [ROLE_ORDER], [xodus_batch_id], [xodus_run_id])\n"
-                      f"SELECT a.[ACCT_NUM], h.[CLIENT_ID], N'OWNER', N'1', @BatchId, @RunId FROM [{CANON}].[{s}_Account] AS a JOIN "
-                      f"(SELECT [HH_ID], MIN([CLIENT_ID]) AS [CLIENT_ID] FROM [{CANON}].[{s}_Client] WHERE LTRIM(RTRIM([HH_ORDER])) IN (N'1', N'1.0') "
-                      f"AND [HH_ID] IS NOT NULL AND [CLIENT_ID] IS NOT NULL GROUP BY [HH_ID]) AS h ON h.[HH_ID] = a.[HH_ID] WHERE a.[ACCT_NUM] IS NOT NULL;")
+        recipe = entity_resolution.recipe_for(entity)
+        if derived and recipe and derived == recipe["method"]:
+            # No source file for this entity: the approved derivation, read from the canonical tables of the entities it builds on
+            # (earlier in the load order, the holder already resolved).
+            needs = [recipe["parent"]["entity"], recipe["holder"]["entity"]]
+            if any(n not in entities for n in needs) or load_order.index(entity) < max(load_order.index(n) for n in needs):
+                raise ValueError(f"Deriving {entity} needs the {' and '.join(needs)} entities, loaded before {entity}.")
+            files, mapped, key = [], list(recipe["columns"]), None
+            select = entity_resolution.derive_sql(entity, CANON, s, ctable)
         elif derived:
             raise ValueError(f"Unknown derivation {derived} for {entity}.")
         else:

@@ -35,9 +35,8 @@ from control_plane.services.mcl_validation import validate_mcl_relationships
 from control_plane.services.source_file_adapter import read_source_records
 from control_plane.services.wave_rules import CohortConditionEngine, WaveConditionEvaluator
 from control_plane.services.adf_client import AzureDataFactoryClient
-from control_plane.services.adf_exporter import ADFPackageExporter
 from control_plane.db import database_kind, get_db_connection, using_postgres
-from control_plane.services.firm_config import P0_ENTITIES, FirmConfigError, load_firm_config, supporting_plan, with_supporting_entities
+from control_plane.services.firm_config import P0_ENTITIES, FirmConfigError, load_firm_config, reference_fields, supporting_plan, with_supporting_entities
 from control_plane.services.workflow_event_engine import publish_event, read_events, get_projection, replay_events
 from agents.p0_agent_suite import MigrationAgentCoordinator
 
@@ -204,7 +203,7 @@ def workflow_progress() -> dict:
         rules_approved = sum(1 for r in _rules if r["status"] == "APPROVED")
         rules_draft = sum(1 for r in _rules if r["status"] == "DRAFT")
         er_pending = entity_resolution.pending(conn, migration_id)
-        roles_needed = ("AccountRole" in scope and not _has_entity_file("AccountRole") and not entity_resolution.derivation(conn, migration_id))
+        roles_needed = any(e in scope and not _has_entity_file(e) and not entity_resolution.derivation(conn, migration_id, e) for e in entity_resolution.recipes())
         _cc = code_mappings.counts(conn, migration_id)
         codes_pending = _cc["PROPOSED"]
         if not sum(_cc.values()):  # nothing profiled yet: needed once a coded canonical field has an approved mapping
@@ -2484,8 +2483,9 @@ def _code_map_stale(conn, migration_id: str, manifest: Dict[str, Any]) -> List[s
         reasons.append("Match rules were decided on Entity resolution after this package was built.")
     scope = _in_scope_entities()
     wanted = {e for e in scope if _has_entity_file(e) and _get_approved_mapping_rules(migration_id, e)}
-    if "AccountRole" in scope and not _has_entity_file("AccountRole") and (entity_resolution.derivation(conn, migration_id) or {}).get("status") == "APPROVED":
-        wanted.add("AccountRole")
+    for derived_entity in entity_resolution.recipes():
+        if derived_entity in scope and not _has_entity_file(derived_entity) and (entity_resolution.derivation(conn, migration_id, derived_entity) or {}).get("status") == "APPROVED":
+            wanted.add(derived_entity)
     if wanted - set(canon):
         reasons.append("Entities now in scope are not in this package: " + ", ".join(sorted(wanted - set(canon))) + ".")
     system = (target_connector.spec(conn) or {}).get("target_system") or ""
@@ -2654,12 +2654,12 @@ async def run_validation(request: Request):
             mappings.setdefault(row["entity_name"], {})[row["source_field"]] = row["canonical_field"]
         scenarios = validation_scenarios.list_scenarios(conn, migration_id, active_only=True)
         derivation_rows = canonical_derivations.list_derivations(conn, migration_id)
-        role_derivation = entity_resolution.derivation(conn, migration_id)
+        approved_derivations = {e: entity_resolution.text(e) for e in entity_resolution.recipes()
+                                if (entity_resolution.derivation(conn, migration_id, e) or {}).get("status") == "APPROVED"}
         conn.commit()
     finally:
         conn.close()
-    derived_entities = ({"AccountRole": entity_resolution.ROLE_DERIVATION_TEXT}
-                        if (role_derivation or {}).get("status") == "APPROVED" and not _has_entity_file("AccountRole") else {})
+    derived_entities = {e: t for e, t in approved_derivations.items() if not _has_entity_file(e)}
     derivations: Dict[str, List[Dict[str, Any]]] = {}
     for d in derivation_rows:
         derivations.setdefault(d["entity_name"], []).append(d)
@@ -2698,44 +2698,6 @@ async def run_validation(request: Request):
 
 
 # --- PHASE 1 PILOT ENDPOINTS: SOURCE-TO-CANONICAL ACCOUNT ---
-
-@app.post("/api/pilot/account/profile")
-async def profile_pilot_account_file(file: UploadFile = File(...)):
-    """Inspects uploaded accounts.csv, infers types, null rates, and candidate keys."""
-    content = await file.read()
-    profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Account")
-    if profile.get("status") != "PROFILED":
-        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
-    run_id = f"RUN-{uuid.uuid4().hex}"
-    profile_id = state_store.persist_source_profile(profile, run_id=run_id)
-    profile["run_id"] = run_id
-    profile["profile_id"] = profile_id
-    return JSONResponse({"status": "SUCCESS", "profile": profile})
-
-
-@app.post("/api/pilot/account/map")
-async def map_pilot_account(records: Optional[List[Dict[str, Any]]] = None):
-    """Executes source-to-canonical mapping with confidence scoring and persists metadata lineage."""
-    if records is None:
-        records = []
-
-    mapping_res = schema_mapper.map_source_to_canonical("Account", records)
-    run_id = f"RUN-{uuid.uuid4().hex}"
-    state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
-    safe_mapping = _preview_only_mapping(mapping_res)
-    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": safe_mapping})
-
-
-@app.get("/api/pilot/account/lineage")
-async def get_pilot_account_lineage():
-    """Retrieves SQLite metadata lineage audit records for the Account pilot."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Account' ORDER BY timestamp_utc DESC LIMIT 20;")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
-
 
 # --- PHASE 2 & 3: MIGRATION TELEMETRY & LINEAGE ENDPOINTS ---
 
@@ -2843,40 +2805,6 @@ async def check_adf_pipeline_status(adf_run_id: str):
     """Queries Azure Data Factory pipeline execution status."""
     status_res = adf_client.get_pipeline_run_status(adf_run_id)
     return JSONResponse(status_res)
-
-
-@app.get("/api/runs/{run_id}/export-package")
-async def export_package(run_id: str, mode: str = "local"):
-    """Generates SQL views and exports ADF deployment package to ADLS or local storage."""
-    in_scope_list = [e["entity_name"] for e in state_store.get_in_scope_entities()]
-    manifest = ADFPackageExporter.export_package(
-        run_id=run_id,
-        migration_id=state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
-        in_scope_entities=in_scope_list,
-        adls_container=state_store.adls_container
-    )
-    return JSONResponse(manifest)
-
-
-@app.get("/api/adf/package/download/{run_id}")
-async def download_adf_package_file(run_id: str):
-    """Downloads the exported ADF package as a deployable zip bundle."""
-    zip_path = Path(f"App_Data/Storage/{run_id}/TRANSFORMED/adf_package_{run_id}.zip")
-    if not zip_path.exists():
-        in_scope_list = [e["entity_name"] for e in state_store.get_in_scope_entities()]
-        ADFPackageExporter.export_package(
-            run_id=run_id,
-            migration_id=state_store.questionnaire_data.get("migration_id", "MIG-CORECAP-2026"),
-            in_scope_entities=in_scope_list,
-            adls_container=state_store.adls_container
-        )
-    if zip_path.exists():
-        return FileResponse(
-            path=str(zip_path),
-            filename=f"adf_package_{run_id}.zip",
-            media_type="application/zip"
-        )
-    raise HTTPException(status_code=404, detail="ADF package bundle not found.")
 
 
 # --- FORM SUBMISSIONS & API ENDPOINTS ---
@@ -3784,17 +3712,18 @@ def _resolve_in_memory(migration_id: str, rows: Dict[str, List[Dict[str, Any]]],
     conn = get_db_connection()
     try:
         er_rules = entity_resolution.approved_rules(conn, migration_id)
-        deriv = entity_resolution.derivation(conn, migration_id)
+        derivs = {e: entity_resolution.derivation(conn, migration_id, e) for e in entity_resolution.recipes()}
         conn.commit()
     finally:
         conn.close()
-    if (deriv or {}).get("status") == "APPROVED" and "AccountRole" in _in_scope_entities() and not rows.get("AccountRole"):
-        rows["AccountRole"] = []
-        join_info["AccountRole"] = {"key": None, "files": 0, "derived": entity_resolution.ROLE_DERIVATION}
+    for derived_entity, deriv in derivs.items():
+        if (deriv or {}).get("status") == "APPROVED" and derived_entity in _in_scope_entities() and not rows.get(derived_entity):
+            rows[derived_entity] = []
+            join_info[derived_entity] = {"key": None, "files": 0, "derived": entity_resolution.method(derived_entity)}
     xrefs: Dict[str, Dict[str, str]] = {}
     for entity in _load_order(list(rows)):
-        if entity == "AccountRole" and join_info.get(entity, {}).get("derived"):
-            rows[entity] = entity_resolution.derive_account_roles(rows.get("Account", []), rows.get("Client", []))
+        if join_info.get(entity, {}).get("derived") and entity_resolution.recipe_for(entity):
+            rows[entity] = entity_resolution.derive_rows(entity, rows)
         for field, (ref, _) in (entity_resolution.references().get(entity) or {}).items():
             if ref in xrefs:
                 entity_resolution.repoint(rows[entity], field, xrefs[ref])
@@ -4711,10 +4640,12 @@ def _er_context(request: Request, user: Dict[str, str], preview=None, notice: st
     conn = get_db_connection()
     try:
         all_rules = entity_resolution.rules(conn, migration_id)
-        deriv = entity_resolution.derivation(conn, migration_id)
+        derivs = {e: entity_resolution.derivation(conn, migration_id, e) for e in entity_resolution.recipes()}
         conn.commit()
     finally:
         conn.close()
+    derivable = [{"name": e, "text": entity_resolution.text(e), "decision": derivs.get(e)} for e in entity_resolution.recipes()
+                 if e in scope and not _has_entity_file(e)]
     entities = []
     for e in scope:
         suggested = entity_resolution.suggested_rules().get(e, [])
@@ -4723,9 +4654,7 @@ def _er_context(request: Request, user: Dict[str, str], preview=None, notice: st
         entities.append({"name": e, "rules": [r for r in all_rules if r["entity_name"] == e], "suggested": suggested,
                          "filled": _filled_canonical_fields(migration_id, e)})
     return {"page_title": "Entity resolution", "user_name": user["name"], "user_role": user["role"], "migration_id": migration_id,
-            "entities": entities, "scope": scope, "preview": preview, "derivation": deriv,
-            "role_derivation_text": entity_resolution.ROLE_DERIVATION_TEXT,
-            "needs_role_source": "AccountRole" in scope and not _has_entity_file("AccountRole"),
+            "entities": entities, "scope": scope, "preview": preview, "derivable": derivable,
             "can_suggest": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
             "can_preview": user["role"] in TARGET_PREVIEW_ROLES, "notice": notice, "error": error}
 
@@ -4770,22 +4699,23 @@ async def decide_match_rule(request: Request, entity_name: str = Form(...), rule
 
 
 @app.post("/api/entity-resolution/account-roles")
-async def decide_account_role_derivation(request: Request, decision: str = Form(...)):
+async def decide_entity_derivation(request: Request, decision: str = Form(...), entity: str = Form("")):
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
     try:
         try:
-            st = entity_resolution.decide_derivation(conn, migration_id, decision, user["name"])
+            st = entity_resolution.decide_derivation(conn, migration_id, decision, user["name"], entity)
         except ValueError as exc:
             conn.rollback()
             return _er_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
-    publish_event("ACCOUNT_ROLE_DERIVATION_DECIDED", migration_id, "entity", "AccountRole", {"method": entity_resolution.ROLE_DERIVATION, "status": st}, user["name"])
-    return _er_redirect("notice", "Account roles will be derived: " + entity_resolution.ROLE_DERIVATION_TEXT if st == "APPROVED"
-                        else "Account roles will not be derived; AccountRole needs a source file that names who holds each account.")
+    target = entity or next(iter(entity_resolution.recipes()), "")
+    publish_event("ENTITY_DERIVATION_DECIDED", migration_id, "entity", target, {"method": entity_resolution.method(target), "status": st}, user["name"])
+    return _er_redirect("notice", f"{target} will be derived: " + entity_resolution.text(target) if st == "APPROVED"
+                        else f"{target} will not be derived; it needs a source file.")
 
 
 @app.post("/api/entity-resolution/preview", response_class=HTMLResponse)
@@ -5572,7 +5502,7 @@ def _get_approved_mapping_catalog(migration_id: str, entity_name: str) -> Dict[s
 
 def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWorkflow", file_id: str = "") -> Dict[str, Any]:
     """Profile and map the exact persisted source CSV, preserving source identifiers as strings."""
-    scope_entity = "Client" if entity_name == "Client" else entity_name
+    scope_entity = entity_name
     if scope_entity not in set(P0_ENTITIES):
         raise HTTPException(status_code=400, detail=f"{entity_name} is not part of the MCL workflow.")
     if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
@@ -5630,7 +5560,7 @@ def _map_uploaded_source_entity(entity_name: str, actor: str = "SourceMappingWor
         if any(source in record for record in source_records)
     ]
     mapping["entity"] = entity_name
-    mapping["canonical_entity"] = "Client" if entity_name == "Client" else entity_name
+    mapping["canonical_entity"] = entity_name
     mapping["run_id"] = run_id
     if template_seed["seeds"]:
         for lineage in mapping.get("field_lineages", []):
@@ -5773,10 +5703,10 @@ async def map_all_approved_source_files(request: Request):
 async def map_mcl_uploaded_files():
     """Run the MCL source-to-canonical flow across Account, Household, and Client."""
     mcl_run_id = f"MCL-{uuid.uuid4().hex}"
-    source_entities = ["Account", "Household", "Client"]
+    source_entities = [e for e in P0_ENTITIES if state_store.entity_scopes.get(e) == "IN_SCOPE" and e in state_store.entity_sample_files]
     # Validate all prerequisites before starting any profile/mapping work.
     for entity_name in source_entities:
-        scope_entity = "Client" if entity_name == "Client" else entity_name
+        scope_entity = entity_name
         if state_store.entity_scopes.get(scope_entity) != "IN_SCOPE":
             raise HTTPException(status_code=409, detail=f"MCL run blocked: {scope_entity} is not explicitly IN_SCOPE.")
         uploaded = state_store.entity_sample_files.get(entity_name)
@@ -5914,7 +5844,7 @@ async def get_workflow_state(migration_id: Optional[str] = None):
         "migration": get_projection(active_id, "migration", active_id),
         "entities": {
             entity: get_projection(active_id, "entity", entity)
-            for entity in ("Account", "Client", "Household")
+            for entity in P0_ENTITIES
         },
     })
 
@@ -6514,86 +6444,16 @@ async def reject_cohort(request: Request):
     raise HTTPException(status_code=409, detail="Cohort/cutover review is not available. Reject mapping proposals in Mapping Studio with a reason.")
 
 
-@app.post("/api/pilot/household/profile")
-async def profile_pilot_household_file(file: UploadFile = File(...)):
-    """Inspects uploaded households.csv, infers types, null rates, and candidate keys."""
-    content = await file.read()
-    profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Household")
-    if profile.get("status") != "PROFILED":
-        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
-    run_id = f"RUN-{uuid.uuid4().hex}"
-    profile_id = state_store.persist_source_profile(profile, run_id=run_id)
-    profile["run_id"] = run_id
-    profile["profile_id"] = profile_id
-    return JSONResponse({"status": "SUCCESS", "profile": profile})
-
-
-@app.post("/api/pilot/household/map")
-async def map_pilot_household(records: Optional[List[Dict[str, Any]]] = None):
-    """Executes source-to-canonical mapping for Household and persists lineage."""
-    if records is None:
-        records = []
-
-    mapping_res = schema_mapper.map_source_to_canonical("Household", records)
-    run_id = f"RUN-{uuid.uuid4().hex}"
-    state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
-    safe_mapping = _preview_only_mapping(mapping_res)
-    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": safe_mapping})
-
-
-@app.get("/api/pilot/household/lineage")
-async def get_pilot_household_lineage():
-    """Retrieves SQLite metadata lineage audit records for Household."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Household' ORDER BY timestamp_utc DESC LIMIT 20;")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
-
-
 # --- CLIENT ENDPOINTS ---
-
-@app.post("/api/pilot/client/profile")
-async def profile_pilot_client_file(file: UploadFile = File(...)):
-    """Inspects uploaded clients.csv, infers types, null rates, and candidate keys."""
-    content = await file.read()
-    profile = SourceDataProfiler.profile_csv_content(file.filename, content, entity_name="Client")
-    if profile.get("status") != "PROFILED":
-        raise HTTPException(status_code=400, detail=profile.get("error_message", "CSV profiling failed."))
-    run_id = f"RUN-{uuid.uuid4().hex}"
-    profile_id = state_store.persist_source_profile(profile, run_id=run_id)
-    profile["run_id"] = run_id
-    profile["profile_id"] = profile_id
-    return JSONResponse({"status": "SUCCESS", "profile": profile})
-
-
-@app.post("/api/pilot/client/map")
-async def map_pilot_client(records: Optional[List[Dict[str, Any]]] = None):
-    """Executes source-to-canonical mapping for Client and persists lineage."""
-    if records is None:
-        records = []
-
-    mapping_res = schema_mapper.map_source_to_canonical("Client", records)
-    run_id = f"RUN-{uuid.uuid4().hex}"
-    state_store.persist_mapping_lineage(mapping_res, run_id=run_id, actor="Platform Admin")
-    safe_mapping = _preview_only_mapping(mapping_res)
-    return JSONResponse({"status": mapping_res.get("status", "UNKNOWN"), "run_id": run_id, "mapping": safe_mapping})
-
-
-@app.get("/api/pilot/client/lineage")
-async def get_pilot_client_lineage():
-    """Retrieves SQLite metadata lineage audit records for Client."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM field_lineage_audit WHERE entity_name = 'Client' ORDER BY timestamp_utc DESC LIMIT 20;")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return JSONResponse({"status": "SUCCESS", "lineage_records": rows})
 
 # --- XODUS data plane: stable pipelines, pull requests, setup, deployment check, runs, promotion gate ---
 
-ENTITY_DEPENDS = {"Household": {"Advisor"}, "Account": {"Household"}, "Client": {"Household"}, "AccountRole": {"Account", "Client"}}  # referenced records load first (a household before its clients and accounts; clients are resolved before account roles point at them)
+def _entity_depends() -> Dict[str, set]:
+    """{entity: the entities whose records must load first}: every entity a field of it points at (from the firm configuration)."""
+    try:
+        return {e: {o for o, _k in fields.values()} for e, fields in reference_fields().items()}
+    except FirmConfigError:
+        return {}
 
 
 def live_validation_status(conn, migration_id: str) -> Optional[Dict[str, Any]]:
@@ -6605,7 +6465,7 @@ def live_validation_status(conn, migration_id: str) -> Optional[Dict[str, Any]]:
 def _load_order(entities: List[str]) -> List[str]:
     order, left = [], sorted(entities)
     while left:
-        ready = [e for e in left if not (ENTITY_DEPENDS.get(e, set()) & set(left))] or left[:1]
+        ready = [e for e in left if not (_entity_depends().get(e, set()) & set(left))] or left[:1]
         order += ready
         left = [e for e in left if e not in ready]
     return order
@@ -6645,17 +6505,19 @@ def _xodus_package_inputs(migration_id: str):
     conn = get_db_connection()
     try:
         er_rules = entity_resolution.approved_rules(conn, migration_id)
-        deriv = entity_resolution.derivation(conn, migration_id)
+        derivs = {e: entity_resolution.derivation(conn, migration_id, e) for e in entity_resolution.recipes()}
         conn.commit()
     finally:
         conn.close()
     for name, ent in entities.items():
         if er_rules.get(name):
             ent["resolution"] = er_rules[name]
-    if ((deriv or {}).get("status") == "APPROVED" and "AccountRole" in _in_scope_entities() and "AccountRole" not in entities
-            and {"Account", "Client"} <= set(entities) and "AccountRole" in firm.entities):
-        entities["AccountRole"] = {"files": [], "mappings": {}, "derivations": [], "key": None, "derived": entity_resolution.ROLE_DERIVATION,
-                                   "canonical_fields": firm.canonical_field_names("AccountRole")}
+    for derived_entity in entity_resolution.recipes():
+        r = entity_resolution.recipe_for(derived_entity)
+        if ((derivs.get(derived_entity) or {}).get("status") == "APPROVED" and derived_entity in _in_scope_entities() and derived_entity not in entities
+                and {r["parent"]["entity"], r["holder"]["entity"]} <= set(entities) and derived_entity in firm.entities):
+            entities[derived_entity] = {"files": [], "mappings": {}, "derivations": [], "key": None, "derived": r["method"],
+                                        "canonical_fields": firm.canonical_field_names(derived_entity)}
     exprs = ({m["transformation_expression"] for m in approved} | {m["expression"] for e in entities.values() for m in e["mappings"].values()}
              | {d["rule_expression"] for e in entities.values() for d in e["derivations"]})
     rules = {}

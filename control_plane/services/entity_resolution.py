@@ -6,9 +6,9 @@ approved rule form one cluster (transitively). Survivorship: the most complete r
 and each of its blank fields takes the first populated value of the others, most complete first. A crosswalk keeps every source key
 with its surviving key, so references from other entities (an account role's client) are pointed at the survivor.
 
-AccountRole needs a source that says who holds each account. When a source has none (CoreCap), the analyst can approve a
-derivation instead: the head of each household (household order 1) owns every account of that household. That is a business
-assumption and is shown as one. Only keys and counts are ever shown, never the matched values.
+An entity that needs a source the firm may not have (who holds each account) can be derived from other entities by a recipe in
+platform_knowledge/derivations.yaml, which the analyst approves per migration: it is a business assumption and is shown as one.
+Only keys and counts are ever shown, never the matched values.
 """
 import json
 import re
@@ -36,8 +36,30 @@ def references() -> Dict[str, Dict[str, tuple]]:
         return {}
 
 
-ROLE_DERIVATION = "HOUSEHOLD_HEAD_OWNS"
-ROLE_DERIVATION_TEXT = "The head of each household (household order 1) owns every account of that household (role OWNER)."
+
+
+def recipes() -> Dict[str, Dict[str, Any]]:
+    """Derivation recipes by derived entity (platform_knowledge/derivations.yaml); none are built in."""
+    import yaml
+    from control_plane.paths import platform_knowledge_dir
+    try:
+        return yaml.safe_load((platform_knowledge_dir() / "derivations.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def recipe_for(entity: str) -> Optional[Dict[str, Any]]:
+    return recipes().get(entity)
+
+
+def method(entity: str) -> str:
+    return str((recipe_for(entity) or {}).get("method") or "")
+
+
+def text(entity: str) -> str:
+    return str((recipe_for(entity) or {}).get("text") or "")
+
+
 STRIP = " -.,/'()[]"  # removed before comparing (the generated SQL removes the same characters)
 PLACEHOLDERS = ("REDACTED", "NA", "NULL", "NONE", "UNKNOWN")  # masked or missing values never match anything
 _DDL = (
@@ -107,20 +129,24 @@ def decide(conn: sqlite3.Connection, migration_id: str, entity: str, rule_id: st
     return status
 
 
-def derivation(conn: sqlite3.Connection, migration_id: str, entity: str = "AccountRole") -> Optional[Dict[str, Any]]:
+def derivation(conn: sqlite3.Connection, migration_id: str, entity: str = "") -> Optional[Dict[str, Any]]:
+    entity = entity or next(iter(recipes()), "")
     ensure_tables(conn)
     r = conn.execute("SELECT * FROM entity_derivations WHERE migration_id = ? AND entity_name = ?", (migration_id, entity)).fetchone()
     return dict(r) if r else None
 
 
-def decide_derivation(conn: sqlite3.Connection, migration_id: str, decision: str, actor: str, entity: str = "AccountRole") -> str:
+def decide_derivation(conn: sqlite3.Connection, migration_id: str, decision: str, actor: str, entity: str = "") -> str:
+    entity = entity or next(iter(recipes()), "")
+    if entity not in recipes():
+        raise ValueError("No derivation is defined for that entity.")
     ensure_tables(conn)
     status = {"APPROVE": "APPROVED", "REJECT": "REJECTED"}.get(str(decision or "").upper())
     if not status:
         raise ValueError("Unknown decision.")
     conn.execute("DELETE FROM entity_derivations WHERE migration_id = ? AND entity_name = ?", (migration_id, entity))
     conn.execute("INSERT INTO entity_derivations (migration_id, entity_name, method, status, decided_by, decided_utc) VALUES (?, ?, ?, ?, ?, ?)",
-                 (migration_id, entity, ROLE_DERIVATION, status, actor, _now()))
+                 (migration_id, entity, method(entity), status, actor, _now()))
     return status
 
 
@@ -199,14 +225,42 @@ def repoint(rows: List[Dict[str, Any]], field: str, xref: Dict[str, str]) -> int
     return n
 
 
-def derive_account_roles(accounts: List[Dict[str, Any]], clients: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """HOUSEHOLD_HEAD_OWNS: one OWNER row per account, held by the client with household order 1 in the account's household."""
-    head = {}
-    for c in clients:
-        if str(c.get("HH_ORDER") or "").strip() in ("1", "1.0") and c.get("HH_ID") and c.get("CLIENT_ID"):
-            head.setdefault(str(c["HH_ID"]), str(c["CLIENT_ID"]))
-    return [{"ACCT_NUM": a["ACCT_NUM"], "CLIENT_ID": head[str(a["HH_ID"])], "ROLE": "OWNER", "ROLE_ORDER": "1"}
-            for a in accounts if a.get("ACCT_NUM") and str(a.get("HH_ID") or "") in head]
+def derive_rows(entity: str, rows_by_entity: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """The recipe's rows: one per parent record whose group has a first-ranked holder."""
+    r = recipe_for(entity)
+    if not r:
+        return []
+    p, h = r["parent"], r["holder"]
+    first = {str(x) for x in h.get("first", ["1"])}
+    head: Dict[str, str] = {}
+    for c in rows_by_entity.get(h["entity"], []):
+        if str(c.get(h["rank"]) or "").strip() in first and c.get(h["group"]) and c.get(h["key"]):
+            head.setdefault(str(c[h["group"]]), str(c[h["key"]]))
+    out = []
+    for a in rows_by_entity.get(p["entity"], []):
+        if a.get(p["key"]) and str(a.get(p["group"]) or "") in head:
+            row = {}
+            for col, spec in r["columns"].items():
+                row[col] = a[p["key"]] if spec.get("from") == "parent.key" else head[str(a[p["group"]])] if spec.get("from") == "holder.key" else str(spec.get("value", ""))
+            out.append(row)
+    return out
+
+
+def derive_sql(entity: str, canon: str, scope: str, ctable: str) -> str:
+    """T-SQL for the same recipe, reading the canonical tables of the parent and holder entities built earlier in the load order."""
+    r = recipe_for(entity)
+    p, h = r["parent"], r["holder"]
+    cols = list(r["columns"])
+    q = lambda n: "[" + re.sub(r"[^A-Za-z0-9_]", "_", str(n)) + "]"
+    lit = lambda v: "N'" + str(v).replace("'", "''") + "'"
+    sel = ", ".join(f"a.{q(p['key'])}" if sp.get("from") == "parent.key" else f"h.{q(h['key'])}" if sp.get("from") == "holder.key" else lit(sp.get("value", ""))
+                    for sp in r["columns"].values())
+    firsts = ", ".join(lit(x) for x in h.get("first", ["1"]))
+    return (f"INSERT INTO [{canon}].[{ctable}] ({', '.join(q(c) for c in cols)}, [xodus_batch_id], [xodus_run_id])\n"
+            f"SELECT {sel}, @BatchId, @RunId FROM [{canon}].[{scope}_{p['entity']}] AS a JOIN "
+            f"(SELECT {q(h['group'])}, MIN({q(h['key'])}) AS {q(h['key'])} FROM [{canon}].[{scope}_{h['entity']}] WHERE LTRIM(RTRIM({q(h['rank'])})) IN ({firsts}) "
+            f"AND {q(h['group'])} IS NOT NULL AND {q(h['key'])} IS NOT NULL GROUP BY {q(h['group'])}) AS h ON h.{q(h['group'])} = a.{q(p['group'])} "
+            f"WHERE a.{q(p['key'])} IS NOT NULL;")
 
 
 # ---- SQL (the generated canonical procedures) ----

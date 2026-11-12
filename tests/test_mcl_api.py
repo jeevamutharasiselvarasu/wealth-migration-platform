@@ -199,47 +199,7 @@ def test_single_entity_mapping_does_not_expose_unapproved_canonical_rows(monkeyp
     assert "PRIVATE-001" not in response.body.decode("utf-8")
 
 
-
-@pytest.mark.parametrize(
-    ("endpoint", "entity"),
-    [
-        (app_module.map_pilot_account, "Account"),
-        (app_module.map_pilot_household, "Household"),
-        (app_module.map_pilot_client, "Client"),
-    ],
-)
-def test_pilot_mapping_apis_withhold_rows_and_raw_samples(endpoint, entity, monkeypatch):
-    from types import SimpleNamespace
-
-    raw_id = "SENSITIVE-ROW-001"
-    monkeypatch.setattr(
-        app_module,
-        "schema_mapper",
-        SimpleNamespace(
-            map_source_to_canonical=lambda entity_name, records: {
-                "entity": entity_name,
-                "status": "SUCCESS",
-                "record_count": 1,
-                "mapped_records": [{"CANONICAL_ID": raw_id}],
-                "field_lineages": [
-                    {"source_field": "SOURCE_ID", "canonical_field": "CANONICAL_ID", "sample_value": raw_id}
-                ],
-                "relationship_candidates": [{"source_key": raw_id}],
-            }
-        ),
-    )
-    monkeypatch.setattr(app_module.state_store, "persist_mapping_lineage", lambda *args, **kwargs: None)
-    response = asyncio.run(endpoint(records=[{"SOURCE_ID": raw_id}]))
-    payload = json.loads(response.body.decode("utf-8"))
-    assert payload["mapping"]["mapped_records_withheld"] is True
-    assert payload["mapping"]["preview_record_count"] == 1
-    assert "mapped_records" not in payload["mapping"]
-    assert "relationship_candidates" not in payload["mapping"]
-    assert raw_id not in response.body.decode("utf-8")
-
-
-
-def test_p0_scope_selector_and_upload_catalog_are_limited_to_three_entities(monkeypatch):
+def test_scope_selector_and_upload_catalog_are_limited_to_the_configured_entities(monkeypatch):
     from ui.state import WorkspaceStateStore
 
     state = WorkspaceStateStore()
@@ -249,9 +209,10 @@ def test_p0_scope_selector_and_upload_catalog_are_limited_to_three_entities(monk
         for entities in menu.values()
         for entity in entities
     }
-    assert displayed == {"Account", "Client", "Household"}
+    from control_plane.services.firm_config import P0_ENTITIES
+    assert displayed == set(P0_ENTITIES)  # the entities the firm configuration defines, no others
 
-    # Other canonical entities cannot be re-enabled through the P0 scope form.
+    # Entities the configuration does not define cannot be put in scope.
     state.save_entity_scopes({
         "Account": "IN_SCOPE",
         "Client": "IN_SCOPE",
@@ -260,7 +221,7 @@ def test_p0_scope_selector_and_upload_catalog_are_limited_to_three_entities(monk
         "Party": "IN_SCOPE",
     })
     uploads = {entity["entity_name"] for entity in state.get_source_upload_entities()}
-    assert uploads == {"Account", "Client", "Household"}
+    assert uploads == {"Account", "Client", "Household"}  # only configured entities can be in scope; the unknown names were ignored
 
 
 

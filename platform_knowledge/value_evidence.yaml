@@ -79,3 +79,6 @@ text_fields:
 - LEGAL_NAME
 needs_name_token:
 - HH_NAME
+lookup_words:
+- CUSTODIAN
+- REGISTRATION

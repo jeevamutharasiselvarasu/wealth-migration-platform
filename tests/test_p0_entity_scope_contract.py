@@ -1,19 +1,16 @@
 import json
 from pathlib import Path
 
-from control_plane.kernel.wealth_kernel import WealthManagementKnowledgeKernel
+from control_plane.kernel.canonical_catalog import CanonicalCatalog
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_canonical_kernel_exposes_only_three_p0_entities():
-    entities = [
-        item["entity_name"]
-        for group in WealthManagementKnowledgeKernel.get_canonical_entities().values()
-        for item in group
-    ]
-    assert entities == ["Account", "Client", "Household"]
+def test_canonical_catalog_lists_the_entities_of_the_firm_configuration():
+    from control_plane.services.firm_config import load_firm_config
+    entities = [item["entity_name"] for group in CanonicalCatalog.get_canonical_entities().values() for item in group]
+    assert entities == list(load_firm_config().entities)
 
 
 def test_source_dictionary_contains_only_p0_entities_and_no_target_mapping():

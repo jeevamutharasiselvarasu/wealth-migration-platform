@@ -1,0 +1,16 @@
+# Entities the platform may derive from other entities when a source has no file for them. A person approves each derivation per migration.
+# Recipe "head assigns": one row per parent record, held by the holder ranked first in the parent's group.
+#   parent   the records one row is made for (its key, and the field that names its group)
+#   holder   the records that hold them (key, the group field, the rank field, and which rank values mean "first")
+#   columns  the derived entity's columns: a field of the parent or holder key, or a fixed value
+# A deployment for another domain supplies its own file, or none (nothing is then derivable).
+AccountRole:
+  method: HOUSEHOLD_HEAD_OWNS
+  text: The head of each household (household order 1) owns every account of that household (role OWNER).
+  parent: {entity: Account, key: ACCT_NUM, group: HH_ID}
+  holder: {entity: Client, key: CLIENT_ID, group: HH_ID, rank: HH_ORDER, first: ["1", "1.0"]}
+  columns:
+    ACCT_NUM: {from: parent.key}
+    CLIENT_ID: {from: holder.key}
+    ROLE: {value: OWNER}
+    ROLE_ORDER: {value: "1"}

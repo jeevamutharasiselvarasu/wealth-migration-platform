@@ -15,7 +15,18 @@ from control_plane.services import transformation_rules as tr
 MAX_VALUES = 500
 MAX_LOOKUP_DISTINCT = 30
 _ID_HINT = re.compile(r"(?:^|_)(ID|NO|NUM|NUMBER|EMAIL|NAME|PHONE|ADDR|ADDRESS|SSN|TAX_?ID|ZIP|POSTAL)(?:_|$)|_ID$|_NO$", re.I)
-_LOOKUP_HINT = re.compile(r"CUSTODIAN|TYPE|STATUS|CODE|REGISTRATION|RELATIONSHIP|CLASS|CATEGORY|SRC|SOURCE", re.I)
+_LOOKUP_BASE = ("TYPE", "STATUS", "CODE", "RELATIONSHIP", "CLASS", "CATEGORY", "SRC", "SOURCE")
+
+
+def _lookup_hint() -> "re.Pattern":
+    """Column-name words that suggest coded values: generic ones, plus the domain's own (platform_knowledge/value_evidence.yaml lookup_words)."""
+    import yaml
+    from control_plane.paths import platform_knowledge_dir
+    try:
+        extra = (yaml.safe_load((platform_knowledge_dir() / "value_evidence.yaml").read_text(encoding="utf-8")) or {}).get("lookup_words") or []
+    except (OSError, yaml.YAMLError):
+        extra = []
+    return re.compile("|".join(re.escape(str(w)) for w in list(_LOOKUP_BASE) + list(extra)), re.I)
 _DATE_HINT = re.compile(r"DATE|(?:^|_)(DT|DOB|OPEN|CLOSED|DELETED)(?:_|$)", re.I)
 _NUM_RE = re.compile(r"^\(?[$£€]?\s*-?[\d,]*\.?\d+\)?%?$")
 _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -58,13 +69,11 @@ def sug_rule_id(prefix: str, rule_type: str, field: str, params: Dict[str, Any])
 
 
 def _crosswalk_for(field: str, crosswalks: Dict[str, Dict[str, str]]) -> Dict[str, str]:
+    """The known value map whose name appears in the field name (the caller supplies the maps; none are built in)."""
     f = field.upper()
-    if "CUSTODIAN" in f:
-        return crosswalks.get("custodian", {})
-    if "REGIST" in f:
-        return crosswalks.get("registration", {})
-    if "TYPE" in f:
-        return crosswalks.get("client_type", {})
+    for name, table in crosswalks.items():
+        if str(name).upper() in f:
+            return table
     return {}
 
 
@@ -140,7 +149,7 @@ def suggest(columns: List[Dict[str, Any]], rules: List[Dict[str, Any]], crosswal
             out.append({**base, "kind": "NEW", "rule_type": "NUMBER_CLEAN", "rule_id": rid, "params": params, "exists": rid in live_ids, "origin": "data pattern",
                         "evidence": f"Values carry symbols or grouping ({numeric['strip_chars'] or 'parentheses'}); cleaned to {params['decimals']} decimals.", "needs_input": 0})
             continue
-        lookup_like = (_LOOKUP_HINT.search(field) or (len(distinct) <= 12 and len(values) >= 3 * len(distinct))) and not _ID_HINT.search(field)
+        lookup_like = (_lookup_hint().search(field) or (len(distinct) <= 12 and len(values) >= 3 * len(distinct))) and not _ID_HINT.search(field)
         if lookup_like and 2 <= len(distinct) <= MAX_LOOKUP_DISTINCT:
             cross = _crosswalk_for(field, crosswalks)
             entries = []
