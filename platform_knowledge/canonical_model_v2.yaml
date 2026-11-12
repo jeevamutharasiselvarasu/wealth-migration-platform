@@ -46,7 +46,7 @@ entities:
       - {name: ACCT_NUM, type: string, key: true, required: true}
       - {name: ACCOUNT_ID, type: string}
       - {name: ACCT_NAME, type: string}
-      - {name: CUSTODIAN_CODE, type: string, required: true, code_set: custodian}
+      - {name: CUSTODIAN_CODE, type: string, code_set: custodian}
       - {name: CUSTODIAN_NAME, type: string}
       - {name: REG_TYPE, type: string, required: true, code_set: registration_type}
       - {name: TAX_STATUS, type: string, code_set: tax_status}

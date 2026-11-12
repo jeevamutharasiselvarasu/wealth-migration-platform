@@ -23,7 +23,7 @@ def test_contract_keeps_the_three_core_entities_and_stable_required_fields():
     # 1.2.0 adds Advisor and AccountRole (canonical model v2, phase 2); the three core entities are unchanged
     assert CONFIG.config_version == "1.2.0" and CONFIG.canonical_contract_ref == "Simplicity-MCL-v1"
     assert sorted(CONFIG.entities) == ["Account", "AccountRole", "Advisor", "Client", "Household"]
-    assert CONFIG.required_fields("Account") == ["ACCT_NUM", "CUSTODIAN_CODE", "REG_TYPE", "OPEN_DATE"]  # REP_CODE became optional
+    assert CONFIG.required_fields("Account") == ["ACCT_NUM", "REG_TYPE", "OPEN_DATE"]  # REP_CODE and CUSTODIAN_CODE are optional
     assert CONFIG.required_fields("Client") == ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
     assert CONFIG.required_fields("Household") == ["HH_ID", "HH_NAME"]
     assert CONFIG.field_contract("Household", "REP_CODE").nullable and CONFIG.field_contract("Account", "REP_CODE").nullable

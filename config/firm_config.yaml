@@ -25,7 +25,7 @@ entities:
     grain: One legal/custodial account identity
     fields:
       - {name: ACCT_NUM, type: string, nullable: false, is_key: true, description: "Custodian-issued account number (source AccountNumber). Natural key is custodian plus number. Keep as text; reject name text and values over 20 characters."}
-      - {name: CUSTODIAN_CODE, type: string, nullable: false, description: "Custodian code, derived from CUSTODIAN_NAME by a versioned value map (source has 73 free-text names)."}
+      - {name: CUSTODIAN_CODE, type: string, nullable: true, description: "Custodian code, derived from CUSTODIAN_NAME by a versioned value map when a code list is supplied (source has 73 free-text names); optional because some targets take the custodian name as-is."}
       - {name: REG_TYPE, type: string, nullable: false, required_for_targets: [ORION_MCL, SPARC], description: "Registration type (source RegistrationType, about 29% null at source). Nulls are exceptions, never defaulted. Value map needed for the target lists."}
       - {name: OPEN_DATE, type: date, nullable: false, description: "Date the account was opened at the custodian (source CustodialStartDate)."}
       - {name: REP_CODE, type: string, nullable: true, description: "Custodian-assigned representative code (source RepCode, 2.6% null)."}

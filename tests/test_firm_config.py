@@ -481,7 +481,7 @@ def test_mapper_emits_evidence_proposals_with_basis_and_never_for_mapped_fields(
         assert lineage[column]["rule_applied"].startswith("DIRECT_COPY (VALUE_EVIDENCE:")
         assert SchemaMapperAgent.mapping_kind(lineage[column]["rule_applied"], target) == "DIRECT"
         assert SchemaMapperAgent.supports_transformation(lineage[column]["rule_applied"])
-    assert result["missing_required"] == ["CUSTODIAN_CODE"]  # REP_CODE is optional since contract 1.1.0
+    assert result["missing_required"] == []  # CUSTODIAN_CODE and REP_CODE are optional
 
 
 def test_low_confidence_evidence_proposals_need_individual_review(tmp_path, monkeypatch):
