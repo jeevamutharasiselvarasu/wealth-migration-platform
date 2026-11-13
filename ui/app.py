@@ -3767,7 +3767,7 @@ def _canonical_rows_for_migration(migration_id: str, skip_files=(), resolve: boo
         rules = _get_approved_mapping_rules(migration_id, entity)
         mapper = SchemaMapperAgent(
             custom_catalog={**schema_mapper.catalog, **{s: r["canonical_field"] for s, r in rules.items()}},
-            approved_transformations={s: r["transformation_expression"] for s, r in rules.items()})
+            approved_transformations={s: r["transformation_expression"] for s, r in rules.items()}, infer=False)  # guesses never fill the rows
         for rec in group.values():
             stored = rec.get("stored_path")
             if rec.get("inference_approval_status") != "APPROVED" or not stored or not file_store.is_file(stored):

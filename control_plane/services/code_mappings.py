@@ -50,10 +50,15 @@ def profile(model: Dict[str, Any], rows: Dict[str, List[Dict[str, Any]]]) -> Dic
 
 def propose(conn: sqlite3.Connection, migration_id: str, model: Dict[str, Any], rows: Dict[str, List[Dict[str, Any]]]) -> Dict[str, int]:
     """Profile the values and propose a canonical code for every value not seen before. Decided values keep their decision (their counts
-    are refreshed). Returns {"values", "new", "suggested"}."""
+    are refreshed; an undecided value the mappings no longer produce is dropped). Returns {"values", "new", "suggested"}."""
     ensure_tables(conn)
     seen = profile(model, rows)
     new = suggested = 0
+    # A value nobody has decided and the approved mappings no longer produce (its source mapping was reopened or rejected) is dropped.
+    for r in conn.execute("SELECT code_set, source_value FROM code_mappings WHERE migration_id = ? AND status = 'PROPOSED'", (migration_id,)).fetchall():
+        if r["source_value"] not in seen.get(r["code_set"], {}):
+            conn.execute("DELETE FROM code_mappings WHERE migration_id = ? AND code_set = ? AND source_value = ? AND status = 'PROPOSED'",
+                         (migration_id, r["code_set"], r["source_value"]))
     for code_set, values in seen.items():
         for value, rec in values.items():
             fields = ", ".join(sorted(rec["fields"]))

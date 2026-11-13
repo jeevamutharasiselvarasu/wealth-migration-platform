@@ -11,11 +11,12 @@
 # v1.2.0 (2026-11-11): Advisor and AccountRole added (canonical model v2, phase 2); field names as in platform_knowledge/canonical_model_v2.yaml.
 # v1.3.0 (2026-11-13): CoreCap to Simplicity (Orion MCL and SPARC) spec: Household head and trust fields, Account fee and flow fields,
 #   and the Model, ModelWeight, AccountModel and AccountGainLoss entities for SPARC. All new fields are nullable: no source or target requires them for Orion.
+# v1.4.0 (2026-11-13): AccountAllocation (Account_Targets: the model or the securities an account targets) replaces AccountModel; Model and ModelWeight carry the drift fields.
 # SEED VALUES: keys/types still need business owner confirmation before being treated as final.
 schema_version: 1
 firm_id: SIMPLICITY
 firm_name: Simplicity
-config_version: "1.3.0"
+config_version: "1.4.0"
 scope_direction: source_to_canonical
 canonical_contract_ref: Simplicity-MCL-v1
 target_system:
@@ -115,14 +116,27 @@ entities:
       - {name: SYMBOL_ID, type: string, nullable: false, description: "Security identifier (Model_Weights.SymbolId)."}
       - {name: SYMBOL_NAME, type: string, nullable: true, description: "Security symbol (Model_Weights.SymbolName); SPARC Model Symbol."}
       - {name: SYMBOL_TYPE, type: string, nullable: true, description: "Type of the symbol (Model_Weights.SymbolType)."}
-      - {name: ALLOCATION_PCT, type: decimal, nullable: true, description: "Target allocation in percent (Model_Weights.AllocationPct)."}
-  AccountModel:
-    grain: The model an account follows
+      - {name: ALLOCATION_PCT, type: decimal, nullable: true, description: "Target allocation of the security in the model (Model_Weights.AllocationPct)."}
+      - {name: TARGET_DRIFT_UP, type: decimal, nullable: true, description: "Allowed drift above the target (Model_Weights.TargetDriftUp)."}
+      - {name: TARGET_DRIFT_DOWN, type: decimal, nullable: true, description: "Allowed drift below the target (Model_Weights.TargetDriftDown)."}
+  AccountAllocation:
+    grain: "One target line of an account: the model the account follows, or one security with its target weight (Account_Targets)"
     fields:
-      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM)."}
-      - {name: MODEL_ID, type: string, nullable: false, description: "The model (Model.MODEL_ID). No source among the eight files links accounts to models: Account_Targets.ModelId is needed (decision D10)."}
-      - {name: MODEL_NAME, type: string, nullable: true, description: "Name of the model, as the target shows it (Models.Name); SPARC Current Model."}
-      - {name: MODEL_SYMBOL, type: string, nullable: true, description: "A security symbol of the model (Model_Weights.SymbolName); SPARC Model Symbol."}
+      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM; Account_Targets.AccountNumber)."}
+      - {name: ACCOUNT_ID, type: string, nullable: true, description: "Source account identifier (Account_Targets.AccountId)."}
+      - {name: CUSTODIAN_NAME, type: string, nullable: true, description: "Custodian of the account as the target file states it (Account_Targets.CustodianName)."}
+      - {name: TARGET_TYPE, type: string, nullable: false, description: "Model or Symbol: whether the line sets a model or a single security (Account_Targets.TargetType)."}
+      - {name: MODEL_ID, type: string, nullable: true, description: "The model, for a Model line (Model.MODEL_ID; Account_Targets.ModelId; one value has no model, an orphan at source)."}
+      - {name: MODEL_NAME, type: string, nullable: true, description: "Name of the model, as the target shows it (Account_Targets.ModelName); SPARC Current Model."}
+      - {name: SYMBOL_ID, type: string, nullable: true, description: "The security, for a Symbol line (Account_Targets.SymbolId)."}
+      - {name: SYMBOL_TYPE, type: string, nullable: true, description: "Type of the security (Account_Targets.SymbolType)."}
+      - {name: SYMBOL_NAME, type: string, nullable: true, description: "Name of the security (Account_Targets.SymbolName); SPARC Model Symbol."}
+      - {name: ALLOCATION_PCT, type: decimal, nullable: true, description: "Target allocation of the line as a fraction of the account (Account_Targets.AllocationPct)."}
+      - {name: TARGET_DRIFT_UP, type: decimal, nullable: true, description: "Allowed drift above the target for a Symbol line (Account_Targets.TargetDriftUp)."}
+      - {name: TARGET_DRIFT_DOWN, type: decimal, nullable: true, description: "Allowed drift below the target for a Symbol line (Account_Targets.TargetDriftDown)."}
+      - {name: IS_PROTECTED, type: boolean, nullable: true, description: "Whether the security is protected from trading (Account_Targets.IsProtected)."}
+      - {name: CASH_TARGET_DRIFT_UP, type: decimal, nullable: true, description: "Allowed drift above the cash target of the account (Account_Targets.CashTargetDriftUp)."}
+      - {name: CASH_TARGET_DRIFT_DOWN, type: decimal, nullable: true, description: "Allowed drift below the cash target of the account (Account_Targets.CashTargetDriftDown)."}
   AccountGainLoss:
     grain: Realized gain or loss for one account
     fields:

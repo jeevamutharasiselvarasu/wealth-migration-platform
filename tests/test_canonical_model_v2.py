@@ -25,7 +25,7 @@ def model():
 
 
 def test_definition_validates_with_the_agreed_entities_and_first_code_sets(model):
-    assert set(model["entities"]) == {"Household", "Client", "Account", "AccountRole", "Advisor", "Model", "ModelWeight", "AccountModel", "AccountGainLoss"}  # no Party layer; the representative is the Advisor
+    assert set(model["entities"]) == {"Household", "Client", "Account", "AccountRole", "Advisor", "Model", "ModelWeight", "AccountAllocation", "AccountGainLoss"}  # no Party layer; the representative is the Advisor
     assert {"registration_type", "tax_status", "custodian", "account_status", "household_role"} <= set(model["code_sets"])
     assert cm.coded_fields(model)["Account"] == {"CUSTODIAN_CODE": "custodian", "REG_TYPE": "registration_type", "TAX_STATUS": "tax_status",
                                                  "ACCT_STATUS": "account_status"}

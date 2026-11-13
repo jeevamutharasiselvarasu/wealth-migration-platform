@@ -91,6 +91,12 @@ catalog:
   Phone: PHONE
   Email: EMAIL
   EmployerName: EMPLOYER_NAME
+  Account Number: ACCT_NUM
+  AccountID: ACCOUNT_ID
+  Account Fee Schedule: FEE_SCHEDULE
+  Market Value: MARKET_VALUE
+  Additions: CONTRIBUTIONS
+  Withdrawals: DISTRIBUTIONS
   TERMINATION_EFFECTIVE_DT: CLOSE_DATE
   CLOSURE_CATEGORY: ARCHIVE_REASON
 entity_catalog:
@@ -105,6 +111,33 @@ entity_catalog:
     Email: EMAIL
     IsActive: IS_ACTIVE
     RepCodes: REP_CODES
+  Model:
+    Id: MODEL_ID
+    Name: MODEL_NAME
+  AccountAllocation:
+    AccountNumber: ACCT_NUM
+    AccountId: ACCOUNT_ID
+    CustodianName: CUSTODIAN_NAME
+    TargetType: TARGET_TYPE
+    ModelId: MODEL_ID
+    ModelName: MODEL_NAME
+    SymbolId: SYMBOL_ID
+    SymbolType: SYMBOL_TYPE
+    SymbolName: SYMBOL_NAME
+    AllocationPct: ALLOCATION_PCT
+    TargetDriftUp: TARGET_DRIFT_UP
+    TargetDriftDown: TARGET_DRIFT_DOWN
+    IsProtected: IS_PROTECTED
+    CashTargetDriftUp: CASH_TARGET_DRIFT_UP
+    CashTargetDriftDown: CASH_TARGET_DRIFT_DOWN
+  ModelWeight:
+    ModelId: MODEL_ID
+    TargetDriftUp: TARGET_DRIFT_UP
+    TargetDriftDown: TARGET_DRIFT_DOWN
+    SymbolId: SYMBOL_ID
+    SymbolName: SYMBOL_NAME
+    SymbolType: SYMBOL_TYPE
+    AllocationPct: ALLOCATION_PCT
   AccountRole:
     AccountNumber: ACCT_NUM
     ContactId: CLIENT_ID

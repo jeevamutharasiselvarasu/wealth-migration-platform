@@ -221,7 +221,7 @@ def move_table(model: Dict[str, Any], table: str, entity: Optional[str], canonic
         model["unassigned_tables"] = unassigned + [table]
         return
     if entity not in canonical:
-        raise ValueError("Entity must be Account, Client or Household.")
+        raise ValueError("Entity must be one of: " + ", ".join(sorted(canonical)) + ".")
     if not cols:  # table was unassigned: its columns are not in the model yet, so it must be re-inferred
         raise ValueError("This table was not matched at inference; re-read the target to include it.")
     model["unassigned_tables"] = unassigned

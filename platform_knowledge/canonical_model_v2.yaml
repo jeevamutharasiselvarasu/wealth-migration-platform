@@ -4,7 +4,7 @@
 # Code sets: every canonical code with a description and the spellings sources commonly use (synonyms are only suggestions;
 # an analyst approves every source value -> canonical code).
 model: XODUS-Canonical
-version: 2.1.0
+version: 2.2.0
 entities:
   Household:
     description: The grouping a firm manages together, with its advisor. Clients and accounts belong to a household.
@@ -99,13 +99,26 @@ entities:
       - {name: SYMBOL_NAME, type: string}
       - {name: SYMBOL_TYPE, type: string}
       - {name: ALLOCATION_PCT, type: decimal}
-  AccountModel:
-    description: The model an account follows.
+      - {name: TARGET_DRIFT_UP, type: decimal}
+      - {name: TARGET_DRIFT_DOWN, type: decimal}
+  AccountAllocation:
+    description: One target line of an account, the model it follows or one security with its target weight.
     fields:
       - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
-      - {name: MODEL_ID, type: string, key: true, required: true, description: Model.MODEL_ID}
-      - {name: MODEL_NAME, type: string, description: Name of the model as the target shows it}
-      - {name: MODEL_SYMBOL, type: string, description: A security symbol of the model}
+      - {name: ACCOUNT_ID, type: string}
+      - {name: CUSTODIAN_NAME, type: string}
+      - {name: TARGET_TYPE, type: string, key: true, required: true, description: Model or Symbol}
+      - {name: MODEL_ID, type: string, key: true, description: Model.MODEL_ID, set on a Model line}
+      - {name: MODEL_NAME, type: string}
+      - {name: SYMBOL_ID, type: string, key: true, description: The security, set on a Symbol line}
+      - {name: SYMBOL_TYPE, type: string}
+      - {name: SYMBOL_NAME, type: string}
+      - {name: ALLOCATION_PCT, type: decimal}
+      - {name: TARGET_DRIFT_UP, type: decimal}
+      - {name: TARGET_DRIFT_DOWN, type: decimal}
+      - {name: IS_PROTECTED, type: boolean}
+      - {name: CASH_TARGET_DRIFT_UP, type: decimal}
+      - {name: CASH_TARGET_DRIFT_DOWN, type: decimal}
   AccountGainLoss:
     description: Realized gain or loss for one account.
     fields:

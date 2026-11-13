@@ -88,3 +88,13 @@ def test_generic_rule_families_still_execute_from_a_descriptive_proposal():
     mapper = SchemaMapperAgent(approved_transformations={"ACCOUNT_OPEN_DT": "DATE_FORMAT (MM/DD/YYYY -> YYYY-MM-DD)"})
     result = mapper.map_source_to_canonical("Account", [{"LEGACY_ACCT_NO": "A-1", "ACCOUNT_OPEN_DT": "3/7/2024"}])
     assert result["mapped_records"][0]["OPEN_DATE"] == "2024-03-07"
+
+
+def test_guessed_mappings_never_fill_rows_built_from_approved_mappings():
+    df = pd.read_csv(io.BytesIO(HOUSEHOLD_CSV))
+    rows = df.to_dict(orient="records")
+    guessing = SchemaMapperAgent().map_source_to_canonical("Household", rows)
+    approved_only = SchemaMapperAgent(infer=False).map_source_to_canonical("Household", rows)
+    assert any(l["source_field"] == "ESTABLISHED_DT" for l in guessing["field_lineages"])  # a guess, shown for review
+    assert all(l.get("canonical_field") != "HEAD_DATE_OF_BIRTH" for l in approved_only["field_lineages"])
+    assert "HEAD_DATE_OF_BIRTH" not in approved_only["mapped_fields"] and approved_only["mapped_records"][0]["HH_ID"] == "HH-99811"

@@ -99,7 +99,11 @@ class SchemaMapperAgent:
         self,
         custom_catalog: Dict[str, str] = None,
         approved_transformations: Dict[str, str] = None,
+        infer: bool = True,
     ):
+        # infer=False: only catalogued and approved mappings fill the rows. Evidence and name-and-value guesses stay proposals
+        # (they are shown for review, never used to build the canonical rows the approved mappings produce).
+        self.infer = infer
         self.catalog = {**self.DEFAULT_CATALOG, **(custom_catalog or {})}
         self.approved_transformations = {
             source: str(expression or "DIRECT_COPY").strip().upper()
@@ -273,7 +277,7 @@ class SchemaMapperAgent:
 
         # Evidence-based proposals for still-unmet required fields. Proposals only: low capped
         # confidence, named evidence, never auto-approved, ambiguity leaves the field unresolved.
-        if unmapped_source_fields:
+        if unmapped_source_fields and self.infer:
             unmet = [f for f in self.required_fields(entity_name) if f not in mapped_target_fields]
             columns = {c: [row.get(c) for row in raw_records] for c in unmapped_source_fields}
             for proposal in propose_from_evidence(unmet, columns, len(raw_records)):
@@ -294,7 +298,7 @@ class SchemaMapperAgent:
 
         # Semantic inference for columns whose names the catalog has never seen: proposals only, confidence
         # capped, evidence recorded, every proposal passes the deterministic gate and is human-reviewed.
-        if unmapped_source_fields:
+        if unmapped_source_fields and self.infer:
             try:
                 inferred = source_inference.infer_source_mappings(
                     entity_name, raw_records,
