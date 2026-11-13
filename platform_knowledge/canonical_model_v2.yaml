@@ -104,6 +104,8 @@ entities:
     fields:
       - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
       - {name: MODEL_ID, type: string, key: true, required: true, description: Model.MODEL_ID}
+      - {name: MODEL_NAME, type: string, description: Name of the model as the target shows it}
+      - {name: MODEL_SYMBOL, type: string, description: A security symbol of the model}
   AccountGainLoss:
     description: Realized gain or loss for one account.
     fields:

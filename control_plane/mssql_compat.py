@@ -278,7 +278,7 @@ class _Cursor:
         self.rowcount = -1
 
     def execute(self, sql: str, params=None):
-        if _is_ddl(sql) and sql in _applied_ddl:
+        if _is_ddl(sql) and (sql in _applied_ddl or (self._owner is not None and sql in self._owner._pending_ddl)):
             self._names, self.rowcount = [], -1
             return self
         key = (sql, tuple(params) if isinstance(params, (list, tuple)) else None) if _CATALOGUE_SQL.match(sql) else None
@@ -317,8 +317,11 @@ class _Cursor:
                 raise
         self._names = [d[0] for d in self._cur.description] if self._cur.description else []
         if _is_ddl(sql):
-            with _cache_lock:
-                _applied_ddl.add(sql)
+            if self._owner is not None:
+                self._owner._pending_ddl.add(sql)  # remembered as applied only once the connection commits it (DDL is rolled back with the transaction)
+            else:
+                with _cache_lock:
+                    _applied_ddl.add(sql)
         elif re.match(r"\s*ALTER\s+TABLE", sql, re.I):
             with _cache_lock:
                 _catalogue.clear()
@@ -364,6 +367,7 @@ class _Cursor:
 class MssqlConnection:
     def __init__(self, pool: "_Pool"):
         self._pool, self._conn, self._dirty = pool, pool.get(), False
+        self._pending_ddl: set = set()
 
     def execute(self, sql: str, params=None) -> _Cursor:
         # A dropped connection is retried on a fresh one (up to RETRIES attempts) as long as nothing has been written in this
@@ -394,15 +398,21 @@ class MssqlConnection:
         if self._dirty:
             self._conn.commit()
             self._dirty = False
+            if self._pending_ddl:
+                with _cache_lock:
+                    _applied_ddl.update(self._pending_ddl)
+        self._pending_ddl.clear()
 
     def rollback(self) -> None:
         if self._dirty:
             self._conn.rollback()
             self._dirty = False
+        self._pending_ddl.clear()
 
     def close(self) -> None:
         if self._conn is not None:
             conn, self._conn = self._conn, None
+            self._pending_ddl.clear()
             try:
                 if self._dirty:
                     conn.rollback()  # discard anything uncommitted, as SQLite's close() does

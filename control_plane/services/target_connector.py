@@ -213,9 +213,21 @@ def test_connection(conn: sqlite3.Connection) -> Dict[str, Any]:
     if is_confirmed(cfg):
         return cfg
     if cfg["connector_type"] == AZURE_SQL_TYPE:
-        res = sql_target.test_connection(conn)
-        ok = res["status"] == "CONNECTED" and bool(res.get("found_tables"))
-        detail = res["check_detail"] if ok or res["status"] != "CONNECTED" else res["check_detail"] + " Run the create script first."
+        live = _live_source(conn, cfg)
+        if live:  # the live database (Simplicity) and the schema of this target: what is read when the model is inferred
+            from control_plane.services import live_target
+            try:
+                tables = live_target.read_columns(live)
+                ok = bool(tables)
+                detail = (f"Signed in to {live['database_name']}. Schema {live['schema_name']} has {len(tables)} table(s): " + ", ".join(sorted(tables)[:8])
+                          + ("" if len(tables) <= 8 else ", ...") + "." if tables
+                          else f"Signed in to {live['database_name']}, but schema {live['schema_name']} has no tables yet. Run the create script first.")
+            except ValueError as exc:
+                ok, detail = False, str(exc)
+        else:
+            res = sql_target.test_connection(conn)
+            ok = res["status"] == "CONNECTED" and bool(res.get("found_tables"))
+            detail = res["check_detail"] if ok or res["status"] != "CONNECTED" else res["check_detail"] + " Run the create script first."
         conn.execute("UPDATE target_system_models SET status = ?, connection_checked_utc = ?, connection_detail = ?, "
                      "inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL WHERE config_key = ?", ("CONNECTED" if ok else "CONFIGURED", _now(), detail, _key(conn)))
         return get_config(conn)

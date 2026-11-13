@@ -121,6 +121,8 @@ entities:
     fields:
       - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM)."}
       - {name: MODEL_ID, type: string, nullable: false, description: "The model (Model.MODEL_ID). No source among the eight files links accounts to models: Account_Targets.ModelId is needed (decision D10)."}
+      - {name: MODEL_NAME, type: string, nullable: true, description: "Name of the model, as the target shows it (Models.Name); SPARC Current Model."}
+      - {name: MODEL_SYMBOL, type: string, nullable: true, description: "A security symbol of the model (Model_Weights.SymbolName); SPARC Model Symbol."}
   AccountGainLoss:
     grain: Realized gain or loss for one account
     fields:

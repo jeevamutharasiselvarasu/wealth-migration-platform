@@ -244,3 +244,21 @@ def test_a_request_reads_the_same_row_once_and_sees_its_own_writes():
     c = mc.MssqlConnection(_Pool(raw))
     c.execute("SELECT * FROM target_system_config WHERE id = ?", (1,))  # outside a request nothing is cached
     assert sum(s.startswith("SELECT * FROM target_system_config") for s, _ in raw.log) == 3
+
+
+def test_a_table_definition_is_remembered_only_after_it_is_committed():
+    """DDL rolls back with its transaction: a definition sent in a connection that was closed uncommitted must be sent again."""
+    mc.reset_caches()
+    raw = _RecConn()
+    ddl = "CREATE TABLE IF NOT EXISTS t_rollback (a TEXT PRIMARY KEY)"
+    first = mc.MssqlConnection(_Pool(raw))
+    first.execute(ddl)
+    first.close()  # never committed
+    second = mc.MssqlConnection(_Pool(raw))
+    second.execute(ddl)
+    assert sum("CREATE TABLE" in s for s, _ in raw.log) == 2
+    second.commit()
+    third = mc.MssqlConnection(_Pool(raw))
+    third.execute(ddl)
+    assert sum("CREATE TABLE" in s for s, _ in raw.log) == 2  # committed once: not sent again
+    mc.reset_caches()
