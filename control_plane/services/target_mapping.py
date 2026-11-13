@@ -142,7 +142,8 @@ def list_mappings(conn: sqlite3.Connection, migration_id: str, spec: Optional[Di
     # Rows from an earlier target specification version stay in the table for audit but are not current mappings.
     rows = conn.execute("SELECT * FROM target_mappings WHERE migration_id = ? AND spec_version = ? ORDER BY entity_name, target_field",
                         (migration_id, str(spec["spec_version"]))).fetchall()
-    out = [dict(r) for r in rows]
+    # A mapping of an entity the confirmed target model no longer has (a canonical entity was replaced) is history, not a current mapping.
+    out = [dict(r) for r in rows if r["entity_name"] in (spec.get("entities") or {})]
     latest = {}
     for h in conn.execute("SELECT * FROM target_mapping_history ORDER BY revised_utc").fetchall():
         entry = latest.setdefault(h["target_mapping_id"], {"count": 0})
