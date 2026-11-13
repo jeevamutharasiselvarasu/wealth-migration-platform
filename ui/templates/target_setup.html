@@ -18,6 +18,13 @@
     {% set c = target_config %}
     <div class="flex flex-wrap items-start justify-between gap-2"><h3 style="font-size:16px">Target system setup <span class="font-mono text-[10px] font-normal text-[#8A97B2]">one time</span></h3>
       <span class="pill {% if c and c.status == 'CONFIRMED' %}approved{% else %}review{% endif %}">{% if c %}{{ c.status }}{% else %}NOT CONFIGURED{% endif %}</span></div>
+    {% if can_setup_target and schema_options %}
+    <form action="/api/target-system/schema" method="post" class="mt-3 flex flex-wrap items-end gap-3" data-testid="target-schema-form">
+      <label class="field fl">Schema being set up<select name="schema" class="input">{% for so in schema_options %}<option value="{{ so.name }}" {% if so.name == working_schema %}selected{% endif %}>{{ so.name }} · {{ so.status|lower }}</option>{% endfor %}</select></label>
+      <button type="submit" class="btn g sm">Work on this schema</button>
+      <span class="text-[10px] text-[#5A6A88]">Each schema of the live database (for example orion, sparc) has its own target model. Migrations choose one.</span>
+    </form>
+    {% endif %}
     <ol class="mt-3 flex flex-wrap gap-2 text-[11px] font-bold">
       <li class="rounded-full border px-3 py-1 {% if c %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">1 Configure &amp; test connection</li>
       <li class="rounded-full border px-3 py-1 {% if c and c.status in ('INFERRED','CONFIRMED') %}border-teal-200 bg-teal-50 text-teal-800{% else %}border-[#C3D2EC] text-[#5A6A88]{% endif %}">2 Infer target system</li>

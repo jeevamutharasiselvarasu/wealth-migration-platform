@@ -21,6 +21,37 @@ CREATE TABLE IF NOT EXISTS live_target_config (
 FIELDS = sql_target.FIELDS
 DEFAULT_DATABASE = "Simplicity"
 
+# The schema the current request works on. The connection (server, database, login) is platform-level; the schema is a choice of
+# each migration (a Platform Admin picks the one they manage while setting the target up). The app sets it at the start of every
+# request; empty means the schema saved with the connection.
+_current_schema = ""
+SYSTEM_SCHEMAS = {"dbo", "guest", "sys", "information_schema"}
+HIDDEN_PREFIXES = ("xodus_", "db_")
+
+
+def set_current_schema(name: str) -> None:
+    global _current_schema
+    _current_schema = str(name or "").strip()
+
+
+def current_schema() -> str:
+    return _current_schema
+
+
+def effective_schema(conn: sqlite3.Connection) -> str:
+    """The schema this request works on: the migration's choice, else the one saved with the live connection, else empty."""
+    if _current_schema:
+        return _current_schema
+    ensure_table(conn)
+    row = conn.execute("SELECT schema_name FROM live_target_config WHERE config_id = 1").fetchone()
+    return str(row["schema_name"] if row else "")
+
+
+def list_schemas(cfg: Dict[str, Any], connect: Callable[..., Any] = sql_target._default_connect) -> list:
+    """Schemas of the live database that hold tables a migration could load into (system and XODUS schemas left out). Catalog only."""
+    rows = sql_target.run(cfg, [("SELECT DISTINCT TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA", ())], connect)[0]
+    return [str(r[0]) for r in rows if str(r[0]).lower() not in SYSTEM_SCHEMAS and not str(r[0]).lower().startswith(HIDDEN_PREFIXES)]
+
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
@@ -32,6 +63,9 @@ def get_config(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     cfg = dict(row)
+    cfg["saved_schema_name"] = cfg["schema_name"]
+    if _current_schema:
+        cfg["schema_name"] = _current_schema  # the migration's schema on the same connection
     cfg["password_present"] = bool(os.environ.get(cfg["password_env_var"]))
     cfg["username_effective"] = cfg["username"] or os.environ.get(sql_target.USERNAME_ENV, "")
     return cfg

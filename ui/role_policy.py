@@ -136,7 +136,7 @@ POST_POLICY = [
     (r"^/api/validation/scenarios/[^/]+/retire$", VALIDATION_ROLES),
     (r"^/api/validation/exceptions$", VALIDATION_ROLES),
     (r"^/api/validation/exceptions/[^/]+/decision$", APPROVAL_ROLES),
-    (r"^/api/target-system/(configure|configure-azure-sql|infer|confirm|reopen|review-field|review-selected|review-all|move-table)$", PLATFORM_ROLES),
+    (r"^/api/target-system/(configure|configure-azure-sql|infer|confirm|reopen|review-field|review-selected|review-all|move-table|schema)$", PLATFORM_ROLES),
     (r"^/api/target-mapping/gaps/raise$", CHANGE_REQUEST_ROLES),
     (r"^/api/target-mapping/propose$", DISCOVERY_ROLES),
     (r"^/api/target-mapping/preview$", TARGET_PREVIEW_ROLES),

@@ -19,7 +19,7 @@ CONNECTOR_TYPE = "simulated-http"
 AZURE_SQL_TYPE = "azure-sql"
 MAX_BYTES = 2_000_000
 
-_DDL = """
+_LEGACY_DDL = """
 CREATE TABLE IF NOT EXISTS target_system_config (
     config_id INTEGER PRIMARY KEY CHECK (config_id = 1),
     target_name TEXT NOT NULL,
@@ -40,10 +40,57 @@ CREATE TABLE IF NOT EXISTS target_system_config (
     confirmed_utc TEXT
 )
 """
+# One row per live schema (config_key; empty for a target that is not a database schema, such as the simulated service).
+_DDL = """
+CREATE TABLE IF NOT EXISTS target_system_models (
+    config_key TEXT PRIMARY KEY,
+    target_name TEXT NOT NULL,
+    connector_type TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    scope_tables TEXT NOT NULL DEFAULT '[]',
+    include_code_lists INTEGER NOT NULL DEFAULT 1,
+    owner TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    connection_checked_utc TEXT,
+    connection_detail TEXT,
+    schema_hash TEXT,
+    inferred_model TEXT,
+    configured_by TEXT NOT NULL,
+    configured_utc TEXT NOT NULL,
+    inferred_utc TEXT,
+    confirmed_by TEXT,
+    confirmed_utc TEXT
+)
+"""
+
+
+_COLUMNS = ("target_name", "connector_type", "endpoint", "scope_tables", "include_code_lists", "owner", "status", "connection_checked_utc",
+            "connection_detail", "schema_hash", "inferred_model", "configured_by", "configured_utc", "inferred_utc", "confirmed_by", "confirmed_utc")
 
 
 def ensure_table(conn: sqlite3.Connection) -> None:
     conn.execute(_DDL)
+
+
+def _key(conn: sqlite3.Connection) -> str:
+    """Which target model this request works on: the live schema in use, empty when there is no live database."""
+    from control_plane.services import live_target
+    return live_target.effective_schema(conn)
+
+
+def _import_legacy(conn: sqlite3.Connection, key: str) -> None:
+    """The single target model saved before targets were per schema becomes the model of the schema its endpoint names."""
+    conn.execute(_LEGACY_DDL)
+    row = conn.execute("SELECT * FROM target_system_config WHERE config_id = 1").fetchone()
+    if not row:
+        return
+    legacy = dict(row)
+    endpoint = str(legacy.get("endpoint") or "")
+    schema = endpoint.rstrip("/").rsplit("/", 1)[-1] if endpoint.startswith("azure-sql://") else ""
+    if schema != key or conn.execute("SELECT 1 FROM target_system_models WHERE config_key = ?", (schema,)).fetchone():
+        return
+    conn.execute("INSERT INTO target_system_models (config_key, " + ", ".join(_COLUMNS) + ") VALUES (?, " + ", ".join("?" for _ in _COLUMNS) + ")",
+                 (schema, *[legacy.get(c) for c in _COLUMNS]))
 
 
 def _now() -> str:
@@ -76,10 +123,15 @@ def validate_endpoint(endpoint: str) -> str:
 
 def get_config(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     ensure_table(conn)
-    row = conn.execute("SELECT * FROM target_system_config WHERE config_id = 1").fetchone()
+    key = _key(conn)
+    row = conn.execute("SELECT * FROM target_system_models WHERE config_key = ?", (key,)).fetchone()
+    if not row:
+        _import_legacy(conn, key)
+        row = conn.execute("SELECT * FROM target_system_models WHERE config_key = ?", (key,)).fetchone()
     if not row:
         return None
     cfg = dict(row)
+    cfg["schema"] = key
     cfg["scope_tables"] = json.loads(cfg["scope_tables"] or "[]")
     cfg["include_code_lists"] = bool(cfg["include_code_lists"])
     cfg["model"] = json.loads(cfg["inferred_model"]) if cfg.get("inferred_model") else None
@@ -103,11 +155,12 @@ def configure(conn: sqlite3.Connection, actor: str, target_name: str, endpoint: 
     endpoint = validate_endpoint(endpoint)
     scope = sorted({s.strip().upper() for s in scope_tables if s.strip()})
     now = _now()
-    conn.execute("DELETE FROM target_system_config WHERE config_id = 1")
+    key = _key(conn)
+    conn.execute("DELETE FROM target_system_models WHERE config_key = ?", (key,))
     conn.execute(
-        "INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, "
-        "status, configured_by, configured_utc) VALUES (1, ?, ?, ?, ?, ?, ?, 'CONFIGURED', ?, ?)",
-        (name, CONNECTOR_TYPE, endpoint, json.dumps(scope), 1 if include_code_lists else 0, str(owner or "").strip(), actor, now))
+        "INSERT INTO target_system_models (config_key, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, "
+        "status, configured_by, configured_utc) VALUES (?, ?, ?, ?, ?, ?, ?, 'CONFIGURED', ?, ?)",
+        (key, name, CONNECTOR_TYPE, endpoint, json.dumps(scope), 1 if include_code_lists else 0, str(owner or "").strip(), actor, now))
     return test_connection(conn)
 
 
@@ -122,11 +175,12 @@ def configure_azure_sql(conn: sqlite3.Connection, actor: str, owner: str, scope_
     if not sql:
         raise ValueError("Save the live database (or target database) settings on the Azure connection page first.")
     scope = sorted({s.strip().upper() for s in scope_tables if s.strip()})
-    conn.execute("DELETE FROM target_system_config WHERE config_id = 1")
+    key = _key(conn)
+    conn.execute("DELETE FROM target_system_models WHERE config_key = ?", (key,))
     conn.execute(
-        "INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, "
-        "status, configured_by, configured_utc) VALUES (1, ?, ?, ?, ?, 0, ?, 'CONFIGURED', ?, ?)",
-        ("Simplicity", AZURE_SQL_TYPE, f"azure-sql://{sql['server']}/{sql['database_name']}/{sql['schema_name']}", json.dumps(scope), str(owner or "").strip(), actor, _now()))
+        "INSERT INTO target_system_models (config_key, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, "
+        "status, configured_by, configured_utc) VALUES (?, ?, ?, ?, ?, 0, ?, 'CONFIGURED', ?, ?)",
+        (key, "Simplicity", AZURE_SQL_TYPE, f"azure-sql://{sql['server']}/{sql['database_name']}/{sql['schema_name']}", json.dumps(scope), str(owner or "").strip(), actor, _now()))
     return test_connection(conn)
 
 
@@ -146,9 +200,9 @@ def reopen(conn: sqlite3.Connection, actor: str, reason: str) -> Dict[str, Any]:
         raise ValueError("Only a confirmed target setup can be reopened.")
     if not str(reason or "").strip():
         raise ValueError("A reason is required to reopen the target setup.")
-    conn.execute("UPDATE target_system_config SET status = 'CONFIGURED', inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL, "
-                 "confirmed_by = NULL, confirmed_utc = NULL, connection_detail = ? WHERE config_id = 1",
-                 (f"Reopened by {actor}: {str(reason).strip()[:200]}. Save and test the connection, infer, then confirm again.",))
+    conn.execute("UPDATE target_system_models SET status = 'CONFIGURED', inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL, "
+                 "confirmed_by = NULL, confirmed_utc = NULL, connection_detail = ? WHERE config_key = ?",
+                 (f"Reopened by {actor}: {str(reason).strip()[:200]}. Save and test the connection, infer, then confirm again.", _key(conn)))
     return get_config(conn)
 
 
@@ -162,8 +216,8 @@ def test_connection(conn: sqlite3.Connection) -> Dict[str, Any]:
         res = sql_target.test_connection(conn)
         ok = res["status"] == "CONNECTED" and bool(res.get("found_tables"))
         detail = res["check_detail"] if ok or res["status"] != "CONNECTED" else res["check_detail"] + " Run the create script first."
-        conn.execute("UPDATE target_system_config SET status = ?, connection_checked_utc = ?, connection_detail = ?, "
-                     "inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL WHERE config_id = 1", ("CONNECTED" if ok else "CONFIGURED", _now(), detail))
+        conn.execute("UPDATE target_system_models SET status = ?, connection_checked_utc = ?, connection_detail = ?, "
+                     "inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL WHERE config_key = ?", ("CONNECTED" if ok else "CONFIGURED", _now(), detail, _key(conn)))
         return get_config(conn)
     try:
         health = _http_get(cfg["endpoint"] + "/health")
@@ -172,9 +226,9 @@ def test_connection(conn: sqlite3.Connection) -> Dict[str, Any]:
             detail = "Target reported an unhealthy status."
     except Exception as exc:  # network and parse failures are shown to the operator, not raised
         ok, detail = False, f"Could not reach the target: {exc}"
-    conn.execute("UPDATE target_system_config SET status = ?, connection_checked_utc = ?, connection_detail = ?, "
-                 "inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL WHERE config_id = 1",
-                 ("CONNECTED" if ok else "CONFIGURED", _now(), detail))
+    conn.execute("UPDATE target_system_models SET status = ?, connection_checked_utc = ?, connection_detail = ?, "
+                 "inferred_model = NULL, schema_hash = NULL, inferred_utc = NULL WHERE config_key = ?",
+                 ("CONNECTED" if ok else "CONFIGURED", _now(), detail, _key(conn)))
     return get_config(conn)
 
 
@@ -196,8 +250,8 @@ def infer_model(conn: sqlite3.Connection, canonical: Dict[str, Dict[str, str]]) 
     model = target_inference.infer(schema, canonical, cfg["scope_tables"], cfg["include_code_lists"])
     if not model["entities"]:
         raise ValueError("No target table could be matched to Account, Client or Household.")
-    conn.execute("UPDATE target_system_config SET status = 'INFERRED', schema_hash = ?, inferred_model = ?, inferred_utc = ? WHERE config_id = 1",
-                 (model["schema_hash"], json.dumps(model), _now()))
+    conn.execute("UPDATE target_system_models SET status = 'INFERRED', schema_hash = ?, inferred_model = ?, inferred_utc = ? WHERE config_key = ?",
+                 (model["schema_hash"], json.dumps(model), _now(), _key(conn)))
     return get_config(conn)
 
 
@@ -214,7 +268,7 @@ def _inferred_for_review(conn: sqlite3.Connection) -> Dict[str, Any]:
 
 
 def _save_model(conn: sqlite3.Connection, model: Dict[str, Any]) -> Dict[str, Any]:
-    conn.execute("UPDATE target_system_config SET inferred_model = ? WHERE config_id = 1", (json.dumps(model),))
+    conn.execute("UPDATE target_system_models SET inferred_model = ? WHERE config_key = ?", (json.dumps(model), _key(conn)))
     return get_config(conn)
 
 
@@ -284,7 +338,7 @@ def confirm(conn: sqlite3.Connection, actor: str) -> Dict[str, Any]:
     left = pending_reviews(cfg["model"])
     if left:
         raise ValueError(f"Review every inferred target field before confirming: {left} still need a decision (correct, change or reject).")
-    conn.execute("UPDATE target_system_config SET status = 'CONFIRMED', confirmed_by = ?, confirmed_utc = ? WHERE config_id = 1", (actor, _now()))
+    conn.execute("UPDATE target_system_models SET status = 'CONFIRMED', confirmed_by = ?, confirmed_utc = ? WHERE config_key = ?", (actor, _now(), _key(conn)))
     return get_config(conn)
 
 
@@ -294,3 +348,19 @@ def spec(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     if not is_confirmed(cfg) or not cfg["model"]:
         return None
     return target_inference.to_spec(cfg["model"], "INFERRED_CONFIRMED")
+
+
+def schema_states(conn: sqlite3.Connection) -> Dict[str, str]:
+    """{schema: status of its target model} for every live schema set up so far (the schema saved with the connection included)."""
+    from control_plane.services import live_target
+    ensure_table(conn)
+    live_target.ensure_table(conn)
+    live = conn.execute("SELECT schema_name FROM live_target_config WHERE config_id = 1").fetchone()
+    if live and str(live["schema_name"] or ""):
+        _import_legacy(conn, str(live["schema_name"]))  # a model saved before targets were per schema
+    return {str(r["config_key"]): str(r["status"]) for r in conn.execute("SELECT config_key, status FROM target_system_models").fetchall() if r["config_key"]}
+
+
+def confirmed_schemas(conn: sqlite3.Connection) -> List[str]:
+    """Schemas a migration can target: those whose target model is confirmed."""
+    return sorted(k for k, v in schema_states(conn).items() if v == "CONFIRMED")

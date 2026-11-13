@@ -60,6 +60,7 @@ async def request_read_cache(request: Request, call_next):
 async def enforce_role_policy(request: Request, call_next):
     """Reject state-changing requests from roles that may not perform them (session role, server side)."""
     allowed = allowed_roles_for(request.method, request.url.path)
+    _use_target_schema(session_mgr.get_session(request))
     if allowed is not None:
         session = session_mgr.get_session(request)
         # Unauthenticated callers fall through to the route's own login redirect.
@@ -182,6 +183,15 @@ def _workflow_safe_source_payload(record: Dict[str, Any], entity_name: str, sour
         return value
 
     return remove_samples(payload)
+
+
+def _use_target_schema(session) -> None:
+    """The live schema this request works on: the one a Platform Admin picked while setting targets up, else the migration's own.
+    The connection (server, database, login) is the platform's; every migration chooses its schema (orion, sparc, ...)."""
+    if session is not None and session.get("role") == "Platform Admin":
+        live_target.set_current_schema(session.get("target_schema", ""))
+    else:
+        live_target.set_current_schema((state_store.questionnaire_data.get("migration_setup") or {}).get("target_schema", ""))
 
 
 def _stage_blocker(stage: str) -> str:
@@ -1187,9 +1197,12 @@ async def setup_hub(request: Request):
 
 
 @app.get("/migration-setup", response_class=HTMLResponse)
-async def migration_setup_page(request: Request, error: str = "", new_migration: str = ""):
+async def migration_setup_page(request: Request, error: str = "", new_migration: str = "", target_schema: str = ""):
     user = get_current_user(request)
     setup = state_store.questionnaire_data.get("migration_setup", {})
+    schemas = _confirmed_target_schemas()
+    chosen_schema = target_schema if target_schema in schemas else (setup.get("target_schema") if setup.get("target_schema") in schemas else (schemas[0] if len(schemas) == 1 else ""))
+    live_target.set_current_schema(chosen_schema)  # the entity choices below follow this schema's confirmed model
     template_prefill = state_store.questionnaire_data.get("migration_template") or {}
     prefilled = bool(template_prefill) and not setup
     if prefilled:
@@ -1198,7 +1211,7 @@ async def migration_setup_page(request: Request, error: str = "", new_migration:
     selectable = [c["name"] for c in choices if c["selectable"]]
     chosen = list(setup.get("target_entities") or selectable)  # a new migration starts with everything the target receives ticked
     return render_template_with_context(request, "migration_setup.html", {
-        "target_choices": choices, "chosen_targets": chosen, "supporting_info": supporting_plan(selectable, selectable) if selectable else {},
+        "target_schemas": schemas, "chosen_schema": chosen_schema, "target_choices": choices, "chosen_targets": chosen, "supporting_info": supporting_plan(selectable, selectable) if selectable else {},
         "page_title":"Migration Setup", "user_name":user["name"], "user_role":user["role"], "setup":setup, "prefilled": prefilled,
         "error": error, "can_configure": user["role"] in SETUP_ROLES,
         "target_connection": _target_connection_status(),
@@ -1206,6 +1219,16 @@ async def migration_setup_page(request: Request, error: str = "", new_migration:
         "knowledge_docs": state_store.firm_knowledge_docs,
         "platform_defaults": _platform_setup_defaults(),
     })
+
+
+def _confirmed_target_schemas() -> List[str]:
+    conn = get_db_connection()
+    try:
+        out = target_connector.confirmed_schemas(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return out
 
 
 @app.post("/api/migration/new")
@@ -1309,6 +1332,11 @@ async def open_migration_workspace(request: Request):
 async def save_migration_setup(request: Request):
     user = get_current_user(request)
     form = await request.form()
+    schemas = _confirmed_target_schemas()
+    target_schema = str(form.get("target_schema", "")).strip()
+    if schemas and target_schema not in schemas:
+        raise HTTPException(status_code=400, detail="Choose the target schema this migration loads into: " + ", ".join(schemas) + ".")
+    live_target.set_current_schema(target_schema)  # the entities below are the ones this schema's target model receives
     # Explicit scope selection controls downstream P0 workflows.
     _choices = _target_entity_choices()
     allowed_entities = {c["name"] for c in _choices if c["selectable"]}  # the user chooses among what the target receives
@@ -1332,6 +1360,7 @@ async def save_migration_setup(request: Request):
         "relationship_notes": str(form.get("relationship_notes", "")).strip(),
         "source_acquisition": str(form.get("source_acquisition", "SAMPLE_FILES")).strip(),
         "source_details": str(form.get("source_details", "")).strip(),
+        "target_schema": target_schema,
         "entities": selected_entities,
         "target_entities": [e for e in P0_ENTITIES if e in selected_targets],
         "configured_by": user["name"],
@@ -3056,11 +3085,37 @@ async def target_mapping_page(request: Request, notice: str = "", error: str = "
 async def target_setup_page(request: Request, notice: str = "", error: str = ""):
     """Platform setup: connect, infer, review and confirm the target system (Platform Admin). Migration users see only the inferred model on Target mapping."""
     user = get_current_user(request)
-    return render_template_with_context(request, "target_setup.html", {**_target_mapping_context(request, user, notice=notice, error=error), "page_title": "Target system setup"})
+    conn = get_db_connection()
+    try:
+        states = target_connector.schema_states(conn)
+        live = live_target.get_config(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    catalog: List[str] = []
+    if live:
+        try:
+            catalog = live_target.list_schemas(live)
+        except Exception:
+            catalog = []
+    offered = sorted(set(catalog) | set(states) | ({live["schema_name"]} if live and live.get("schema_name") else set()))
+    return render_template_with_context(request, "target_setup.html", {
+        **_target_mapping_context(request, user, notice=notice, error=error), "page_title": "Target system setup",
+        "schema_options": [{"name": n, "status": states.get(n, "NOT SET UP")} for n in offered], "working_schema": live["schema_name"] if live else ""})
 
 
 def _target_setup_audit(event: str, user: Dict[str, str], details: Dict[str, Any]) -> None:
     state_store.audit_log.append({"event": event, "actor": user["name"], "timestamp_utc": datetime.now(timezone.utc).isoformat(), "details": details})
+
+
+@app.post("/api/target-system/schema")
+async def choose_target_schema(request: Request, schema: str = Form("")):
+    """A Platform Admin picks which live schema the target setup below (configure, infer, review, confirm) is about."""
+    session = session_mgr.get_session(request)
+    get_current_user(request)
+    if session is not None:
+        session["target_schema"] = schema.strip()
+    return _target_setup_redirect("notice", f"Target setup now works on schema {schema.strip() or '(the schema saved with the connection)'}.")
 
 
 @app.post("/api/target-system/configure")

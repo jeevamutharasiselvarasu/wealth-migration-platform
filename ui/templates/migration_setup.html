@@ -49,7 +49,20 @@
   </section>
 
 
+  {% if target_schemas|length > 1 or (target_schemas and not chosen_schema) %}
+  <section class="card" aria-label="Target schema" id="target-schema">
+    <div class="ey dm">Target schema</div>
+    <h3 style="margin-top:4px">Which schema of the target database does this migration load into?</h3>
+    <p class="d">Each schema has its own confirmed target model (for example <span class="font-mono">orion</span> and <span class="font-mono">sparc</span>). The entities below are the ones that schema receives.</p>
+    <form action="/migration-setup" method="get" class="flex flex-wrap items-end gap-3">
+      <label class="field fl">Schema<select name="target_schema" class="input"{% if not can_configure %} disabled{% endif %}>{% if not chosen_schema %}<option value="">Choose a schema</option>{% endif %}{% for sc in target_schemas %}<option value="{{ sc }}" {% if sc == chosen_schema %}selected{% endif %}>{{ sc }}</option>{% endfor %}</select></label>
+      <button type="submit" class="btn g sm"{% if not can_configure %} disabled{% endif %}>Show its entities</button>
+    </form>
+  </section>
+  {% endif %}
+
   <form id="migration-setup-form" action="/api/migration/setup" method="post" style="display:grid;gap:16px">
+    <input type="hidden" name="target_schema" value="{{ chosen_schema }}">
     <fieldset {% if not can_configure %}disabled{% endif %} style="margin:0;min-width:0;border:0;padding:0;display:grid;gap:16px">
 
     <section class="card">

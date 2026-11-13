@@ -4,7 +4,7 @@
 # Code sets: every canonical code with a description and the spellings sources commonly use (synonyms are only suggestions;
 # an analyst approves every source value -> canonical code).
 model: XODUS-Canonical
-version: 2.0.0
+version: 2.1.0
 entities:
   Household:
     description: The grouping a firm manages together, with its advisor. Clients and accounts belong to a household.
@@ -17,6 +17,14 @@ entities:
       - {name: CREATED_DATE, type: date}
       - {name: HH_STATUS, type: string}
       - {name: DELETED_DATE, type: date}
+      - {name: HEAD_FIRST_NAME, type: string, sensitive: true, description: First name of the household head (HouseholdOrder 1)}
+      - {name: HEAD_LAST_NAME, type: string, sensitive: true, description: Last name of the household head}
+      - {name: HEAD_NAME, type: string, sensitive: true, description: Full name of the household head}
+      - {name: HEAD_TAX_ID, type: string, sensitive: true, description: Tax id of the household head}
+      - {name: HEAD_DATE_OF_BIRTH, type: date, sensitive: true, description: Date of birth of the household head}
+      - {name: TRUST_NAME, type: string, description: Business or trust name of a trust household}
+      - {name: TRUST_DATE, type: date}
+      - {name: TRUST_EIN, type: string, sensitive: true}
   Client:
     description: A person or an organisation in a household, with its role and order in the household.
     fields:
@@ -57,6 +65,11 @@ entities:
       - {name: HH_ID, type: string, description: The account's household (Household.HH_ID)}
       - {name: BALANCE, type: decimal}
       - {name: BALANCE_AS_OF, type: date}
+      - {name: MARKET_VALUE, type: decimal, description: Market value used for the fee}
+      - {name: FEE_SCHEDULE, type: decimal, description: Account fee schedule rate}
+      - {name: TOTAL_FEE, type: decimal, description: Market value times fee schedule}
+      - {name: CONTRIBUTIONS, type: decimal}
+      - {name: DISTRIBUTIONS, type: decimal}
   AccountRole:
     description: Who holds an account and how (owner, joint owner, trustee, beneficiary, ...). Replaces names copied onto accounts.
     fields:
@@ -73,6 +86,29 @@ entities:
       - {name: TITLE, type: string}
       - {name: IS_ACTIVE, type: boolean}
       - {name: REP_CODES, type: string, description: Rep codes with their custodian}
+  Model:
+    description: An investment model accounts can follow.
+    fields:
+      - {name: MODEL_ID, type: string, key: true, required: true}
+      - {name: MODEL_NAME, type: string, required: true}
+  ModelWeight:
+    description: One security weight inside a model.
+    fields:
+      - {name: MODEL_ID, type: string, key: true, required: true, description: Model.MODEL_ID}
+      - {name: SYMBOL_ID, type: string, key: true, required: true}
+      - {name: SYMBOL_NAME, type: string}
+      - {name: SYMBOL_TYPE, type: string}
+      - {name: ALLOCATION_PCT, type: decimal}
+  AccountModel:
+    description: The model an account follows.
+    fields:
+      - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
+      - {name: MODEL_ID, type: string, key: true, required: true, description: Model.MODEL_ID}
+  AccountGainLoss:
+    description: Realized gain or loss for one account.
+    fields:
+      - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
+      - {name: GAIN_LOSS, type: decimal}
 code_sets:
   registration_type:
     description: How an account is registered.

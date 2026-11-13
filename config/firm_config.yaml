@@ -9,11 +9,13 @@
 # but the source cannot always supply are nullable here and carry `required_for_targets`, to be enforced when
 # canonical-to-target mapping starts. `sensitive` marks personal data that must never appear in lineage or previews.
 # v1.2.0 (2026-11-11): Advisor and AccountRole added (canonical model v2, phase 2); field names as in platform_knowledge/canonical_model_v2.yaml.
+# v1.3.0 (2026-11-13): CoreCap to Simplicity (Orion MCL and SPARC) spec: Household head and trust fields, Account fee and flow fields,
+#   and the Model, ModelWeight, AccountModel and AccountGainLoss entities for SPARC. All new fields are nullable: no source or target requires them for Orion.
 # SEED VALUES: keys/types still need business owner confirmation before being treated as final.
 schema_version: 1
 firm_id: SIMPLICITY
 firm_name: Simplicity
-config_version: "1.2.0"
+config_version: "1.3.0"
 scope_direction: source_to_canonical
 canonical_contract_ref: Simplicity-MCL-v1
 target_system:
@@ -38,6 +40,11 @@ entities:
       - {name: TAX_STATUS, type: string, nullable: true, description: "Tax treatment: Taxable, TaxDeferred or NonTaxable (source TaxStatus)."}
       - {name: ACCT_STATUS, type: string, nullable: true, required_for_targets: [ORION_MCL], description: "Open or Closed, derived: Open when CLOSED_DATE is empty, else Closed."}
       - {name: CLOSED_DATE, type: date, nullable: true, description: "Date the account was closed (source ClosedDate); empty means open."}
+      - {name: MARKET_VALUE, type: decimal, nullable: true, description: "Market value used for the fee (Billing_OffB.Market Value, SPARC)."}
+      - {name: FEE_SCHEDULE, type: decimal, nullable: true, description: "Account fee schedule rate (Billing_OffB.Account Fee Schedule, SPARC). Confirm what the column holds."}
+      - {name: TOTAL_FEE, type: decimal, nullable: true, description: "Total fee: MARKET_VALUE times FEE_SCHEDULE (SPARC)."}
+      - {name: CONTRIBUTIONS, type: decimal, nullable: true, description: "Contributions (Performance_Account.Additions, SPARC)."}
+      - {name: DISTRIBUTIONS, type: decimal, nullable: true, description: "Distributions (Performance_Account.Withdrawals, SPARC)."}
   Client:
     grain: One person, trust, or legal participant in the identity domain
     fields:
@@ -72,6 +79,14 @@ entities:
       - {name: CREATED_DATE, type: date, nullable: true, description: "Date the household record was created (source CreatedDate)."}
       - {name: HH_STATUS, type: string, nullable: true, description: "Active or Deleted, derived from DELETED_DATE. Whether deleted households migrate is a business decision."}
       - {name: DELETED_DATE, type: date, nullable: true, description: "Date the household was deleted or archived (source DeletedDate); empty means active."}
+      - {name: HEAD_FIRST_NAME, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL], description: "First name of the household head, the contact with HouseholdOrder 1 (Household_Contacts.FirstName)."}
+      - {name: HEAD_LAST_NAME, type: string, nullable: true, sensitive: true, required_for_targets: [ORION_MCL], description: "Last name of the household head (Household_Contacts.LastName)."}
+      - {name: HEAD_NAME, type: string, nullable: true, sensitive: true, description: "Full name of the household head: first name and last name."}
+      - {name: HEAD_TAX_ID, type: string, nullable: true, sensitive: true, description: "SSN or tax id of the household head (Household_Contacts.TaxId, HouseholdOrder 1). Never shown in lineage or previews."}
+      - {name: HEAD_DATE_OF_BIRTH, type: date, nullable: true, sensitive: true, description: "Date of birth of the household head (Household_Contacts.DateOfBirth, HouseholdOrder 1)."}
+      - {name: TRUST_NAME, type: string, nullable: true, description: "Business or trust name, only for a household whose contact first name contains Trust (SPARC)."}
+      - {name: TRUST_DATE, type: date, nullable: true, description: "Trust date, same trust condition (SPARC). The spec takes it from DateOfBirth, which looks wrong; confirm with Simplicity."}
+      - {name: TRUST_EIN, type: string, nullable: true, sensitive: true, description: "Business or trust EIN, same trust condition (SPARC; Household_Contacts.TaxId)."}
   Advisor:
     grain: One advisor (the representative on households and accounts)
     fields:
@@ -88,3 +103,26 @@ entities:
       - {name: CLIENT_ID, type: string, nullable: false, description: "The client (Client.CLIENT_ID); points at the surviving client after entity resolution."}
       - {name: ROLE, type: string, nullable: false, description: "Canonical account_role code (OWNER, JOINT_OWNER, TRUSTEE, BENEFICIARY, AUTHORIZED)."}
       - {name: ROLE_ORDER, type: integer, nullable: true, description: "Order of the role holders on the account (1 is the first owner)."}
+  Model:
+    grain: One investment model
+    fields:
+      - {name: MODEL_ID, type: string, nullable: false, is_key: true, description: "Model identifier (Models.Id)."}
+      - {name: MODEL_NAME, type: string, nullable: false, description: "Model name (Models.Name); SPARC Current Model."}
+  ModelWeight:
+    grain: One security weight inside one model
+    fields:
+      - {name: MODEL_ID, type: string, nullable: false, description: "The model (Model.MODEL_ID; Model_Weights.ModelId)."}
+      - {name: SYMBOL_ID, type: string, nullable: false, description: "Security identifier (Model_Weights.SymbolId)."}
+      - {name: SYMBOL_NAME, type: string, nullable: true, description: "Security symbol (Model_Weights.SymbolName); SPARC Model Symbol."}
+      - {name: SYMBOL_TYPE, type: string, nullable: true, description: "Type of the symbol (Model_Weights.SymbolType)."}
+      - {name: ALLOCATION_PCT, type: decimal, nullable: true, description: "Target allocation in percent (Model_Weights.AllocationPct)."}
+  AccountModel:
+    grain: The model an account follows
+    fields:
+      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM)."}
+      - {name: MODEL_ID, type: string, nullable: false, description: "The model (Model.MODEL_ID). No source among the eight files links accounts to models: Account_Targets.ModelId is needed (decision D10)."}
+  AccountGainLoss:
+    grain: Realized gain or loss for one account
+    fields:
+      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM)."}
+      - {name: GAIN_LOSS, type: decimal, nullable: true, description: "Total realized gain or loss (Realized Gain_Loss_Security_FIRM.Total Gain Loss). The file was not provided (decision D10)."}

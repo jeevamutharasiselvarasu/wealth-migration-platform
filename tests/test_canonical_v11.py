@@ -21,8 +21,8 @@ def _fields(entity):
 
 def test_contract_keeps_the_three_core_entities_and_stable_required_fields():
     # 1.2.0 adds Advisor and AccountRole (canonical model v2, phase 2); the three core entities are unchanged
-    assert CONFIG.config_version == "1.2.0" and CONFIG.canonical_contract_ref == "Simplicity-MCL-v1"
-    assert sorted(CONFIG.entities) == ["Account", "AccountRole", "Advisor", "Client", "Household"]
+    assert CONFIG.config_version == "1.3.0" and CONFIG.canonical_contract_ref == "Simplicity-MCL-v1"
+    assert sorted(CONFIG.entities) == ["Account", "AccountGainLoss", "AccountModel", "AccountRole", "Advisor", "Client", "Household", "Model", "ModelWeight"]
     assert CONFIG.required_fields("Account") == ["ACCT_NUM", "REG_TYPE", "OPEN_DATE"]  # REP_CODE and CUSTODIAN_CODE are optional
     assert CONFIG.required_fields("Client") == ["CLIENT_ID", "LEGAL_NAME", "TAX_ID", "CLIENT_TYPE"]
     assert CONFIG.required_fields("Household") == ["HH_ID", "HH_NAME"]
@@ -31,14 +31,16 @@ def test_contract_keeps_the_three_core_entities_and_stable_required_fields():
 
 def test_keys_are_unchanged_and_the_system_id_is_kept_apart_from_the_custodian_number():
     keys = {e: [f.name for f in c.fields if f.is_key] for e, c in CONFIG.entities.items()}
-    assert keys == {"Account": ["ACCT_NUM"], "Client": ["CLIENT_ID"], "Household": ["HH_ID"], "Advisor": ["ADVISOR_ID"], "AccountRole": []}
+    assert keys == {"Account": ["ACCT_NUM"], "Client": ["CLIENT_ID"], "Household": ["HH_ID"], "Advisor": ["ADVISOR_ID"], "AccountRole": [],
+                    "Model": ["MODEL_ID"], "ModelWeight": [], "AccountModel": [], "AccountGainLoss": []}
     assert {"ACCOUNT_ID", "ACCT_NUM"} <= _fields("Account")
 
 
 def test_personal_data_is_marked_sensitive_and_target_requirements_name_known_layouts():
     sensitive = {f.name for f in CONFIG.entities["Client"].fields if f.sensitive}
     assert {"TAX_ID", "DATE_OF_BIRTH", "EMAIL", "PHONE", "ADDRESS_LINE_1", "LAST_NAME", "LEGAL_NAME"} <= sensitive
-    assert not any(f.sensitive for f in CONFIG.entities["Account"].fields + CONFIG.entities["Household"].fields)
+    assert not any(f.sensitive for f in CONFIG.entities["Account"].fields)
+    assert {f.name for f in CONFIG.entities["Household"].fields if f.sensitive} == {"HEAD_FIRST_NAME", "HEAD_LAST_NAME", "HEAD_NAME", "HEAD_TAX_ID", "HEAD_DATE_OF_BIRTH", "TRUST_EIN"}
     for entity in CONFIG.entities.values():
         for f in entity.fields:
             assert set(f.required_for_targets) <= TARGETS, f.name

@@ -200,10 +200,10 @@ def seed_confirmed_target(app) -> None:
     conn = app.get_db_connection()
     try:
         tc.ensure_table(conn)
-        conn.execute("DELETE FROM target_system_config")
-        conn.execute("INSERT INTO target_system_config (config_id, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, status, "
+        conn.execute("DELETE FROM target_system_models")
+        conn.execute("INSERT INTO target_system_models (config_key, target_name, connector_type, endpoint, scope_tables, include_code_lists, owner, status, "
                      "connection_checked_utc, connection_detail, schema_hash, inferred_model, configured_by, configured_utc, inferred_utc, confirmed_by, confirmed_utc) "
-                     "VALUES (1, 'Simplicity', 'AZURE_SQL', 'azure-sql://test/Simplicity/simplicity', '[]', 1, '', 'CONFIRMED', ?, 'test', ?, ?, 'test', ?, ?, 'test', ?)",
+                     "VALUES ('', 'Simplicity', 'AZURE_SQL', 'azure-sql://test/Simplicity/simplicity', '[]', 1, '', 'CONFIRMED', ?, 'test', ?, ?, 'test', ?, ?, 'test', ?)",
                      (now, model["schema_hash"], json.dumps(model), now, now, now))
         conn.commit()
     finally:

@@ -62,7 +62,7 @@ def supporting_plan(selected_targets, target_entities=None, cfg=None) -> Dict[st
 
     Only canonical entities the target has no table for qualify (a target entity is the user's own choice). One qualifies when
     a selected entity has a field that points at it (a household's advisor), or when it only links entities that are all selected
-    (an account role links accounts and clients). Both come from the key and field names in the firm configuration."""
+    (an account role links accounts and clients; a child of one entity, such as a gain or loss line, does not). Both come from the key and field names in the firm configuration."""
     cfg = cfg or get_firm_config()
     refs = _reference_map(cfg)
     targets = set(target_entities if target_entities is not None else selected_targets)
@@ -80,7 +80,7 @@ def supporting_plan(selected_targets, target_entities=None, cfg=None) -> Dict[st
             if e in targets or e in chosen:
                 continue
             linked = refs.get(e, {})
-            if linked and all(o in chosen for o in linked):
+            if len(linked) >= 2 and all(o in chosen for o in linked):  # a link between records of two or more entities
                 chosen.add(e)
                 why[e] = "it links " + " and ".join(sorted(linked)) + " records"
                 changed = True

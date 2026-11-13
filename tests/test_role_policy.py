@@ -347,7 +347,7 @@ def test_migration_users_get_platform_setup_through_the_migration_setup_not_the_
     from tests.sample_loader import seed_confirmed_target
     seed_confirmed_target(app_module)  # a confirmed target with its inferred model, then the name and owner this test checks
     conn = db.get_db_connection()
-    conn.execute("UPDATE target_system_config SET target_name = 'Simplicity SQL', owner = 'Target Team' WHERE config_id = 1")
+    conn.execute("UPDATE target_system_models SET target_name = 'Simplicity SQL', owner = 'Target Team' WHERE config_key = ''")
     conn.commit()
     conn.close()
 

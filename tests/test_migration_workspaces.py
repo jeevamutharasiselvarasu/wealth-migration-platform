@@ -435,8 +435,8 @@ def test_the_choices_follow_the_target_schema_not_a_fixed_list():
     first = ti.infer(schema({"ORION_MCL_ACCOUNT": ["ACCOUNT_NUMBER", "CUSTODIAN", "REGISTRATION_TYPE"],
                              "ORION_MCL_HOUSEHOLD": ["HH_GROUPING_CODE", "HOUSEHOLD_NAME", "REPRESENTATIVE_NAME"]}), canonical)
     second = ti.infer(schema({"WM_CLIENT": ["FIRST_NAME", "LAST_NAME", "TAX_ID", "DATE_OF_BIRTH"],
-                              "WM_MODEL_WEIGHTS": ["MODEL_ID", "SYMBOL", "WEIGHT_PCT"]}), canonical)
+                              "WM_TRADE_BLOTTER": ["TRADE_REF", "VENUE", "LOTS"]}), canonical)
     assert set(first["entities"]) == {"Account", "Household"}
     assert "Client" in second["entities"] and "Account" not in second["entities"]
-    assert second["unassigned_tables"] == ["WM_MODEL_WEIGHTS"]
-    assert ti.entity_name_for_table("WM_MODEL_WEIGHTS", ["WM_CLIENT", "WM_MODEL_WEIGHTS"]) == "ModelWeights"
+    assert second["unassigned_tables"] == ["WM_TRADE_BLOTTER"]
+    assert ti.entity_name_for_table("WM_TRADE_BLOTTER", ["WM_CLIENT", "WM_TRADE_BLOTTER"]) == "TradeBlotter"
