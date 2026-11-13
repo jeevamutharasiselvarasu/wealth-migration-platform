@@ -154,3 +154,10 @@ def test_coded_values_are_compared_with_the_targets_reference_list():
     assert by(tv.evaluate(ref, lambda q: 0, None), "VALUES_IN_REFERENCE_LIST")[0]["status"] == "PASS"
     big = {"Account": {**ent["Account"], "tables": {"T": {"columns": {}, "required": [], "code_lists": {"C": [str(i) for i in range(tv.MAX_LIST_CODES + 1)]}}}}}
     assert by(tv.evaluate(tv.build_plan(schema="s", staging_schema="staging", entities=big), lambda q: 0, None), "VALUES_IN_REFERENCE_LIST")[0]["status"] == "NOT_EVALUATED"
+
+
+def test_an_orphan_finding_names_the_entity_the_reference_points_at():
+    from control_plane.services import target_validation as tv
+    assert tv._target_of({"field": "ACCOUNT_NUMBER → Account.ACCOUNT_NUMBER"}) == "account"
+    assert tv._target_of({"field": "HH_GROUPING_CODE → Household.HH_GROUPING_CODE"}) == "household"
+    assert tv._target_of({"field": ""}) == "record"

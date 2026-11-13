@@ -50,6 +50,11 @@ def _id(name: str) -> str:
     return f"[{name}]"
 
 
+def _target_of(p: Dict[str, Any]) -> str:
+    """The entity a reference points at, named in the check's field ('ACCOUNT_NUMBER → Account.ACCOUNT_NUMBER' gives 'account')."""
+    return (str(p.get("field", "")).split("→", 1)[-1].strip().split(".")[0] or "record").lower()
+
+
 def build_plan(*, schema: str, staging_schema: str, entities: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """entities[E] = {"staging_table", "expected_rows", "key" (canonical key field or None),
                       "tables": {target_table: {"columns": {canonical_field: target_column}, "required": [target_column, ...],
@@ -222,7 +227,7 @@ def evaluate(plan: List[Dict[str, Any]], execute: Callable[[str], int], run_summ
                            else f"{n} canonical row(s) hold a value with no approved canonical code; map it on Business Rules → Code sets."})
         elif p["check"] == "NO_ORPHANS":
             checks.append({**base, "status": "PASS" if n == 0 else "FAIL",
-                           "detail": "Every row points at an existing household." if n == 0 else f"{n} row(s) point at a household that is not in the target."})
+                           "detail": f"Every row points at an existing {_target_of(p)}." if n == 0 else f"{n} row(s) point at a {_target_of(p)} that is not in the target."})
     status = (run_summary or {}).get("status")
     checks.append({"check": "PIPELINE_RUN", "entity": "", "table": "", "field": "",
                    "status": "PASS" if status == "SUCCEEDED" else ("NOT_EVALUATED" if not status or status in ("NO_RUN", "UNREADABLE") else "FAIL"),
