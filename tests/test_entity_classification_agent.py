@@ -59,3 +59,16 @@ def test_relationship_files_are_not_assigned_a_master_entity():
     assert result["classification_type"] == "RELATIONSHIP"
     assert result["entity"] is None
     assert result["approval_status"] == "PENDING"
+
+
+def test_strategy_files_are_recognised_from_their_headers():
+    strategies = classify_source_file(["Id", "SymbolId", "StrategyName", "StrategistName", "StrategyBenchmarkName"],
+                                      records=[{"Id": "01B3DC3E-7704", "SymbolId": ":SMA:3061:", "StrategyName": "Zacks+ Aggressive",
+                                                "StrategistName": "Zacks Investment Management", "StrategyBenchmarkName": "80% ACWI, 20% AGG"}])
+    assert strategies["proposed_classification"] == "Strategy"
+    sleeves = classify_source_file(["AccountId", "AccountNumber", "CustodianName", "StrategyId", "StrategySymbol", "StrategyName", "Balance",
+                                    "SleeveStartDate", "SleeveAsOfDate", "SleeveClosedDate"],
+                                   records=[{"AccountId": "EACF0E90", "AccountNumber": "949326081", "CustodianName": "TD Ameritrade", "StrategyId": "C315995E",
+                                             "StrategySymbol": ":SMA:28:", "StrategyName": "Athena", "Balance": "0", "SleeveStartDate": "2022-09-01",
+                                             "SleeveAsOfDate": "2023-03-21", "SleeveClosedDate": "2023-03-21"}])
+    assert sleeves["proposed_classification"] == "AccountSleeve" and sleeves["status"] != "APPROVED"  # a person confirms a link file

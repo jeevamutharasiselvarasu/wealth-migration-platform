@@ -114,6 +114,23 @@ entity_catalog:
   Model:
     Id: MODEL_ID
     Name: MODEL_NAME
+  Strategy:
+    Id: STRATEGY_ID
+    SymbolId: SYMBOL_ID
+    StrategyName: STRATEGY_NAME
+    StrategistName: STRATEGIST_NAME
+    StrategyBenchmarkName: BENCHMARK_NAME
+  AccountSleeve:
+    AccountNumber: ACCT_NUM
+    AccountId: ACCOUNT_ID
+    CustodianName: CUSTODIAN_NAME
+    StrategyId: STRATEGY_ID
+    StrategySymbol: STRATEGY_SYMBOL
+    StrategyName: STRATEGY_NAME
+    Balance: SLEEVE_BALANCE
+    SleeveStartDate: SLEEVE_START_DATE
+    SleeveAsOfDate: SLEEVE_AS_OF_DATE
+    SleeveClosedDate: SLEEVE_CLOSED_DATE
   AccountAllocation:
     AccountNumber: ACCT_NUM
     AccountId: ACCOUNT_ID

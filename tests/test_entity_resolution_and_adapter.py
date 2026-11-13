@@ -32,7 +32,7 @@ CLIENTS = [
 def test_the_five_entities_are_in_the_canonical_config():
     cfg = load_firm_config()
     assert P0_ENTITIES[:5] == ("Account", "Client", "Household", "Advisor", "AccountRole") and set(cfg.entities) == set(P0_ENTITIES)
-    assert set(P0_ENTITIES[5:]) == {"Model", "ModelWeight", "AccountAllocation", "AccountGainLoss"}  # SPARC entities, added with the CoreCap to Simplicity spec
+    assert set(P0_ENTITIES[5:]) == {"Model", "ModelWeight", "AccountAllocation", "AccountGainLoss", "Strategy", "AccountSleeve"}  # SPARC entities, added with the CoreCap to Simplicity spec
     assert [f.name for f in cfg.entities["Advisor"].fields if f.is_key] == ["ADVISOR_ID"]
     assert not any(f.is_key for f in cfg.entities["AccountRole"].fields)  # a client may hold several roles on one account: no single key
 

@@ -12,11 +12,12 @@
 # v1.3.0 (2026-11-13): CoreCap to Simplicity (Orion MCL and SPARC) spec: Household head and trust fields, Account fee and flow fields,
 #   and the Model, ModelWeight, AccountModel and AccountGainLoss entities for SPARC. All new fields are nullable: no source or target requires them for Orion.
 # v1.4.0 (2026-11-13): AccountAllocation (Account_Targets: the model or the securities an account targets) replaces AccountModel; Model and ModelWeight carry the drift fields.
+# v1.5.0 (2026-11-13): Strategy (Strategies: the investment strategies and SMAs a firm offers) and AccountSleeve (Account_Sleeves: the part of an account run under a strategy).
 # SEED VALUES: keys/types still need business owner confirmation before being treated as final.
 schema_version: 1
 firm_id: SIMPLICITY
 firm_name: Simplicity
-config_version: "1.4.0"
+config_version: "1.5.0"
 scope_direction: source_to_canonical
 canonical_contract_ref: Simplicity-MCL-v1
 target_system:
@@ -142,3 +143,24 @@ entities:
     fields:
       - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM)."}
       - {name: GAIN_LOSS, type: decimal, nullable: true, description: "Total realized gain or loss (Realized Gain_Loss_Security_FIRM.Total Gain Loss). The file was not provided (decision D10)."}
+  Strategy:
+    grain: One investment strategy or separately managed account (SMA) a firm offers
+    fields:
+      - {name: STRATEGY_ID, type: string, nullable: false, is_key: true, description: "Strategy identifier (Strategies.Id)."}
+      - {name: SYMBOL_ID, type: string, nullable: true, description: "Symbol-style code other records use to refer to the strategy, such as :SMA:1: (Strategies.SymbolId)."}
+      - {name: STRATEGY_NAME, type: string, nullable: false, description: "Display name of the strategy (Strategies.StrategyName)."}
+      - {name: STRATEGIST_NAME, type: string, nullable: true, description: "The asset manager that runs the strategy (Strategies.StrategistName)."}
+      - {name: BENCHMARK_NAME, type: string, nullable: true, description: "The benchmark index the strategy is measured against (Strategies.StrategyBenchmarkName)."}
+  AccountSleeve:
+    grain: The part of one account that is run under one strategy (Account_Sleeves)
+    fields:
+      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM; Account_Sleeves.AccountNumber)."}
+      - {name: ACCOUNT_ID, type: string, nullable: true, description: "Source account identifier (Account_Sleeves.AccountId)."}
+      - {name: CUSTODIAN_NAME, type: string, nullable: true, description: "Custodian of the account (Account_Sleeves.CustodianName)."}
+      - {name: STRATEGY_ID, type: string, nullable: false, description: "The strategy (Strategy.STRATEGY_ID; Account_Sleeves.StrategyId). 22 source values have no strategy: orphans at source."}
+      - {name: STRATEGY_SYMBOL, type: string, nullable: true, description: "Symbol-style code of the strategy, copied from the strategy (Account_Sleeves.StrategySymbol)."}
+      - {name: STRATEGY_NAME, type: string, nullable: true, description: "Name of the strategy, copied from the strategy (Account_Sleeves.StrategyName)."}
+      - {name: SLEEVE_BALANCE, type: decimal, nullable: true, description: "Balance allocated to the sleeve as of SLEEVE_AS_OF_DATE (Account_Sleeves.Balance)."}
+      - {name: SLEEVE_START_DATE, type: date, nullable: true, description: "Date the sleeve was opened (Account_Sleeves.SleeveStartDate)."}
+      - {name: SLEEVE_AS_OF_DATE, type: date, nullable: true, description: "Date SLEEVE_BALANCE is reported as of (Account_Sleeves.SleeveAsOfDate)."}
+      - {name: SLEEVE_CLOSED_DATE, type: date, nullable: true, description: "Date the sleeve was closed; empty means it is still open (Account_Sleeves.SleeveClosedDate)."}

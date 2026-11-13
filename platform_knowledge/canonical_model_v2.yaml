@@ -4,7 +4,7 @@
 # Code sets: every canonical code with a description and the spellings sources commonly use (synonyms are only suggestions;
 # an analyst approves every source value -> canonical code).
 model: XODUS-Canonical
-version: 2.2.0
+version: 2.3.0
 entities:
   Household:
     description: The grouping a firm manages together, with its advisor. Clients and accounts belong to a household.
@@ -124,6 +124,27 @@ entities:
     fields:
       - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
       - {name: GAIN_LOSS, type: decimal}
+  Strategy:
+    description: An investment strategy or separately managed account (SMA) the firm offers.
+    fields:
+      - {name: STRATEGY_ID, type: string, key: true, required: true}
+      - {name: SYMBOL_ID, type: string, description: Symbol-style code other records use for the strategy}
+      - {name: STRATEGY_NAME, type: string, required: true}
+      - {name: STRATEGIST_NAME, type: string}
+      - {name: BENCHMARK_NAME, type: string}
+  AccountSleeve:
+    description: The part of one account that is run under one strategy.
+    fields:
+      - {name: ACCT_NUM, type: string, key: true, required: true, description: Account.ACCT_NUM}
+      - {name: ACCOUNT_ID, type: string}
+      - {name: CUSTODIAN_NAME, type: string}
+      - {name: STRATEGY_ID, type: string, key: true, required: true, description: Strategy.STRATEGY_ID}
+      - {name: STRATEGY_SYMBOL, type: string}
+      - {name: STRATEGY_NAME, type: string}
+      - {name: SLEEVE_BALANCE, type: decimal}
+      - {name: SLEEVE_START_DATE, type: date, key: true}
+      - {name: SLEEVE_AS_OF_DATE, type: date}
+      - {name: SLEEVE_CLOSED_DATE, type: date}
 code_sets:
   registration_type:
     description: How an account is registered.
