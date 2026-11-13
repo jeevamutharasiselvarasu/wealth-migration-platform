@@ -346,3 +346,23 @@ def test_package_goes_stale_when_a_mapping_is_re_approved_with_a_different_rule(
     assert store.staleness({"provenance": built}, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, first)) == []
     reasons = " ".join(store.staleness({"provenance": built}, store.build_provenance(conn, "MIG-X", {"spec_version": "v"}, again)))
     assert "transformation rule was changed" in reasons
+
+
+def test_a_standing_exception_covers_the_check_in_every_run_and_still_needs_a_second_person():
+    import sqlite3
+
+    from control_plane.services import validation_scenarios as vs
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    checks = [{"check": "RELATIONSHIP", "ref": "RELATIONSHIP|AccountAllocation||ACCT_NUM -> Account.ACCT_NUM", "status": "FAIL"}, {"check": "KEY_UNIQUE", "ref": "K", "status": "PASS"}]
+    eid = vs.propose_exception(conn, "MIG-1", vs.STANDING, checks[0]["ref"], "Orphans are expected: the sample files cover different accounts.", "Ann")
+    assert vs.effective_status(checks, vs.list_exceptions(conn, "MIG-1", "VAL-1")) == "FAIL"  # not decided yet
+    try:
+        vs.decide_exception(conn, eid, "APPROVED", "Ann", "")
+        raise AssertionError("the proposer decided their own exception")
+    except ValueError as exc:
+        assert "cannot decide" in str(exc)
+    vs.decide_exception(conn, eid, "APPROVED", "Bob", "Agreed.")
+    for run in ("VAL-1", "VAL-2", "VAL-3"):  # every later run of the migration is covered, with no new exception
+        assert vs.effective_status(checks, vs.list_exceptions(conn, "MIG-1", run)) == "PASS"
+    assert vs.list_exceptions(conn, "MIG-2", "VAL-1") == []  # another migration is not

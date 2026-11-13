@@ -224,6 +224,9 @@ def _res(bad: int, fail_msg: str, ok_msg: str) -> Dict[str, Any]:
     return {"status": "FAIL" if bad else "PASS", "detail": fail_msg if bad else ok_msg}
 
 
+STANDING = "*"  # run_id of a standing exception: it covers the check in every run of the migration
+
+
 def propose_exception(conn: sqlite3.Connection, migration_id: str, run_id: str, check_ref: str, reason: str, actor: str) -> str:
     ensure_tables(conn)
     if not str(reason or "").strip():
@@ -258,8 +261,8 @@ def decide_exception(conn: sqlite3.Connection, exception_id: str, decision: str,
 def list_exceptions(conn: sqlite3.Connection, migration_id: str, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
     ensure_tables(conn)
     q, a = "SELECT * FROM validation_exceptions WHERE migration_id = ?", [migration_id]
-    if run_id:
-        q, a = q + " AND run_id = ?", a + [run_id]
+    if run_id:  # the run's own exceptions plus the migration's standing ones
+        q, a = q + " AND (run_id = ? OR run_id = ?)", a + [run_id, STANDING]
     return [dict(r) for r in conn.execute(q + " ORDER BY proposed_utc", a).fetchall()]
 
 

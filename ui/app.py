@@ -1940,7 +1940,7 @@ def _tv_redirect(key: str, message: str):
 
 
 @app.post("/api/target-validation/exceptions")
-async def propose_target_validation_exception(request: Request, run_id: str = Form(...), check_ref: str = Form(...), reason: str = Form("")):
+async def propose_target_validation_exception(request: Request, run_id: str = Form(...), check_ref: str = Form(...), reason: str = Form(""), standing: str = Form("")):
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
@@ -1950,14 +1950,14 @@ async def propose_target_validation_exception(request: Request, run_id: str = Fo
             run = conn.execute("SELECT results_json FROM target_validation_runs WHERE run_id = ? AND migration_id = ?", (run_id, migration_id)).fetchone()
             if not run or not any(c.get("ref") == check_ref and c["status"] in ("FAIL", "WARN", "NOT_EVALUATED") for c in json.loads(run["results_json"])["checks"]):
                 raise ValueError("That finding does not exist in the run, or it passed.")
-            eid = validation_scenarios.propose_exception(conn, migration_id, run_id, check_ref, reason, user["name"])
+            eid = validation_scenarios.propose_exception(conn, migration_id, validation_scenarios.STANDING if standing else run_id, check_ref, reason, user["name"])
         except ValueError as exc:
             return _tv_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("TARGET_VALIDATION_EXCEPTION_PROPOSED", user, {"exception_id": eid, "run_id": run_id, "check_ref": check_ref})
-    return _tv_redirect("notice", f"Exception {eid} proposed. A Migration Analyst must decide it.")
+    return _tv_redirect("notice", f"Exception {eid} proposed" + (" for every run of this migration" if standing else "") + ". A Migration Analyst must decide it.")
 
 
 @app.post("/api/target-validation/exceptions/{exception_id}/decision")
@@ -2649,7 +2649,7 @@ async def retire_validation_scenario(request: Request, scenario_id: str):
 
 
 @app.post("/api/validation/exceptions")
-async def propose_validation_exception(request: Request, run_id: str = Form(...), check_ref: str = Form(...), reason: str = Form("")):
+async def propose_validation_exception(request: Request, run_id: str = Form(...), check_ref: str = Form(...), reason: str = Form(""), standing: str = Form("")):
     """A Validation Specialist proposes accepting a finding; a Migration Analyst or Platform Admin decides."""
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
@@ -2659,14 +2659,14 @@ async def propose_validation_exception(request: Request, run_id: str = Form(...)
             run = conn.execute("SELECT results_json FROM validation_runs WHERE run_id = ? AND migration_id = ?", (run_id, migration_id)).fetchone()
             if not run or not any(c.get("ref") == check_ref and c["status"] in ("FAIL", "WARN", "NOT_EVALUATED") for c in json.loads(run["results_json"])["checks"]):
                 raise ValueError("That finding does not exist in the run, or it passed.")
-            eid = validation_scenarios.propose_exception(conn, migration_id, run_id, check_ref, reason, user["name"])
+            eid = validation_scenarios.propose_exception(conn, migration_id, validation_scenarios.STANDING if standing else run_id, check_ref, reason, user["name"])
         except ValueError as exc:
             return _validation_redirect("error", str(exc))
         conn.commit()
     finally:
         conn.close()
     _target_setup_audit("VALIDATION_EXCEPTION_PROPOSED", user, {"exception_id": eid, "run_id": run_id, "check_ref": check_ref})
-    return _validation_redirect("notice", f"Exception {eid} proposed. A Migration Analyst must decide it.")
+    return _validation_redirect("notice", f"Exception {eid} proposed" + (" for every run of this migration" if standing else "") + ". A Migration Analyst must decide it.")
 
 
 @app.post("/api/validation/exceptions/{exception_id}/decision")
