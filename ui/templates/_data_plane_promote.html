@@ -11,9 +11,9 @@
   {% else %}<p class="fh">Not signed off yet: the gate opens when the Validation Specialist signs off a passing target validation of this batch.</p>{% endif %}
   {% set promoted = dp.promote_run and dp.promote_run.status == 'SUCCEEDED' and dp.promote_run.batch_id == run.batch_id %}
   {% set ready = gate and run.status == 'SUCCEEDED' and dp.deployment and dp.deployment.status == 'PASS' and not promoted %}
-  <form action="/api/data-plane/promote" method="post" class="mt-2"><fieldset {% if not (can_promote and ready) %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+  <form action="/api/data-plane/promote" method="post" class="mt-2"><fieldset {% if not (can_promote and ready) or dp.running.promote %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
     <button class="btn p sm" data-testid="promote">Promote batch {{ run.batch_id }} to live</button>
-    <span class="fh">{% if promoted %} This batch is already promoted; a new batch is promoted after its own sign-off.{% elif not can_promote %} A Migration Analyst or IMO Lead promotes.{% elif not gate %} Waiting for the sign-off.{% elif not (dp.deployment and dp.deployment.status == 'PASS') %} The deployment check has not passed for this package.{% endif %}</span>
+    <span class="fh">{% if dp.running.promote %} The promotion is running. Refresh its status below.{% elif promoted %} This batch is already promoted; a new batch is promoted after its own sign-off.{% elif not can_promote %} A Migration Analyst or IMO Lead promotes.{% elif not gate %} Waiting for the sign-off.{% elif not (dp.deployment and dp.deployment.status == 'PASS') %} The deployment check has not passed for this package.{% endif %}</span>
   </fieldset></form>
   {% if dp.promote_run %}{% set r = dp.promote_run %}
   <p class="mt-2 text-xs" data-testid="promote-run">Promotion run <span class="font-mono">{{ r.adf_run_id }}</span> · {{ r.requested_by }} · {{ r.requested_utc[:19] }} · <span class="pill {{ 'approved' if r.status == 'SUCCEEDED' else ('failed' if r.status in ('FAILED','CANCELLED') else 'review') }}">{{ r.status }}</span> {{ (r.message or '')[:300] }}

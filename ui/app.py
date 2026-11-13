@@ -6637,6 +6637,26 @@ def _xodus_package(conn, migration_id: str):
     return (art, {"manifest": manifest, "files": files}) if manifest.get("carrier") == "XODUS-SQL-ADF" else (art, None)
 
 
+_FINISHED_RUN = ("SUCCEEDED", "FAILED", "CANCELLED")
+
+
+def _run_in_progress(conn, migration_id: str, pipeline: str) -> Optional[Dict[str, Any]]:
+    """The run of this pipeline that is still going, by Data Factory's own answer (a stored status can be old): None when it has finished.
+    A pipeline that is running is never started again."""
+    req = adf_runs.latest(conn, migration_id, pipeline)
+    if not req or req["status"] in _FINISHED_RUN:
+        return None
+    try:
+        req = adf_runs.refresh(conn, req)
+    except ValueError:
+        return req  # Data Factory cannot be asked: treat the run as still going rather than start a second one
+    return None if req["status"] in _FINISHED_RUN else req
+
+
+def _already_running_message(req: Dict[str, Any]) -> str:
+    return f"{req['pipeline']} is already running (run {req['adf_run_id']}, {str(req['status']).lower()}). Wait for it to finish, then refresh its status."
+
+
 def _merged_pr(conn, migration_id: str, version: str) -> Optional[Dict[str, Any]]:
     return next((p for p in git_pull_requests.list_for(conn, migration_id) if p["package_version"] == version and p["state"] == "MERGED"), None)
 
@@ -6657,6 +6677,7 @@ def _data_plane_state(migration_id: str, refresh_runs: bool = False) -> Dict[str
             out["setup_run"] = adf_runs.latest(conn, migration_id, man["setupPipeline"])
             out["run"] = adf_runs.latest(conn, migration_id, "PL_XODUS_Run")
             out["promote_run"] = adf_runs.latest(conn, migration_id, "PL_XODUS_Promote")
+            out["running"] = {k: bool(out[r] and out[r]["status"] not in _FINISHED_RUN) for k, r in (("setup", "setup_run"), ("run", "run"), ("promote", "promote_run"))}
             if refresh_runs:
                 for k in ("setup_run", "run", "promote_run"):
                     if out[k] and out[k]["status"] not in ("SUCCEEDED", "FAILED", "CANCELLED"):
@@ -6793,6 +6814,9 @@ async def run_setup_pipeline(request: Request):
             man = pkg["manifest"]
             if not _merged_pr(conn, migration_id, man["version"]):
                 raise ValueError("Merge the pull request for this package version first.")
+            busy = _run_in_progress(conn, migration_id, man["setupPipeline"])
+            if busy:
+                raise ValueError(_already_running_message(busy))
             req = adf_runs.start(conn, migration_id, man["setupPipeline"], {}, user["name"])
         except ValueError as exc:
             return _dp_redirect("/publish-artifacts", "error", str(exc))
@@ -6869,6 +6893,9 @@ async def start_data_plane_run(request: Request):
                 reasons.append("The deployment check has not passed for this package (stage 08).")
         if workflow_progress().get("validation_status") != "PASS":
             reasons.append("Mapping validation has not passed (stage 05).")
+        busy = _run_in_progress(conn, migration_id, "PL_XODUS_Run")
+        if busy:
+            reasons.append(_already_running_message(busy))
         if reasons:
             return _dp_redirect("/execution", "error", "Not started: " + " ".join(reasons))
         batch = "B" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -6905,6 +6932,9 @@ async def promote_batch(request: Request):
             gate = promotion_gate.status(conn, migration_id, run["batch_id"])
             if not gate:
                 raise ValueError(f"Batch {run['batch_id']} has no recorded sign-off. The Validation Specialist signs off the target validation first.")
+            busy = _run_in_progress(conn, migration_id, "PL_XODUS_Promote")
+            if busy:
+                raise ValueError(_already_running_message(busy))
             req = adf_runs.start(conn, migration_id, "PL_XODUS_Promote", {"MigrationId": migration_id, "MigrationSlug": man["migrationSlug"], "BatchId": run["batch_id"]},
                                  user["name"], batch_id=run["batch_id"])
         except ValueError as exc:

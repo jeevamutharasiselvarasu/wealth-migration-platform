@@ -391,7 +391,9 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             source_key = f"s.{_q(ckey)}" if ckey else "CAST(NULL AS nvarchar(400))"
             # One row per target key; a table without a mapped key keeps one row per distinct set of values (the first source key).
             part = ", ".join(keys) if keys else ", ".join(e.rsplit(" AS ", 1)[0] for e in exprs)
-            dedupe = f"ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY {source_key}) AS [xodus_rn]"
+            # An entity with no key has no source key to order by, and SQL Server rejects a constant in a window's ORDER BY.
+            order_by = source_key if ckey else "(SELECT NULL)"
+            dedupe = f"ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY {order_by}) AS [xodus_rn]"
             mirror_body.append(f"TRUNCATE TABLE [{MIRROR}].[{mtable}];")
             mirror_body.append(
                 f"INSERT INTO [{MIRROR}].[{mtable}] ({', '.join(_q(c) for c in cols)}, [xodus_source_key], [xodus_batch_id], [xodus_run_id])\n"

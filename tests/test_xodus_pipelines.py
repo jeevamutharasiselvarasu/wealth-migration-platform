@@ -101,3 +101,18 @@ def test_refuses_what_it_cannot_translate():
         build(raw_files=[{"file_name": "corecap_households.csv", "columns": ["Id]; DROP TABLE x;--"]}, RAW[1]])
     with pytest.raises(ValueError):
         build(approved_target=[])
+
+
+def test_an_entity_without_a_key_orders_its_dedupe_by_a_non_constant():
+    """SQL Server rejects a constant in a window's ORDER BY: a keyless entity (account allocation lines) has no source key to order by."""
+    spec = {"spec_version": "v1", "target_system": "Simplicity", "entities": {
+        "AccountAllocation": {"fields": [{"name": f"account_model.{c}", "table": "account_model", "column": c, "type": "string", "required": False}
+                                         for c in ("ACCOUNT_NUMBER", "CURRENT_MODEL")]}}}
+    target = [{"entity_name": "AccountAllocation", "target_field": "account_model.ACCOUNT_NUMBER", "canonical_field": "ACCT_NUM", "transformation_expression": "DIRECT_COPY", "status": "APPROVED"},
+              {"entity_name": "AccountAllocation", "target_field": "account_model.CURRENT_MODEL", "canonical_field": "MODEL_NAME", "transformation_expression": "DIRECT_COPY", "status": "APPROVED"}]
+    entities = {"AccountAllocation": {"files": ["corecap_account_targets.csv"], "key": None, "derivations": [], "canonical_fields": ["ACCT_NUM", "MODEL_NAME"],
+                                      "mappings": {"AccountNumber": {"canonical_field": "ACCT_NUM", "expression": "DIRECT_COPY"},
+                                                   "ModelName": {"canonical_field": "MODEL_NAME", "expression": "DIRECT_COPY"}}}}
+    raw = [{"file_name": "corecap_account_targets.csv", "columns": ["AccountNumber", "ModelName"]}]
+    sql = build(spec=spec, approved_target=target, entities=entities, raw_files=raw, load_order=["AccountAllocation"])["files"]["sql/xodus_mig00a1a6577b.sql"]
+    assert "ORDER BY CAST(NULL" not in sql and "ORDER BY (SELECT NULL)) AS [xodus_rn]" in sql

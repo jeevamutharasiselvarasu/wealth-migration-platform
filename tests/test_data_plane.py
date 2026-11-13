@@ -200,3 +200,53 @@ def test_live_validation_checks_what_landed_and_names_duplicate_keys():
     short = lv.evaluate(lv.build_plan(man, live, {**gate, "promotion": {"tables": [{"live_table": "ORION_MCL_ACCOUNT", "inserted": 50, "updated": 0}]}}),
                         lambda q: next(v for k, v in answers.items() if k in q), lambda q: [])
     assert next(c for c in short if c["check"] == "LIVE_ROWS_PRESENT" and c["table"] == "ORION_MCL_ACCOUNT")["status"] == "FAIL"
+
+
+def _request(conn, status, pipeline="PL_XODUS_Run", rid="RUN-T1"):
+    from control_plane.services import adf_runs
+    adf_runs.ensure_table(conn)
+    conn.execute("INSERT INTO adf_run_requests (request_id, migration_id, batch_id, pipeline, adf_run_id, requested_by, requested_utc, status) "
+                 "VALUES (?, 'MIG-T', 'B1', ?, 'adf-1', 'me', '2026-11-13T10:00:00+00:00', ?)", (rid, pipeline, status))
+
+
+def test_a_pipeline_that_is_running_is_not_started_again(monkeypatch):
+    import sqlite3
+
+    import ui.app as app_module
+    from control_plane.services import adf_runs
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    _request(conn, "INPROGRESS")
+    monkeypatch.setattr(adf_runs, "refresh", lambda c, req, **k: {**req, "status": "INPROGRESS"})
+    busy = app_module._run_in_progress(conn, "MIG-T", "PL_XODUS_Run")
+    assert busy and "already running" in app_module._already_running_message(busy)
+    assert app_module._run_in_progress(conn, "MIG-T", "PL_XODUS_Promote") is None  # another pipeline is free
+
+
+def test_a_stored_status_that_is_old_does_not_block_once_data_factory_says_it_finished(monkeypatch):
+    import sqlite3
+
+    import ui.app as app_module
+    from control_plane.services import adf_runs
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    _request(conn, "QUEUED")
+    monkeypatch.setattr(adf_runs, "refresh", lambda c, req, **k: {**req, "status": "SUCCEEDED"})
+    assert app_module._run_in_progress(conn, "MIG-T", "PL_XODUS_Run") is None
+    _request(conn, "FAILED", "PL_XODUS_Setup_x", "RUN-T2")
+    assert app_module._run_in_progress(conn, "MIG-T", "PL_XODUS_Setup_x") is None  # finished runs never block
+
+
+def test_when_data_factory_cannot_be_asked_the_run_counts_as_still_going(monkeypatch):
+    import sqlite3
+
+    import ui.app as app_module
+    from control_plane.services import adf_runs
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    _request(conn, "INPROGRESS")
+
+    def down(c, req, **k):
+        raise ValueError("Data Factory is not reachable")
+    monkeypatch.setattr(adf_runs, "refresh", down)
+    assert app_module._run_in_progress(conn, "MIG-T", "PL_XODUS_Run")
