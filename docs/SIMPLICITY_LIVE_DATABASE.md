@@ -8,7 +8,7 @@ The scripts are in `deploy/simplicity/` and only create what is missing; they ne
 1. **Create the database.** Connect to the server's `master` database and run `00_create_database.sql` (creates `Simplicity`; change the tier in the file if needed).
 2. **Create the tables.** Connect to the `Simplicity` database itself (Azure SQL has no `USE`) and run:
    - `01_live_tables.sql`: the earlier single-schema layout, schema `simplicity`, tables `ORION_MCL_HOUSEHOLD`, `ORION_MCL_CLIENT`, `ORION_MCL_ACCOUNT`.
-   - `03_orion_sparc_tables.sql`: the layout of the CoreCap to Simplicity spec: schema `orion` (3 tables, 27 columns) and schema `sparc` (5 tables, 34 columns).
+   - `03_orion_sparc_tables.sql`: the layout of the CoreCap to Simplicity spec: schema `orion` (3 tables, 27 columns) and schema `sparc` (5 tables, 34 columns, plus a proposed `account_performance` table for contributions and distributions per account and period).
    Run only the one your migration targets (see "Which schema" below).
 3. **Grant access.** In the `Simplicity` database run `02_access.sql` after replacing the two names in angle brackets (the platform SQL login: read only; the Data Factory name: read, write and the `xodus_landing` schema). The database-wide roles already cover new schemas.
 4. **Link keys.** `03_orion_sparc_tables.sql` adds nullable link columns (`HH_GROUPING_CODE`, account number) as a proposal for decision D4. Change or drop them when Simplicity decides; XODUS reads whatever the live tables hold.

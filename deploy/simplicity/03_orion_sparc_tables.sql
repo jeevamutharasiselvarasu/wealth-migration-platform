@@ -109,3 +109,27 @@ CREATE TABLE [sparc].[account_gainloss] (
     [GAIN_LOSS] decimal(19,4) NULL
 );
 GO
+
+-- ============================== sparc: account performance (added 2026-11-16) ==============================
+-- Not in the spec's 34 columns: a proposal for the contributions and distributions the spec keeps as one text column on [sparc].[account].
+-- One row per account and period (Performance_Account). All columns nullable; the promotion merge matches on ACCOUNT_NUMBER + PERIOD_DATE.
+IF OBJECT_ID(N'sparc.account_performance', N'U') IS NULL
+CREATE TABLE [sparc].[account_performance] (
+    [ACCOUNT_NUMBER] nvarchar(255) NULL,         -- link key (proposal, decision D4)
+    [ACCOUNT_NAME] nvarchar(255) NULL,
+    [PERIOD_DATE] date NULL,
+    [ENDING_MARKET_VALUE] decimal(19,4) NULL,
+    [BEGINNING_MARKET_VALUE] decimal(19,4) NULL,
+    [PERIOD_RETURN] decimal(19,8) NULL,
+    [PERIOD_RETURN_NET_OF_FEES] decimal(19,8) NULL,
+    [BENCHMARK_RETURN] decimal(19,8) NULL,
+    [CONTRIBUTIONS] decimal(19,4) NULL,
+    [DISTRIBUTIONS] decimal(19,4) NULL,
+    [FEES] decimal(19,4) NULL,
+    [INCOME] decimal(19,4) NULL,
+    [NET_GAIN] decimal(19,4) NULL,
+    [ACCRUAL] decimal(19,4) NULL,
+    [EXTERNAL_CONTRIBUTIONS] decimal(19,4) NULL,
+    [EXTERNAL_WITHDRAWALS] decimal(19,4) NULL
+);
+GO
