@@ -4,7 +4,7 @@
 # Code sets: every canonical code with a description and the spellings sources commonly use (synonyms are only suggestions;
 # an analyst approves every source value -> canonical code).
 model: XODUS-Canonical
-version: 2.3.0
+version: 2.4.0
 entities:
   Household:
     description: The grouping a firm manages together, with its advisor. Clients and accounts belong to a household.
@@ -145,6 +145,25 @@ entities:
       - {name: SLEEVE_START_DATE, type: date, key: true}
       - {name: SLEEVE_AS_OF_DATE, type: date}
       - {name: SLEEVE_CLOSED_DATE, type: date}
+  AccountPerformance:
+    description: Performance of one account for one period.
+    fields:
+      - {name: ACCT_NUM, type: string, key: true, required: true}
+      - {name: ACCOUNT_NAME, type: string}
+      - {name: PERIOD_DATE, type: date, key: true, required: true}
+      - {name: ENDING_MARKET_VALUE, type: decimal}
+      - {name: BEGINNING_MARKET_VALUE, type: decimal}
+      - {name: PERIOD_RETURN, type: decimal}
+      - {name: PERIOD_RETURN_NET_OF_FEES, type: decimal}
+      - {name: BENCHMARK_RETURN, type: decimal}
+      - {name: CONTRIBUTIONS, type: decimal}
+      - {name: DISTRIBUTIONS, type: decimal}
+      - {name: FEES, type: decimal}
+      - {name: INCOME, type: decimal}
+      - {name: NET_GAIN, type: decimal}
+      - {name: ACCRUAL, type: decimal}
+      - {name: EXTERNAL_CONTRIBUTIONS, type: decimal}
+      - {name: EXTERNAL_WITHDRAWALS, type: decimal}
 code_sets:
   registration_type:
     description: How an account is registered.

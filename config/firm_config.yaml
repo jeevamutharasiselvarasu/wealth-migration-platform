@@ -13,11 +13,12 @@
 #   and the Model, ModelWeight, AccountModel and AccountGainLoss entities for SPARC. All new fields are nullable: no source or target requires them for Orion.
 # v1.4.0 (2026-11-13): AccountAllocation (Account_Targets: the model or the securities an account targets) replaces AccountModel; Model and ModelWeight carry the drift fields.
 # v1.5.0 (2026-11-13): Strategy (Strategies: the investment strategies and SMAs a firm offers) and AccountSleeve (Account_Sleeves: the part of an account run under a strategy).
+# v1.6.0 (2026-11-16): AccountPerformance (Performance_Account: one row per account and period, with contributions and distributions).
 # SEED VALUES: keys/types still need business owner confirmation before being treated as final.
 schema_version: 1
 firm_id: SIMPLICITY
 firm_name: Simplicity
-config_version: "1.5.0"
+config_version: "1.6.0"
 scope_direction: source_to_canonical
 canonical_contract_ref: Simplicity-MCL-v1
 target_system:
@@ -164,3 +165,22 @@ entities:
       - {name: SLEEVE_START_DATE, type: date, nullable: true, description: "Date the sleeve was opened (Account_Sleeves.SleeveStartDate)."}
       - {name: SLEEVE_AS_OF_DATE, type: date, nullable: true, description: "Date SLEEVE_BALANCE is reported as of (Account_Sleeves.SleeveAsOfDate)."}
       - {name: SLEEVE_CLOSED_DATE, type: date, nullable: true, description: "Date the sleeve was closed; empty means it is still open (Account_Sleeves.SleeveClosedDate)."}
+  AccountPerformance:
+    grain: Performance of one account for one period (Performance_Account)
+    fields:
+      - {name: ACCT_NUM, type: string, nullable: false, description: "The account (Account.ACCT_NUM; Performance_Account.AccountNumber)."}
+      - {name: ACCOUNT_NAME, type: string, nullable: true, description: "Account name as the performance file shows it (AccountName)."}
+      - {name: PERIOD_DATE, type: date, nullable: false, description: "First day of the performance period (PeriodDate)."}
+      - {name: ENDING_MARKET_VALUE, type: decimal, nullable: true, description: "Market value at the end of the period (EMV)."}
+      - {name: BEGINNING_MARKET_VALUE, type: decimal, nullable: true, description: "Market value at the start of the period (BMV)."}
+      - {name: PERIOD_RETURN, type: decimal, nullable: true, description: "Return of the account for the period (PeriodReturn)."}
+      - {name: PERIOD_RETURN_NET_OF_FEES, type: decimal, nullable: true, description: "Return of the account for the period, net of fees (PeriodReturnNOF)."}
+      - {name: BENCHMARK_RETURN, type: decimal, nullable: true, description: "Return of the benchmark for the period (BMReturn)."}
+      - {name: CONTRIBUTIONS, type: decimal, nullable: true, description: "Money added to the account in the period (Additions)."}
+      - {name: DISTRIBUTIONS, type: decimal, nullable: true, description: "Money withdrawn from the account in the period (Withdrawals)."}
+      - {name: FEES, type: decimal, nullable: true, description: "Fees charged in the period (Fees)."}
+      - {name: INCOME, type: decimal, nullable: true, description: "Income earned in the period (Income)."}
+      - {name: NET_GAIN, type: decimal, nullable: true, description: "Net gain of the period (NetGain)."}
+      - {name: ACCRUAL, type: decimal, nullable: true, description: "Accrued income at the end of the period (Accrual)."}
+      - {name: EXTERNAL_CONTRIBUTIONS, type: decimal, nullable: true, description: "Contributions from outside the account (ExContributions)."}
+      - {name: EXTERNAL_WITHDRAWALS, type: decimal, nullable: true, description: "Withdrawals to outside the account (ExWithdrawals)."}

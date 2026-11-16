@@ -72,3 +72,14 @@ def test_strategy_files_are_recognised_from_their_headers():
                                              "StrategySymbol": ":SMA:28:", "StrategyName": "Athena", "Balance": "0", "SleeveStartDate": "2022-09-01",
                                              "SleeveAsOfDate": "2023-03-21", "SleeveClosedDate": "2023-03-21"}])
     assert sleeves["proposed_classification"] == "AccountSleeve" and sleeves["status"] != "APPROVED"  # a person confirms a link file
+
+
+def test_performance_file_is_recognised_and_maps_additions_to_its_own_fields():
+    headers = ["AccountNumber", "AccountName", "PeriodDate", "EMV", "BMV", "PeriodReturn", "PeriodReturnNOF", "BMReturn", "Additions",
+               "Withdrawals", "Fees", "Income", "NetGain", "Accrual", "ExContributions", "ExWithdrawals"]
+    result = classify_source_file(headers, records=[dict(zip(headers, ["38595715", "A ANATRA", "2026-04-01", "183668.28", "168583.71", "0.093", "0.089",
+                                                                        "0", "220.13", "800.15", "580.02", "220.13", "15664.59", "0", "0", "580.02"]))])
+    assert result["proposed_classification"] == "AccountPerformance"
+    from agents.discovery.schema_mapper_agent import SchemaMapperAgent
+    ent = SchemaMapperAgent.ENTITY_CATALOG["AccountPerformance"]
+    assert ent["Additions"] == "CONTRIBUTIONS" and ent["EMV"] == "ENDING_MARKET_VALUE" and set(ent.values()) >= {"ACCT_NUM", "PERIOD_DATE"}

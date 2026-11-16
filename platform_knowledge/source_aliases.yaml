@@ -131,6 +131,23 @@ entity_catalog:
     SleeveStartDate: SLEEVE_START_DATE
     SleeveAsOfDate: SLEEVE_AS_OF_DATE
     SleeveClosedDate: SLEEVE_CLOSED_DATE
+  AccountPerformance:
+    AccountNumber: ACCT_NUM
+    AccountName: ACCOUNT_NAME
+    PeriodDate: PERIOD_DATE
+    EMV: ENDING_MARKET_VALUE
+    BMV: BEGINNING_MARKET_VALUE
+    PeriodReturn: PERIOD_RETURN
+    PeriodReturnNOF: PERIOD_RETURN_NET_OF_FEES
+    BMReturn: BENCHMARK_RETURN
+    Additions: CONTRIBUTIONS
+    Withdrawals: DISTRIBUTIONS
+    Fees: FEES
+    Income: INCOME
+    NetGain: NET_GAIN
+    Accrual: ACCRUAL
+    ExContributions: EXTERNAL_CONTRIBUTIONS
+    ExWithdrawals: EXTERNAL_WITHDRAWALS
   AccountAllocation:
     AccountNumber: ACCT_NUM
     AccountId: ACCOUNT_ID
