@@ -133,3 +133,30 @@ CREATE TABLE [sparc].[account_performance] (
     [EXTERNAL_WITHDRAWALS] decimal(19,4) NULL
 );
 GO
+
+-- ============================== sparc: strategy and account sleeve (added 2026-11-16) ==============================
+-- Not in the spec's 34 columns: proposals for the strategies a firm offers and the part of each account run under one.
+-- All columns nullable. The promotion merge matches strategy on STRATEGY_ID and account_sleeve on ACCOUNT_NUMBER + STRATEGY_ID + SLEEVE_START_DATE.
+IF OBJECT_ID(N'sparc.strategy', N'U') IS NULL
+CREATE TABLE [sparc].[strategy] (
+    [STRATEGY_ID] nvarchar(255) NULL,
+    [SYMBOL_ID] nvarchar(255) NULL,
+    [STRATEGY_NAME] nvarchar(255) NULL,
+    [STRATEGIST_NAME] nvarchar(255) NULL,
+    [BENCHMARK_NAME] nvarchar(255) NULL
+);
+GO
+IF OBJECT_ID(N'sparc.account_sleeve', N'U') IS NULL
+CREATE TABLE [sparc].[account_sleeve] (
+    [ACCOUNT_NUMBER] nvarchar(255) NULL,         -- link key (proposal, decision D4)
+    [ACCOUNT_ID] nvarchar(255) NULL,
+    [CUSTODIAN_NAME] nvarchar(255) NULL,
+    [STRATEGY_ID] nvarchar(255) NULL,
+    [STRATEGY_SYMBOL] nvarchar(255) NULL,
+    [STRATEGY_NAME] nvarchar(255) NULL,
+    [SLEEVE_BALANCE] decimal(19,4) NULL,
+    [SLEEVE_START_DATE] date NULL,
+    [SLEEVE_AS_OF_DATE] date NULL,
+    [SLEEVE_CLOSED_DATE] date NULL
+);
+GO
