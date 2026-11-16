@@ -518,12 +518,15 @@ def test_fields_added_by_change_requests_match_regardless_of_declared_type(conn,
     assert hints["SIMP_CUSTOMER.ONBOARD_DT"] == "CLIENT_ONBOARD_DATE" and hints["SIMP_ACCT_MASTER.ACCT_STATUS"] == "ACCOUNT_STATUS"
 
 
-def test_mappings_from_an_earlier_target_model_do_not_silently_block_new_proposals(conn, spec):
+def test_mappings_from_an_earlier_target_model_carry_forward_as_proposals(conn, spec):
     tm.ensure_table(conn)
-    conn.execute("INSERT INTO target_mappings (target_mapping_id, migration_id, entity_name, target_field, canonical_field, status, spec_version, created_utc) "
-                 "VALUES ('TGT-OLD', 'MIG-OLD', 'Account', 'SIMP_ACCT_MASTER.ACCT_NO', 'ACCT_NUM', 'APPROVED', 'old-model', 'now')")
-    with pytest.raises(ValueError, match="earlier target model"):
-        tm.propose(conn, "MIG-OLD", CANON, spec)
+    conn.execute("INSERT INTO target_mappings (target_mapping_id, migration_id, entity_name, target_field, canonical_field, status, reviewer, spec_version, created_utc) "
+                 "VALUES ('TGT-OLD', 'MIG-OLD', 'Account', 'SIMP_ACCT_MASTER.ACCT_NO', 'ACCT_NUM', 'APPROVED', 'Ann', 'old-model', 'now')")
+    tm.propose(conn, "MIG-OLD", CANON, spec)  # a changed target model no longer blocks the migration
+    row = dict(conn.execute("SELECT * FROM target_mappings WHERE target_mapping_id = 'TGT-OLD'").fetchone())
+    assert row["status"] == "PROPOSED" and row["reviewer"] is None and row["spec_version"] == str(spec["spec_version"]) and row["canonical_field"] == "ACCT_NUM"
+    hist = conn.execute("SELECT prior_status, prior_reviewer FROM target_mapping_history WHERE target_mapping_id = 'TGT-OLD'").fetchall()
+    assert [tuple(h) for h in hist] == [("APPROVED", "Ann")]  # the approval given against the earlier model stays on record
     assert tm.propose(conn, "MIG-NEW", CANON, spec) == 14  # a new migration maps to the confirmed target normally
 
 

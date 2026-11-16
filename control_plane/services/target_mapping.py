@@ -110,8 +110,20 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
     """Create PROPOSED rows for target fields not yet proposed. Idempotent. Returns rows created."""
     ensure_table(conn)
     now = datetime.now(timezone.utc).isoformat()
-    created = blocked = 0
+    created = 0
+    version = str(spec["spec_version"])
     for entity, body in spec["entities"].items():
+        # A mapping made against an earlier target model carries forward when its target field is still in the confirmed model. It goes back to
+        # PROPOSED: the approval was given against the earlier model, so a person approves it again. The earlier state is kept in the history.
+        for field in body["fields"]:
+            for old in conn.execute("SELECT * FROM target_mappings WHERE migration_id = ? AND entity_name = ? AND target_field = ? AND spec_version <> ?",
+                                    (migration_id, entity, field["name"], version)).fetchall():
+                conn.execute("INSERT INTO target_mapping_history (history_id, target_mapping_id, prior_status, prior_expression, prior_reviewer, prior_comments, "
+                             "prior_reviewed_utc, revised_by, revision_reason, revised_utc) VALUES (?, ?, ?, ?, ?, ?, ?, 'XODUS', ?, ?)",
+                             ("THIST-" + uuid.uuid4().hex[:12].upper(), old["target_mapping_id"], old["status"], old["transformation_expression"], old["reviewer"],
+                              old["review_comments"], old["reviewed_utc"], f"Carried forward from target model {old['spec_version']} to {version}; approve it again", now))
+                conn.execute("UPDATE target_mappings SET spec_version = ?, status = 'PROPOSED', reviewer = NULL, review_comments = NULL, reviewed_utc = NULL "
+                             "WHERE target_mapping_id = ?", (version, old["target_mapping_id"]))
         known = set(canonical_fields.get(entity, []))
         for field in body["fields"]:
             hint = _source(field)
@@ -121,17 +133,10 @@ def propose(conn: sqlite3.Connection, migration_id: str, canonical_fields: Dict[
                 "transformation_expression, status, spec_version, created_utc) VALUES (?, ?, ?, ?, ?, 'DIRECT_COPY', 'PROPOSED', ?, ?) ON CONFLICT DO NOTHING",
                 ("TGT-" + uuid.uuid4().hex[:12].upper(), migration_id, entity, field["name"], canonical, str(spec["spec_version"]), now))
             created += cur.rowcount
-            if not cur.rowcount and not conn.execute(
-                    "SELECT 1 FROM target_mappings WHERE migration_id = ? AND entity_name = ? AND target_field = ? AND spec_version = ?",
-                    (migration_id, entity, field["name"], str(spec["spec_version"]))).fetchone():
-                blocked += 1
             if canonical and not cur.rowcount:
                 conn.execute("UPDATE target_mappings SET canonical_field = ? WHERE migration_id = ? AND entity_name = ? "
                              "AND target_field = ? AND canonical_field IS NULL AND status = 'PROPOSED' AND spec_version = ?",
                              (canonical, migration_id, entity, field["name"], str(spec["spec_version"])))
-    if blocked:
-        raise ValueError(f"{blocked} target mapping(s) in this migration were made against an earlier target model. "
-                         "Start a new migration (or reset the demo) to map to the confirmed target system.")
     return created
 
 
