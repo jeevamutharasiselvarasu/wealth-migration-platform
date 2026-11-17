@@ -50,13 +50,16 @@
             <span class="pill border-amber-200 bg-amber-50 text-amber-800">{{ pending_count }} PENDING</span></div>
         </div>
         {% if approved_mappings %}
-        <div class="mt-3 overflow-x-auto"><table class="w-full min-w-[760px] text-left">
-            <thead><tr><th>Entity</th><th>Source field</th><th>Canonical field</th><th>Transformation</th><th>Confidence</th><th>Reviewer</th><th>Approved at</th></tr></thead>
+        {% for ent_name, ent_rows in approved_mappings|groupby('entity_name') %}
+        <details class="ent"><summary><b class="en">{{ ent_name }}</b><span class="chip">{{ ent_rows|length }} mapping{{ '' if ent_rows|length == 1 else 's' }}</span></summary>
+        <div class="tw"><table class="w-full min-w-[680px] text-left">
+            <thead><tr><th>Source field</th><th>Canonical field</th><th>Transformation</th><th>Confidence</th><th>Reviewer</th><th>Approved at</th></tr></thead>
             <tbody>
-            {% for mapping in approved_mappings %}
-            <tr><td class="font-bold">{{ mapping.entity_name }}</td><td class="font-mono">{{ mapping.source_field }}</td><td class="font-mono font-bold">{{ mapping.canonical_field|default('—', true) }}</td><td class="font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td>{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="nw">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="nw">{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
+            {% for mapping in ent_rows %}
+            <tr><td class="font-mono">{{ mapping.source_field }}</td><td class="font-mono font-bold">{{ mapping.canonical_field|default('—', true) }}</td><td class="font-mono">{{ mapping.transformation_expression|default('DIRECT_COPY') }}</td><td>{{ ((mapping.confidence_score|float)*100)|round(1) }}%</td><td class="nw">{{ mapping.reviewer|default(mapping.created_by|default('Recorded')) }}</td><td class="nw">{{ (mapping.reviewed_utc|default(mapping.updated_utc|default('—')))|string|truncate(10, True, '') }}</td></tr>
             {% endfor %}
-            </tbody></table></div>
+            </tbody></table></div></details>
+        {% endfor %}
         {% else %}
         <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-6 text-center"><div class="font-bold text-[#152C6B]">No approved mappings recorded for this migration yet</div>
         <p class="mt-1 text-xs text-[#5A6A88]">Approve a proposal in Mapping Studio. It should appear here once approval is saved.</p>
@@ -154,7 +157,7 @@
         <div id="rm-error" class="mt-2 hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert"></div>
         <table id="rm-steps" class="mt-3 hidden w-full text-left text-xs"><thead><tr><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Step</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Status</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Rows read</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">Rows written</th><th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">At (UTC)</th></tr></thead><tbody></tbody></table>
         <div id="rm-fail" class="mt-3 hidden space-y-3"></div>
-        <div id="rm-ok" class="mt-3 hidden rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">The run succeeded. Every copy and the merge into the target completed. <a href="/validation-rules" class="btn p sm ml-2" data-testid="to-target-validation">Continue to target validation →</a></div>
+        <div id="rm-ok" class="mt-3 hidden rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">The run succeeded. Every copy and the merge into the target completed. <a href="/validation-rules" class="btn p sm ml-2" data-testid="to-target-validation">Continue to 10 Target validation →</a></div>
     </section>
     <script>
     (function () {

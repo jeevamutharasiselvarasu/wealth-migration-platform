@@ -16,10 +16,6 @@
 </div>{% endif %}
   {% if notice %}<div class="ins">{{ notice }}</div>{% endif %}
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
-  <nav aria-label="Mapping workflow navigation" class="tabs">
-    <a href="#pending-mappings" class="tab">Pending proposals ({{ mapping_suggestions|length }})</a>
-    <a href="#information-requests" class="tab">Information requests ({{ information_requests|selectattr('status','equalto','OPEN')|list|length }} open)</a>
-  </nav>
   <div class="ph">
     <div>
       <div class="ey dm">Stage 04 · Control plane · Transformed</div>
@@ -27,6 +23,10 @@
       <p>Review source-to-canonical proposals inferred from uploaded files. Approve individual proposals or approve the complete pending set for an entity in one action. Entity-level approval validates every proposal atomically; any unresolved field, unsupported transformation or conflicting target blocks the whole action.</p>
     </div><div style="display:flex;gap:6px;align-items:flex-start"><span class="chip b">Control plane</span><span class="chip ex">Approval required</span></div>
   </div>
+  <nav aria-label="Mapping workflow navigation" class="tabs">
+    <a href="#pending-mappings" class="tab">Pending proposals ({{ mapping_suggestions|length }})</a>
+    <a href="#information-requests" class="tab">Information requests ({{ information_requests|selectattr('status','equalto','OPEN')|list|length }} open)</a>
+  </nav>
   <div class="ins"><b>Control plane.</b> The mapping from source fields to the canonical model (Mapping Studio). It works from metadata and sample files; every decision needs a person and no production data is touched here.</div>
   <div class="ins" data-testid="entity-resolution-link"><b>Entity resolution.</b> Which source rows are the same record (match rules) and, when AccountRole has no source file, whether account roles are derived: decided on <a href="/entity-resolution" class="font-bold text-blue-700">Entity resolution</a>. This stage is complete when nothing there is waiting.</div>
   {% if progress %}<section class="kpis" aria-label="Mapping summary">
@@ -81,7 +81,7 @@
     <datalist id="rule-options">{% for b in builtin_rules %}<option value="{{ b }}">built-in</option>{% endfor %}{% for r in approved_rules %}<option value="{{ r.expression }}">{{ r.description|default('approved rule')|truncate(60) }}</option>{% endfor %}</datalist>
     {% if can_review_mappings %}<form id="src-review" action="/api/mapping-suggestions/review-selected" method="post" data-bulk-bar class="gate" style="margin-top:12px"><span class="text-[10px] text-[#5A6A88]"><b data-selected-count>0</b> selected</span><input name="common_note" placeholder="Note for every selected row without its own" aria-label="Note for all selected" class="input w-64"><button name="decision" value="APPROVED" data-needs-selection class="btn ok sm">Approve selected</button><button name="decision" value="REJECTED" data-needs-selection class="btn g sm">Reject selected</button><span class="text-[10px] text-[#8A97B2]">A rejection reason is required: add it on the row or in the shared note. Tick the header box to select every pending row in an entity.</span></form>{% else %}<p class="mt-3 rounded-lg bg-[#F8FAFD] p-3 text-[10px] text-[#5A6A88]">Read-only for {{ user_role }}. Migration Analyst or Platform Admin approves or rejects these proposals.</p>{% endif %}
     {% else %}
-    {% if progress and progress.mappings_approved %}<div class="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-6 text-center"><div class="font-bold text-teal-900">All proposals reviewed · {{ progress.mappings_approved }} mappings approved</div><p class="mt-1 text-xs text-teal-800">{% if progress.rfi_open %}{{ progress.rfi_open }} information request{{ '' if progress.rfi_open == 1 else 's' }} still open below.{% else %}Nothing is waiting here. Continue to validation.{% endif %}</p><a href="/reconciliation" class="btn ok sm">Continue to validation →</a></div>
+    {% if progress and progress.mappings_approved %}<div class="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-6 text-center"><div class="font-bold text-teal-900">All proposals reviewed · {{ progress.mappings_approved }} mappings approved</div><p class="mt-1 text-xs text-teal-800">{% if progress.rfi_open %}{{ progress.rfi_open }} information request{{ '' if progress.rfi_open == 1 else 's' }} still open below.{% else %}Nothing is waiting here. Continue to validation.{% endif %}</p><a href="/reconciliation" class="btn ok sm">Continue to 05 Mapping Validation Review →</a></div>
     {% else %}
     <div class="mt-4 rounded-xl border border-dashed border-[#C3D2EC] bg-[#F8FAFD] p-7 text-center"><div class="font-bold text-[#152C6B]">No pending mapping proposals</div><p class="mt-1 text-xs text-[#5A6A88]">Confirm each inferred entity in Source Discovery, then select “Generate proposals from approved files” to profile all newly approved files and create review items.</p><div class="mt-3 flex flex-wrap justify-center gap-2">{% if can_discover %}<form action="/api/entities/map-approved-files" method="post"><button class="btn p sm">Generate proposals from approved files →</button></form>{% endif %}<a href="/discovery#discovered-source-inventory" class="btn g sm">Open Source Discovery</a></div></div>
     {% endif %}

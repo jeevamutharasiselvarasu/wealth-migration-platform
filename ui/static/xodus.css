@@ -62,7 +62,7 @@ a.kpi:hover{border-color:var(--brand)}
 .xa-legacy table{font-variant-numeric:tabular-nums}
 .xa-legacy th{background:var(--bg);color:var(--muted)}
 .xa-legacy td{border-color:var(--line)}
-.xa-legacy .font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.xa-legacy .font-mono{font-family:var(--mono)}
 /* Two-column form grid used by the rebuilt pages */
 .fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
 @media(max-width:800px){.fgrid{grid-template-columns:1fr}.kup{grid-template-columns:1fr!important}}

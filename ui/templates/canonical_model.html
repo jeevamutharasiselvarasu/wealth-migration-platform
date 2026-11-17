@@ -23,8 +23,8 @@
   </section>
 
   {% for name, e in model.entities.items() %}
-  <section class="card" id="entity-{{ name }}">
-    <h3 style="font-size:16px">{{ name }} <span class="ml-2 font-mono text-[10px] text-[#5A6A88]">{{ e.fields|length }} fields</span></h3>
+  <details class="ent" id="entity-{{ name }}">
+    <summary><b class="en">{{ name }}</b><span class="chip">{{ e.fields|length }} fields</span>{% if e.description %}<span class="sd">{{ e.description|truncate(110) }}</span>{% endif %}</summary>
     <p class="fh">{{ e.description }}</p>
     <div class="tw mt-2"><table class="t">
       <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Required</th><th>Code set</th><th>Notes</th></tr></thead>
@@ -34,18 +34,18 @@
         <td>{% if f.sensitive %}<span class="chip ex">Sensitive</span> {% endif %}{{ f.description or '' }}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
-  </section>
+  </details>
   {% endfor %}
 
   {% for name, cs in model.code_sets.items() %}
-  <section class="card" id="set-{{ name }}">
-    <h3 style="font-size:16px">Code set: <span class="font-mono">{{ name }}</span> <span class="ml-2 font-mono text-[10px] text-[#5A6A88]">{{ cs.codes|length }} codes</span></h3>
+  <details class="ent" id="set-{{ name }}">
+    <summary><b class="en">Code set: <span class="font-mono">{{ name }}</span></b><span class="chip">{{ cs.codes|length }} codes</span></summary>
     <p class="fh">{{ cs.description }}{% set used = [] %}{% for en, fs in coded.items() %}{% for f, s in fs.items() %}{% if s == name %}{% if used.append(en ~ '.' ~ f) %}{% endif %}{% endif %}{% endfor %}{% endfor %}{% if used %} Used by <span class="font-mono">{{ used|join(', ') }}</span>.{% else %} Not bound to a field yet.{% endif %}</p>
     <div class="tw mt-2"><table class="t">
       <thead><tr><th>Code</th><th>Description</th><th>Known spellings (suggestions only)</th></tr></thead>
       <tbody>{% for c in cs.codes %}<tr><td class="font-mono">{{ c.code }}</td><td>{{ c.description }}</td><td class="text-[11px]">{{ (c.synonyms or [])|join(', ') }}</td></tr>{% endfor %}</tbody>
     </table></div>
-  </section>
+  </details>
   {% endfor %}
   <div class="ins">Household, Client, Account, Advisor and AccountRole are discovered and mapped per migration (Advisor and AccountRole are opt-in in Migration setup; AccountRole can be derived from the households). The same record in several rows is resolved on Entity resolution (stage 04). The target receives Household, Client and Account; Advisor and AccountRole stay in the canonical model.</div>
 </div>

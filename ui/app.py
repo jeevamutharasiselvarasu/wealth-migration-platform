@@ -726,8 +726,8 @@ async def deal_room_page(request: Request):
 
 
 def _preview_note(text: str, href: str, link: str) -> str:
-    return ('<div style="background:#0B1F33;color:#fff;font:600 12.5px Inter,system-ui,sans-serif;padding:9px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
-            f'<span style="opacity:.8">Live in this build:</span><a href="{href}" style="color:#64D8EF">{link}</a><span style="opacity:.6">{text}</span></div>')
+    return ('<div style="background:var(--tint-b,#ECF3FB);color:var(--ink,#152536);border-bottom:1px solid var(--line,#DDE7EF);font:600 12.5px Inter,system-ui,sans-serif;padding:8px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
+            f'<span style="color:var(--muted,#657487)">Live in this build:</span><a href="{href}" style="color:var(--ink-b,#0B5FA5);font-weight:700">{link}</a><span style="color:var(--muted,#657487)">{text}</span></div>')
 
 
 @app.get("/tenant", response_class=HTMLResponse)

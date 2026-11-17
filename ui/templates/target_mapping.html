@@ -6,11 +6,11 @@
   {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
   <div class="ph">
     <div>
-      <a href="/setup" class="btn g sm" data-testid="back-to-setup" style="margin-bottom:8px;display:inline-block">← Back to Setup</a>
       <div class="ey dm">Stage 06 · Transformed · Canonical → target{% if target_label %} · {{ target_label }}{% endif %}</div>
       <h1>Target mapping</h1>
       <p>Map each canonical field to a Simplicity target field. Proposals come from the target specification; a Migration Analyst approves each one and may apply an approved <a href="/transformation-rules" class="text-blue-700">transformation rule</a>. The preview is a read-only dry run that reports counts and findings, never record values.</p>
     </div>
+    <div style="display:flex;gap:6px;align-items:flex-start"><a href="/setup" class="btn g sm" data-testid="back-to-setup">← Back to Setup</a></div>
   </div>
   <div class="ins"><b>This stage.</b> Runs after the source→canonical mapping has been validated (stage 05). Map each canonical field to a target field and approve the mappings and rules. The next stage (07 Transformation SQL) writes the approved mappings and rules out as SQL.</div>
   {% if target_config and target_config.connector_type == 'azure-sql' %}<div class="exc" data-testid="target-banner-azure"><b>Azure SQL target.</b> <span class="font-mono">{{ target_config.endpoint }}</span>. The platform learns its structure by reading the table and column list with a read-only sign-in; it never loads data into it. The ADF pipeline does the loading, and a person runs the create scripts.</div>
@@ -132,6 +132,6 @@
   </section>
   {% endif %}
   {% endif %}
-  {% if spec %}<p class="mt-4"><a href="/transformation-sql" class="btn p">Continue to Transformation SQL →</a></p>{% endif %}
+  {% if spec %}<p class="mt-4"><a href="/transformation-sql" class="btn p">Continue to 07 Transformation SQL →</a></p>{% endif %}
 </div>
 {% endblock %}

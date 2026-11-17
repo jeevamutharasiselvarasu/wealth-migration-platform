@@ -1,5 +1,6 @@
 /* Xodus suite template. Colour coding follows WealthTech AI Labs: cyan = Deal Room (front), green = Governance (middle), blue = Data Migration (back). */
 :root{
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--r-sm:10px;--r-md:14px;--r-lg:18px;
   --cyan:#08A6D8;--cyan-l:#64D8EF;--green:#27C978;--green-d:#19A861;--blue:#0878C9;--blue-d:#0B5FA5;
   --navy-950:#071523;--navy-900:#0B1F33;--navy-800:#12304B;
   --brand:#0878C9;--brand-2:color-mix(in srgb,var(--brand) 55%,#64D8EF);
@@ -77,7 +78,7 @@ th{text-align:left;font-size:10px;letter-spacing:.9px;text-transform:uppercase;c
 td{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink);vertical-align:top}
 tr:last-child td{border-bottom:0}
 td.r,th.r{text-align:right}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mono{font-family:var(--mono)}
 .flag{color:var(--bad);font-weight:700}
 .exc{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 14px;background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600}
 .lockn{border:1px dashed var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);background:var(--panel)}
@@ -146,3 +147,10 @@ td.r,th.r{text-align:right}
 .xwm{height:30px;max-width:180px;object-fit:contain}
 .tbtn.on{border-color:var(--cyan);background:var(--tint-c);color:var(--ink-c)}
 
+
+/* Suite top bar: keep one row when the Platform Admin has the extra Tenant settings button */
+.xtop-in{gap:10px}
+.xtop-in .tbtn{padding:6px 12px;white-space:nowrap}
+.xtop-in .xbrand span span{white-space:nowrap}
+@media (max-width:1400px){.xtop-in .xbrand span span{display:none}}
+@media (min-width:1001px){.xtop-in{flex-wrap:nowrap}}

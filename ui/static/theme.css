@@ -1,0 +1,238 @@
+/* Xodus unified theme, loaded last. Moves Data Migration onto the lighter suite look and sets one scale for
+   radius, type, chips, callouts, tables, buttons and the assistant, so every page and element follows the same rules.
+   Everything is driven by the tokens in suite.css (colours, --r-sm/--r-md/--r-lg, --mono), so the dark theme follows too. */
+
+/* ---- One header: suite bar on top, a thin light migration strip below (sign out and persona live in the suite bar) ---- */
+.pbar{background:var(--panel);color:var(--ink);border-bottom:1px solid var(--line);top:0}
+.pb-in{min-height:46px;padding:6px 0;gap:12px}
+.lock strong{color:var(--head);font-size:13.5px}
+.lock span{color:var(--muted);font-size:11.5px}
+.lock .mk{width:30px;height:30px;border-radius:var(--r-sm);font-size:11px}
+.pb-ctx{color:var(--muted);font-size:12.5px}
+.pb-ctx b{color:var(--head)}
+.pbchip{background:var(--chip);color:var(--muted);font-size:11px}
+
+/* ---- Left rail: deep navy, the one dark anchor next to the light content ---- */
+.side{background:linear-gradient(180deg,var(--navy-900),var(--navy-950));color:#C7D8E5;border:1px solid rgba(255,255,255,.06);border-radius:var(--r-lg);box-shadow:0 6px 18px rgba(7,21,35,.25)}
+.sh,.zg,.runh small{color:#8FA8BC;font-size:11px}
+.nv{color:#D6E4EE;border-radius:var(--r-sm)}
+.nv:hover{background:rgba(255,255,255,.08)}
+.nv.on{background:rgba(8,166,216,.2);color:#fff;box-shadow:inset 3px 0 0 var(--cyan)}
+.side .nv .tag{background:rgba(255,255,255,.1);color:#CFE6F2}
+.side .scope span{background:rgba(255,255,255,.1);color:#E4EEF5;font-size:11px}
+.side .fh{color:#8FA8BC}
+.runh{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);box-shadow:none;border-radius:var(--r-md)}
+.runh strong{color:#fff}
+.runh .meter{background:rgba(255,255,255,.14);height:7px}
+.runh .meter i{background:linear-gradient(90deg,var(--cyan),var(--green))}
+.runh .sub,.runh .sub span:last-child{color:#8FA8BC}
+.runh .sub b{color:#fff}
+.runh .sub span:last-child{color:var(--cyan-l);font-weight:700;font-size:11px}
+.runh a.nx,.side .runh a.nx{background:rgba(8,166,216,.16);border:1px solid rgba(100,216,239,.4);color:#BFEFFB;border-radius:var(--r-sm);font-size:12px}
+.runh a.nx:hover{background:rgba(8,166,216,.28)}
+.stg{color:#D6E4EE;border-radius:var(--r-sm)}
+.stg:hover{background:rgba(255,255,255,.08)}
+.stg.on{background:rgba(8,166,216,.2);box-shadow:inset 3px 0 0 var(--cyan)}
+.stg .ix{background:rgba(255,255,255,.1);color:#CFE6F2}
+.stg.on .ix{background:var(--cyan);color:#06263a}
+.stg strong{color:#fff;font-size:12.5px}
+.stg small{color:#8FA8BC;font-size:11px}
+.stg small.bad{color:#FF9C92;font-weight:700}
+.stg .own{background:var(--chip);color:var(--muted);font-size:10.5px}
+.dot{background:var(--line)}
+.dot.review{background:#E8A93B}
+
+/* ---- Type scale: nothing below 11px, helper text 12px ---- */
+.chip,.pill,.kpi small,.kc .k,.zp,.sh,.sub,.ey,th{font-size:11px}
+.xbrand span,.fh,.card .d,.kpi span,.field label,.fl,.tl .ds,.opt p,.lr span.s,.tr span.d,.cc p,.hcard .hs,.mdr-h small{font-size:12px}
+.xa-legacy [class*="text-[9px]"],.xa-legacy [class*="text-[10px]"],.xa-legacy [style*="font-size:9px"],.xa-legacy [style*="font-size:10px"]{font-size:11px !important}
+.xa-legacy [class*="text-[10.5px]"],.xa-legacy [class*="text-[11px]"],.xa-legacy [style*="font-size:10.5px"],.xa-legacy [style*="font-size:11px"]{font-size:12px !important}
+.xa-legacy [style*="font-size:9.5px"]{font-size:11px !important}
+
+/* ---- Radius scale: small controls, cards, pills ---- */
+.btn,.btn.sm,.input,.fld,.sel,.fi,.xwho select,.mdr-f input,.cc button{border-radius:var(--r-sm)}
+.kpi,.kc,.zc,.zs,.tl,.opt,.lr,.cc,.mtg,.ins,.conn,.exc,.lockn,.jn,.tw,.li,.empty,.idc,.art,.lt,.logos,.pvw{border-radius:var(--r-md)}
+.card,.pn,.wcard,.wnew,.dgroup,.l-card,.hcard,.modal{border-radius:var(--r-lg)}
+.chip,.pill,.tbtn,.tab,.qchip,.xnav a,.mfab{border-radius:999px}
+
+/* ---- Page headers: same title size on every page ---- */
+.ph h1,.xa-legacy h1{font-size:clamp(24px,2.8vw,32px) !important;letter-spacing:-.8px;line-height:1.12;color:var(--head)}
+.xa-legacy .text-\[10px\].uppercase,.xa-legacy p[class*="tracking-"],.xa-legacy div[class*="tracking-"][class*="uppercase"]{font-size:11px}
+
+/* ---- Buttons: one height scale, one focus ring ---- */
+.btn{min-height:38px;justify-content:center}
+.btn.sm{min-height:30px}
+.btn.p{background:var(--brand);color:#fff}
+.btn.p:hover{background:var(--blue-d)}
+.btn.g:hover{border-color:var(--brand);color:var(--ink-b)}
+.xa-legacy button[class*="bg-"],.xa-legacy a[class*="bg-"][class*="font-bold"]{border-radius:var(--r-sm)}
+a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ---- Callouts: one component with four meanings (info, warning, success, error) ---- */
+.callout{border:1px solid var(--line);border-left:3px solid var(--ink-b);border-radius:var(--r-md);padding:12px 14px;background:var(--tint-b);color:var(--ink);font-size:13px}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+.callout.ok{border-left-color:var(--ink-g);background:var(--tint-g)}
+.callout.bad{border-left-color:var(--bad);background:var(--bad-bg)}
+.xa-legacy :is(div,p,section)[class*="bg-blue-50"][class*="border"],
+.xa-legacy :is(div,p,section)[class*="bg-amber-50"][class*="border"],
+.xa-legacy :is(div,p,section)[class*="bg-teal-50"][class*="border"],
+.xa-legacy :is(div,p,section)[class*="bg-emerald-50"][class*="border"],
+.xa-legacy :is(div,p,section)[class*="bg-rose-50"][class*="border"]{border-radius:var(--r-md);border-left-width:3px}
+.xa-legacy :is(div,p,section)[class*="bg-blue-50"][class*="border"]{border-left-color:var(--ink-b)}
+.xa-legacy :is(div,p,section)[class*="bg-amber-50"][class*="border"]{border-left-color:var(--warn)}
+.xa-legacy :is(div,p,section)[class*="bg-teal-50"][class*="border"],.xa-legacy :is(div,p,section)[class*="bg-emerald-50"][class*="border"]{border-left-color:var(--ink-g)}
+.xa-legacy :is(div,p,section)[class*="bg-rose-50"][class*="border"]{border-left-color:var(--bad)}
+
+/* ---- Tables: readable header, even rows, wider mono cells, clean scroll box ---- */
+th{color:var(--muted);font-weight:800;white-space:nowrap}
+td{font-size:13px;line-height:1.4}
+td.mono,td .mono,.xa-legacy td.font-mono,.xa-legacy td .font-mono{font-size:12px}
+tbody tr:hover td{background:color-mix(in srgb,var(--tint-b) 55%,transparent)}
+.tw{border-radius:var(--r-md);scrollbar-width:thin}
+.tw td:first-child,.tw th:first-child{box-shadow:inset -1px 0 0 var(--line)}
+
+/* ---- Status chips: one colour per meaning wherever they appear ---- */
+.pill.approved,.chip.g{background:var(--tint-g);color:var(--ink-g)}
+.pill.review,.chip.ex{background:var(--warn-bg);color:var(--warn)}
+.pill.running,.chip.c{background:var(--tint-c);color:var(--ink-c)}
+.pill.failed,.pill.bad{background:var(--bad-bg);color:var(--bad)}
+
+/* ---- Meeting assistant: compact so it covers less of the page ---- */
+.mfab{padding:8px 13px;font-size:12px;box-shadow:0 6px 18px rgba(10,42,67,.22);gap:8px;opacity:.94}
+.mfab:hover{opacity:1}
+.mfab i{width:8px;height:8px}
+@media(max-width:900px){.mfab{font-size:0;gap:0;padding:12px}.mfab i{width:10px;height:10px}}
+main#main-content{padding-bottom:56px}
+
+/* ---- Collapsible entities (Discovery, Canonical model, Mapping validation, queues) ---- */
+details.ent,details.entity-fold{border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);margin-top:10px !important;overflow:hidden}
+details.ent>summary,details.entity-fold>summary{list-style:none !important;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 14px;cursor:pointer;background:var(--bg);font-size:12.5px;color:var(--muted);user-select:none}
+details.ent>summary::-webkit-details-marker,details.entity-fold>summary::-webkit-details-marker{display:none}
+details.ent>summary::before,details.entity-fold>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;flex:none;margin:0 4px 0 2px}
+details.ent[open]>summary::before,details.entity-fold[open]>summary::before{transform:rotate(45deg)}
+details.ent>summary:hover,details.entity-fold>summary:hover{background:var(--tint-b)}
+details.ent[open]>summary,details.entity-fold[open]>summary{border-bottom:1px solid var(--line)}
+details.ent>summary .en,details.entity-fold>summary b:first-child{color:var(--head);font-size:14px;font-weight:700}
+details.ent>summary .sd{font-size:12px;color:var(--muted);flex:1 1 280px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details.ent>.fh{margin:0;padding:12px 14px 0}
+details.ent>.tw,details.entity-fold>.tw{margin:0;border:0;border-radius:0;max-height:min(60vh,560px)}
+details.ent>.fh+.tw{margin-top:12px;border-top:1px solid var(--line)}
+details.ent .tw table,details.entity-fold .tw table{min-width:0}
+.ent-bar{display:flex;gap:6px;justify-content:flex-end;margin:6px 0 -4px}
+
+/* ---- Long explanations: clamped to a few lines, expanded on demand ---- */
+.clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.ins.clamp,.exc.clamp{-webkit-line-clamp:3}
+button.more{border:0;background:none;padding:0;margin:2px 0 0;color:var(--ink-b);font-size:12px;font-weight:700;cursor:pointer;align-self:flex-start}
+button.more:hover{text-decoration:underline}
+
+/* ---- Buttons: states, hierarchy, placement ---- */
+.btn{white-space:nowrap;transition:background .12s,border-color .12s,color .12s,box-shadow .12s,transform .06s}
+.btn.p{box-shadow:0 1px 0 rgba(8,60,110,.25)}
+.btn.p:hover{background:var(--blue-d)}
+.btn.p:active,.btn.ok:active,.btn.g:active{transform:translateY(1px);box-shadow:none}
+.btn.ok:hover{background:var(--green-d);color:#fff}
+.btn.g:hover{background:var(--tint-b);border-color:var(--brand);color:var(--ink-b)}
+.btn:disabled,.btn.dis,button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;transform:none}
+.btn.p:disabled:hover{background:var(--brand)}
+.btn.g:disabled:hover{background:var(--panel);border-color:var(--line);color:var(--ink)}
+.btn.ok:disabled:hover{background:var(--green);color:#052315}
+/* Row-level actions inside tables are secondary, so only the section's main action is filled. */
+td .btn.p,.tw .btn.p{background:var(--panel);color:var(--ink-b);border-color:color-mix(in srgb,var(--brand) 45%,var(--line));box-shadow:none}
+td .btn.p:hover,.tw .btn.p:hover{background:var(--brand);color:#fff;border-color:var(--brand)}
+td .btn,.tw .btn{min-height:30px;padding:5px 11px;font-size:12px}
+/* Small Confirm / Reject buttons that still use the older utility classes */
+main button[class*="border-teal-200"],main button[class*="border-rose-200"]{min-height:30px;padding:4px 11px !important;font-size:12px !important;border-radius:var(--r-sm);background:var(--panel);cursor:pointer}
+main button[class*="border-teal-200"]{border-color:color-mix(in srgb,var(--ink-g) 50%,var(--line));color:var(--ink-g) !important}
+main button[class*="border-rose-200"]{border-color:color-mix(in srgb,var(--bad) 45%,var(--line));color:var(--bad) !important}
+main button[class*="border-teal-200"]:hover{background:var(--tint-g)}
+main button[class*="border-rose-200"]:hover{background:var(--bad-bg)}
+/* Where actions sit: groups left-aligned under their content with a fixed gap; a stage's closing Continue sits at the right end. */
+.foot-right{display:flex;justify-content:flex-end;margin-top:6px}
+.btn-next{margin-left:auto}
+section.card>form:has(>.btn),.card>.btn{margin-top:4px}
+.card form+form{margin-left:0}
+main form[class*="flex"]:has(>.btn){align-items:center;gap:8px}
+/* Current space and current page read clearly in the top bar */
+.xnav a.on{background:var(--tint-b);color:var(--ink-b);font-weight:700;box-shadow:inset 0 -2px 0 var(--brand)}
+.xnav a:focus-visible,.tbtn:focus-visible{outline-offset:1px}
+.tbtn:hover{background:var(--tint-b);border-color:var(--brand)}
+.tab:hover{border-color:var(--brand);color:var(--ink-b)}
+.tab.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.page>details.ent{margin-top:-6px !important}
+td .btn,.tw .btn{white-space:normal;text-align:center;line-height:1.25}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+
+/* ---- Walkthrough fixes: long chips wrap instead of clipping; long placeholders end with an ellipsis ---- */
+.chip,.pill{white-space:normal;max-width:100%}
+.chip.nowrap,td .chip,td .pill,th .chip{white-space:nowrap}
+::placeholder{text-overflow:ellipsis}
+input,select,textarea{text-overflow:ellipsis}
+/* A single-column grid card must not grow past its box because of one long chip or word */
+.card[style*="display:grid"],.card>div[style*="display:grid"],.card>div[style*="display: grid"]{grid-template-columns:minmax(0,1fr)}
+.card .chip{max-width:100%;min-width:0}
+
+/* ---- Workspace cards: entity chips collapse to a "+N more" toggle ---- */
+.chips-rest{display:contents}
+.chips-rest[hidden]{display:none !important}
+button.chip[data-more-chips]{border:1px dashed var(--line);background:transparent;cursor:pointer;color:var(--ink-b)}
+button.chip[data-more-chips]:hover{background:var(--tint-b)}
+
+/* ---- Stage notes: the first callout shows, the rest sit behind one disclosure ---- */
+details.notes{margin:0}
+details.notes>summary{cursor:pointer;list-style:none;font-size:12.5px;font-weight:700;color:var(--ink-b);padding:2px 2px 8px}
+details.notes>summary::-webkit-details-marker{display:none}
+details.notes>summary::before{content:"+ ";font-weight:800}
+details.notes[open]>summary::before{content:"– "}
+details.notes>.ins{margin-top:8px}
+
+/* ---- Form section headings read as headings, not shouting labels ---- */
+.xa-legacy h3[class*="uppercase"]{font-size:14px !important;text-transform:none !important;letter-spacing:0 !important;color:var(--head) !important;font-weight:700}
+
+/* auto-folded sections on long pages */
+details.ent.auto>.card,details.ent.auto>.sgrp{border:0;box-shadow:none;border-radius:0;margin:0}
+details.ent.auto .ent-h{display:none}
+details.ent.auto .sech .num{display:none}
+.ent-bar .btn{cursor:pointer;display:inline-flex;align-items:center}
+
+.stage-pager{width:100%;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:28px auto 8px;max-width:1160px;padding-top:16px;border-top:1px solid var(--line)}
+
+/* Laptop density: at 1440px and below (a 1080p screen at 125-150% scaling) the sticky bars,
+   cards and headings take too much of a short viewport, so tighten them. */
+@media (max-width:1440px){
+  .xtop-in{min-height:54px;padding:4px 0}
+  .pb-in{min-height:38px;padding:3px 0}
+  .ph h1,.xa-legacy h1{font-size:clamp(22px,2.3vw,28px) !important}
+  .kpi{padding:10px 14px}
+  .kpi b{font-size:20px;margin:0}
+  .kpis{gap:10px}
+  .card{padding:14px 16px}
+  .nv{padding:7px 10px}
+  .stg{padding:6px 9px}
+  .side{padding:10px}
+  .main{padding-top:14px}
+  .callout,.ins,.exc{padding:10px 14px}
+  details.ent>summary,details.entity-fold>summary{padding:9px 12px}
+}
+@media (max-height:720px) and (min-width:861px){
+  .pbar{position:static}
+}
+
+/* Clear separation between page, panels and content */
+:root{--bg:#E8EFF6;--line:#C8D6E3;--panel-2:#F3F7FB;--card-sh:0 1px 2px rgba(11,31,51,.08),0 6px 16px rgba(11,31,51,.05)}
+:root[data-theme="dark"]{--panel-2:#122C42;--card-sh:0 1px 2px rgba(0,0,0,.4)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--panel-2:#122C42;--card-sh:0 1px 2px rgba(0,0,0,.4)}}
+.card,.kpi,.tw,.conn,.gate,.zc,.kc{box-shadow:var(--card-sh)}
+.kpi{border-left:3px solid var(--brand)}
+.card .card,.card .kpi,.card .conn,.card .tw,.card .zc,.card .kc,details.ent .card{background:var(--panel-2);box-shadow:none}
+.card .kpi{border-left-width:3px}
+.tw thead th,.xa-legacy thead th{background:var(--panel-2)}
+details.ent>summary,details.entity-fold>summary{background:var(--panel-2)}
+.ent-bar{grid-column:1/-1;width:100%;align-self:start;margin:2px 0 -2px}
+.ent-bar .btn{min-height:30px}
+.main .xa-legacy hr{box-shadow:var(--card-sh)}
+details.notes{background:var(--panel-2);border:1px dashed var(--line);border-radius:var(--r-md);padding:2px 14px;margin:10px 0}
+details.notes>summary{cursor:pointer;padding:8px 0;font-size:12.5px;font-weight:600;color:var(--muted)}
+details.notes[open]>summary{border-bottom:1px solid var(--line);margin-bottom:8px}
+details.notes>.ins{box-shadow:none;margin:8px 0}
+.kpis .kpi>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

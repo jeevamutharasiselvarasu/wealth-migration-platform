@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<title>Xodus Tenant settings</title>
+<title>XODUS-AMP Tenant settings</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
 /* Xodus suite template. Colour coding follows WealthTech AI Labs: cyan = Deal Room (front), green = Governance (middle), blue = Data Migration (back). */
@@ -34,6 +34,9 @@ button{cursor:pointer}
 .wrap{width:min(1320px,100%);margin:0 auto}
 .xtop{position:relative;z-index:50;margin:0 -50vw;padding:0 50vw;background:var(--nav-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
 .xtop-in{min-height:64px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0}
+.xtop-in{gap:10px}.xtop-in .tbtn{padding:6px 12px;white-space:nowrap}.xtop-in .xbrand span span{white-space:nowrap}
+@media (max-width:1400px){.xtop-in .xbrand span span{display:none}}
+@media (min-width:1001px){.xtop-in{flex-wrap:nowrap}}
 .xbrand{display:flex;align-items:center;gap:11px;min-width:0}
 .xmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--cyan));position:relative;flex:none}
 .xmark::after{content:"";position:absolute;width:11px;height:11px;border-radius:50%;background:var(--green);right:-4px;bottom:-3px;border:3px solid var(--panel)}
@@ -82,7 +85,7 @@ th{text-align:left;font-size:10px;letter-spacing:.9px;text-transform:uppercase;c
 td{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink);vertical-align:top}
 tr:last-child td{border-bottom:0}
 td.r,th.r{text-align:right}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mono{font-family:var(--mono)}
 .flag{color:var(--bad);font-weight:700}
 .exc{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 14px;background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600}
 .lockn{border:1px dashed var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);background:var(--panel)}
@@ -162,12 +165,12 @@ td.r,th.r{text-align:right}
 .fs.on{border-color:var(--cyan);background:var(--tint-c)}
 .lay{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:16px;align-items:start}
 .stack{display:grid;gap:16px}
-.lay .tw table{min-width:640px}
-.lay .tw input.input{min-width:190px}
+.lay .tw table{min-width:0}
+.lay .tw input.input{min-width:150px;width:100%}
 .field{display:grid;gap:5px;margin-bottom:12px}
 .field label,.fl{font-size:11.5px;font-weight:700;color:var(--head)}
 .input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px;font-size:13px;color:var(--ink)}
-.input.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.input.mono{font-family:var(--mono);font-size:12px}
 .input:disabled{opacity:.6}
 .fh{font-size:11.5px;color:var(--muted)}
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -197,7 +200,7 @@ td.r,th.r{text-align:right}
 .pv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
 .pv .hd{padding:6px 12px;font-size:10px;letter-spacing:.9px;text-transform:uppercase;font-weight:800;color:var(--muted);border-bottom:1px solid var(--line)}
 .pv .tb{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--panel)}
-.pv .pb{display:flex;align-items:center;gap:10px;padding:11px 14px;color:#fff;flex-wrap:wrap}
+.pv .pb{display:flex;align-items:center;gap:10px;padding:11px 14px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .pv .xbrand strong{font-size:14px}
 .pv .lk{display:flex;align-items:center;gap:10px}
 .pv .mk{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;overflow:hidden;flex:none}
@@ -335,7 +338,7 @@ function checks(){
  return out}
 
 /* ---------- tenant brand: set at deployment, shown across every space, editable by the Platform Admin ---------- */
-var TENANT_DEFAULT={suiteName:'Xodus',suiteTagline:'M&A integration co-pilot for RIAs',deployedFor:'Simplicity Group',hostname:'migrate.simplicitygroup.com',supportEmail:'migration-support@simplicitygroup.com',footerNote:'Secured via Simplicity UMP identity',productName:'XODUS·AMP',tagline:'Agentic Migration Platform',logoMark:null,logoMarkName:'',wordmark:null,wordmarkName:'',logoBackdrop:'tile',logoInitials:'XA',primary:'#0878C9',accent:'#27C978',shell:'#0B1F33',poweredByVisible:true,vendor:'LatentView Analytics',roleGroups:{EVP:'SG-XODUS-Executives',DT:'SG-XODUS-DealTeam',IL:'SG-XODUS-IMO',MA:'SG-XODUS-MigrationAnalysts',VS:'SG-XODUS-Validators',PA:'SG-XODUS-PlatformAdmins',CR:'SG-XODUS-Compliance'}};
+var TENANT_DEFAULT={suiteName:'XODUS-AMP',suiteTagline:'M&A integration co-pilot for RIAs',deployedFor:'Simplicity Group',hostname:'migrate.simplicitygroup.com',supportEmail:'migration-support@simplicitygroup.com',footerNote:'Secured via Simplicity UMP identity',productName:'XODUS·AMP',tagline:'Agentic Migration Platform',logoMark:null,logoMarkName:'',wordmark:null,wordmarkName:'',logoBackdrop:'tile',logoInitials:'XA',primary:'#0878C9',accent:'#27C978',shell:'#0B1F33',poweredByVisible:true,vendor:'LatentView Analytics',roleGroups:{EVP:'SG-XODUS-Executives',DT:'SG-XODUS-DealTeam',IL:'SG-XODUS-IMO',MA:'SG-XODUS-MigrationAnalysts',VS:'SG-XODUS-Validators',PA:'SG-XODUS-PlatformAdmins',CR:'SG-XODUS-Compliance'}};
 function tenant(){var o={},k,s={};try{s=JSON.parse(sget('xodus.tenant')||'{}')||{}}catch(e){}
  for(k in TENANT_DEFAULT)o[k]=(s[k]===undefined?TENANT_DEFAULT[k]:s[k]);
  var g={};for(k in TENANT_DEFAULT.roleGroups)g[k]=(o.roleGroups&&o.roleGroups[k])||TENANT_DEFAULT.roleGroups[k];o.roleGroups=g;return o}
@@ -363,10 +366,10 @@ function top(cur,opts){
  var brand=t.wordmark?'<img class="xwm" alt="'+esc(t.suiteName)+'" src="'+t.wordmark+'">':tenantMark(t)+'<span><strong>'+esc(t.suiteName)+'</strong><span>'+esc(t.suiteTagline)+'</span></span>';
  var h='<div class="xtop"><div class="wrap xtop-in"><a class="xbrand" href="index.html">'+brand+'</a>'
  +'<nav class="xnav" aria-label="Suite">'+['deal','dm','gov'].map(function(k){var s=SPACES[k];return '<a class="'+s.cls+(cur==k?' on':'')+'" href="'+s.href+'"><i></i>'+s.name+'</a>'}).join('')+'</nav><span class="sp"></span>'
- +'<span class="chip ex">Example data</span>'
+ +'<span class="chip ex">Demo data</span>'
  +(role()=='PA'||cur=='tenant'?'<a class="tbtn'+(cur=='tenant'?' on':'')+'" href="tenant.html">Tenant settings</a>':'')
  +'<div class="xwho"><label class="chip" for="xrole" style="background:transparent;padding:0" title="Demo only. In a real deployment your role comes from your directory groups.">Demo: view as</label><select id="xrole" class="sel" aria-label="Demo role">'+Object.keys(ROLES).map(function(r){return '<option value="'+r+'"'+(r==role()?' selected':'')+'>'+ROLES[r]+'</option>'}).join('')+'</select></div>'
- +'<button class="tbtn" id="xtheme" type="button">Theme</button></div></div>';
+ +'<a class="tbtn" href="/logout">Sign out</a><button class="tbtn" id="xtheme" type="button">Theme</button></div></div>';
  var el=document.getElementById('xtop');if(el)el.innerHTML=h;
  document.getElementById('xrole').addEventListener('change',function(e){setRole(e.target.value);if(opts.onrole)opts.onrole();else location.reload()});
  document.getElementById('xtheme').addEventListener('click',toggleTheme)}
@@ -450,11 +453,11 @@ function preview(){var w=work,tile=w.logoBackdrop=='tile';
  var sm=w.logoMark?'<span class="xmark img'+(tile?' tile':'')+'"><img alt="" src="'+w.logoMark+'"></span>':'<span class="xmark" style="background:linear-gradient(135deg,'+esc(w.primary)+','+esc(w.accent)+')"></span>';
  var sb=w.wordmark?'<img class="xwm" alt="" src="'+w.wordmark+'">':sm+'<span class="xbrand"><span><strong>'+esc(w.suiteName)+'</strong><span>'+esc(w.suiteTagline)+'</span></span></span>';
  return '<div class="pv"><div class="hd">Suite bar, every space</div><div class="tb">'+sb+'</div>'
- +'<div class="hd" style="border-top:1px solid var(--line)">Data Migration product bar</div><div class="pb" style="background:'+esc(w.shell)+'">'+lock+'<span class="bt" style="background:'+esc(w.primary)+'">Primary action</span><span class="bt" style="background:'+esc(w.accent)+';margin-left:0;color:#052315">Approve gate</span></div>'
+ +'<div class="hd" style="border-top:1px solid var(--line)">Data Migration product bar</div><div class="pb" style="background:var(--panel);color:var(--ink);border-top:3px solid '+esc(w.primary)+'">'+lock+'<span class="bt" style="background:'+esc(w.primary)+'">Primary action</span><span class="bt" style="background:'+esc(w.accent)+';margin-left:0;color:#052315">Approve gate</span></div>'
  +'<div class="ft"><span>'+esc(w.hostname)+'</span><span>'+esc(w.footerNote)+'</span>'+(w.poweredByVisible?'<span>Powered by '+esc(w.vendor)+'</span>':'')+'</div></div>'}
 function rolesCard(){var sp=['deal','dm','gov'];
  return '<div class="card"><h3>Roles and security groups</h3><p class="d">Roles are defined once, here, for the whole suite. Each role maps to one directory security group. The Deal Room, Data Migration and Governance all read this mapping, so no feature keeps its own role list.</p><div class="tw"><table><thead><tr><th>Role</th><th>Security group</th><th>Spaces</th><th>What the role can do</th></tr></thead><tbody>'
- +Object.keys(XS.ROLES).map(function(r){return '<tr><td><b>'+esc(XS.ROLES[r])+'</b></td><td><input class="input mono" data-g="'+r+'" value="'+esc(work.roleGroups[r])+'" aria-label="Security group for '+esc(XS.ROLES[r])+'"'+dis()+'></td><td>'+sp.filter(function(s){return XS.ACCESS[s].indexOf(r)>-1}).map(function(s){return '<span class="chip '+({deal:'c',dm:'b',gov:'g'})[s]+'" style="margin:0 4px 4px 0">'+esc(XS.SPACES[s].name)+'</span>'}).join('')+'</td><td class="fh" style="min-width:240px">'+esc(XS.ROLEINFO[r])+'</td></tr>'}).join('')+'</tbody></table></div></div>'}
+ +Object.keys(XS.ROLES).map(function(r){return '<tr><td><b>'+esc(XS.ROLES[r])+'</b></td><td><input class="input mono" data-g="'+r+'" value="'+esc(work.roleGroups[r])+'" aria-label="Security group for '+esc(XS.ROLES[r])+'"'+dis()+'></td><td>'+sp.filter(function(s){return XS.ACCESS[s].indexOf(r)>-1}).map(function(s){return '<span class="chip '+({deal:'c',dm:'b',gov:'g'})[s]+'" style="margin:0 4px 4px 0">'+esc(XS.SPACES[s].name)+'</span>'}).join('')+'</td><td class="fh" style="min-width:180px">'+esc(XS.ROLEINFO[r])+'</td></tr>'}).join('')+'</tbody></table></div></div>'}
 function render(){
  XS.top('tenant',{onrole:render});
  var m=document.getElementById('main');
@@ -471,7 +474,7 @@ function render(){
  +slot('wordmark','wordmarkName','Wordmark (optional)','Wide horizontal lockup. When supplied it replaces the mark and the name. Max 512 KB.',true)
  +(work.logoMark?'<div class="field"><span class="fl">Mark backdrop</span><div class="opts"><button type="button" class="opt'+(work.logoBackdrop=='tile'?' on':'')+'" data-bd="tile"'+dis()+'><strong>White tile</strong>Safest for dark-ink logos.</button><button type="button" class="opt'+(work.logoBackdrop=='plain'?' on':'')+'" data-bd="plain"'+dis()+'><strong>Plain</strong>Use only for light or self-backed artwork.</button></div></div>':'')
  +fText('Fallback initials','logoInitials',{help:work.logoMark?'Not shown while a logo mark is uploaded.':'1 to 3 characters, shown until a logo mark is uploaded.'})+'</div>'
- +'<div class="card"><h3>Colour and attribution</h3><p class="d">Colours recolour the logo mark and the Data Migration product. The Deal Room, Data Migration and Governance keep their own colour coding.</p><div class="r3">'+fColor('Primary colour','primary')+fColor('Accent colour','accent')+fColor('Shell colour','shell','Product bar and sign-in panel.')+'</div>'
+ +'<div class="card"><h3>Colour and attribution</h3><p class="d">Colours recolour the logo mark and the Data Migration product. The Deal Room, Data Migration and Governance keep their own colour coding.</p><div class="r3">'+fColor('Primary colour','primary')+fColor('Accent colour','accent')+fColor('Dark surface colour','shell','Dark logo tile and sign-in panel. The product bar itself is light.')+'</div>'
  +'<label class="tr"><span><strong>Show Powered by attribution</strong><span class="d">When off, the suite presents entirely as a first-party '+esc(work.deployedFor)+' tool.</span></span><span class="sw"><input type="checkbox" data-t="poweredByVisible"'+(work.poweredByVisible?' checked':'')+dis()+'><span class="tk"></span></span></label>'+fText('Vendor name','vendor')+'</div>'
  +'</div><div class="sticky stack"><div class="card"><h3>Live preview</h3><p class="d">Updates as you type.</p><div id="pv">'+preview()+'</div></div>'
  +'<div class="card"><h3>Deployment defaults</h3><p class="d">Put every value back to what the deployment package shipped with.</p><button class="btn g" data-act="reset" type="button"'+dis()+'>Reset to deployment defaults</button></div></div></div>';

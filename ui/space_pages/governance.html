@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<title>Xodus Governance</title>
+<title>XODUS-AMP Governance</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
 /* Xodus suite template. Colour coding follows WealthTech AI Labs: cyan = Deal Room (front), green = Governance (middle), blue = Data Migration (back). */
@@ -34,6 +34,9 @@ button{cursor:pointer}
 .wrap{width:min(1320px,100%);margin:0 auto}
 .xtop{position:relative;z-index:50;margin:0 -50vw;padding:0 50vw;background:var(--nav-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
 .xtop-in{min-height:64px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0}
+.xtop-in{gap:10px}.xtop-in .tbtn{padding:6px 12px;white-space:nowrap}.xtop-in .xbrand span span{white-space:nowrap}
+@media (max-width:1400px){.xtop-in .xbrand span span{display:none}}
+@media (min-width:1001px){.xtop-in{flex-wrap:nowrap}}
 .xbrand{display:flex;align-items:center;gap:11px;min-width:0}
 .xmark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--cyan));position:relative;flex:none}
 .xmark::after{content:"";position:absolute;width:11px;height:11px;border-radius:50%;background:var(--green);right:-4px;bottom:-3px;border:3px solid var(--panel)}
@@ -82,7 +85,7 @@ th{text-align:left;font-size:10px;letter-spacing:.9px;text-transform:uppercase;c
 td{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink);vertical-align:top}
 tr:last-child td{border-bottom:0}
 td.r,th.r{text-align:right}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mono{font-family:var(--mono)}
 .flag{color:var(--bad);font-weight:700}
 .exc{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 14px;background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600}
 .lockn{border:1px dashed var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);background:var(--panel)}
@@ -306,7 +309,7 @@ function checks(){
  return out}
 
 /* ---------- tenant brand: set at deployment, shown across every space, editable by the Platform Admin ---------- */
-var TENANT_DEFAULT={suiteName:'Xodus',suiteTagline:'M&A integration co-pilot for RIAs',deployedFor:'Simplicity Group',hostname:'migrate.simplicitygroup.com',supportEmail:'migration-support@simplicitygroup.com',footerNote:'Secured via Simplicity UMP identity',productName:'XODUS·AMP',tagline:'Agentic Migration Platform',logoMark:null,logoMarkName:'',wordmark:null,wordmarkName:'',logoBackdrop:'tile',logoInitials:'XA',primary:'#0878C9',accent:'#27C978',shell:'#0B1F33',poweredByVisible:true,vendor:'LatentView Analytics',roleGroups:{EVP:'SG-XODUS-Executives',DT:'SG-XODUS-DealTeam',IL:'SG-XODUS-IMO',MA:'SG-XODUS-MigrationAnalysts',VS:'SG-XODUS-Validators',PA:'SG-XODUS-PlatformAdmins',CR:'SG-XODUS-Compliance'}};
+var TENANT_DEFAULT={suiteName:'XODUS-AMP',suiteTagline:'M&A integration co-pilot for RIAs',deployedFor:'Simplicity Group',hostname:'migrate.simplicitygroup.com',supportEmail:'migration-support@simplicitygroup.com',footerNote:'Secured via Simplicity UMP identity',productName:'XODUS·AMP',tagline:'Agentic Migration Platform',logoMark:null,logoMarkName:'',wordmark:null,wordmarkName:'',logoBackdrop:'tile',logoInitials:'XA',primary:'#0878C9',accent:'#27C978',shell:'#0B1F33',poweredByVisible:true,vendor:'LatentView Analytics',roleGroups:{EVP:'SG-XODUS-Executives',DT:'SG-XODUS-DealTeam',IL:'SG-XODUS-IMO',MA:'SG-XODUS-MigrationAnalysts',VS:'SG-XODUS-Validators',PA:'SG-XODUS-PlatformAdmins',CR:'SG-XODUS-Compliance'}};
 function tenant(){var o={},k,s={};try{s=JSON.parse(sget('xodus.tenant')||'{}')||{}}catch(e){}
  for(k in TENANT_DEFAULT)o[k]=(s[k]===undefined?TENANT_DEFAULT[k]:s[k]);
  var g={};for(k in TENANT_DEFAULT.roleGroups)g[k]=(o.roleGroups&&o.roleGroups[k])||TENANT_DEFAULT.roleGroups[k];o.roleGroups=g;return o}
@@ -334,10 +337,10 @@ function top(cur,opts){
  var brand=t.wordmark?'<img class="xwm" alt="'+esc(t.suiteName)+'" src="'+t.wordmark+'">':tenantMark(t)+'<span><strong>'+esc(t.suiteName)+'</strong><span>'+esc(t.suiteTagline)+'</span></span>';
  var h='<div class="xtop"><div class="wrap xtop-in"><a class="xbrand" href="index.html">'+brand+'</a>'
  +'<nav class="xnav" aria-label="Suite">'+['deal','dm','gov'].map(function(k){var s=SPACES[k];return '<a class="'+s.cls+(cur==k?' on':'')+'" href="'+s.href+'"><i></i>'+s.name+'</a>'}).join('')+'</nav><span class="sp"></span>'
- +'<span class="chip ex">Example data</span>'
+ +'<span class="chip ex">Demo data</span>'
  +(role()=='PA'||cur=='tenant'?'<a class="tbtn'+(cur=='tenant'?' on':'')+'" href="tenant.html">Tenant settings</a>':'')
  +'<div class="xwho"><label class="chip" for="xrole" style="background:transparent;padding:0" title="Demo only. In a real deployment your role comes from your directory groups.">Demo: view as</label><select id="xrole" class="sel" aria-label="Demo role">'+Object.keys(ROLES).map(function(r){return '<option value="'+r+'"'+(r==role()?' selected':'')+'>'+ROLES[r]+'</option>'}).join('')+'</select></div>'
- +'<button class="tbtn" id="xtheme" type="button">Theme</button></div></div>';
+ +'<a class="tbtn" href="/logout">Sign out</a><button class="tbtn" id="xtheme" type="button">Theme</button></div></div>';
  var el=document.getElementById('xtop');if(el)el.innerHTML=h;
  document.getElementById('xrole').addEventListener('change',function(e){setRole(e.target.value);if(opts.onrole)opts.onrole();else location.reload()});
  document.getElementById('xtheme').addEventListener('click',toggleTheme)}

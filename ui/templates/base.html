@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>{{ page_title|default('Migration Workspace') }} · XODUS {{ {"dm": "Data Migration", "gov": "Governance", "tenant": "Tenant settings"}[space|default("dm")] }}</title>
+    <title>{{ page_title|default('Migration Workspace') }} · XODUS-AMP {{ {"dm": "Data Migration", "gov": "Governance", "tenant": "Tenant settings"}[space|default("dm")] }}</title>
     <script>try{var t=localStorage.getItem("xodus.theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,13 +15,14 @@
     <link rel="stylesheet" href="/static/legacy.css?v={{ asset_v('legacy.css') }}">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/assistant.css?v={{ asset_v('assistant.css') }}">
+    <link rel="stylesheet" href="/static/theme.css?v={{ asset_v('theme.css') }}">
 </head>
 <body>
 <a class="xa-skip" href="#main-content">Skip to content</a>
 {% set pg = progress|default({}) %}
 {% set path = request.url.path %}
 {% set role = user_role|default('') %}
-{% set space = space|default("dm") %}{% set suite_cur = space %}{% set hide_signout = true %}{% include "_suite_top.html" %}
+{% set space = space|default("dm") %}{% set suite_cur = space %}{% include "_suite_top.html" %}
 {% if space == "dm" %}
 <div class="pbar">
   <div class="wrap pb-in">
@@ -32,11 +33,6 @@
     </div>
     <span class="sp"></span>
     {% if pg and pg.facts and not lobby %}<span class="pbchip">{{ pg.facts.route }}</span>{% endif %}
-    <div class="uc">
-      <span class="av" aria-hidden="true">{{ (user_name|default('MA')).split()[:2]|map('first')|join|upper }}</span>
-      <span>{{ user_name|default('Migration Analyst') }}<small>{{ role or 'Control plane' }}</small></span>
-    </div>
-    <a class="pbtn" href="/logout">Sign out</a>
   </div>
 </div>
 {% endif %}
@@ -77,7 +73,7 @@
       <small>Pipeline run</small>
       <strong>{{ pg.facts.migration_id }}</strong>
       <div class="meter"><i style="width:{{ (done_n * 100 / (pg.stages|length))|round|int }}%"></i></div>
-      <div class="sub"><span><b style="color:#fff">{{ done_n }}</b> of {{ pg.stages|length }} stages complete</span><span>{{ pg.stage_current }}</span></div>
+      <div class="sub"><span><b>{{ done_n }}</b> of {{ pg.stages|length }} stages complete</span><span>{{ pg.stage_current }}</span></div>
       <a class="nx" href="{{ pg.next.href }}" title="{{ pg.next.detail }}">Next: {{ pg.next.label }} →</a>
     </div>
     {% set st = {} %}
@@ -86,7 +82,7 @@
       {% set s = st.get(ix, 'todo') %}
       <a class="stg {% if active %}on{% endif %}" href="{{ href }}" {% if active %}aria-current="page"{% endif %}>
         <span class="ix">{{ ix }}</span>
-        <span><strong>{{ name }}</strong><small{% if s == 'failed' %} style="color:#FF8A8A;font-weight:700"{% endif %}>{{ {'done':'Complete','current':'Needs attention','failed':'Failed','todo':'Not started'}[s] }}</small></span>
+        <span><strong>{{ name }}</strong><small{% if s == 'failed' %} class="bad"{% endif %}>{{ {'done':'Complete','current':'Needs attention','failed':'Failed','todo':'Not started'}[s] }}</small></span>
         <span class="own" title="Owner persona">{{ owner }}</span>
         <span class="dot {{ {'done':'approved','current':'review','failed':'failed','todo':''}[s] }}" aria-hidden="true"></span>
       </a>
@@ -109,7 +105,7 @@
     {% endif %}
     <div class="sh">Scope</div>
     <div class="scope">{% for e in target_scope %}<span>{{ e }}</span>{% else %}<span>Not chosen yet</span>{% endfor %}</div>
-    {% if supporting_scope %}<div class="fh" style="color:#8FA9BC;padding:6px 10px">Supporting data added for you: {{ supporting_scope|join(', ') }}.</div>{% endif %}
+    {% if supporting_scope %}<div class="fh" style="padding:6px 10px">Supporting data added for you: {{ supporting_scope|join(', ') }}.</div>{% endif %}
     {% endif %}
     {% endif %}
   </aside>{% endif %}
@@ -239,7 +235,7 @@
     q.delete("notice"); q.delete("error");
     try { history.replaceState(null, "", u.pathname + (q.toString() ? "?" + q.toString() : "") + u.hash); } catch (e) {}
     runScripts(document.querySelector(".wrap.app"));
-    gateForms(); reopen(keys); size(); refresh();
+    gateForms(); reopen(keys); size(); refresh(); enhance();
     var target = u.hash && document.getElementById(decodeURIComponent(u.hash.slice(1)));
     if (target) target.scrollIntoView({block: "start"}); else window.scrollTo(0, y);
     toast(text, bad);
@@ -314,7 +310,92 @@
       .catch(function () { toast("Could not reach the server. Nothing was changed on this page; try again.", true); })
       .then(function () { busy = false; document.body.style.cursor = ""; if (held) held.disabled = false; });
   });
-  document.addEventListener("DOMContentLoaded", function () { toastFromUrl(); gateForms(); refresh(); size(); });
+  /* Entity folds: every group of details.ent / details.entity-fold gets Expand all / Collapse all; links to an anchor inside a fold open it;
+     long intro text is clamped to a few lines with a More toggle so pages open compact. */
+  function openForHash() {
+    var id = decodeURIComponent((location.hash || "").slice(1)); if (!id) return;
+    var el = document.getElementById(id), d = el && el.closest("details");
+    while (d) { d.open = true; d = d.parentElement && d.parentElement.closest("details"); }
+    if (el) el.scrollIntoView({block: "start"});
+  }
+  function enhance() {
+    var main = document.getElementById("main-content"); if (!main) return;
+    /* Long pages: each tall section becomes a fold (open by default) so the page can be scanned and collapsed. */
+    var foldable = function (el, head) {
+      if (el.dataset.fold || el.closest("details") || el.offsetHeight < 260 || !head) return;
+      el.dataset.fold = "1";
+      var d = document.createElement("details"); d.className = "ent auto"; d.open = true;
+      var sm = document.createElement("summary"), t = document.createElement("span"); t.className = "en";
+      t.textContent = (head.textContent || "").replace(/\s+/g, " ").trim(); sm.appendChild(t); d.appendChild(sm);
+      head.classList.add("ent-h"); el.parentNode.insertBefore(d, el); d.appendChild(el);
+    };
+    if (main.scrollHeight > window.innerHeight * 2) {
+      main.querySelectorAll(".sgrp").forEach(function (g) { foldable(g, g.querySelector(":scope > .sech h2, :scope > .sech h3")); });
+      main.querySelectorAll(".card").forEach(function (c) { foldable(c, c.querySelector(":scope > h2, :scope > h3, :scope > div:first-child > h2, :scope > div:first-child > h3, :scope > .sech h2, :scope > .sech h3")); });
+    }
+    var seen = [];
+    main.querySelectorAll("details.ent, details.entity-fold").forEach(function (d) {
+      var p = d.parentElement; if (seen.indexOf(p) > -1) return; seen.push(p);
+      var kids = Array.prototype.filter.call(p.children, function (c) { return c.matches("details.ent, details.entity-fold"); });
+      if (kids.length < 2 || p.querySelector(":scope > .ent-bar")) return;
+      var bar = document.createElement("div"); bar.className = "ent-bar";
+      bar.innerHTML = '<span role="button" tabindex="0" class="btn g sm" data-ent-all="1">Expand all</span><span role="button" tabindex="0" class="btn g sm" data-ent-all="0">Collapse all</span>';
+      p.insertBefore(bar, kids[0]);
+    });
+    /* Guidance notes ("Control plane. ...") are kept, but behind one closed "About this stage" fold so the page leads with the work. */
+    main.querySelectorAll(".ins").forEach(function (first) {
+      if (first.dataset.grouped || first.dataset.testid || first.closest("details") || first.querySelector("form, button, input, select")) return;
+      var run = [first], n = first.nextElementSibling;
+      while (n && n.classList.contains("ins") && !n.dataset.testid && !n.querySelector("form, button, input, select")) { run.push(n); n = n.nextElementSibling; }
+      var d = document.createElement("details"); d.className = "notes";
+      var sm = document.createElement("summary"); sm.textContent = "About this stage" + (run.length > 1 ? " (" + run.length + " notes)" : ""); d.appendChild(sm);
+      first.insertAdjacentElement("beforebegin", d); run.forEach(function (r) { r.dataset.grouped = "1"; d.appendChild(r); });
+    });
+    main.querySelectorAll(".ph p, h1 + p, .card > .d, .ins, .exc").forEach(function (el) {
+      if (el.dataset.clamped || el.querySelector("form, button, input, select, table, ul")) return;
+      el.dataset.clamped = "1"; el.classList.add("clamp");
+      if (el.scrollHeight - el.clientHeight < 3) { el.classList.remove("clamp"); return; }
+      var b = document.createElement("button"); b.type = "button"; b.className = "more"; b.textContent = "More"; b.setAttribute("aria-expanded", "false");
+      b.onclick = function () { var open = el.classList.toggle("clamp"); b.textContent = open ? "More" : "Less"; b.setAttribute("aria-expanded", open ? "false" : "true"); };
+      el.insertAdjacentElement("afterend", b);
+    });
+    /* Every stage page ends with the same Back / Continue pair, taken from the stage list in the sidebar (01 to 10). */
+    if (!main.querySelector(".stage-pager")) {
+      var stgs = Array.prototype.slice.call(document.querySelectorAll(".side a.stg")), i = -1;
+      stgs.forEach(function (a, k) { if (a.classList.contains("on")) i = k; });
+      if (i > -1) {
+        var lab = function (a) { var n = a.querySelector(".ix"), t = a.querySelector("strong"); return (n ? n.textContent.trim() + " " : "") + (t ? t.textContent.trim() : ""); };
+        var hasNext = i < stgs.length - 1 && Array.prototype.some.call(main.querySelectorAll("a"), function (a) { return /^Continue to /.test((a.textContent || "").trim()) && a.getAttribute("href") && a.getAttribute("href").split("#")[0].split("?")[0] === stgs[i + 1].getAttribute("href"); });
+        var nav = document.createElement("nav"); nav.className = "stage-pager"; nav.setAttribute("aria-label", "Stage navigation");
+        var h = "";
+        if (i > 0) h += '<a class="btn g" href="' + stgs[i - 1].getAttribute("href") + '">\u2190 ' + lab(stgs[i - 1]) + "</a>"; else h += "<span></span>";
+        if (i < stgs.length - 1 && !hasNext) h += '<a class="btn p" href="' + stgs[i + 1].getAttribute("href") + '">Continue to ' + lab(stgs[i + 1]) + " \u2192</a>";
+        nav.innerHTML = h; main.appendChild(nav);
+      }
+    }
+    main.querySelectorAll(".kpi span").forEach(function (e) { if (!e.title) e.title = (e.textContent || "").replace(/\s+/g, " ").trim(); });
+    /* A stage's closing "Continue to ..." action sits at the right end of its row, the same on every page. */
+    main.querySelectorAll("a.btn, button.btn").forEach(function (a) {
+      if (!/^Continue to /.test((a.textContent || "").trim())) return;
+      var p = a.parentElement; if (p && p.children.length === 1 && p !== main) p.classList.add("foot-right"); else a.classList.add("btn-next");
+    });
+  }
+  document.addEventListener("click", function (ev) {
+    var m = ev.target.closest && ev.target.closest("[data-more-chips]");
+    if (m) {
+      var rest = m.previousElementSibling, open = rest.hasAttribute("hidden");
+      if (open) { rest.removeAttribute("hidden"); m.textContent = "Show fewer"; } else { rest.setAttribute("hidden", ""); m.textContent = "+" + rest.children.length + " more"; }
+      m.setAttribute("aria-expanded", open ? "true" : "false"); return;
+    }
+    var b = ev.target.closest && ev.target.closest("[data-ent-all]"); if (!b) return;
+    var on = b.getAttribute("data-ent-all") === "1";
+    Array.prototype.forEach.call(b.parentElement.parentElement.children, function (c) { if (c.matches && c.matches("details.ent, details.entity-fold")) c.open = on; });
+  });
+  document.addEventListener("keydown", function (ev) {
+    if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-ent-all]")) { ev.preventDefault(); ev.target.click(); }
+  });
+  window.addEventListener("hashchange", openForHash);
+  document.addEventListener("DOMContentLoaded", function () { toastFromUrl(); gateForms(); refresh(); size(); enhance(); openForHash(); });
   window.addEventListener("resize", size); window.addEventListener("load", size);
 })();
 </script>

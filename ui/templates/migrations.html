@@ -19,7 +19,7 @@
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
           <span class="chip {{ 'g' if m.active else 'c' }}">{{ 'Active' if m.active else 'Earlier' }}</span>
           <span class="chip">{{ m.source_firm or 'Source not set' }} → {{ m.target_system or 'Target not set' }}</span>
-          {% for e in m.entities %}<span class="chip b">{{ e }}</span>{% endfor %}
+          {% for e in m.entities[:4] %}<span class="chip b">{{ e }}</span>{% endfor %}{% if m.entities|length > 4 %}<span class="chips-rest" hidden>{% for e in m.entities[4:] %}<span class="chip b">{{ e }}</span>{% endfor %}</span><button type="button" class="chip" data-more-chips aria-expanded="false">+{{ m.entities|length - 4 }} more</button>{% endif %}
           <span class="chip mono">{{ m.id }}</span>
         </div>
         <p class="fh" style="margin:8px 0 0">{{ m.files }} source file event{{ '' if m.files == 1 else 's' }} · {{ m.approved_mappings }} approved mapping{{ '' if m.approved_mappings == 1 else 's' }} · set up by {{ m.created_by or 'unknown' }} on {{ m.created_utc[:10] }}{% if m.template_id and m.template_name %} · started from template <b>{{ m.template_name }}</b>{% endif %}</p>

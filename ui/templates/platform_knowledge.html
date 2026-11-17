@@ -23,7 +23,7 @@
           <td>{{ a.category|replace('_', ' ') }}</td>
           <td>{{ a.used_by }}</td>
           <td>{% if a.source == 'built-in' %}<span class="pill queued">built-in</span>{% else %}<span class="pill approved">added</span> {{ a.added_by }} · {{ a.added_utc[:10] }}{% endif %}</td>
-          <td>{{ (a.size_bytes / 1024)|round(1) }} KB</td>
+          <td class="nw">{{ (a.size_bytes / 1024)|round(1) }} KB</td>
           <td class="whitespace-nowrap"><a class="btn g sm" href="/platform-knowledge?view={{ a.asset_id|urlencode }}#viewer">View</a>
             {% if can_edit and a.source == 'added' %}<form action="/api/platform-knowledge/{{ a.asset_id }}/retire" method="post" class="inline"><button class="btn g sm">Retire</button></form>{% endif %}</td>
         </tr>
