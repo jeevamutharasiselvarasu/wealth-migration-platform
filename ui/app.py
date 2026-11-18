@@ -3481,7 +3481,7 @@ async def download_adf_package(request: Request):
             package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
         else:  # the configured Azure environment: stable pipelines plus the generated SQL (raw -> canonical -> mirror -> live)
             built = xodus_pipelines.build(migration_id, *_xodus_package_inputs(migration_id), generated_by=user["name"], provenance=provenance,
-                                          codes=_xodus_code_inputs(migration_id))
+                                          codes=_xodus_code_inputs(migration_id), depends={e: sorted(d) for e, d in _entity_depends().items()})
             package = {"files": built["files"], "manifest": {**built["manifest"], "simulated": False, "pipeline": built["manifest"]["setupPipeline"],
                                                              "entities": built["manifest"]["canonical"], "warnings": []}}
     except ValueError as exc:

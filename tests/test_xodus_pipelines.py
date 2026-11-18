@@ -116,3 +116,62 @@ def test_an_entity_without_a_key_orders_its_dedupe_by_a_non_constant():
     raw = [{"file_name": "corecap_account_targets.csv", "columns": ["AccountNumber", "ModelName"]}]
     sql = build(spec=spec, approved_target=target, entities=entities, raw_files=raw, load_order=["AccountAllocation"])["files"]["sql/xodus_mig00a1a6577b.sql"]
     assert "ORDER BY CAST(NULL" not in sql and "ORDER BY (SELECT NULL)) AS [xodus_rn]" in sql
+
+
+def _sql(pkg):
+    return pkg["files"]["sql/xodus_mig00a1a6577b.sql"]
+
+
+def test_row_lineage_columns_in_every_layer():
+    pkg = build()
+    sql = _sql(pkg)
+    assert "[corecap_accounts]" not in sql  # raw table names carry the slug
+    raw = sql.split("CREATE TABLE [xodus_raw].[mig00a1a6577b_corecap_accounts]")[1].split(");")[0]
+    assert "[xodus_row_id] bigint IDENTITY(1,1) NOT NULL" in raw
+    canon = sql.split("CREATE TABLE [xodus_canon].[mig00a1a6577b_Account]")[1].split(");")[0]
+    assert "[xodus_source_file] nvarchar(1024) NULL" in canon and "[xodus_source_row] bigint NULL" in canon and "[xodus_row_hash] char(64) NULL" in canon
+    proc = sql.split("CREATE OR ALTER PROCEDURE [xodus_canon].[usp_canon_mig00a1a6577b_Account]")[1].split("COMMIT TRANSACTION")[0]
+    assert "s.[xodus_row_id] AS [xodus_src_row]" in proc and "[xodus_source_file], [xodus_source_row], [xodus_batch_id]" in proc
+    assert "SET c.[xodus_row_hash] = CONVERT(char(64), HASHBYTES('SHA2_256', CONCAT_WS(" in proc
+    assert proc.index("SET c.[CUSTODIAN_CODE]") < proc.index("SET c.[xodus_row_hash]")  # the hash covers the derived values
+    mirror = sql.split("CREATE TABLE [xodus_mirror].[mig00a1a6577b_ORION_MCL_ACCOUNT]")[1].split(");")[0]
+    assert "[xodus_source_row] bigint NULL" in mirror
+    assert "s.[xodus_source_row] AS [xodus_source_row]" in sql
+    landing = pkg["files"]["sql/simplicity_mig00a1a6577b.sql"]
+    assert "[xodus_source_row] bigint NULL" in landing  # the copy to landing keeps the row lineage column
+
+
+def test_column_map_records_every_mapping_derivation_and_mirror_column():
+    pkg = build()
+    sql = _sql(pkg)
+    assert "CREATE TABLE [xodus_ref].[column_map]" in sql and "CREATE OR ALTER VIEW [xodus_ref].[v_column_lineage]" in sql
+    assert "DELETE FROM [xodus_ref].[column_map] WHERE migration_slug = N'mig00a1a6577b';" in sql
+    assert ("N'canonical', N'Account', N'mig00a1a6577b_Account', N'REP_CODE', N'corecap_accounts.csv', N'RepCode', N'MAPPING', N'TRIM', NULL") in sql
+    assert ("N'canonical', N'Account', N'mig00a1a6577b_Account', N'CUSTODIAN_CODE', NULL, N'CUSTODIAN_NAME', N'DERIVATION', N'RULE:CUSTODIAN_CODE_MAP@2', NULL") in sql
+    assert ("N'mirror', N'Account', N'mig00a1a6577b_ORION_MCL_ACCOUNT', N'ACCOUNT_NUMBER', NULL, N'ACCT_NUM', N'MAPPING', N'DIRECT_COPY', NULL") in sql
+    assert "OPEN_DATE" not in sql.split("INSERT INTO [xodus_ref].[column_map]")[1].split(";")[0]  # a PROPOSED mapping is not lineage
+    assert pkg["manifest"]["columnMapRows"] >= 9
+
+
+def test_column_map_changes_with_the_mapping_so_the_version_does_too():
+    changed = dict(ENTITIES, Account={**ENTITIES["Account"], "mappings": {**ENTITIES["Account"]["mappings"], "RepCode": {"canonical_field": "REP_CODE", "expression": "UPPERCASE"}}})
+    assert build()["version"] != build(entities=changed)["version"]
+    assert "N'REP_CODE', N'corecap_accounts.csv', N'RepCode', N'MAPPING', N'UPPERCASE', NULL" in _sql(build(entities=changed))
+
+
+def test_entity_registry_gives_parents_wave_zero_and_children_one_more():
+    flat = build()
+    assert flat["manifest"]["waves"] == {"Household": 0, "Account": 0}  # no dependencies given: every entity is wave 0
+    nested = build(depends={"Account": ["Household"], "Household": []})
+    assert nested["manifest"]["waves"] == {"Household": 0, "Account": 1} and nested["manifest"]["dependsOn"]["Account"] == ["Household"]
+    sql = _sql(nested)
+    assert "CREATE TABLE [xodus_ops].[xodus_entity_registry]" in sql and "CREATE TABLE [xodus_ops].[xodus_entity_state]" in sql
+    assert "(N'mig00a1a6577b', N'Account', 1, N'Household', N'mig00a1a6577b_corecap_accounts', N'mig00a1a6577b_Account', N'mig00a1a6577b_ORION_MCL_ACCOUNT')" in sql
+    assert "(N'mig00a1a6577b', N'Household', 0, N'', " in sql
+    assert nested["version"] != flat["version"]  # waves are deployed data, so they belong to the package version
+
+
+def test_the_stable_pipelines_do_not_change_with_the_lineage_work():
+    a, b = build(), build(depends={"Account": ["Household"]})
+    stable = [f"pipeline/{p}.json" for p in xp.STABLE_PIPELINES]
+    assert all(a["files"][p] == b["files"][p] for p in stable)

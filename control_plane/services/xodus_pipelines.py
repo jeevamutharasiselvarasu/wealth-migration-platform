@@ -29,6 +29,10 @@ STABLE_PIPELINES = ("PL_XODUS_Run", "PL_XODUS_Source_To_Canonical", "PL_XODUS_Lo
 HEADER = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ .\-]{0,127}$")
 TRACE = ("[xodus_migration_id] nvarchar(64) NULL", "[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL",
          "[xodus_source_file] nvarchar(1024) NULL", "[xodus_loaded_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()")
+# Filled by SQL Server, not by the copy: a stable id for each raw row (with a parallel copy it is not the file's line number).
+ROW_ID = "[xodus_row_id] bigint IDENTITY(1,1) NOT NULL"
+# Where each canonical row came from, and a hash of its values (set at the end of the entity's procedure).
+CANON_LINEAGE = ("[xodus_source_file] nvarchar(1024) NULL", "[xodus_source_row] bigint NULL", "[xodus_row_hash] char(64) NULL")
 
 
 def slug(migration_id: str) -> str:
@@ -109,7 +113,26 @@ def shared_sql() -> List[str]:
     b.append(f"IF OBJECT_ID(N'{REF}.target_code_map', N'U') IS NULL CREATE TABLE [{REF}].[target_code_map] ([target_system] nvarchar(128) NOT NULL, "
              "[code_set] nvarchar(64) NOT NULL, [canonical_code] nvarchar(64) NOT NULL, [target_value] nvarchar(400) NOT NULL, "
              "CONSTRAINT [PK_target_code_map] PRIMARY KEY ([target_system], [code_set], [canonical_code]));")
+    # Column lineage: one row per staging column and the mapping that fills it, written at setup from the approved mappings, rules and code sets.
+    b.append(f"IF OBJECT_ID(N'{REF}.column_map', N'U') IS NULL CREATE TABLE [{REF}].[column_map] ([migration_slug] nvarchar(32) NOT NULL, "
+             "[layer] nvarchar(16) NOT NULL, [entity] sysname NOT NULL, [target_table] sysname NOT NULL, [target_column] nvarchar(256) NOT NULL, "
+             "[source_file] nvarchar(256) NULL, [source_column] nvarchar(256) NULL, [step] nvarchar(16) NOT NULL, [expression] nvarchar(400) NULL, "
+             "[mapping_id] nvarchar(64) NULL);")
+    b.append(f"""CREATE OR ALTER VIEW [{REF}].[v_column_lineage] AS
+SELECT m.[migration_slug], m.[entity], m.[target_table] AS [mirror_table], m.[target_column] AS [live_column], m.[mapping_id], m.[expression] AS [target_expression],
+       c.[target_table] AS [canonical_table], c.[target_column] AS [canonical_field], c.[step] AS [canonical_step], c.[source_file], c.[source_column],
+       c.[expression] AS [canonical_expression]
+FROM [{REF}].[column_map] AS m
+LEFT JOIN [{REF}].[column_map] AS c ON c.[migration_slug] = m.[migration_slug] AND c.[layer] = N'canonical' AND c.[entity] = m.[entity] AND c.[target_column] = m.[source_column]
+WHERE m.[layer] = N'mirror'""")
     tables = {
+        "xodus_entity_registry": "[migration_slug] nvarchar(32) NOT NULL, [entity] sysname NOT NULL, [wave] int NOT NULL, [depends_on] nvarchar(1000) NULL, "
+                                 "[source_files] nvarchar(2000) NULL, [canon_table] sysname NOT NULL, [mirror_tables] nvarchar(2000) NULL, "
+                                 "CONSTRAINT [PK_xodus_entity_registry] PRIMARY KEY ([migration_slug], [entity])",
+        "xodus_entity_state": "[state_id] bigint IDENTITY(1,1) NOT NULL PRIMARY KEY, [migration_id] nvarchar(64) NOT NULL, [batch_id] nvarchar(64) NOT NULL, "
+                              "[entity] sysname NOT NULL, [stage] nvarchar(16) NOT NULL, [status] nvarchar(16) NOT NULL, [rows_written] bigint NULL, "
+                              "[last_run_id] nvarchar(64) NULL, [row_hash_digest] char(64) NULL, [updated_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), "
+                              "CONSTRAINT [UQ_xodus_entity_state] UNIQUE ([migration_id], [batch_id], [entity])",
         "xodus_schema_version": "[migration_slug] nvarchar(32) NOT NULL, [component] nvarchar(32) NOT NULL, [version] nvarchar(64) NOT NULL, "
                                 "[deployed_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_xodus_schema_version] PRIMARY KEY ([migration_slug], [component])",
         "xodus_raw_files": "[migration_slug] nvarchar(32) NOT NULL, [seq] int NOT NULL, [container] nvarchar(63) NOT NULL, [folder] nvarchar(512) NOT NULL, "
@@ -219,7 +242,8 @@ END""")
 
 def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
           entities: Dict[str, Dict[str, Any]], raw_files: List[Dict[str, Any]], load_order: List[str], env: Dict[str, Any],
-          generated_by: str, provenance: Optional[Dict[str, Any]] = None, codes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+          generated_by: str, provenance: Optional[Dict[str, Any]] = None, codes: Optional[Dict[str, Any]] = None,
+          depends: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """entities[E] = {"files": [file_name, ...], "mappings": {source_field: {"canonical_field", "expression"}}, "key": canonical key or None,
                       "derivations": [{"canonical_field", "input_field", "rule_expression"}], "canonical_fields": [...]}
     raw_files = [{"file_name", "columns": [...]}] (entity files and the lookup files their rules read).
@@ -227,7 +251,9 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     codes (canonical model v2) = {"coded": {entity: {canonical_field: code_set}}, "source_map": [{"code_set", "source_value", "canonical_code"}],
                                   "target_map": [{"code_set", "canonical_code", "target_value"}], "target_system": str, "model_version": str}:
     coded canonical fields are translated through xodus_ref.code_map after the entity is built, and through xodus_ref.target_code_map on
-    the way to the mirror (a code with no target value passes through). Returns {"files": {path: text}, "manifest": {...}, "version": str}."""
+    the way to the mirror (a code with no target value passes through).
+    depends = {entity: [entities whose records must load first]} (optional): gives each entity its wave in xodus_ops.xodus_entity_registry
+    (wave 0 has no parent in the migration). Returns {"files": {path: text}, "manifest": {...}, "version": str}."""
     s = slug(migration_id)
     coded = (codes or {}).get("coded") or {}
     target_system = str((codes or {}).get("target_system") or (spec or {}).get("target_system") or "")
@@ -246,7 +272,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     per_migration: List[str] = []
     objects = {"tables": [], "procedures": []}
     for f in raw_files:
-        cols = [f"{_header(c)} nvarchar(4000) NULL" for c in f["columns"]] + list(TRACE)
+        cols = [f"{_header(c)} nvarchar(4000) NULL" for c in f["columns"]] + list(TRACE) + [ROW_ID]
         per_migration.append(_drop_create(RAW, raw_names[f["file_name"]], cols))
         objects["tables"].append(f"{RAW}.{raw_names[f['file_name']]}")
 
@@ -254,13 +280,16 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     canon_counts: Dict[str, Dict[str, Any]] = {}
     applied_codes: Dict[str, Dict[str, str]] = {}
     resolved: Dict[str, str] = {}  # entity -> its crosswalk table (source key -> surviving key)  # the coded fields the canonical procedures translate (stage 10 checks them)
+    # Column lineage rows for xodus_ref.column_map: (layer, entity, target_table, target_column, source_file, source_column, step, expression, mapping_id).
+    lineage: List[tuple] = []
     for entity in load_order:
         e = entities[entity]
         sql_package._ident(entity)
         ctable = f"{s}_{entity}"
         cfields = list(dict.fromkeys(e["canonical_fields"]))
         per_migration.append(_drop_create(CANON, ctable, [f"{_q(c)} nvarchar(4000) NULL" for c in cfields]
-                                          + ["[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL", "[xodus_loaded_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()"]))
+                                          + ["[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL", "[xodus_loaded_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()"]
+                                          + list(CANON_LINEAGE)))
         objects["tables"].append(f"{CANON}.{ctable}")
         derived = e.get("derived")
         recipe = entity_resolution.recipe_for(entity)
@@ -272,6 +301,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 raise ValueError(f"Deriving {entity} needs the {' and '.join(needs)} entities, loaded before {entity}.")
             files, mapped, key = [], list(recipe["columns"]), None
             select = entity_resolution.derive_sql(entity, CANON, s, ctable)
+            lineage += [("canonical", entity, ctable, c, None, None, "DERIVATION", f"DERIVE:{derived}", None) for c in mapped]
         elif derived:
             raise ValueError(f"Unknown derivation {derived} for {entity}.")
         else:
@@ -286,6 +316,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 for src, m in sorted(e["mappings"].items()):
                     if src in columns_of[fn] and m["canonical_field"] in cfields:
                         exprs[m["canonical_field"]] = source_expression(m["expression"], src, rules, "s", lookup_ref)
+                        lineage.append(("canonical", entity, ctable, m["canonical_field"], fn, src, "MAPPING", str(m["expression"]), None))
                 per_file.append(exprs)
             mapped = [c for c in cfields if any(c in p for p in per_file)]
             key = e.get("key") if e.get("key") in mapped else None
@@ -293,12 +324,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             for i, (fn, exprs) in enumerate(zip(files, per_file)):
                 body = ", ".join(f"{exprs[c]} AS {_q(c)}" for c in mapped if c in exprs)
                 part = f"ROW_NUMBER() OVER (PARTITION BY {exprs[key]} ORDER BY (SELECT NULL)) AS [xodus_rn]" if key and key in exprs else "1 AS [xodus_rn]"
-                selects.append(f"f{i} AS (SELECT {body}, {part} FROM [{RAW}].[{raw_names[fn]}] AS s WHERE s.[xodus_batch_id] = @BatchId)")
+                # Each file's rows keep the file name and raw row id they were read from (the canonical row's lineage).
+                selects.append(f"f{i} AS (SELECT {body}, {part}, s.[xodus_source_file] AS [xodus_src_file], s.[xodus_row_id] AS [xodus_src_row] "
+                               f"FROM [{RAW}].[{raw_names[fn]}] AS s WHERE s.[xodus_batch_id] = @BatchId)")
             if len(files) == 1:
                 exprs = per_file[0]
                 pick = f"WHERE (f0.{_q(key)} IS NULL OR f0.[xodus_rn] = 1)" if key and key in exprs else ""
-                select = (f"WITH {selects[0]}\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_batch_id], [xodus_run_id])\n"
-                          f"SELECT {', '.join('f0.' + _q(c) for c in mapped if c in exprs)}, @BatchId, @RunId FROM f0 {pick};")
+                select = (f"WITH {selects[0]}\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_source_file], [xodus_source_row], [xodus_batch_id], [xodus_run_id])\n"
+                          f"SELECT {', '.join('f0.' + _q(c) for c in mapped if c in exprs)}, f0.[xodus_src_file], f0.[xodus_src_row], @BatchId, @RunId FROM f0 {pick};")
             else:
                 if not key:
                     raise ValueError(f"{entity} reads {len(files)} files but no key field is mapped, so their rows cannot be joined.")
@@ -310,10 +343,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                     cols.append(f"COALESCE({', '.join(sources)})" if len(sources) > 1 else (sources[0] if sources else "NULL"))
                 joins = " ".join(f"LEFT JOIN f{i} ON f{i}.{_q(key)} = k.k AND f{i}.[xodus_rn] = 1" for i in keyed)
                 unkeyed = " UNION ALL ".join(
-                    "SELECT " + ", ".join((f"f{i}.{_q(c)}" if c in per_file[i] else "NULL") for c in mapped) + f", @BatchId, @RunId FROM f{i} WHERE f{i}.{_q(key)} IS NULL"
+                    "SELECT " + ", ".join((f"f{i}.{_q(c)}" if c in per_file[i] else "NULL") for c in mapped)
+                    + f", f{i}.[xodus_src_file], f{i}.[xodus_src_row], @BatchId, @RunId FROM f{i} WHERE f{i}.{_q(key)} IS NULL"
                     for i in keyed)
-                select = (f"WITH {', '.join(selects)}, k AS ({keys})\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_batch_id], [xodus_run_id])\n"
-                          f"SELECT {', '.join(cols)}, @BatchId, @RunId FROM k {joins}\nUNION ALL {unkeyed};")
+                # The first file (in the entity's order) that holds the key supplies the row's source file and row id.
+                src_file = "COALESCE(" + ", ".join(f"f{i}.[xodus_src_file]" for i in keyed) + ")" if len(keyed) > 1 else f"f{keyed[0]}.[xodus_src_file]"
+                src_row = "COALESCE(" + ", ".join(f"f{i}.[xodus_src_row]" for i in keyed) + ")" if len(keyed) > 1 else f"f{keyed[0]}.[xodus_src_row]"
+                select = (f"WITH {', '.join(selects)}, k AS ({keys})\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_source_file], [xodus_source_row], [xodus_batch_id], [xodus_run_id])\n"
+                          f"SELECT {', '.join(cols)}, {src_file}, {src_row}, @BatchId, @RunId FROM k {joins}\nUNION ALL {unkeyed};")
         derive = []
         for d in e.get("derivations", []):
             rule = rules.get(str(d["rule_expression"]).strip().upper())
@@ -323,12 +360,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 continue
             derive.append(f"UPDATE c SET c.{_q(d['canonical_field'])} = {translate(d['rule_expression'], d['input_field'], rule, 'c', lookup_ref, cfields)} "
                           f"FROM [{CANON}].[{ctable}] AS c;")
+            lineage.append(("canonical", entity, ctable, d["canonical_field"], None, d["input_field"], "DERIVATION", str(d["rule_expression"]), None))
         # Coded fields: the approved source value -> canonical code map (data in xodus_ref.code_map). A value with no approved code is left
         # as received and fails the stage 10 conformance check (VALUES_IN_CODE_SET).
         filled = set(mapped) | {d["canonical_field"] for d in e.get("derivations", [])}
         for field, code_set in sorted((coded.get(entity) or {}).items()):
             if field in filled and field in cfields:
                 applied_codes.setdefault(entity, {})[field] = code_set
+                lineage.append(("canonical", entity, ctable, field, None, field, "CODE_MAP", f"CODE_SET:{code_set}", None))
                 derive.append(f"UPDATE c SET c.{_q(field)} = m.[canonical_code] FROM [{CANON}].[{ctable}] AS c JOIN [{REF}].[code_map] AS m "
                               f"ON m.[migration_slug] = {_lit(s)} AND m.[code_set] = {_lit(code_set)} AND m.[source_value] = UPPER(LTRIM(RTRIM(c.{_q(field)})));")
         # References to an entity resolved earlier in the load order point at its surviving record (the crosswalk below).
@@ -347,6 +386,13 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             derive += entity_resolution.sql_resolve(CANON, ctable, xtable, key, [c for c in mapped if c in cfields] +
                                                     [c for c in filled if c in cfields and c not in mapped], e["resolution"])
             resolved[entity] = xtable
+        # The hash covers every value the procedure filled (after derivations, code translation and resolution): a later run can tell
+        # whether an entity's row changed. NULL is marked with a character no source value holds, so an empty and a missing value differ.
+        hashed = [c for c in cfields if c in set(mapped) | filled]
+        if hashed:
+            parts = ", ".join(f"COALESCE(c.{_q(c)}, NCHAR(1))" for c in hashed)
+            derive.append(f"UPDATE c SET c.[xodus_row_hash] = CONVERT(char(64), HASHBYTES('SHA2_256', CONCAT_WS(N'|', CAST(N'' AS nvarchar(max)), {parts})), 2) "
+                          f"FROM [{CANON}].[{ctable}] AS c;")
         log = f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'canonical', N'{CANON}', N'{ctable}';"
         per_migration.append(_proc(f"[{CANON}].[usp_canon_{s}_{entity}]", "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64)",
                                    [f"TRUNCATE TABLE [{CANON}].[{ctable}];", select] + derive + [log]))
@@ -371,7 +417,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             all_cols = sorted({(f["column"], f.get("type") or "string") for f in body["fields"] if f["table"] == table})
             mtable = f"{s}_{table}"
             per_migration.append(_drop_create(MIRROR, mtable, [f"{_q(c)} nvarchar(4000) NULL" for c, _ in all_cols]
-                                              + ["[xodus_source_key] nvarchar(400) NULL", "[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL"]))
+                                              + ["[xodus_source_key] nvarchar(400) NULL", "[xodus_source_row] bigint NULL", "[xodus_batch_id] nvarchar(64) NULL",
+                                                 "[xodus_run_id] nvarchar(64) NULL"]))
             objects["tables"].append(f"{MIRROR}.{mtable}")
             exprs, cols, keys = [], [], []
             for m in trows:
@@ -384,6 +431,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                          f"AND t.[code_set] = {_lit(code_set)} AND t.[canonical_code] = {e}), {e})")
                 exprs.append(f"{e} AS {_q(col)}")
                 cols.append(col)
+                lineage.append(("mirror", entity, mtable, col, None, m["canonical_field"], "MAPPING", str(m["transformation_expression"]), m.get("target_mapping_id")))
                 if sql_package._is_key_field(m["canonical_field"], entity):
                     keys.append(e)
             # Each mirror row keeps the canonical key of the source row it came from (xodus_source_key): stage 10 names failing rows by it.
@@ -396,9 +444,9 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             dedupe = f"ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY {order_by}) AS [xodus_rn]"
             mirror_body.append(f"TRUNCATE TABLE [{MIRROR}].[{mtable}];")
             mirror_body.append(
-                f"INSERT INTO [{MIRROR}].[{mtable}] ({', '.join(_q(c) for c in cols)}, [xodus_source_key], [xodus_batch_id], [xodus_run_id])\n"
-                f"SELECT {', '.join('x.' + _q(c) for c in cols)}, x.[xodus_source_key], @BatchId, @RunId FROM (\n"
-                f"    SELECT {', '.join(exprs)}, {source_key} AS [xodus_source_key], {dedupe}\n    FROM [{CANON}].[{canon_counts[entity]['table']}] AS s\n) AS x"
+                f"INSERT INTO [{MIRROR}].[{mtable}] ({', '.join(_q(c) for c in cols)}, [xodus_source_key], [xodus_source_row], [xodus_batch_id], [xodus_run_id])\n"
+                f"SELECT {', '.join('x.' + _q(c) for c in cols)}, x.[xodus_source_key], x.[xodus_source_row], @BatchId, @RunId FROM (\n"
+                f"    SELECT {', '.join(exprs)}, {source_key} AS [xodus_source_key], s.[xodus_source_row] AS [xodus_source_row], {dedupe}\n    FROM [{CANON}].[{canon_counts[entity]['table']}] AS s\n) AS x"
                 " WHERE x.[xodus_rn] = 1;")
             mirror_body.append(f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'mirror', N'{MIRROR}', N'{mtable}';")
             key_cols = [c for c, m in zip(cols, trows) if sql_package._is_key_field(m["canonical_field"], entity)]
@@ -420,6 +468,30 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
              + ", ".join(f"({_lit(s)}, {i + 1}, {_lit(e)})" for i, e in enumerate(load_order)) + ";"]
     rows += [f"INSERT INTO [{OPS}].[xodus_live_tables] (migration_slug, mirror_table, live_table) VALUES "
              + ", ".join(f"({_lit(s)}, {_lit(t['mirror_table'])}, {_lit(t['live_table'])})" for t in live_tables) + ";"]
+    # Entity registry: each entity's wave (0 = no parent in this migration; otherwise one more than its deepest parent), parents, files and tables.
+    deps: Dict[str, List[str]] = {}
+    for entity in load_order:
+        wanted = set((depends or {}).get(entity) or ())
+        recipe = entity_resolution.recipe_for(entity) if canon_counts[entity]["derived"] else None
+        if recipe:
+            wanted |= {recipe["parent"]["entity"], recipe["holder"]["entity"]}
+        deps[entity] = sorted(d for d in wanted if d in canon_counts and d != entity)
+    waves: Dict[str, int] = {}
+    for entity in load_order:  # the load order already puts parents first; a parent that comes later (a cycle) is ignored
+        waves[entity] = 1 + max([waves[d] for d in deps[entity] if d in waves], default=-1)
+    mirrors: Dict[str, List[str]] = {}
+    for t in live_tables:
+        mirrors.setdefault(t["entity"], []).append(t["mirror_table"])
+    rows.append(f"DELETE FROM [{OPS}].[xodus_entity_registry] WHERE migration_slug = {_lit(s)};")
+    rows.append(f"INSERT INTO [{OPS}].[xodus_entity_registry] (migration_slug, entity, wave, depends_on, source_files, canon_table, mirror_tables) VALUES "
+                + ", ".join(f"({_lit(s)}, {_lit(e)}, {waves[e]}, {_lit(','.join(deps[e]))}, {_lit(','.join(canon_counts[e]['files']))}, "
+                            f"{_lit(canon_counts[e]['table'])}, {_lit(','.join(sorted(mirrors.get(e, []))))})" for e in load_order) + ";")
+    # Column lineage (xodus_ref.column_map): rewritten on every setup, so it always matches the deployed procedures.
+    lineage = sorted(set(lineage), key=lambda r: tuple("" if v is None else str(v) for v in r))
+    rows.append(f"DELETE FROM [{REF}].[column_map] WHERE migration_slug = {_lit(s)};")
+    for i in range(0, len(lineage), 500):  # SQL Server allows at most 1000 rows in one VALUES list
+        rows.append(f"INSERT INTO [{REF}].[column_map] (migration_slug, layer, entity, target_table, target_column, source_file, source_column, step, expression, mapping_id) VALUES "
+                    + ", ".join("(" + ", ".join([_lit(s)] + ["NULL" if v is None else _lit(v) for v in r]) + ")" for r in lineage[i:i + 500]) + ";")
     if codes is not None:  # the code maps are data: rewritten on every setup, read by the procedures above
         source_map = sorted({(r["code_set"], r["source_value"], r["canonical_code"]) for r in codes.get("source_map") or []})
         target_map = sorted({(r["code_set"], r["canonical_code"], r["target_value"]) for r in codes.get("target_map") or []})
@@ -442,8 +514,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                        "[updated] bigint NOT NULL, [promoted_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME());"]
     promote: List[str] = ["DECLARE @a TABLE ([act] nvarchar(10));"]
     for t in live_tables:
-        cols = [f"{_q(c)} nvarchar(4000) NULL" for c in t["all_columns"]] + ["[xodus_source_key] nvarchar(400) NULL", "[xodus_batch_id] nvarchar(64) NULL",
-                                                                              "[xodus_run_id] nvarchar(64) NULL"]
+        cols = [f"{_q(c)} nvarchar(4000) NULL" for c in t["all_columns"]] + ["[xodus_source_key] nvarchar(400) NULL", "[xodus_source_row] bigint NULL",
+                                                                              "[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL"]
         live.append(_drop_create(LANDING, t["mirror_table"], cols))
         src_cols = ", ".join(_q(c) for c in t["columns"])
         insert_only = not t["key_columns"]
@@ -485,7 +557,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         "generatedUtc": datetime.now(timezone.utc).isoformat(), "targetSystem": spec.get("target_system"), "targetModelVersion": spec.get("spec_version"),
         "liveSchema": live_schema, "pipelines": list(STABLE_PIPELINES) + [f"PL_XODUS_Setup_{s}"], "setupPipeline": f"PL_XODUS_Setup_{s}",
         "linkedServices": [LS_BLOB, LS_XODUS, LS_LIVE], "rawFiles": [{"file": f["file_name"], "table": raw_names[f["file_name"]]} for f in raw_files],
-        "rawFolder": folder, "container": container, "loadOrder": load_order, "canonical": canon_counts, "liveTables": live_tables,
+        "rawFolder": folder, "container": container, "loadOrder": load_order, "waves": waves, "dependsOn": deps, "columnMapRows": len(lineage),
+        "canonical": canon_counts, "liveTables": live_tables,
         "objects": objects, "provenance": provenance or {}, "deployed": False,
         "codeSets": ({"modelVersion": codes.get("model_version"), "coded": applied_codes, "sourceValues": len(codes.get("source_map") or []),
                       "sourceMap": sorted([r["code_set"], r["source_value"], r["canonical_code"]] for r in codes.get("source_map") or []),
