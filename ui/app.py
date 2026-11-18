@@ -6540,6 +6540,20 @@ def _entity_depends() -> Dict[str, set]:
         return {}
 
 
+def _with_downstream(selected: List[str], depends: Dict[str, Any]) -> List[str]:
+    """The selected entities plus every entity that depends on one of them, directly or through others (their canonical rows point at the
+    selected entities' surviving keys, so they must be rebuilt with them)."""
+    chosen = set(selected)
+    changed = True
+    while changed:
+        changed = False
+        for entity, parents in depends.items():
+            if entity not in chosen and chosen & set(parents or ()):
+                chosen.add(entity)
+                changed = True
+    return sorted(chosen)
+
+
 def live_validation_status(conn, migration_id: str) -> Optional[Dict[str, Any]]:
     """The latest live validation of the current batch (the batch of the latest PL_XODUS_Run), or None."""
     run = adf_runs.latest(conn, migration_id, "PL_XODUS_Run")
@@ -6875,14 +6889,28 @@ async def start_data_plane_run(request: Request):
     """Stage 09: start PL_XODUS_Run for a new batch through the service principal. The approver is the signed-in user."""
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    form = await request.form()
+    selected = [str(x).strip() for x in form.getlist("entities") if str(x).strip()]  # none = a whole new batch
     conn = get_db_connection()
     try:
         art, pkg = _xodus_package(conn, migration_id)
         reasons = []
+        entities_param, batch = "", ""
         if not pkg:
             reasons.append("There is no pipeline package: generate one in stage 07.")
         else:
             man = pkg["manifest"]
+            if selected:  # rerun some entities inside the latest batch; the pipeline's scope check refuses anything that would leave it inconsistent
+                unknown = [e for e in selected if e not in man["loadOrder"]]
+                if unknown:
+                    reasons.append("Not entities of this package: " + ", ".join(unknown) + ".")
+                last = adf_runs.latest(conn, migration_id, "PL_XODUS_Run")
+                if not last or not last.get("batch_id"):
+                    reasons.append("There is no batch to rerun entities in: start a whole batch first.")
+                else:
+                    batch = last["batch_id"]
+                chosen = _with_downstream(selected, man.get("dependsOn") or {}) if form.get("downstream") else sorted(set(selected))
+                entities_param = ",".join(e for e in man["loadOrder"] if e in chosen)
             status_info = _adf_status(conn, migration_id)
             if status_info and status_info["stale_reasons"]:
                 reasons.append("The package is stale (" + " ".join(status_info["stale_reasons"]) + ") Generate a new one and publish it.")
@@ -6898,16 +6926,19 @@ async def start_data_plane_run(request: Request):
             reasons.append(_already_running_message(busy))
         if reasons:
             return _dp_redirect("/execution", "error", "Not started: " + " ".join(reasons))
-        batch = "B" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        batch = batch or "B" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         try:
-            req = adf_runs.start(conn, migration_id, "PL_XODUS_Run", {"MigrationId": migration_id, "MigrationSlug": man["migrationSlug"], "BatchId": batch},
-                                 user["name"], batch_id=batch)
+            req = adf_runs.start(conn, migration_id, "PL_XODUS_Run", {"MigrationId": migration_id, "MigrationSlug": man["migrationSlug"], "BatchId": batch,
+                                                                     "Entities": entities_param}, user["name"], batch_id=batch)
         except ValueError as exc:
             return _dp_redirect("/execution", "error", "Not started: " + str(exc))
         conn.commit()
     finally:
         conn.close()
-    _target_setup_audit("DATA_PLANE_RUN_STARTED", user, {"batch_id": batch, "adf_run_id": req["adf_run_id"], "version": man["version"]})
+    _target_setup_audit("DATA_PLANE_RUN_STARTED", user, {"batch_id": batch, "adf_run_id": req["adf_run_id"], "version": man["version"], "entities": entities_param or "ALL"})
+    if entities_param:
+        return _dp_redirect("/execution", "notice", f"Rerunning {entities_param.replace(',', ', ')} in batch {batch} (Data Factory run {req['adf_run_id']}). "
+                                                    "Entities that depend on them and were not selected are now stale and need a rerun before validation.")
     return _dp_redirect("/execution", "notice", f"Batch {batch} started (Data Factory run {req['adf_run_id']}). Raw files load from {man['rawFolder']} of {man['container']}.")
 
 

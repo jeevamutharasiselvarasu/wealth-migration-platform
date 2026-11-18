@@ -44,8 +44,11 @@ Validation findings can then name source file and row, not only the key. Everyth
 
 ## 4. Option 2: rerun one entity
 
-- `PL_XODUS_Run` gets `Mode` (FULL or ENTITIES) and `Entities`. The loop runs only those entities and loads only the raw files the registry lists for them (including lookup files).
-- Canonical and mirror use `DELETE WHERE xodus_batch_id = @BatchId` instead of `TRUNCATE`; the mirror procedure is split per entity. A rerun reuses the batch id, so Advisor (run 1) and Account (run 2) sit in one batch.
+- `PL_XODUS_Run` gets `Entities` (comma-separated; empty = the whole batch). The loop runs only those entities and loads only the raw files the registry lists for them (including lookup files).
+- Built in phase 2 (2026-11-19). Changes from the first draft: there is no `Mode` parameter (empty `Entities` is the whole batch), and the tables keep `TRUNCATE`. A table still holds one batch at a time, and a rerun replaces only the selected entity's own tables; `DELETE WHERE xodus_batch_id` would be wrong because entity resolution and derivations work on the whole canonical table. Consequence: a new batch must be a whole-batch run, and entity reruns only happen inside the latest batch.
+- The mirror procedure is split per entity (`usp_mirror_<slug>_<Entity>`); the whole-mirror procedure calls them in order inside one transaction. A rerun reuses the batch id, so Advisor (run 1) and Account (run 2) sit in one batch.
+- `usp_xodus_entity_state` is called at the end of every canonical and mirror procedure (BUILT, with the package version and a row-hash digest) and marks dependants STALE. `usp_xodus_check_scope` runs first in a scoped run and refuses: an unknown entity, a batch never built, a batch built by another package version, and a parent that is stale or not built (unless it is in the selection).
+- Stage 09 has a "Rerun selected entities" form with an option to include downstream entities.
 - Rules: all parents must be VALIDATED in the batch; rerunning a parent marks every descendant STALE (children repoint to the parent's surviving keys); "rerun with downstream" is offered.
 - The package version is part of the state. If it changed (setup recreated the tables), every entity in the batch is invalid and the UI says so.
 - Sign-off and gate rows hold counts per mirror table, so they can be recorded and checked for an entity set. Promote stays once per batch (decision 2) but only after every entity is VALIDATED and none is STALE.

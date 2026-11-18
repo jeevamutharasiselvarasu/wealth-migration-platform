@@ -10,6 +10,17 @@
   <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">One approval starts <span class="font-mono">PL_XODUS_Run</span> in Data Factory for a new batch: the raw files in <span class="font-mono">{{ dp.manifest.container }}/{{ dp.manifest.rawFolder }}</span> load as received, each entity is built in the load order ({{ dp.manifest.loadOrder|join(' → ') }}), and the mirror of the live tables is filled. Nothing reaches the live tables until the batch is validated and promoted in stage 10. It refuses unless the pull request is merged, the deployment check passed and mapping validation passed.</p>
   {% if can_decide_exception %}<form action="/api/data-plane/start" method="post" class="mt-2"><fieldset {% if dp.running.run %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0"><button class="btn p sm" data-testid="start-batch">Approve and start a batch</button>{% if dp.running.run %}<span class="fh"> A batch is running. Refresh its status below; start another once it has finished.</span>{% endif %}</fieldset></form>
   {% else %}<p class="fh">A Migration Analyst approves the start.</p>{% endif %}
+  {% if can_decide_exception and dp.run and dp.run.batch_id and dp.manifest.loadOrder|length > 1 %}
+  <form action="/api/data-plane/start" method="post" class="mt-3" data-testid="rerun-entities">
+    <fieldset {% if dp.running.run %}disabled{% endif %} style="border:0;margin:0;padding:0;min-width:0">
+      <p class="text-xs"><b>Rerun some entities in batch <span class="font-mono">{{ dp.run.batch_id }}</span></b> <span class="fh">(for example Account only, after fixing its mapping). Only their files are reloaded and only they are rebuilt; the rest of the batch is kept.</span></p>
+      <div class="mt-1 text-xs">{% for e in dp.manifest.loadOrder %}<label style="margin-right:12px"><input type="checkbox" name="entities" value="{{ e }}"> {{ e }}{% if dp.manifest.waves and dp.manifest.waves.get(e) is not none %} <span class="fh">(wave {{ dp.manifest.waves[e] }})</span>{% endif %}</label>{% endfor %}</div>
+      <label class="text-xs"><input type="checkbox" name="downstream" value="1"> Also rerun the entities that depend on the selected ones</label>
+      <p class="fh">The pipeline refuses if a parent of a selected entity is not built in this batch, if the package changed since the batch was built, or if the batch was never built.</p>
+      <button class="btn g sm" data-testid="rerun-selected">Rerun selected entities</button>
+    </fieldset>
+  </form>
+  {% endif %}
   {% if dp.run %}<p class="mt-2 text-xs" data-testid="latest-run">Latest run: {{ run_line(dp.run, '/execution') }}</p>{% endif %}
   {% if dp.run and dp.run.failures %}<div class="exc mt-2" role="alert"><b>Data Factory reports:</b>{% for f in dp.run.failures %}<div><span class="font-mono">{{ f.activity }}</span>: {{ f.error }}</div>{% endfor %}</div>{% endif %}
   {% if dp.run and dp.run.status == 'SUCCEEDED' %}<p class="mt-2"><a href="/validation-rules#target-validation" class="btn p sm">Continue to 10 Target validation →</a></p>{% endif %}

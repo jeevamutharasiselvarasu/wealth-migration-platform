@@ -250,3 +250,82 @@ def test_when_data_factory_cannot_be_asked_the_run_counts_as_still_going(monkeyp
         raise ValueError("Data Factory is not reachable")
     monkeypatch.setattr(adf_runs, "refresh", down)
     assert app_module._run_in_progress(conn, "MIG-T", "PL_XODUS_Run")
+
+
+def test_downstream_entities_are_every_dependant_directly_or_through_others():
+    import ui.app as app_module
+    depends = {"Account": ["Household"], "Position": ["Account"], "Household": [], "Advisor": []}
+    assert app_module._with_downstream(["Household"], depends) == ["Account", "Household", "Position"]
+    assert app_module._with_downstream(["Account"], depends) == ["Account", "Position"]
+    assert app_module._with_downstream(["Advisor"], depends) == ["Advisor"]
+
+
+class _Form(dict):
+    def getlist(self, key):
+        v = self.get(key, [])
+        return v if isinstance(v, list) else [v]
+
+
+class _Conn:
+    def __init__(self, conn):
+        self._c = conn
+
+    def __getattr__(self, name):
+        return getattr(self._c, name)
+
+    def close(self):
+        pass
+
+
+def _start(monkeypatch, form, runs=True):
+    """Call the stage 09 start endpoint with Data Factory faked; returns (redirect location, parameters sent to Data Factory or None)."""
+    import asyncio
+    import sqlite3
+
+    import ui.app as app_module
+    from control_plane.services import adf_runs, deployment_check
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    if runs:
+        _request(conn, "SUCCEEDED")  # batch B1
+    else:
+        adf_runs.ensure_table(conn)
+    man = {"version": "v1", "migrationSlug": "mig1", "rawFolder": "raw/x", "container": "c", "loadOrder": ["Household", "Account", "Position"],
+           "dependsOn": {"Account": ["Household"], "Position": ["Account"], "Household": []}}
+    sent = {}
+
+    class Req:
+        async def form(self):
+            return _Form(form)
+    monkeypatch.setitem(app_module.state_store.questionnaire_data, "migration_id", "MIG-T")
+    monkeypatch.setattr(app_module, "get_current_user", lambda r: {"name": "Ann"})
+    monkeypatch.setattr(app_module, "get_db_connection", lambda: _Conn(conn))
+    monkeypatch.setattr(app_module, "_xodus_package", lambda c, m: ({}, {"manifest": man}))
+    monkeypatch.setattr(app_module, "_adf_status", lambda c, m: None)
+    monkeypatch.setattr(app_module, "_merged_pr", lambda c, m, v: True)
+    monkeypatch.setattr(deployment_check, "latest", lambda c, m: {"version": "v1", "status": "PASS"})
+    monkeypatch.setattr(app_module, "workflow_progress", lambda: {"validation_status": "PASS"})
+    monkeypatch.setattr(app_module, "_run_in_progress", lambda c, m, p: None)
+    monkeypatch.setattr(app_module, "_target_setup_audit", lambda *a, **k: None)
+    monkeypatch.setattr(adf_runs, "start", lambda c, mig, pl, params, actor, batch_id=None, **k: sent.update(params=params, batch=batch_id) or {"adf_run_id": "adf-2"})
+    resp = asyncio.run(app_module.start_data_plane_run(Req()))
+    return resp.headers["location"], sent.get("params")
+
+
+def test_starting_without_entities_is_a_whole_new_batch(monkeypatch):
+    loc, params = _start(monkeypatch, {})
+    assert params["Entities"] == "" and params["BatchId"].startswith("B") and params["BatchId"] != "B1" and "notice=" in loc
+
+
+def test_rerunning_entities_reuses_the_latest_batch_and_can_include_downstream(monkeypatch):
+    loc, params = _start(monkeypatch, {"entities": ["Account"]})
+    assert params["BatchId"] == "B1" and params["Entities"] == "Account"  # only the selected entity; the pipeline checks its parents
+    loc, params = _start(monkeypatch, {"entities": ["Household"], "downstream": "1"})
+    assert params["BatchId"] == "B1" and params["Entities"] == "Household,Account,Position"  # in load order
+
+
+def test_rerunning_entities_is_refused_without_a_batch_or_for_unknown_entities(monkeypatch):
+    loc, params = _start(monkeypatch, {"entities": ["Account"]}, runs=False)
+    assert params is None and "error=" in loc and "start+a+whole+batch+first" in loc
+    loc, params = _start(monkeypatch, {"entities": ["Nope"]})
+    assert params is None and "error=" in loc and "Nope" in loc

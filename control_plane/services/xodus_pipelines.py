@@ -178,12 +178,93 @@ BEGIN
     EXEC sp_executesql @sql, N'@n bigint OUTPUT', @n = @n OUTPUT;
     INSERT INTO [{OPS}].[xodus_table_counts] (run_id, migration_id, batch_id, layer, table_name, row_count) VALUES (@RunId, @MigrationId, @BatchId, @Layer, @Table, @n);
 END""")
-    for name, cols in (("usp_xodus_raw_files", "container, folder, file_name, raw_table"), ("usp_xodus_load_order", "entity"),
-                       ("usp_xodus_live_tables", "mirror_table, live_table")):
-        table = {"usp_xodus_raw_files": "xodus_raw_files", "usp_xodus_load_order": "xodus_load_order", "usp_xodus_live_tables": "xodus_live_tables"}[name]
-        order = " ORDER BY seq" if table != "xodus_live_tables" else " ORDER BY mirror_table"
-        b.append(f"CREATE OR ALTER PROCEDURE [{OPS}].[{name}] @MigrationSlug nvarchar(32)\nAS\nBEGIN\n    SET NOCOUNT ON;\n"
-                 f"    SELECT {cols} FROM [{OPS}].[{table}] WHERE migration_slug = @MigrationSlug{order};\nEND")
+    sel = "SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@Entities, N',') WHERE LTRIM(RTRIM(value)) <> N''"  # the entities of a scoped run
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_raw_files] @MigrationSlug nvarchar(32), @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Every raw file of the migration, or (a scoped run) only the files the selected entities read, including the lookup files their rules use.
+    SELECT f.container, f.folder, f.file_name, f.raw_table FROM [{OPS}].[xodus_raw_files] AS f WHERE f.migration_slug = @MigrationSlug
+        AND (@Entities = N'' OR EXISTS (SELECT 1 FROM [{OPS}].[xodus_entity_registry] AS r
+             WHERE r.migration_slug = @MigrationSlug AND r.entity IN ({sel})
+               AND f.raw_table IN (SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(r.source_files, N','))))
+    ORDER BY f.seq;
+END""")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_load_order] @MigrationSlug nvarchar(32), @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT entity FROM [{OPS}].[xodus_load_order] WHERE migration_slug = @MigrationSlug AND (@Entities = N'' OR entity IN ({sel})) ORDER BY seq;
+END""")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_mirror_scope] @MigrationSlug nvarchar(32), @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- One row with an empty entity (the whole mirror in one transaction), or one row per selected entity that has mirror tables, in load order.
+    IF @Entities = N'' SELECT CAST(N'' AS sysname) AS entity;
+    ELSE SELECT o.entity FROM [{OPS}].[xodus_load_order] AS o JOIN [{OPS}].[xodus_entity_registry] AS r ON r.migration_slug = o.migration_slug AND r.entity = o.entity
+         WHERE o.migration_slug = @MigrationSlug AND r.mirror_tables <> N'' AND o.entity IN ({sel}) ORDER BY o.seq;
+END""")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_live_tables] @MigrationSlug nvarchar(32)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT mirror_table, live_table FROM [{OPS}].[xodus_live_tables] WHERE migration_slug = @MigrationSlug ORDER BY mirror_table;
+END""")
+    b.append(f"IF COL_LENGTH(N'{OPS}.xodus_entity_state', N'package_version') IS NULL ALTER TABLE [{OPS}].[xodus_entity_state] ADD [package_version] nvarchar(64) NULL;")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_entity_state]
+    @MigrationSlug nvarchar(32), @MigrationId nvarchar(64), @BatchId nvarchar(64), @Entity sysname, @Stage nvarchar(16), @RunId nvarchar(64),
+    @Rows bigint = NULL, @Digest char(64) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Records that the entity was built in this batch (stage canonical or mirror) with the deployed package version. A rebuilt canonical
+    -- entity makes everything that depends on it stale: those entities must be rebuilt before the batch can move on.
+    DECLARE @version nvarchar(64) = (SELECT TOP (1) [version] FROM [{OPS}].[xodus_schema_version] WHERE migration_slug = @MigrationSlug AND component = N'xodus');
+    MERGE [{OPS}].[xodus_entity_state] AS t
+    USING (SELECT @MigrationId AS m, @BatchId AS b, @Entity AS e) AS s ON t.migration_id = s.m AND t.batch_id = s.b AND t.entity = s.e
+    WHEN MATCHED THEN UPDATE SET stage = @Stage, status = N'BUILT', rows_written = COALESCE(@Rows, t.rows_written), last_run_id = @RunId,
+        row_hash_digest = COALESCE(@Digest, t.row_hash_digest), package_version = @version, updated_utc = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN INSERT (migration_id, batch_id, entity, stage, status, rows_written, last_run_id, row_hash_digest, package_version)
+        VALUES (@MigrationId, @BatchId, @Entity, @Stage, N'BUILT', @Rows, @RunId, @Digest, @version);
+    IF @Stage = N'canonical'
+    BEGIN
+        WITH d AS (
+            SELECT r.entity FROM [{OPS}].[xodus_entity_registry] AS r CROSS APPLY STRING_SPLIT(r.depends_on, N',') AS p
+                WHERE r.migration_slug = @MigrationSlug AND LTRIM(RTRIM(p.value)) = @Entity
+            UNION ALL
+            SELECT r.entity FROM [{OPS}].[xodus_entity_registry] AS r CROSS APPLY STRING_SPLIT(r.depends_on, N',') AS p JOIN d ON LTRIM(RTRIM(p.value)) = d.entity
+                WHERE r.migration_slug = @MigrationSlug)
+        UPDATE [{OPS}].[xodus_entity_state] SET status = N'STALE', updated_utc = SYSUTCDATETIME()
+            WHERE migration_id = @MigrationId AND batch_id = @BatchId AND entity IN (SELECT entity FROM d);
+    END;
+END""")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_check_scope]
+    @MigrationSlug nvarchar(32), @MigrationId nvarchar(64), @BatchId nvarchar(64), @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @Entities = N'' RETURN;  -- a whole-batch run has nothing to check
+    DECLARE @sel TABLE (entity sysname NOT NULL PRIMARY KEY);
+    INSERT INTO @sel SELECT DISTINCT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@Entities, N',') WHERE LTRIM(RTRIM(value)) <> N'';
+    DECLARE @msg nvarchar(max) = N'';
+    SELECT @msg = @msg + e.entity + N' is not an entity of this migration. ' FROM @sel AS e
+        WHERE NOT EXISTS (SELECT 1 FROM [{OPS}].[xodus_entity_registry] AS r WHERE r.migration_slug = @MigrationSlug AND r.entity = e.entity);
+    IF @msg <> N'' BEGIN SET @msg = LEFT(@msg, 2000); THROW 50004, @msg, 1; END;
+    IF NOT EXISTS (SELECT 1 FROM [{OPS}].[xodus_entity_state] WHERE migration_id = @MigrationId AND batch_id = @BatchId)
+        THROW 50005, N'This batch has not been built yet. Run the whole batch first; single entities can only be rerun inside a built batch.', 1;
+    DECLARE @version nvarchar(64) = (SELECT TOP (1) [version] FROM [{OPS}].[xodus_schema_version] WHERE migration_slug = @MigrationSlug AND component = N'xodus');
+    SELECT @msg = @msg + s.entity + N' was built by another package version. ' FROM [{OPS}].[xodus_entity_state] AS s
+        WHERE s.migration_id = @MigrationId AND s.batch_id = @BatchId AND ISNULL(s.package_version, N'') <> ISNULL(@version, N'');
+    IF @msg <> N'' BEGIN SET @msg = LEFT(@msg + N'The package changed since this batch was built; run the whole batch again.', 2000); THROW 50006, @msg, 1; END;
+    SELECT @msg = @msg + e.entity + N' needs ' + p.parent + N' built in this batch first (it is stale or not built). ' FROM @sel AS e
+        JOIN [{OPS}].[xodus_entity_registry] AS r ON r.migration_slug = @MigrationSlug AND r.entity = e.entity
+        CROSS APPLY (SELECT LTRIM(RTRIM(value)) AS parent FROM STRING_SPLIT(r.depends_on, N',') WHERE LTRIM(RTRIM(value)) <> N'') AS p
+        WHERE p.parent NOT IN (SELECT entity FROM @sel)
+          AND NOT EXISTS (SELECT 1 FROM [{OPS}].[xodus_entity_state] AS s WHERE s.migration_id = @MigrationId AND s.batch_id = @BatchId
+                          AND s.entity = p.parent AND s.status IN (N'BUILT', N'VALIDATED'));
+    IF @msg <> N'' BEGIN SET @msg = LEFT(@msg, 2000); THROW 50007, @msg, 1; END;
+END""")
     b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_stamp_raw]
     @MigrationSlug nvarchar(32), @Table sysname, @MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64), @SourceFile nvarchar(1024)
 AS
@@ -198,9 +279,9 @@ BEGIN
 END""")
     for schema, prefix in ((CANON, "usp_canon_"), (MIRROR, "usp_mirror_")):
         is_canon = schema == CANON
-        entity_param = ", @Entity sysname" if is_canon else ""
-        entity_check = " OR @Entity LIKE N'%[^A-Za-z0-9_]%'" if is_canon else ""
-        entity_name = " + N'_' + @Entity" if is_canon else ""
+        entity_param = ", @Entity sysname" if is_canon else ", @Entity sysname = N''"
+        entity_check = " OR @Entity LIKE N'%[^A-Za-z0-9_]%'"
+        entity_name = " + N'_' + @Entity" if is_canon else " + CASE WHEN @Entity = N'' THEN N'' ELSE N'_' + @Entity END"
         b.append(f"""CREATE OR ALTER PROCEDURE [{schema}].[usp_xodus_{'canon' if is_canon else 'mirror'}]
     @MigrationSlug nvarchar(32), @MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64){entity_param}
 AS
@@ -264,9 +345,14 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     columns_of = {f["file_name"]: list(f["columns"]) for f in raw_files}
     raw_names = {f["file_name"]: raw_table(s, f["file_name"]) for f in raw_files}
 
+    reading = {"entity": None}  # the entity whose SQL is being generated
+    lookups: Dict[str, set] = {}  # entity -> raw tables its canonical and mirror SQL read through lookup rules
+
     def lookup_ref(parent_file: str) -> str:
         if parent_file not in raw_names:
             raise ValueError(f"A lookup rule reads {parent_file}, which is not among the migration's source files.")
+        if reading["entity"]:
+            lookups.setdefault(reading["entity"], set()).add(raw_names[parent_file])
         return f"[{RAW}].[{raw_names[parent_file]}]"
 
     per_migration: List[str] = []
@@ -283,6 +369,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     # Column lineage rows for xodus_ref.column_map: (layer, entity, target_table, target_column, source_file, source_column, step, expression, mapping_id).
     lineage: List[tuple] = []
     for entity in load_order:
+        reading["entity"] = entity
         e = entities[entity]
         sql_package._ident(entity)
         ctable = f"{s}_{entity}"
@@ -394,6 +481,12 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             derive.append(f"UPDATE c SET c.[xodus_row_hash] = CONVERT(char(64), HASHBYTES('SHA2_256', CONCAT_WS(N'|', CAST(N'' AS nvarchar(max)), {parts})), 2) "
                           f"FROM [{CANON}].[{ctable}] AS c;")
         log = f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'canonical', N'{CANON}', N'{ctable}';"
+        # Entity state: built in this batch, with a digest of its row hashes (a rerun can tell whether anything changed); dependants become stale.
+        derive.append(f"DECLARE @n bigint, @d char(64);\n"
+                      f"SELECT @n = COUNT_BIG(*), @d = CONVERT(char(64), HASHBYTES('SHA2_256', CONCAT(COUNT_BIG(*), N'|', ISNULL(CAST(CHECKSUM_AGG(CHECKSUM([xodus_row_hash])) AS nvarchar(40)), N''))), 2) "
+                      f"FROM [{CANON}].[{ctable}];\n"
+                      f"EXEC [{OPS}].[usp_xodus_entity_state] @MigrationSlug = {_lit(s)}, @MigrationId = @MigrationId, @BatchId = @BatchId, @Entity = {_lit(entity)}, "
+                      "@Stage = N'canonical', @RunId = @RunId, @Rows = @n, @Digest = @d;")
         per_migration.append(_proc(f"[{CANON}].[usp_canon_{s}_{entity}]", "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64)",
                                    [f"TRUNCATE TABLE [{CANON}].[{ctable}];", select] + derive + [log]))
         objects["procedures"].append(f"{CANON}.usp_canon_{s}_{entity}")
@@ -401,9 +494,11 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                                 "resolution": e.get("resolution") or [], "derived": derived}
 
     # Canonical -> mirror: one mirror table per live table, filled by one procedure (all tables in one transaction).
-    mirror_body: List[str] = []
+    mirror_by_entity: Dict[str, List[str]] = {}
     live_tables: List[Dict[str, Any]] = []
     for entity in sorted({m["entity_name"] for m in approved_target}):
+        reading["entity"] = entity
+        mirror_body: List[str] = mirror_by_entity.setdefault(entity, [])
         body = spec["entities"].get(entity)
         if not body or entity not in canon_counts:
             raise ValueError(f"Approved target mappings reference {entity}, which has no confirmed target model or no canonical table.")
@@ -455,7 +550,18 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                                 "all_columns": [c for c, _ in all_cols], "types": {c: types.get(c, "string") for c in cols}})
     if not live_tables:
         raise ValueError("No approved target mapping has a canonical source, so there is nothing to load.")
-    per_migration.append(_proc(f"[{MIRROR}].[usp_mirror_{s}]", "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64)", mirror_body))
+    mirror_params = "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64)"
+    for entity, body_sql in mirror_by_entity.items():
+        if not body_sql:
+            continue
+        state = (f"EXEC [{OPS}].[usp_xodus_entity_state] @MigrationSlug = {_lit(s)}, @MigrationId = @MigrationId, @BatchId = @BatchId, @Entity = {_lit(entity)}, "
+                 "@Stage = N'mirror', @RunId = @RunId;")
+        per_migration.append(_proc(f"[{MIRROR}].[usp_mirror_{s}_{entity}]", mirror_params, body_sql + [state]))
+        objects["procedures"].append(f"{MIRROR}.usp_mirror_{s}_{entity}")
+    # The whole mirror (a full batch) is the entity procedures in order, in one transaction (their own transactions nest inside it).
+    per_migration.append(_proc(f"[{MIRROR}].[usp_mirror_{s}]", mirror_params,
+                               [f"EXEC [{MIRROR}].[usp_mirror_{s}_{e}] @MigrationId = @MigrationId, @BatchId = @BatchId, @RunId = @RunId;"
+                                for e, b in mirror_by_entity.items() if b]))
     objects["procedures"].append(f"{MIRROR}.usp_mirror_{s}")
 
     # Registry rows the stable pipelines read.
@@ -475,7 +581,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         recipe = entity_resolution.recipe_for(entity) if canon_counts[entity]["derived"] else None
         if recipe:
             wanted |= {recipe["parent"]["entity"], recipe["holder"]["entity"]}
-        deps[entity] = sorted(d for d in wanted if d in canon_counts and d != entity)
+        deps[entity] = sorted(d for d in wanted if d in canon_counts and d != entity and load_order.index(d) < load_order.index(entity))
     waves: Dict[str, int] = {}
     for entity in load_order:  # the load order already puts parents first; a parent that comes later (a cycle) is ignored
         waves[entity] = 1 + max([waves[d] for d in deps[entity] if d in waves], default=-1)
@@ -484,7 +590,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         mirrors.setdefault(t["entity"], []).append(t["mirror_table"])
     rows.append(f"DELETE FROM [{OPS}].[xodus_entity_registry] WHERE migration_slug = {_lit(s)};")
     rows.append(f"INSERT INTO [{OPS}].[xodus_entity_registry] (migration_slug, entity, wave, depends_on, source_files, canon_table, mirror_tables) VALUES "
-                + ", ".join(f"({_lit(s)}, {_lit(e)}, {waves[e]}, {_lit(','.join(deps[e]))}, {_lit(','.join(canon_counts[e]['files']))}, "
+                + ", ".join(f"({_lit(s)}, {_lit(e)}, {waves[e]}, {_lit(','.join(deps[e]))}, {_lit(','.join(sorted(set(canon_counts[e]['files']) | lookups.get(e, set()))))}, "
                             f"{_lit(canon_counts[e]['table'])}, {_lit(','.join(sorted(mirrors.get(e, []))))})" for e in load_order) + ";")
     # Column lineage (xodus_ref.column_map): rewritten on every setup, so it always matches the deployed procedures.
     lineage = sorted(set(lineage), key=lambda r: tuple("" if v is None else str(v) for v in r))
@@ -627,8 +733,8 @@ def _guarded(main: Dict[str, Any], pipeline: str, step: Any, run: str = "@pipeli
              "typeProperties": {"message": _e(_err(n)), "errorCode": "XODUS_STEP_FAILED"}}]
 
 
-def _params(*names: str) -> Dict[str, Any]:
-    return {n: {"type": "string"} for n in names}
+def _params(*names: str, **defaults: str) -> Dict[str, Any]:
+    return {n: ({"type": "string", "defaultValue": defaults[n]} if n in defaults else {"type": "string"}) for n in names}
 
 
 def _exec(name: str, pipeline: str, params: Dict[str, Any], depends: Optional[List[tuple]] = None) -> Dict[str, Any]:
@@ -652,28 +758,40 @@ def _pipelines(s: str, xodus_batches: List[str], live_batches: List[str]) -> Dic
     p: Dict[str, Dict[str, Any]] = {}
 
     start = _log("Log_Start", "PL_XODUS_Run", "Pipeline", "STARTED", [], "@pipeline().RunId")
-    s2c = _exec("Run_Source_To_Canonical", "PL_XODUS_Source_To_Canonical", child, [("Log_Start", "Succeeded")])
-    c2m = _exec("Run_Canonical_To_Mirror", "PL_XODUS_Canonical_To_Mirror", child, [("Run_Source_To_Canonical", "Succeeded")])
-    acts = [start, *_guarded(s2c, "PL_XODUS_Run", "Source_To_Canonical", "@pipeline().RunId"),
+    # Entities is a comma-separated list: empty runs the whole batch; otherwise only those entities are rebuilt inside the existing batch
+    # (the scope check refuses an unknown entity, a batch that was never built, another package version, or a parent that is stale or not built).
+    check = _script("Check_Scope", LS_XODUS, f"EXEC [{OPS}].[usp_xodus_check_scope] @MigrationSlug = @slug, @MigrationId = @mig, @BatchId = @batch, @Entities = @entities",
+                    [("slug", "String", _p("MigrationSlug")), ("mig", "String", _p("MigrationId")), ("batch", "String", _p("BatchId")),
+                     ("entities", "String", _p("Entities"))], [("Log_Start", "Succeeded")])
+    s2c = _exec("Run_Source_To_Canonical", "PL_XODUS_Source_To_Canonical", {**child, "Entities": _p("Entities")}, [("Log_OK_Check_Scope", "Succeeded")])
+    scope = _lookup("Get_Mirror_Scope", "usp_xodus_mirror_scope", {"MigrationSlug": _p("MigrationSlug"), "Entities": _p("Entities")},
+                    [("Run_Source_To_Canonical", "Succeeded")])
+    c2m = {"name": "Run_Canonical_To_Mirror", "type": "ForEach", "dependsOn": [{"activity": "Get_Mirror_Scope", "dependencyConditions": ["Succeeded"]}],
+           "typeProperties": {"items": _e("@activity('Get_Mirror_Scope').output.value"), "isSequential": True,
+                              "activities": [_exec("Run_Mirror", "PL_XODUS_Canonical_To_Mirror", {**child, "Entity": _e("@item().entity")})]}}
+    acts = [start, *_guarded(check, "PL_XODUS_Run", "Check_Scope", "@pipeline().RunId"),
+            *_guarded(s2c, "PL_XODUS_Run", "Source_To_Canonical", "@pipeline().RunId"), scope,
             *_guarded(c2m, "PL_XODUS_Run", "Canonical_To_Mirror", "@pipeline().RunId"),
             _log("Log_Done", "PL_XODUS_Run", "Pipeline", "SUCCEEDED", [("Log_OK_Run_Canonical_To_Mirror", "Succeeded")], "@pipeline().RunId")]
     for a in acts:  # a failed step also closes the run row as FAILED
         if a["name"].startswith("Log_Fail_"):
             a["typeProperties"]["scripts"][0]["parameters"][4]["value"] = "Pipeline"
-    p["PL_XODUS_Run"] = {"description": "One batch: source files -> canonical -> mirror. Started by XODUS; never touches the live tables.",
-                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId"), "activities": acts, "folder": {"name": "XODUS"}}
+    p["PL_XODUS_Run"] = {"description": "One batch: source files -> canonical -> mirror, or (Entities set) only those entities rebuilt inside an existing batch. "
+                                        "Started by XODUS; never touches the live tables.",
+                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "Entities", Entities=""), "activities": acts, "folder": {"name": "XODUS"}}
 
-    files = _lookup("Get_Raw_Files", "usp_xodus_raw_files", {"MigrationSlug": _p("MigrationSlug")})
+    scoped = {"MigrationSlug": _p("MigrationSlug"), "Entities": _p("Entities")}
+    files = _lookup("Get_Raw_Files", "usp_xodus_raw_files", scoped)
     each_file = {"name": "Load_Each_Raw_File", "type": "ForEach", "dependsOn": [{"activity": "Get_Raw_Files", "dependencyConditions": ["Succeeded"]}],
                  "typeProperties": {"items": _e("@activity('Get_Raw_Files').output.value"), "isSequential": False, "batchCount": 4,
                                     "activities": [_exec("Load_Raw_File", "PL_XODUS_Load_Raw_File", {**pass_run, "Container": _e("@item().container"),
                                                          "Folder": _e("@item().folder"), "File": _e("@item().file_name"), "Table": _e("@item().raw_table")})]}}
-    order = _lookup("Get_Load_Order", "usp_xodus_load_order", {"MigrationSlug": _p("MigrationSlug")}, [("Load_Each_Raw_File", "Succeeded")])
+    order = _lookup("Get_Load_Order", "usp_xodus_load_order", scoped, [("Load_Each_Raw_File", "Succeeded")])
     each_entity = {"name": "Build_Each_Entity", "type": "ForEach", "dependsOn": [{"activity": "Get_Load_Order", "dependencyConditions": ["Succeeded"]}],
                    "typeProperties": {"items": _e("@activity('Get_Load_Order').output.value"), "isSequential": True,
                                       "activities": [_exec("Build_Entity", "PL_XODUS_Canonical_Entity", {**pass_run, "Entity": _e("@item().entity")})]}}
-    p["PL_XODUS_Source_To_Canonical"] = {"description": "Loads every raw file of the migration, then builds each entity in the load order.",
-                                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId"),
+    p["PL_XODUS_Source_To_Canonical"] = {"description": "Loads the raw files of the migration (or of the selected entities), then builds each entity in the load order.",
+                                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId", "Entities", Entities=""),
                                          "activities": [files, each_file, order, each_entity], "folder": {"name": "XODUS"}}
 
     copy = {"name": "Copy_Raw", "type": "Copy", "dependsOn": [], "policy": {"timeout": "0.02:00:00", "retry": 0},
@@ -707,11 +825,13 @@ def _pipelines(s: str, xodus_batches: List[str], live_batches: List[str]) -> Dic
                                       "activities": _guarded(canon, "PL_XODUS_Canonical_Entity", _e("@concat('Canonical ', pipeline().parameters.Entity)")),
                                       "folder": {"name": "XODUS"}}
 
-    mirror = _script("Build_Mirror", LS_XODUS, f"EXEC [{MIRROR}].[usp_xodus_mirror] @MigrationSlug = @slug, @MigrationId = @mig, @BatchId = @batch, @RunId = @run",
-                     [("slug", "String", _p("MigrationSlug")), ("mig", "String", _p("MigrationId")), ("batch", "String", _p("BatchId")), ("run", "String", _p("RunId"))])
-    p["PL_XODUS_Canonical_To_Mirror"] = {"description": "Canonical -> mirror of the live tables, all tables in one transaction.",
-                                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId"),
-                                         "activities": _guarded(mirror, "PL_XODUS_Canonical_To_Mirror", "Mirror"), "folder": {"name": "XODUS"}}
+    mirror = _script("Build_Mirror", LS_XODUS, f"EXEC [{MIRROR}].[usp_xodus_mirror] @MigrationSlug = @slug, @MigrationId = @mig, @BatchId = @batch, @RunId = @run, @Entity = @entity",
+                     [("slug", "String", _p("MigrationSlug")), ("mig", "String", _p("MigrationId")), ("batch", "String", _p("BatchId")), ("run", "String", _p("RunId")),
+                      ("entity", "String", _p("Entity"))])
+    mirror_step = _e("@if(equals(pipeline().parameters.Entity, ''), 'Mirror', concat('Mirror ', pipeline().parameters.Entity))")
+    p["PL_XODUS_Canonical_To_Mirror"] = {"description": "Canonical -> mirror of the live tables: all tables in one transaction (Entity empty) or one entity's tables.",
+                                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId", "Entity", Entity=""),
+                                         "activities": _guarded(mirror, "PL_XODUS_Canonical_To_Mirror", mirror_step), "folder": {"name": "XODUS"}}
 
     prom_run = "@pipeline().RunId"
     gate = _lookup("Gate_Check", "usp_xodus_gate_check", {"MigrationSlug": _p("MigrationSlug"), "MigrationId": _p("MigrationId"), "BatchId": _p("BatchId")},

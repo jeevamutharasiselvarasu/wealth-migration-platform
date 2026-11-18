@@ -76,7 +76,7 @@ def test_pipeline_shape_logging_and_gate():
     files = build()["files"]
     run = json.loads(files["pipeline/PL_XODUS_Run.json"])["properties"]
     names = [a["name"] for a in run["activities"]]
-    assert names[:2] == ["Log_Start", "Run_Source_To_Canonical"] and "Fail_Run_Canonical_To_Mirror" in names and names[-1] == "Log_Done"
+    assert names[:2] == ["Log_Start", "Check_Scope"] and "Run_Source_To_Canonical" in names and "Fail_Run_Canonical_To_Mirror" in names and names[-1] == "Log_Done"
     load = json.loads(files["pipeline/PL_XODUS_Load_Raw_File.json"])["properties"]["activities"]
     assert "additionalColumns" not in load[0]["typeProperties"]["source"]  # Data Factory refuses them on these sink datasets
     stamp = next(a for a in load if a["name"] == "Stamp_Trace")
@@ -175,3 +175,56 @@ def test_the_stable_pipelines_do_not_change_with_the_lineage_work():
     a, b = build(), build(depends={"Account": ["Household"]})
     stable = [f"pipeline/{p}.json" for p in xp.STABLE_PIPELINES]
     assert all(a["files"][p] == b["files"][p] for p in stable)
+
+
+def test_a_scoped_run_rebuilds_only_the_selected_entities():
+    files = build(depends={"Account": ["Household"]})["files"]
+    run = json.loads(files["pipeline/PL_XODUS_Run.json"])["properties"]
+    assert run["parameters"]["Entities"] == {"type": "string", "defaultValue": ""}  # empty = the whole batch
+    acts = {a["name"]: a for a in run["activities"]}
+    assert "usp_xodus_check_scope" in acts["Check_Scope"]["typeProperties"]["scripts"][0]["text"]
+    assert acts["Run_Source_To_Canonical"]["dependsOn"][0]["activity"] == "Log_OK_Check_Scope"  # nothing is built before the scope is checked
+    assert acts["Run_Source_To_Canonical"]["typeProperties"]["parameters"]["Entities"] == {"value": "@pipeline().parameters.Entities", "type": "Expression"}
+    mirror = acts["Run_Canonical_To_Mirror"]
+    assert mirror["type"] == "ForEach" and mirror["typeProperties"]["isSequential"] is True and acts["Get_Mirror_Scope"]["type"] == "Lookup"
+    assert mirror["typeProperties"]["activities"][0]["typeProperties"]["parameters"]["Entity"]["value"] == "@item().entity"
+    s2c = json.loads(files["pipeline/PL_XODUS_Source_To_Canonical.json"])["properties"]
+    by_name = {a["name"]: a for a in s2c["activities"]}
+    for lookup in ("Get_Raw_Files", "Get_Load_Order"):
+        assert by_name[lookup]["typeProperties"]["source"]["storedProcedureParameters"]["Entities"]["value"]["value"] == "@pipeline().parameters.Entities"
+    c2m = json.loads(files["pipeline/PL_XODUS_Canonical_To_Mirror.json"])["properties"]
+    assert c2m["parameters"]["Entity"]["defaultValue"] == ""
+    assert "@Entity = @entity" in next(a for a in c2m["activities"] if a["name"] == "Build_Mirror")["typeProperties"]["scripts"][0]["text"]
+
+
+def test_scoped_procedures_and_entity_state_in_the_sql():
+    sql = _sql(build(depends={"Account": ["Household"]}))
+    # one mirror procedure per entity; the whole mirror calls them in order inside one transaction
+    assert "CREATE OR ALTER PROCEDURE [xodus_mirror].[usp_mirror_mig00a1a6577b_Account]" in sql
+    assert "CREATE OR ALTER PROCEDURE [xodus_mirror].[usp_mirror_mig00a1a6577b_Household]" in sql
+    whole = sql.split("CREATE OR ALTER PROCEDURE [xodus_mirror].[usp_mirror_mig00a1a6577b]")[1].split("\nEND")[0]
+    assert whole.index("usp_mirror_mig00a1a6577b_Account") < whole.index("usp_mirror_mig00a1a6577b_Household") and "BEGIN TRANSACTION" in whole
+    # the dispatcher takes an optional entity (empty = the whole mirror)
+    assert "@Entity sysname = N''" in sql and "CASE WHEN @Entity = N'' THEN N'' ELSE N'_' + @Entity END" in sql
+    # entity state: written at the end of each canonical and mirror procedure, with the package version, and dependants go stale
+    canon = sql.split("CREATE OR ALTER PROCEDURE [xodus_canon].[usp_canon_mig00a1a6577b_Account]")[1].split("COMMIT TRANSACTION")[0]
+    assert "@Entity = N'Account', @Stage = N'canonical'" in canon and canon.index("xodus_row_hash") < canon.index("usp_xodus_entity_state")
+    assert "@Stage = N'mirror'" in sql.split("usp_mirror_mig00a1a6577b_Account]")[1]
+    state = sql.split("CREATE OR ALTER PROCEDURE [xodus_ops].[usp_xodus_entity_state]")[1].split("\nEND")[0]
+    assert "SET status = N'STALE'" in state and "package_version = @version" in state
+    # the scope check refuses what would leave the batch inconsistent
+    check = sql.split("CREATE OR ALTER PROCEDURE [xodus_ops].[usp_xodus_check_scope]")[1].split("\nEND")[0]
+    for text in ("is not an entity of this migration", "has not been built yet", "built by another package version", "built in this batch first (it is stale or not built)"):
+        assert text in check
+    assert "IF @Entities = N'' RETURN;" in check  # a whole-batch run has nothing to check
+
+
+def test_registry_source_files_include_lookup_files_and_only_earlier_parents():
+    lookup_rule = _rule("LOOKUP", {"parent_file": "corecap_households.csv", "parent_key": "Id", "return_column": "AdvisorId"})
+    rules = {**RULES, "RULE:ADV_LOOKUP@1": lookup_rule}
+    entities = dict(ENTITIES, Account={**ENTITIES["Account"], "derivations": ENTITIES["Account"]["derivations"] + [
+        {"canonical_field": "REP_CODE", "input_field": "HH_ID", "rule_expression": "RULE:ADV_LOOKUP@1"}]})
+    sql = _sql(build(rules=rules, entities=entities, depends={"Account": ["Household"], "Household": ["Account"]}))  # a cycle: only the earlier one counts
+    row = sql.split("INSERT INTO [xodus_ops].[xodus_entity_registry]")[1].split(";")[0]
+    assert "N'Account', 1, N'Household', N'mig00a1a6577b_corecap_accounts,mig00a1a6577b_corecap_households'" in row  # the lookup file is loaded for Account too
+    assert "N'Household', 0, N''" in row
