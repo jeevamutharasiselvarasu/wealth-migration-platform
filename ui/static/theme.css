@@ -236,3 +236,21 @@ details.notes>summary{cursor:pointer;padding:8px 0;font-size:12.5px;font-weight:
 details.notes[open]>summary{border-bottom:1px solid var(--line);margin-bottom:8px}
 details.notes>.ins{box-shadow:none;margin:8px 0}
 .kpis .kpi>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Dark rail: keep owner chips, index chips and scrollbar in the rail palette */
+.side .stg .own{background:rgba(255,255,255,.1);color:#CFE6F2;border:1px solid rgba(255,255,255,.08)}
+.side .stg .ix{background:rgba(255,255,255,.1);color:#CFE6F2}
+.side .stg.on .own{background:rgba(8,166,216,.28);color:#fff;border-color:rgba(8,166,216,.5)}
+.side{scrollbar-width:thin;scrollbar-color:rgba(143,168,188,.45) transparent}
+.side::-webkit-scrollbar{width:8px}
+.side::-webkit-scrollbar-track{background:transparent}
+.side::-webkit-scrollbar-thumb{background:rgba(143,168,188,.4);border-radius:8px}
+.side::-webkit-scrollbar-thumb:hover{background:rgba(143,168,188,.65)}
+
+/* Compact rail: collapsible Setup group, tighter rows */
+.side details.side-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
+.side details.side-fold>summary::-webkit-details-marker{display:none}
+.side details.side-fold>summary::after{content:"▸";font-size:10px;transition:transform .15s}
+.side details.side-fold[open]>summary::after{transform:rotate(90deg)}
+.side .nv{padding:5px 10px;font-size:13px}
+.side .stg{padding:6px 8px}

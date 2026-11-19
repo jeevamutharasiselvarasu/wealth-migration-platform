@@ -59,13 +59,14 @@
     {% else %}
     <a href="/migrations" class="nv">← Migration workspaces</a>
     <a href="/" class="nv {% if path == '/' %}on{% endif %}" {% if path == '/' %}aria-current="page"{% endif %}>Overview</a>
-    <div class="sh">Setup</div>
+    <details class="side-fold"{% if path in ('/setup','/migration-setup','/firm-knowledge','/platform-knowledge','/models','/canonical-model') %} open{% endif %}><summary class="sh">Setup</summary>
     <a href="/setup" class="nv {% if path == '/setup' %}on{% endif %}" {% if path == '/setup' %}aria-current="page"{% endif %}>Setup overview</a>
     <a href="/migration-setup" class="nv {% if path == '/migration-setup' %}on{% endif %}" {% if path == '/migration-setup' %}aria-current="page"{% endif %}>Workspace configuration</a>
     <a href="/firm-knowledge" class="nv {% if path == '/firm-knowledge' %}on{% endif %}" {% if path == '/firm-knowledge' %}aria-current="page"{% endif %}>Firm knowledge</a>
     <a href="/platform-knowledge" class="nv {% if path == '/platform-knowledge' %}on{% endif %}" {% if path == '/platform-knowledge' %}aria-current="page"{% endif %}>Platform knowledge</a>
     <a href="/models" class="nv {% if path == '/models' %}on{% endif %}" {% if path == '/models' %}aria-current="page"{% endif %}>Target &amp; canonical models</a>
     <a href="/canonical-model" class="nv {% if path == '/canonical-model' %}on{% endif %}" {% if path == '/canonical-model' %}aria-current="page"{% endif %}>Canonical model</a>
+    </details>
     {% if pg and pg.steps %}
     {% set done_n = pg.stages_done %}
     <div class="sh">{{ pg.facts.name }}</div>
