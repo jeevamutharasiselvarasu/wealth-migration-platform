@@ -434,7 +434,7 @@ def test_knowledge_forms_are_disabled_for_roles_without_edit_rights(tmp_path, mo
 
     for role in ("Validation Specialist", "Domain SME"):
         html = asyncio.run(page(role))
-        assert html.count("<fieldset disabled") == 3 and "Read-only for " + role in html
+        assert html.count("<fieldset disabled") == 4 and "Read-only for " + role in html  # upload, Confluence, web link and the questionnaire
     for role in ("Migration Analyst",):
         html = asyncio.run(page(role))
         assert "<fieldset disabled" not in html and "Read-only for" not in html

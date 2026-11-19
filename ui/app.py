@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, sta
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from control_plane.services import wave_validation, validation_rules, knowledge_chunks, knowledge_sources
+from control_plane.services import wave_validation, validation_rules, knowledge_chunks, knowledge_sources, knowledge_index, retrieval_tuning, embeddings
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
@@ -1550,7 +1550,7 @@ async def dashboard_overview(request: Request):
 
 
 @app.get("/firm-knowledge", response_class=HTMLResponse)
-async def firm_knowledge_studio(request: Request, notice: str = "", error: str = ""):
+async def firm_knowledge_studio(request: Request, notice: str = "", error: str = "", q: str = ""):
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     conn = get_db_connection()
@@ -1558,6 +1558,17 @@ async def firm_knowledge_studio(request: Request, notice: str = "", error: str =
         chunk_stats = {k.split(":", 1)[-1]: v for k, v in knowledge_chunks.stats(conn, migration_id).items() if k.startswith(migration_id + ":")}
         cf = knowledge_sources.get_config(conn)
         domains = [d["host"] for d in knowledge_sources.list_domains(conn)]
+        embedder = embeddings.get_embedder()
+        search = {"q": q.strip()[:knowledge_index.MAX_QUERY], "hits": []}
+        retrieval: Dict[str, Any] = {"embedder": embedder.name}
+        try:
+            if search["q"]:
+                search["hits"] = knowledge_index.retrieve(conn, migration_id, [search["q"]], embedder, k=5)[0]
+            retrieval.update(knowledge_index.feedback_counts(conn, migration_id))
+            retrieval["readiness"] = retrieval_tuning.readiness(conn, migration_id, embedder)
+            retrieval["models"] = retrieval_tuning.list_models(conn, migration_id)
+        except Exception as exc:  # noqa: BLE001  advisory panel: never break the page
+            retrieval["error"] = str(exc)
         conn.commit()
     finally:
         conn.close()
@@ -1571,7 +1582,7 @@ async def firm_knowledge_studio(request: Request, notice: str = "", error: str =
             "can_edit_knowledge": user["role"] in DISCOVERY_ROLES,
             "form": state_store.questionnaire_data,
             "docs": state_store.firm_knowledge_docs,
-            "chunk_stats": chunk_stats, "notice": notice, "error": error, "web_domains": domains,
+            "chunk_stats": chunk_stats, "notice": notice, "error": error, "web_domains": domains, "search": search, "retrieval": retrieval,
             "confluence_connected": bool(cf and cf["status"] == "CONNECTED"), "confluence_spaces": (cf or {}).get("allowed_spaces", []),
         }
     )
@@ -1677,6 +1688,7 @@ async def add_platform_knowledge(request: Request, category: str = Form(...), fi
                 parts = knowledge_chunks.chunks_for_file(rec["name"], content)
                 knowledge_chunks.index_asset(conn, migration_id="-", scope="platform", asset_id=rec["asset_id"], asset_name=rec["name"], source="file", source_ref=rec["name"],
                                              version=knowledge_chunks.version_of(content), chunks=parts["chunks"], entity_names=list(_canonical_field_lists()))
+                knowledge_index.embed_pending(conn, embeddings.get_embedder())
             except ValueError:
                 pass
         except ValueError as exc:
@@ -1873,6 +1885,8 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "source_files": source_files,
             "mapping_suggestions": mapping_suggestions,
             "rule_hints": _rule_hints(mapping_suggestions),
+            "evidence": _evidence_for(mapping_suggestions),
+            "can_give_feedback": user["role"] in DISCOVERY_ROLES,
             "information_requests": [item for item in state_store.questionnaire_data.get("mapping_information_requests", []) if item.get("entity") in selected_scope and str(item.get("migration_id", active_migration_id)) == active_migration_id],
             "notice": notice,
             "error": error,
@@ -6752,6 +6766,11 @@ def _index_firm_asset(migration_id: str, doc: Dict[str, Any], *, content: Option
         knowledge_chunks.index_asset(conn, migration_id=migration_id, scope="firm", asset_id=_chunk_asset_id(migration_id, doc["id"]), asset_name=doc["filename"],
                                      source=source, source_ref=source_ref, version=version, chunks=parts["chunks"], entity_names=list(_canonical_field_lists()))
         conn.commit()
+        try:  # the vectors are made now, so the first search needs no wait; if the embedder is unavailable they are made at the first search instead
+            knowledge_index.embed_pending(conn, embeddings.get_embedder(), migration_id)
+            conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Embedding is not available yet: %s", exc)
     finally:
         conn.close()
     return parts["note"]
@@ -6901,6 +6920,96 @@ async def import_web_link(request: Request, category: str = Form(...), url: str 
     _register_text_asset(migration_id, category, page["title"], page["text"], "web", {"source": "web", "source_url": page["url"], "source_version": page["version"]}, old, user["name"])
     _target_setup_audit("KNOWLEDGE_WEB_IMPORTED", user, {"url": page["url"]})
     return _knowledge_back("notice", f"{page['title']} imported" + (" (replacing the earlier copy)." if old else "."), return_to)
+
+
+def _suggestion_query(m: Dict[str, Any]) -> str:
+    return " ".join(str(x) for x in (m.get("entity_name"), "source field", m.get("source_field"), "canonical field", m.get("canonical_field") or "") if x)
+
+
+def _evidence_for(mapping_suggestions: List[Dict[str, Any]], limit: int = 40) -> Dict[str, Dict[str, Any]]:
+    """The two best-matching knowledge chunks for each pending mapping suggestion, keyed 'Entity|SOURCE_FIELD'. Advisory: a failure shows no evidence, never a broken page."""
+    if not mapping_suggestions:
+        return {}
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    out: Dict[str, Dict[str, Any]] = {}
+    conn = get_db_connection()
+    try:
+        embedder = embeddings.get_embedder()
+        by_entity: Dict[str, List[Dict[str, Any]]] = {}
+        for m in mapping_suggestions[:limit]:
+            by_entity.setdefault(m["entity_name"], []).append(m)
+        for entity, rows in by_entity.items():
+            queries = [_suggestion_query(m) for m in rows]
+            for m, q, hits in zip(rows, queries, knowledge_index.retrieve(conn, migration_id, queries, embedder, k=2, entity=entity)):
+                if hits:
+                    out[f"{entity}|{str(m['source_field']).upper()}"] = {"query": q, "subject": f"{entity}.{m['source_field']}", "hits": hits}
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Evidence retrieval failed: %s", exc)
+        return {}
+    finally:
+        conn.close()
+    return out
+
+
+def _feedback_back(key: str, message: str, return_to: str = "/firm-knowledge", anchor: str = ""):
+    page = return_to if return_to in {"/discovery", "/firm-knowledge"} else "/firm-knowledge"
+    return RedirectResponse(url=f"{page}?{key}=" + quote_plus(message) + anchor, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/knowledge/feedback")
+async def knowledge_feedback(request: Request, subject: str = Form(...), query: str = Form(...), chunk_id: str = Form(...), verdict: str = Form(...),
+                             return_to: str = Form("/firm-knowledge")):
+    """A reviewer says whether a piece of retrieved evidence helped. It is training data for this migration's retrieval and names the chunk only."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            knowledge_index.record_feedback(conn, migration_id, subject, query, chunk_id, 1 if verdict == "helpful" else -1, user["name"])
+        except ValueError as exc:
+            return _feedback_back("error", str(exc), return_to)
+        conn.commit()
+    finally:
+        conn.close()
+    return _feedback_back("notice", "Thanks: recorded as " + ("helpful." if verdict == "helpful" else "not helpful."), return_to)
+
+
+@app.post("/api/knowledge/retrieval/tune")
+async def tune_retrieval(request: Request):
+    """Train a candidate from this migration's feedback; it is used only if it beats untuned retrieval on feedback held back from training."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            res = retrieval_tuning.tune(conn, migration_id, user["name"], embeddings.get_embedder())
+        except ValueError as exc:
+            return _feedback_back("error", str(exc), "/firm-knowledge", "#retrieval")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("RETRIEVAL_TUNED", user, {"model_id": res["model_id"], "status": res["status"], "base_hit": res["base_hit"], "tuned_hit": res["tuned_hit"]})
+    verdict = "now used" if res["status"] == "ACTIVE" else "not used because it did not beat untuned retrieval on the held-out feedback"
+    return _feedback_back("notice", f"{res['model_id']}: finds the helpful evidence {round(res['tuned_hit'] * 100)}% of the time on {res['n_eval']} held-out queries "
+                                    f"(untuned {round(res['base_hit'] * 100)}%): {verdict}.", "/firm-knowledge", "#retrieval")
+
+
+@app.post("/api/knowledge/retrieval/retire")
+async def retire_tuned_retrieval(request: Request, model_id: str = Form(...)):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            retrieval_tuning.retire(conn, migration_id, model_id)
+        except ValueError as exc:
+            return _feedback_back("error", str(exc), "/firm-knowledge", "#retrieval")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("RETRIEVAL_TUNING_RETIRED", user, {"model_id": model_id})
+    return _feedback_back("notice", "Back to untuned retrieval.", "/firm-knowledge", "#retrieval")
 
 
 @app.post("/api/knowledge/resync")

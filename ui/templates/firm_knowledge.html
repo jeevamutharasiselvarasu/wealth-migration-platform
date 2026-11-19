@@ -87,6 +87,29 @@
             </div>
         </div>
 
+        <div class="card lg:col-span-3" id="retrieval" data-testid="knowledge-search" style="display:grid;gap:12px">
+            <div>
+                <h3 style="font-size:15px">Search the knowledge <span class="font-mono text-[10px] font-normal text-sky-800">LOCAL · {{ retrieval.embedder }}</span></h3>
+                <p class="text-[10px] text-[#5A6A88]">Finds the pieces of this migration's documents (and the platform knowledge) closest to your question, with where each came from. It is evidence for a person to read: it never approves or changes anything.</p>
+            </div>
+            <form action="/firm-knowledge#retrieval" method="get" class="flex gap-2"><input name="q" value="{{ search.q }}" class="input" style="min-width:340px" aria-label="Search the knowledge" placeholder="e.g. which field is the custodian account number?"><button class="btn p sm">Search</button></form>
+            {% if search.q %}{% for h in search.hits %}
+            <div class="rounded border border-[#E3EAF6] p-2 text-xs" data-testid="search-hit"><b>{{ h.asset_name }}</b> · {{ h.citation }} <span class="text-[10px] text-[#8A97B2]">score {{ h.score }}{% if h.scope == 'platform' %} · platform knowledge{% endif %}</span>
+                <div class="text-[#41506B]">{{ h.snippet }}</div>
+                {% if can_edit_knowledge %}<form action="/api/knowledge/feedback" method="post" class="mt-1 inline-flex gap-1"><input type="hidden" name="subject" value="Search"><input type="hidden" name="query" value="{{ search.q }}"><input type="hidden" name="chunk_id" value="{{ h.chunk_id }}"><input type="hidden" name="return_to" value="/firm-knowledge"><button name="verdict" value="helpful" class="btn g sm">Helpful</button><button name="verdict" value="not_helpful" class="btn g sm">Not helpful</button></form>{% endif %}
+            </div>
+            {% else %}<p class="text-xs text-[#5A6A88]" data-testid="search-empty">Nothing close enough was found.</p>{% endfor %}{% endif %}
+            <div class="border-t border-[#e9eff9] pt-3 text-xs" data-testid="retrieval-tuning">
+                <b>Retrieval tuning</b> <span class="text-[10px] text-[#5A6A88]">learns this firm's vocabulary from the Helpful and Not helpful marks, on this server's CPU. A tuned version is used only if it beats untuned search on marks held back from training.</span>
+                {% if retrieval.error %}<p class="mt-1 text-[#5A6A88]">Not available: {{ retrieval.error }}</p>{% else %}
+                <p class="mt-1">{{ retrieval.helpful }} helpful · {{ retrieval.not_helpful }} not helpful · needs {{ retrieval.readiness.min_positive }} helpful marks ({{ retrieval.readiness.eval_positives }} held out so far, {{ retrieval.readiness.min_eval }} needed)</p>
+                {% if can_edit_knowledge %}<form action="/api/knowledge/retrieval/tune" method="post" class="mt-1"><button class="btn g sm" {% if not retrieval.readiness.ready %}disabled{% endif %} data-testid="tune-retrieval">Tune retrieval</button></form>{% endif %}
+                {% if retrieval.models %}<table class="mt-2 w-full text-left text-[11px]"><thead><tr>{% for h in ['Version', 'Status', 'Finds the helpful chunk', 'Untuned', 'Trained on', ''] %}<th class="p-1 font-mono text-[9px] uppercase text-[#8A97B2]">{{ h }}</th>{% endfor %}</tr></thead><tbody>
+                {% for m in retrieval.models %}<tr data-testid="retrieval-model"><td class="p-1 font-mono">{{ m.model_id }}</td><td class="p-1"><span class="pill {{ 'approved' if m.status == 'ACTIVE' else 'review' }}">{{ m.status }}</span></td><td class="p-1">{{ (m.tuned_hit * 100)|round }}% of {{ m.n_eval }} held-out</td><td class="p-1">{{ (m.base_hit * 100)|round }}%</td><td class="p-1">{{ m.n_train }} marks · {{ m.data_hash }}</td>
+                  <td class="p-1">{% if m.status == 'ACTIVE' and can_edit_knowledge %}<form action="/api/knowledge/retrieval/retire" method="post"><input type="hidden" name="model_id" value="{{ m.model_id }}"><button class="btn g sm">Go back to untuned</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>{% endif %}{% endif %}
+            </div>
+        </div>
+
         <!-- Configurable Acquisition Discovery Questionnaire Form -->
         <div class="card lg:col-span-2" style="display:grid;gap:18px;align-content:start">
             <div class="flex justify-between items-center border-b border-[#e9eff9] pb-3">

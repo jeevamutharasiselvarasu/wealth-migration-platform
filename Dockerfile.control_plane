@@ -9,6 +9,13 @@ RUN find /tmp/xodus-certs -name '*.crt' -exec cp {} /usr/local/share/ca-certific
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Optional semantic search: build with  --build-arg EMBEDDING_MODEL=BAAI/bge-small-en-v1.5  to install fastembed (ONNX, CPU) and fetch the model into the image
+# now, so the running container needs no internet access. Without the argument the platform uses its built-in hashing embedder.
+ARG EMBEDDING_MODEL=""
+ENV FASTEMBED_CACHE_PATH=/opt/embedding-models
+RUN if [ -n "$EMBEDDING_MODEL" ]; then pip install --no-cache-dir "fastembed>=0.3"     && python -c "import os; from fastembed import TextEmbedding; TextEmbedding(model_name=os.environ['EMBEDDING_MODEL'])" ; fi
+ENV XODUS_EMBEDDING_MODEL=$EMBEDDING_MODEL
+
 # Python clients (httpx) read the system bundle, which now includes the company root CA.
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
