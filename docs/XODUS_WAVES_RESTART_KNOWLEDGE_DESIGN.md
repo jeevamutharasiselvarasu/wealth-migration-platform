@@ -102,6 +102,15 @@ SQL contract:
 
 Where the rules live: as rows in `xodus_ref.validation_rule`, executed by the fixed procedure `usp_xodus_validate_wave` through `sp_executesql`. The rules ride the package and pull request, so each is reviewed twice (approval in the app, merge in the repo) and the package version changes. This relaxes the module rule that "nothing free-form is ever emitted" in `xodus_pipelines.py`: approved SQL is now data. A faster rules-only refresh can be added later.
 
+Built in phase 5 (2026-11-19), with these differences from the first draft:
+
+- English is compiled by a fixed grammar in `control_plane/services/validation_rules.py` (eleven sentence patterns, listed on the page; field names match ignoring case; values are quoted as literals). It covers the canonical layer only. A mirror-layer rule is written as SQL.
+- The static check uses `sqlglot` (T-SQL dialect, added to `requirements.txt`): one SELECT returning one column; tables only through `{canon:Entity}` and `{mirror:LiveTable}`; no semicolons, comments, variables, WITH, UNION, SELECT INTO, DML, DDL or EXEC; functions from an allow-list (so GETDATE and user functions are refused); the optional keys query must use TOP (50) or fewer.
+- Approved rules are compiled straight into `usp_validate_<slug>` in the wave of their entity, not stored as data and run through `sp_executesql`. The SQL is checked again at package build; a rule that fails the check, names an entity outside the package, or reads an entity built in a later wave stops the build. This is stricter than the draft: no dynamic execution at run time.
+- Findings from a rule have source RULE and the rule id; a WARN rule reports a WARN finding and never stops the wave; a BLOCKING failure can be waived like any other finding.
+- Lifecycle: DRAFT (problems saved, not hidden), dry run (the count on the latest batch is stored, never values; keys query is run and discarded), submit (needs a clean check and a successful dry run), approve or reject by a different person, retire. A change is a new version; approving it retires the old one. Approving or retiring a rule makes the package stale until a new one is generated (stage 07).
+- Not built: free-form English by a language model (decided out of scope), mirror-layer English, non-deterministic functions.
+
 ## 8. Knowledge ingestion and vectorisation
 
 ### What exists

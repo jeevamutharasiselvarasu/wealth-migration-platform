@@ -1,0 +1,66 @@
+{# Stage 10: validation rules written in plain English or SQL. Approved rules are compiled into the next package and run in the pipeline after the wave of their entity. #}
+{% macro rpill(s) %}<span class="pill {{ 'approved' if s == 'APPROVED' else ('failed' if s in ('REJECTED','RETIRED','SUPERSEDED') else 'review') }}">{{ s }}</span>{% endmacro %}
+<section class="card" id="validation-rules" data-testid="validation-rules">
+  <h3 style="font-size:16px">Validation rules in plain English or SQL <span class="font-mono text-[10px] font-normal text-sky-800">COUNTS ONLY · RUN IN DATA FACTORY</span></h3>
+  <p class="mt-1 max-w-3xl text-xs text-[#5A6A88]">A rule counts the rows that break it. English is matched against a fixed set of sentences and compiled to SQL by the platform (no model guesses); anything else is written as SQL and passes a static check first: one read-only SELECT that returns one number, reading only the canonical and mirror tables named as <span class="font-mono">{canon:Entity}</span> or <span class="font-mono">{mirror:LiveTable}</span>. Save as a draft, run the dry run, submit; a different Migration Analyst approves it. An approved rule is compiled into the next package (stage 07) and runs after its entity's wave; a failing BLOCKING rule stops the run before the next wave.</p>
+  <details class="mt-2"><summary class="cursor-pointer text-xs">Sentences the English rules understand</summary>
+    <ul class="mt-1 text-xs font-mono">{% for name, pattern in rule_patterns %}<li>{{ pattern }}</li>{% endfor %}</ul></details>
+  {% if can_run_validation %}
+  <form action="/api/validation-rules" method="post" class="mt-3 grid gap-2 text-xs" data-testid="rule-form" style="max-width:760px">
+    <div class="flex flex-wrap gap-2">
+      <select name="entity" class="input" aria-label="Entity the rule is about" required>{% for e in in_scope_entities %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select>
+      <select name="layer" class="input" aria-label="Layer"><option value="canonical">Canonical table</option><option value="mirror">Mirror table (SQL only)</option></select>
+      <select name="severity" class="input" aria-label="Severity"><option value="BLOCKING">Blocking (stops the run)</option><option value="WARN">Warning (reported only)</option></select>
+      <input name="name" required minlength="3" maxlength="80" placeholder="Rule name" aria-label="Rule name" class="input" style="min-width:240px">
+    </div>
+    <textarea name="english" rows="2" class="input" aria-label="Rule in English" placeholder="English, for example: every Account must have a matching Household on HH_ID"></textarea>
+    <details><summary class="cursor-pointer">Or write SQL instead (leave the English empty)</summary>
+      <textarea name="sql" rows="3" class="input font-mono" aria-label="Rule SQL" placeholder="SELECT COUNT(*) FROM {canon:Account} c WHERE ..." style="width:100%"></textarea>
+      <textarea name="keys_sql" rows="2" class="input font-mono" aria-label="Keys SQL (optional)" placeholder="Optional, names the failing rows: SELECT TOP (50) CAST(c.[ACCT_NUM] AS nvarchar(400)) FROM {canon:Account} c WHERE ..." style="width:100%"></textarea></details>
+    <div><button class="btn p sm" data-testid="save-rule">Save as draft</button></div>
+  </form>
+  {% else %}<p class="mt-2 text-xs text-[#5A6A88]">A Validation Specialist writes rules.</p>{% endif %}
+  {% if validation_rules %}
+  <table class="mt-3 w-full text-left text-xs">
+    <thead><tr>{% for h in ['Rule', 'Entity', 'Severity', 'Status', 'Rule text', 'Dry run', ''] %}<th class="border-b border-[#D9E3F5] p-2 font-mono text-[9px] uppercase text-[#8A97B2]">{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in validation_rules %}
+    <tr data-testid="rule-row">
+      <td class="border-b border-[#EEF2FA] p-2"><span class="font-mono">{{ r.rule_id }}</span> v{{ r.version }}<br>{{ r.name }}<br><span class="text-[10px] text-[#5A6A88]">{{ r.created_by }}{% if r.decided_by %} · decided by {{ r.decided_by }}{% endif %}</span></td>
+      <td class="border-b border-[#EEF2FA] p-2">{{ r.entity }}<br><span class="text-[10px] text-[#5A6A88]">{{ r.layer }}</span></td>
+      <td class="border-b border-[#EEF2FA] p-2">{{ r.severity }}</td>
+      <td class="border-b border-[#EEF2FA] p-2">{{ rpill(r.status) }}</td>
+      <td class="border-b border-[#EEF2FA] p-2">{% if r.english %}{{ r.english }}{% else %}<span class="text-[10px] text-[#5A6A88]">written as SQL</span>{% endif %}
+        <details class="mt-1"><summary class="cursor-pointer text-[11px]">SQL</summary><pre class="font-mono text-[11px]" style="white-space:pre-wrap">{{ r.sql_text }}{% if r.keys_sql %}
+
+{{ r.keys_sql }}{% endif %}</pre></details>
+        {% if can_run_validation and r.status in ('DRAFT', 'APPROVED', 'REJECTED') and (loop.first or validation_rules[loop.index0 - 1].rule_id != r.rule_id) %}
+        <details class="mt-1" data-testid="rule-revise"><summary class="cursor-pointer text-[11px]">Write a new version</summary>
+          <form action="/api/validation-rules" method="post" class="mt-1 grid gap-1">
+            <input type="hidden" name="rule_id" value="{{ r.rule_id }}"><input type="hidden" name="entity" value="{{ r.entity }}"><input type="hidden" name="layer" value="{{ r.layer }}">
+            <input type="hidden" name="severity" value="{{ r.severity }}"><input type="hidden" name="name" value="{{ r.name }}">
+            {% if r.english %}<textarea name="english" rows="2" class="input" aria-label="Rule in English">{{ r.english }}</textarea>
+            {% else %}<textarea name="sql" rows="3" class="input font-mono" aria-label="Rule SQL" style="width:100%">{{ r.sql_text }}</textarea><textarea name="keys_sql" rows="2" class="input font-mono" aria-label="Keys SQL" style="width:100%">{{ r.keys_sql or '' }}</textarea>{% endif %}
+            <div><button class="btn g sm">Save as new version</button></div></form></details>
+        {% endif %}
+        {% if r.problems %}<div class="exc mt-1" role="alert">{% for p in r.problems %}<div>{{ p }}</div>{% endfor %}</div>{% endif %}
+        {% if r.decision_comments %}<div class="text-[10px] text-[#5A6A88]">{{ r.decision_comments }}</div>{% endif %}</td>
+      <td class="border-b border-[#EEF2FA] p-2">{% if r.dry_run_error %}<span class="pill failed">ERROR</span> <span class="text-[10px]">{{ r.dry_run_error[:200] }}</span>{% elif r.dry_run_count is not none %}{{ r.dry_run_count }} row(s) break it<br><span class="text-[10px] text-[#5A6A88]">{{ r.dry_run_by }} · {{ r.dry_run_utc[:19] }}</span>{% else %}—{% endif %}</td>
+      <td class="border-b border-[#EEF2FA] p-2">
+        {% if r.status == 'DRAFT' and can_run_validation %}
+          <form action="/api/validation-rules/{{ r.rule_id }}/{{ r.version }}/dry-run" method="post" class="inline"><button class="btn g sm">Dry run</button></form>
+          {% if not r.problems and r.dry_run_count is not none and not r.dry_run_error %}<form action="/api/validation-rules/{{ r.rule_id }}/{{ r.version }}/submit" method="post" class="inline"><button class="btn p sm">Submit</button></form>{% endif %}
+        {% elif r.status == 'PROPOSED' %}
+          {% if can_decide_exception and r.created_by != current_user_name and r.submitted_by != current_user_name %}
+          <form action="/api/validation-rules/{{ r.rule_id }}/{{ r.version }}/decision" method="post" class="flex gap-1"><input name="comments" placeholder="Comment (required to reject)" aria-label="Comment" class="input"><button name="decision" value="APPROVED" class="btn ok sm">Approve</button><button name="decision" value="REJECTED" class="btn g sm">Reject</button></form>
+          {% else %}<span class="text-[10px] text-[#5A6A88]">Waiting for a different approver.</span>{% endif %}
+        {% elif r.status == 'APPROVED' and can_decide_exception %}
+          <form action="/api/validation-rules/{{ r.rule_id }}/retire" method="post"><button class="btn g sm">Retire</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="mt-3 text-xs text-[#5A6A88]">No rules yet.</p>{% endif %}
+</section>

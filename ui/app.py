@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, sta
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from control_plane.services import wave_validation
+from control_plane.services import wave_validation, validation_rules
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
@@ -1977,6 +1977,147 @@ async def decide_target_validation_exception(request: Request, exception_id: str
     return _tv_redirect("notice", f"Exception {exception_id} {row['status'].lower()}.")
 
 
+def _approved_rules(migration_id: str) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    try:
+        rows = validation_rules.approved_for_package(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return rows
+
+
+def _rule_context(manifest: Optional[Dict[str, Any]]):
+    """What a rule is written against: canonical fields per entity, each entity's key field, the package's canonical entities and live tables."""
+    fields = _canonical_field_lists()
+    keys: Dict[str, str] = {}
+    try:
+        firm = load_firm_config()
+        keys = {e: next((f.name for f in firm.entities[e].fields if f.is_key), "") for e in firm.entities}
+    except FirmConfigError:
+        pass
+    canon = list((manifest or {}).get("canonical") or fields)
+    live = [t["live_table"] for t in (manifest or {}).get("liveTables") or []]
+    return fields, {e: k for e, k in keys.items() if k}, canon, live
+
+
+def _rule_redirect(key: str, message: str):
+    return RedirectResponse(url=f"/validation-rules?{key}=" + quote_plus(message) + "#validation-rules", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/validation-rules")
+async def save_validation_rule(request: Request, entity: str = Form(...), layer: str = Form("canonical"), name: str = Form(...), severity: str = Form("BLOCKING"),
+                               english: str = Form(""), sql: str = Form(""), keys_sql: str = Form(""), rule_id: str = Form("")):
+    """Save a rule (or a new version of one) as a draft: English is compiled by the fixed grammar, SQL goes through the static check."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            _art, pkg = _xodus_package(conn, migration_id)
+            fields, keys, canon, live = _rule_context(pkg["manifest"] if pkg else None)
+            rule = validation_rules.create(conn, migration_id, user["name"], entity=entity, layer=layer, name=name, severity=severity, english=english, sql=sql,
+                                           keys_sql=keys_sql, fields=fields, keys=keys, canon_entities=canon, mirror_tables=live, rule_id=rule_id or None)
+        except ValueError as exc:  # RuleError is a ValueError
+            return _rule_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_RULE_SAVED", user, {"rule_id": rule["rule_id"], "version": rule["version"], "entity": entity})
+    if rule["problems"]:
+        return _rule_redirect("error", f"{rule['rule_id']} v{rule['version']} saved as a draft with problems: " + " ".join(rule["problems"]))
+    return _rule_redirect("notice", f"{rule['rule_id']} v{rule['version']} saved as a draft. Run the dry run, then submit it.")
+
+
+@app.post("/api/validation-rules/{rule_id}/{version}/dry-run")
+async def dry_run_validation_rule(request: Request, rule_id: str, version: int):
+    """Count the rows that break the draft on the latest batch (read-only, counts only) to prove the query runs."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    state = _data_plane_state(migration_id)
+    man = state.get("manifest")
+    if not man:
+        return _rule_redirect("error", "Generate the pipeline package first (stage 07): the dry run reads the package's tables.")
+    conn = get_db_connection()
+    try:
+        try:
+            rule = validation_rules.get(conn, rule_id, version)
+            if not rule or rule["migration_id"] != migration_id:
+                raise ValueError("That rule does not exist.")
+            fields, keys, canon, live = _rule_context(man)
+            chk = validation_rules.check_sql(rule["sql_text"], rule["keys_sql"] or "", canon, live)
+            count, error = None, ""
+            if not chk["ok"]:
+                error = " ".join(chk["problems"])
+            else:
+                cfg = sql_target.get_config(conn)
+                statements = [(validation_rules.expand(rule["sql_text"], man["migrationSlug"]), None)]
+                if rule["keys_sql"]:
+                    statements.append((validation_rules.expand(rule["keys_sql"], man["migrationSlug"]), None))
+                try:
+                    rows = sql_target.run(cfg, statements)
+                    count = int((rows[0][0] or [0])[0] or 0)
+                except ValueError as exc:
+                    error = str(exc)
+            validation_rules.record_dry_run(conn, rule_id, version, user["name"], count, error)
+        except ValueError as exc:
+            return _rule_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    if error:
+        return _rule_redirect("error", f"Dry run of {rule_id} v{version} failed: {error}")
+    return _rule_redirect("notice", f"Dry run of {rule_id} v{version}: {count} row(s) break the rule in the latest batch (counts only).")
+
+
+@app.post("/api/validation-rules/{rule_id}/{version}/submit")
+async def submit_validation_rule(request: Request, rule_id: str, version: int):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            validation_rules.submit(conn, rule_id, version, user["name"])
+        except ValueError as exc:
+            return _rule_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_RULE_SUBMITTED", user, {"rule_id": rule_id, "version": version})
+    return _rule_redirect("notice", f"{rule_id} v{version} submitted. A different Migration Analyst must decide it.")
+
+
+@app.post("/api/validation-rules/{rule_id}/{version}/decision")
+async def decide_validation_rule(request: Request, rule_id: str, version: int, decision: str = Form(...), comments: str = Form("")):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            rule = validation_rules.decide(conn, rule_id, version, decision.upper(), user["name"], comments)
+        except ValueError as exc:
+            return _rule_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_RULE_" + rule["status"], user, {"rule_id": rule_id, "version": version})
+    return _rule_redirect("notice", f"{rule_id} v{version} {rule['status'].lower()}." + (" Generate a new package (stage 07) so it runs in the pipeline." if rule["status"] == "APPROVED" else ""))
+
+
+@app.post("/api/validation-rules/{rule_id}/retire")
+async def retire_validation_rule(request: Request, rule_id: str):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            validation_rules.retire(conn, rule_id, user["name"])
+        except ValueError as exc:
+            return _rule_redirect("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("VALIDATION_RULE_RETIRED", user, {"rule_id": rule_id})
+    return _rule_redirect("notice", f"{rule_id} retired. Generate a new package (stage 07) so it stops running.")
+
+
 def _wave_redirect(key: str, message: str, page: str = "/execution"):
     page = page if page in ("/execution", "/validation-rules") else "/execution"
     return RedirectResponse(url=f"{page}?{key}=" + quote_plus(message) + "#wave-board", status_code=status.HTTP_303_SEE_OTHER)
@@ -2177,6 +2318,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
         adf_deployment = adf_simulator.latest(conn, migration_id)
         adf_trigger_blocker = adf_simulator.trigger_blocker(adf_deployment, adf_status["stale_reasons"] if adf_status else None, adf_status["latest"]["artifact_id"] if adf_status else None)
         exceptions = validation_scenarios.list_exceptions(conn, migration_id, latest["run_id"] if latest else "-")
+        rules_list = validation_rules.list_rules(conn, migration_id)
         conn.commit()
     finally:
         conn.close()
@@ -2215,6 +2357,7 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "current_user_name": user["name"],
             "dp": (_dp := _stage_data_plane(str(migration_id), view)),
             "wave_exceptions": _wave_exceptions(str(migration_id), _dp),
+            "validation_rules": rules_list, "rule_patterns": validation_rules.PATTERNS,
             "can_promote": user["role"] in APPROVAL_ROLES,
         }
     )
@@ -2622,6 +2765,9 @@ def _code_map_stale(conn, migration_id: str, manifest: Dict[str, Any]) -> List[s
             wanted.add(derived_entity)
     if wanted - set(canon):
         reasons.append("Entities now in scope are not in this package: " + ", ".join(sorted(wanted - set(canon))) + ".")
+    now_rules = sorted((r["rule_id"], r["version"]) for r in validation_rules.approved_for_package(conn, migration_id))
+    if now_rules != sorted((r["id"], r["version"]) for r in manifest.get("rules") or []):
+        reasons.append("Validation rules were approved or retired after this package was built.")
     system = (target_connector.spec(conn) or {}).get("target_system") or ""
     if system and (cs.get("targetMap") or []) != sorted([r["code_set"], r["canonical_code"], r["target_value"]] for r in code_mappings.target_map(conn, system)):
         reasons.append("The target system's code values changed (Platform setup → Target code values).")
@@ -3562,7 +3708,8 @@ async def download_adf_package(request: Request):
             package = adf_package.build(migration_id, spec, approved, rules, env, user["name"], provenance)
         else:  # the configured Azure environment: stable pipelines plus the generated SQL (raw -> canonical -> mirror -> live)
             built = xodus_pipelines.build(migration_id, *_xodus_package_inputs(migration_id), generated_by=user["name"], provenance=provenance,
-                                          codes=_xodus_code_inputs(migration_id), depends={e: sorted(d) for e, d in _entity_depends().items()})
+                                          codes=_xodus_code_inputs(migration_id), depends={e: sorted(d) for e, d in _entity_depends().items()},
+                                          rules_approved=_approved_rules(migration_id))
             package = {"files": built["files"], "manifest": {**built["manifest"], "simulated": False, "pipeline": built["manifest"]["setupPipeline"],
                                                              "entities": built["manifest"]["canonical"], "warnings": []}}
     except ValueError as exc:

@@ -211,6 +211,7 @@
     {% endif %}
     {% if view == 'rules' %}
     {% if dp and dp.pkg %}{% include "_wave_board.html" %}{% endif %}
+    {% include "_validation_rules.html" %}
     <section id="target-validation" class="card" data-testid="target-validation">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>

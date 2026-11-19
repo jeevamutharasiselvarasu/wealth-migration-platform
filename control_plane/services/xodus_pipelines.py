@@ -399,18 +399,20 @@ def _check_sql(p: Dict[str, Any]) -> str:
         status = "CASE WHEN @x IS NULL THEN N'WARN' WHEN @n = @x THEN N'PASS' ELSE N'FAIL' END"
     elif kind == "at_least":
         status = "CASE WHEN @x IS NULL THEN N'WARN' WHEN @n >= @x THEN N'PASS' ELSE N'FAIL' END"
-    else:
-        status = "CASE WHEN @n = 0 THEN N'PASS' ELSE N'FAIL' END"
+    else:  # a WARN rule reports a finding that does not stop the wave
+        status = f"CASE WHEN @n = 0 THEN N'PASS' ELSE N'{'WARN' if p.get('warn') else 'FAIL'}' END"
     if kind in ("equals", "at_least"):
         what = "the source delivered " if name == "STAGING_ROW_COUNT" else "the canonical table holds "
         detail = (f"CONCAT({_COUNT_TEXT[name]}, @n, N' row(s); {what}', ISNULL(CAST(@x AS nvarchar(30)), N'an unknown number of'), N'.')")
     else:
-        ok, bad = _ZERO_TEXT[name]
+        rule = p.get("rule")
+        ok, bad = ((f"Rule passed: {rule['name']}.", f"row(s) break the rule: {rule['name']}.") if rule else _ZERO_TEXT[name])
         detail = f"CASE WHEN @n = 0 THEN {_lit(ok)} ELSE CONCAT(@n, N' ', {_lit(bad)}) END"
+    rid, src = (_lit(p["rule"]["rule_id"]), "N'RULE'") if p.get("rule") else ("NULL", "N'BUILTIN'")
     lines.append(f"SET @st = {status};")
     lines.append(f"INSERT INTO [{OPS}].[xodus_validation_result] (run_id, migration_id, batch_id, wave, entity, check_name, table_name, field_name, status, "
-                 f"observed_count, expected_count, detail, source) VALUES (@RunId, @MigrationId, @BatchId, @Wave, {_lit(p['entity'])}, {_lit(name)}, "
-                 f"{_lit(p.get('table') or '')}, {_lit(p.get('field') or '')}, @st, @n, @x, {detail}, N'BUILTIN');")
+                 f"observed_count, expected_count, detail, rule_id, source) VALUES (@RunId, @MigrationId, @BatchId, @Wave, {_lit(p['entity'])}, {_lit(name)}, "
+                 f"{_lit(p.get('table') or '')}, {_lit(p.get('field') or '')}, @st, @n, @x, {detail}, {rid}, {src});")
     lines.append("SET @rid = SCOPE_IDENTITY();")
     if p.get("keys_sql"):
         lines.append(f"IF @st = N'FAIL' BEGIN INSERT INTO @k ([k]) {p['keys_sql']}; "
@@ -418,7 +420,7 @@ def _check_sql(p: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str, int]) -> str:
+def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str, int], rule_items: Optional[List[Dict[str, Any]]] = None) -> str:
     """usp_validate_<slug>: the blocking checks of the entities of one wave (and, when given, only the selected ones), written to
     xodus_validation_result. A failed check is a finding, never an error: the gate reads the findings. A check that compares two entities runs
     in the child's wave, and only when the parent is in the same or an earlier wave."""
@@ -431,6 +433,8 @@ def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str,
             if waves.get(parent, 99) > waves.get(p["entity"], -1):
                 continue
         by_entity.setdefault(p["entity"], []).append(p)
+    for item in rule_items or []:  # approved rules run in the wave of their entity, after the built-in checks
+        by_entity.setdefault(item["entity"], []).append(item)
     sel = "SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@Entities, N',') WHERE LTRIM(RTRIM(value)) <> N''"
     body = [
         "DECLARE @scope TABLE ([entity] sysname NOT NULL PRIMARY KEY);",
@@ -467,7 +471,7 @@ def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str,
 def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
           entities: Dict[str, Dict[str, Any]], raw_files: List[Dict[str, Any]], load_order: List[str], env: Dict[str, Any],
           generated_by: str, provenance: Optional[Dict[str, Any]] = None, codes: Optional[Dict[str, Any]] = None,
-          depends: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+          depends: Optional[Dict[str, Any]] = None, rules_approved: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """entities[E] = {"files": [file_name, ...], "mappings": {source_field: {"canonical_field", "expression"}}, "key": canonical key or None,
                       "derivations": [{"canonical_field", "input_field", "rule_expression"}], "canonical_fields": [...]}
     raw_files = [{"file_name", "columns": [...]}] (entity files and the lookup files their rules read).
@@ -477,7 +481,9 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     coded canonical fields are translated through xodus_ref.code_map after the entity is built, and through xodus_ref.target_code_map on
     the way to the mirror (a code with no target value passes through).
     depends = {entity: [entities whose records must load first]} (optional): gives each entity its wave in xodus_ops.xodus_entity_registry
-    (wave 0 has no parent in the migration). Returns {"files": {path: text}, "manifest": {...}, "version": str}."""
+    (wave 0 has no parent in the migration).
+    rules_approved = approved validation rules (control_plane.services.validation_rules.approved_for_package): each is checked again and compiled
+    into usp_validate_<slug> as a check in the wave of its entity. Returns {"files": {path: text}, "manifest": {...}, "version": str}."""
     s = slug(migration_id)
     coded = (codes or {}).get("coded") or {}
     target_system = str((codes or {}).get("target_system") or (spec or {}).get("target_system") or "")
@@ -750,7 +756,25 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         waves[entity] = 1 + max([waves[d] for d in deps[entity] if d in waves], default=-1)
     from control_plane.services import target_validation  # the checks of stage 10, planned over the XODUS canonical and mirror tables
     plan = target_validation.build_plan(schema=MIRROR, staging_schema=CANON, entities=checked)
-    per_migration.append(_validate_procedure(s, plan, waves))
+    from control_plane.services import validation_rules
+    rule_items: List[Dict[str, Any]] = []
+    owner_of_live = {t["live_table"]: t["entity"] for t in live_tables}
+    for r in sorted(rules_approved or [], key=lambda x: x["rule_id"]):
+        label = f"Rule {r['rule_id']} ({r['name']})"
+        if r["entity"] not in canon_counts:
+            raise ValueError(f"{label} is for {r['entity']}, which is not in this package.")
+        chk = validation_rules.check_sql(r["sql_text"], r.get("keys_sql") or "", list(canon_counts), list(owner_of_live))
+        if not chk["ok"]:
+            raise ValueError(f"{label} fails the SQL check: " + " ".join(chk["problems"]))
+        for ref in chk["tables"]:
+            kind, name = ref.split(":", 1)
+            owner = name if kind == "canon" else owner_of_live[name]
+            if waves.get(owner, 99) > waves[r["entity"]]:  # a rule may only read what is already built when its wave is checked
+                raise ValueError(f"{label} reads {owner}, which is built in a later wave than {r['entity']}.")
+        rule_items.append({"check": f"RULE:{r['rule_id']}", "entity": r["entity"], "table": "", "field": str(r["name"])[:200], "kind": "zero", "expected": None,
+                           "sql": validation_rules.expand(r["sql_text"], s), "keys_sql": validation_rules.expand(r["keys_sql"], s) if r.get("keys_sql") else None,
+                           "warn": r["severity"] == "WARN", "rule": {"rule_id": r["rule_id"], "version": r["version"], "name": r["name"], "severity": r["severity"]}})
+    per_migration.append(_validate_procedure(s, plan, waves, rule_items))
     objects["procedures"].append(f"{OPS}.usp_validate_{s}")
     mirrors: Dict[str, List[str]] = {}
     for t in live_tables:
@@ -831,6 +855,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         "liveSchema": live_schema, "pipelines": list(STABLE_PIPELINES) + [f"PL_XODUS_Setup_{s}"], "setupPipeline": f"PL_XODUS_Setup_{s}",
         "linkedServices": [LS_BLOB, LS_XODUS, LS_LIVE], "rawFiles": [{"file": f["file_name"], "table": raw_names[f["file_name"]]} for f in raw_files],
         "rawFolder": folder, "container": container, "loadOrder": load_order, "waves": waves, "dependsOn": deps, "columnMapRows": len(lineage),
+        "rules": [{"id": i["rule"]["rule_id"], "version": i["rule"]["version"], "name": i["rule"]["name"], "entity": i["entity"], "severity": i["rule"]["severity"]} for i in rule_items],
         "waveChecks": {e: sorted({p["check"] for p in plan if p["entity"] == e and p["kind"] in ("equals", "at_least", "zero")}) for e in checked},
         "canonical": canon_counts, "liveTables": live_tables,
         "objects": objects, "provenance": provenance or {}, "deployed": False,
