@@ -308,6 +308,7 @@ def test_failing_keys_are_traced_to_the_source_file_and_row_through_the_canonica
     assert "UPDATE k SET k.[source_file] = c.[xodus_source_file], k.[source_row] = c.[xodus_source_row]" in keys
     assert "JOIN [xodus_canon].[mig00a1a6577b_Account] AS c ON CAST(c.[ACCT_NUM] AS nvarchar(400)) = k.[row_key] WHERE k.[result_id] = @rid" in keys
     assert keys.index("INSERT INTO [xodus_ops].[xodus_validation_row_key]") < keys.index("UPDATE k SET")  # the keys exist before they are traced
+    assert "SELECT @rid, [k] FROM @k WHERE [k] IS NOT NULL" in keys  # a failing row with no key must not break the gate (row_key is NOT NULL)
 
 
 def test_a_warning_rule_with_a_keys_query_records_its_failing_keys_too():

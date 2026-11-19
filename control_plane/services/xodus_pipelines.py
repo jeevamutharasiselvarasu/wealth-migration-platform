@@ -419,7 +419,7 @@ def _check_sql(p: Dict[str, Any], lineage: Optional[tuple] = None) -> str:
         trace = (f" UPDATE k SET k.[source_file] = c.[xodus_source_file], k.[source_row] = c.[xodus_source_row] FROM [{OPS}].[xodus_validation_row_key] AS k "
                  f"JOIN [{CANON}].[{lineage[0]}] AS c ON CAST(c.[{lineage[1]}] AS nvarchar(400)) = k.[row_key] WHERE k.[result_id] = @rid;" if lineage else "")
         lines.append(f"IF @st IN (N'FAIL', N'WARN') BEGIN INSERT INTO @k ([k]) {p['keys_sql']}; "
-                     f"INSERT INTO [{OPS}].[xodus_validation_row_key] (result_id, row_key) SELECT @rid, [k] FROM @k; DELETE FROM @k;{trace} END;")
+                     f"INSERT INTO [{OPS}].[xodus_validation_row_key] (result_id, row_key) SELECT @rid, [k] FROM @k WHERE [k] IS NOT NULL; DELETE FROM @k;{trace} END;")
     return "\n".join(lines)
 
 
