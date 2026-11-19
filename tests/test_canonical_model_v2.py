@@ -1,4 +1,4 @@
-"""Canonical model v2: definition and releases, code-set mapping, the target code values, the generated SQL and the conformance check."""
+"""Canonical model v2: definition (no version or release), code-set mapping, the target code values, the generated SQL and the conformance check."""
 import sqlite3
 
 import pytest
@@ -43,17 +43,35 @@ def test_validation_names_the_problem(model):
         cm.validate(bad)
 
 
-def test_release_is_immutable_and_current_reads_the_release(conn, tmp_path, model):
-    assert cm.current(conn)[1] is None  # nothing released: the definition is used
-    rec = cm.release(conn, "Ada")
-    assert rec["version"] == model["version"] and cm.current(conn)[1]["released_by"] == "Ada"
-    with pytest.raises(ValueError, match="already released"):
-        cm.release(conn, "Ada")
-    changed = dict(model, description="changed")
+def test_the_model_has_no_version_or_release_and_is_read_as_it_is(conn, tmp_path, model):
+    assert "version" not in model  # the system is not in production: there is no version to pin or compare
+    assert cm.current(conn) == model and cm.current() == model
+    assert not hasattr(cm, "release") and not hasattr(cm, "releases")
+    # an edit to the definition is used at once
+    changed = yaml.safe_load(yaml.safe_dump(model))
+    changed["code_sets"]["custodian"]["description"] = "changed"
     p = tmp_path / "m.yaml"
     p.write_text(yaml.safe_dump(changed), encoding="utf-8")
-    with pytest.raises(ValueError, match="new version"):
-        cm.release(conn, "Ada", p)
+    assert cm.load_definition(p)["code_sets"]["custodian"]["description"] == "changed"
+
+
+def test_the_canonical_model_page_shows_no_version_or_release_and_the_release_route_is_gone():
+    import asyncio
+
+    import httpx
+
+    import ui.app as app_module
+    app_module.session_mgr.active_sessions["cm-admin"] = {"email": "a@example.invalid", "name": "Ada", "role": "Platform Admin"}
+
+    async def go(method, path):
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", cookies={"session_id": "cm-admin"}) as client:
+            return await client.request(method, path, follow_redirects=False)
+    page = asyncio.run(go("GET", "/canonical-model"))
+    assert page.status_code == 200 and "<h1>Canonical model</h1>" in page.text
+    assert "Released" not in page.text and "Release version" not in page.text and "2.4.0" not in page.text and 'data-testid="model-releases"' not in page.text
+    assert asyncio.run(go("POST", "/api/canonical-model/release")).status_code in (404, 405)
+    assert asyncio.run(go("GET", "/code-sets")).status_code in (200, 403)  # still reachable by role policy, no release variable needed
 
 
 @pytest.mark.parametrize("value,code", [("Rollover IRA", "IRA_ROLLOVER"), ("  ira_rollover ", "IRA_ROLLOVER"), ("Joint WROS", "JOINT_WROS"),
@@ -145,7 +163,6 @@ def test_conformance_check_names_rows_by_their_source_key():
 
 
 def test_roles():
-    assert allowed_roles_for("POST", "/api/canonical-model/release") == {"Platform Admin", "Domain SME"}
     assert allowed_roles_for("POST", "/api/code-sets/profile") == {"Migration Analyst", "IMO Lead"}
     assert allowed_roles_for("POST", "/api/code-sets/decide") == {"Migration Analyst", "IMO Lead"}
     assert allowed_roles_for("POST", "/api/target-system/code-values") == {"Platform Admin"}

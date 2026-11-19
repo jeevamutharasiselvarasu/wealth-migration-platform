@@ -7,22 +7,12 @@
   <div class="ph">
     <div>
       <div class="ey dm">Canonical model governance</div>
-      <h1>Canonical model {{ model.version }}</h1>
+      <h1>Canonical model</h1>
       <p>The universal model every source maps into and every target maps out of. Fields are typed; coded fields are bound to a code set, so a source's own spellings are mapped to canonical codes once (stage 03, Code sets) and canonical codes to the target's values once per target system (Target system → Code values).</p>
     </div>
-    <div style="display:flex;gap:6px;align-items:flex-start">{% if release %}<span class="chip g">Released</span>{% else %}<span class="chip ex">Not released</span>{% endif %}</div>
   </div>
 
-  <section class="card" data-testid="model-releases">
-    <h3 style="font-size:16px">Releases</h3>
-    {% if release %}<p class="fh">In use: <b>{{ release.version }}</b>, released by {{ release.released_by }} on {{ release.released_utc[:10] }} (content <span class="font-mono">{{ release.content_sha256[:12] }}</span>).</p>
-    {% else %}<p class="fh">Nothing is released yet; the platform reads the definition ({{ definition_version }}) until the Platform Admin or the Domain SME releases it.</p>{% endif %}
-    {% if can_release and pending %}<form action="/api/canonical-model/release" method="post" class="mt-2"><button class="btn p sm" data-testid="release-model">Release version {{ definition_version }}</button></form>{% endif %}
-    {% if releases %}<ul class="mt-2 text-[11px]">{% for r in releases %}<li><b>{{ r.version }}</b> · {{ r.released_by }} · {{ r.released_utc[:19] }} · <span class="font-mono">{{ r.content_sha256[:12] }}</span></li>{% endfor %}</ul>{% endif %}
-    <p class="mt-2 text-[11px] text-[#5A6A88]">A released version never changes. A changed definition needs a new version number. Field changes requested by a migration still go through <a href="/canonical-changes" class="font-bold text-blue-700">Canonical change requests</a>.</p>
-  </section>
-
-  {% for name, e in model.entities.items() %}
+  {% if model %}{% for name, e in model.entities.items() %}
   <details class="ent" id="entity-{{ name }}">
     <summary><b class="en">{{ name }}</b><span class="chip">{{ e.fields|length }} fields</span>{% if e.description %}<span class="sd">{{ e.description|truncate(110) }}</span>{% endif %}</summary>
     <p class="fh">{{ e.description }}</p>
@@ -47,6 +37,7 @@
     </table></div>
   </details>
   {% endfor %}
+  {% endif %}
   <div class="ins">Household, Client, Account, Advisor and AccountRole are discovered and mapped per migration (Advisor and AccountRole are opt-in in Migration setup; AccountRole can be derived from the households). The same record in several rows is resolved on Entity resolution (stage 04). The target receives Household, Client and Account; Advisor and AccountRole stay in the canonical model.</div>
 </div>
 {% endblock %}

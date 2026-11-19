@@ -1,10 +1,9 @@
 # XODUS canonical model v2: universal for every source and every target (docs/XODUS_CANONICAL_PROPOSAL.md).
 # Field names of Household, Client and Account are unchanged from v1, so approved mappings stay valid; v2 adds types, code sets
-# bound to the coded fields, and the AccountRole and Advisor entities. Released on the platform (Canonical model page) as a version.
+# bound to the coded fields, and the AccountRole and Advisor entities. It carries no version: the platform reads this file as it is.
 # Code sets: every canonical code with a description and the spellings sources commonly use (synonyms are only suggestions;
 # an analyst approves every source value -> canonical code).
 model: XODUS-Canonical
-version: 2.4.0
 entities:
   Household:
     description: The grouping a firm manages together, with its advisor. Clients and accounts belong to a household.

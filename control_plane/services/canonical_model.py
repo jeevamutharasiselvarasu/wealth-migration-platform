@@ -1,15 +1,10 @@
 """Canonical model v2: the universal model every source maps into and every target maps out of, with its code sets.
 
-The definition lives in platform_knowledge/canonical_model_v2.yaml; releasing it records an immutable version on the platform
-(Canonical model page). Coded fields are bound to code sets; source values are mapped to canonical codes per migration
+The definition lives in platform_knowledge/canonical_model_v2.yaml and is read as it is (no version, no release). Coded fields are bound to code sets; source values are mapped to canonical codes per migration
 (code_mappings) and canonical codes to target values per target system (target_crosswalk). Suggestions here are deterministic
 (exact code, synonym or description match after normalising); a person approves every mapping.
 """
-import hashlib
-import json
 import re
-import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -21,17 +16,6 @@ DEFINITION = platform_knowledge_dir() / "canonical_model_v2.yaml"
 TYPES = {"string", "date", "integer", "decimal", "boolean"}
 NAME = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
-_DDL = """
-CREATE TABLE IF NOT EXISTS canonical_model_releases (
-    version TEXT PRIMARY KEY, content_json TEXT NOT NULL, content_sha256 TEXT NOT NULL, released_by TEXT NOT NULL, released_utc TEXT NOT NULL
-)
-"""
-
-
-def ensure_table(conn: sqlite3.Connection) -> None:
-    conn.execute(_DDL)
-
-
 def validate(model: Dict[str, Any]) -> Dict[str, Any]:
     """Structural checks on a definition; raises ValueError naming the first problem."""
     sets = model.get("code_sets") or {}
@@ -53,8 +37,6 @@ def validate(model: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError(f"{ename}.{f['name']}: unknown type {f.get('type')}.")
             if f.get("code_set") and f["code_set"] not in sets:
                 raise ValueError(f"{ename}.{f['name']}: unknown code set {f['code_set']}.")
-    if not str(model.get("version") or "").strip():
-        raise ValueError("The model has no version.")
     return model
 
 
@@ -62,37 +44,10 @@ def load_definition(path: Path = DEFINITION) -> Dict[str, Any]:
     return validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
-def _sha(model: Dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(model, sort_keys=True).encode("utf-8")).hexdigest()
-
-
-def release(conn: sqlite3.Connection, actor: str, path: Path = DEFINITION) -> Dict[str, Any]:
-    """Record the definition as an immutable release. A version can be released once; a changed definition needs a new version."""
-    ensure_table(conn)
-    model = load_definition(path)
-    row = conn.execute("SELECT content_sha256 FROM canonical_model_releases WHERE version = ?", (model["version"],)).fetchone()
-    if row:
-        if row["content_sha256"] == _sha(model):
-            raise ValueError(f"Version {model['version']} is already released.")
-        raise ValueError(f"Version {model['version']} was released with different content. Give the changed definition a new version.")
-    rec = {"version": model["version"], "content_sha256": _sha(model), "released_by": actor, "released_utc": datetime.now(timezone.utc).isoformat()}
-    conn.execute("INSERT INTO canonical_model_releases (version, content_json, content_sha256, released_by, released_utc) VALUES (?, ?, ?, ?, ?)",
-                 (rec["version"], json.dumps(model), rec["content_sha256"], actor, rec["released_utc"]))
-    return rec
-
-
-def releases(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
-    ensure_table(conn)
-    return [dict(r) for r in conn.execute("SELECT version, content_sha256, released_by, released_utc FROM canonical_model_releases ORDER BY released_utc DESC").fetchall()]
-
-
-def current(conn: sqlite3.Connection) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
-    """(model, release) for the latest release; (definition, None) while nothing is released yet."""
-    ensure_table(conn)
-    row = conn.execute("SELECT * FROM canonical_model_releases ORDER BY released_utc DESC LIMIT 1").fetchone()
-    if row:
-        return json.loads(row["content_json"]), {k: row[k] for k in ("version", "content_sha256", "released_by", "released_utc")}
-    return load_definition(), None
+def current(conn=None) -> Dict[str, Any]:
+    """The canonical model: the definition file as it is now. There is no version or release to pin (the system is not in production); edit the
+    definition and the platform uses it at once. (The connection argument is kept so callers need not change.)"""
+    return load_definition()
 
 
 def coded_fields(model: Dict[str, Any]) -> Dict[str, Dict[str, str]]:

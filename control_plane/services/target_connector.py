@@ -138,6 +138,14 @@ def get_config(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     return cfg
 
 
+def latest_confirmed_schema(conn: sqlite3.Connection) -> str:
+    """The schema of the most recently confirmed target model, or empty when none is confirmed. A Platform Admin who has not picked a schema yet
+    starts on it, so the platform pages show the target that is already set up instead of "not confirmed"."""
+    ensure_table(conn)
+    row = conn.execute("SELECT config_key FROM target_system_models WHERE status = 'CONFIRMED' AND config_key <> '' ORDER BY confirmed_utc DESC LIMIT 1").fetchone()
+    return str(row["config_key"]) if row else ""
+
+
 def is_confirmed(cfg: Optional[Dict[str, Any]]) -> bool:
     return bool(cfg and cfg["status"] == "CONFIRMED")
 

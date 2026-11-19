@@ -91,7 +91,6 @@ POST_POLICY = [
     (r"^/api/canonical-changes/[^/]+/decision$", CANONICAL_ROLES),
     (r"^/api/canonical-releases$", CANONICAL_ROLES),
     (r"^/api/canonical-releases/adopt$", APPROVAL_ROLES),
-    (r"^/api/canonical-model/release$", CANONICAL_ROLES),
     (r"^/api/code-sets/profile$", DISCOVERY_ROLES),
     (r"^/api/code-sets/(decide|approve-suggested)$", APPROVAL_ROLES),
     (r"^/api/target-system/code-values$", PLATFORM_ROLES),

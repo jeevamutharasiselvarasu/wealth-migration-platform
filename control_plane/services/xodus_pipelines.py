@@ -481,7 +481,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     raw_files = [{"file_name", "columns": [...]}] (entity files and the lookup files their rules read).
     env = {"container", "rawFolder", "liveSchema"}.
     codes (canonical model v2) = {"coded": {entity: {canonical_field: code_set}}, "source_map": [{"code_set", "source_value", "canonical_code"}],
-                                  "target_map": [{"code_set", "canonical_code", "target_value"}], "target_system": str, "model_version": str}:
+                                  "target_map": [{"code_set", "canonical_code", "target_value"}], "target_system": str}:
     coded canonical fields are translated through xodus_ref.code_map after the entity is built, and through xodus_ref.target_code_map on
     the way to the mirror (a code with no target value passes through).
     depends = {entity: [entities whose records must load first]} (optional): gives each entity its wave in xodus_ops.xodus_entity_registry
@@ -864,7 +864,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         "waveChecks": {e: sorted({p["check"] for p in plan if p["entity"] == e and p["kind"] in ("equals", "at_least", "zero")}) for e in checked},
         "canonical": canon_counts, "liveTables": live_tables,
         "objects": objects, "provenance": provenance or {}, "deployed": False,
-        "codeSets": ({"modelVersion": codes.get("model_version"), "coded": applied_codes, "sourceValues": len(codes.get("source_map") or []),
+        "codeSets": ({"coded": applied_codes, "sourceValues": len(codes.get("source_map") or []),
                       "sourceMap": sorted([r["code_set"], r["source_value"], r["canonical_code"]] for r in codes.get("source_map") or []),
                       "targetValues": len(codes.get("target_map") or []),
                       "targetMap": sorted([r["code_set"], r["canonical_code"], r["target_value"]] for r in codes.get("target_map") or []), "targetSystem": target_system} if codes is not None else None),
