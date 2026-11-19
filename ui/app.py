@@ -7083,6 +7083,37 @@ async def retire_decision_model(request: Request, model_id: str = Form(...)):
     return _feedback_back("notice", "The decision model is no longer shown.", "/firm-knowledge", "#decision-model")
 
 
+@app.post("/api/knowledge/index-existing")
+async def index_existing_documents(request: Request):
+    """Make the documents registered before search existed searchable, from the text kept with each (a spreadsheet or CSV keeps only its column names,
+    and a file's text is cut at the storage limit, so those cannot be indexed here: upload them again)."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        have = set(knowledge_chunks.stats(conn, migration_id))
+        conn.commit()
+    finally:
+        conn.close()
+    done, skipped = 0, []
+    for doc in list(state_store.firm_knowledge_docs):
+        if _chunk_asset_id(migration_id, doc.get("id")) in have:
+            continue
+        text = str(doc.get("full_text") or "")
+        if not text.strip():
+            skipped.append(str(doc.get("filename")))
+            continue
+        note = _index_firm_asset(migration_id, doc, text=text, source=str(doc.get("source") or "file"), source_ref=str(doc.get("source_url") or doc.get("filename")),
+                                 version=knowledge_chunks.version_of(text.encode("utf-8")))
+        if note:
+            skipped.append(f"{doc.get('filename')} ({note})")
+        else:
+            done += 1
+    _target_setup_audit("KNOWLEDGE_EXISTING_INDEXED", user, {"indexed": done, "skipped": len(skipped)})
+    msg = f"Indexed {done} document(s)." + (f" Not indexed: {', '.join(skipped)}; upload those again to make them searchable." if skipped else "")
+    return _feedback_back("notice", msg, "/firm-knowledge", "#retrieval")
+
+
 @app.post("/api/knowledge/purge")
 async def purge_search_data(request: Request):
     """Delete this migration's search data: chunks, vectors, feedback and tuned retrieval. The documents stay registered but are no longer searchable."""
@@ -7546,6 +7577,8 @@ async def start_data_plane_run(request: Request):
             reasons.append("There is no pipeline package: generate one in stage 07.")
         else:
             man = pkg["manifest"]
+            if selected and not man.get("waves"):
+                reasons.append("This package was built before entity reruns. Generate a new package (stage 07) and publish it (stage 08) to rerun single entities.")
             if selected:  # rerun some entities inside the latest batch; the pipeline's scope check refuses anything that would leave it inconsistent
                 unknown = [e for e in selected if e not in man["loadOrder"]]
                 if unknown:
@@ -7575,7 +7608,8 @@ async def start_data_plane_run(request: Request):
         batch = batch or "B" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         try:
             req = adf_runs.start(conn, migration_id, "PL_XODUS_Run", {"MigrationId": migration_id, "MigrationSlug": man["migrationSlug"], "BatchId": batch,
-                                                                     "Entities": entities_param}, user["name"], batch_id=batch)
+                                                                     **({"Entities": entities_param} if man.get("waves") else {})},  # an older pipeline has no such parameter
+                                 user["name"], batch_id=batch)
         except ValueError as exc:
             return _dp_redirect("/execution", "error", "Not started: " + str(exc))
         conn.commit()

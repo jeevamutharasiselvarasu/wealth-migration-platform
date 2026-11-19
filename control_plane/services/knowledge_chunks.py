@@ -244,11 +244,16 @@ def retire_asset(conn: sqlite3.Connection, asset_id: str) -> int:
 
 
 def stats(conn: sqlite3.Connection, migration_id: str) -> Dict[str, Dict[str, Any]]:
-    """{asset_id: {"chunks", "chars", "version", "source"}} of the migration's active chunks."""
+    """{asset_id: {"chunks", "chars", "version", "source"}} of the migration's active chunks. The sizes are added up here rather than in SQL, because
+    the length function has a different name on SQL Server (LEN) than on SQLite and PostgreSQL (LENGTH)."""
     ensure_table(conn)
-    rows = conn.execute("SELECT asset_id, COUNT(*) AS n, SUM(LENGTH(text)) AS chars, MAX(asset_version) AS version, MAX(source) AS source FROM knowledge_chunks "
-                        "WHERE migration_id = ? AND status = 'ACTIVE' GROUP BY asset_id", (migration_id,)).fetchall()
-    return {r["asset_id"]: {"chunks": r["n"], "chars": r["chars"] or 0, "version": r["version"], "source": r["source"]} for r in rows}
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in conn.execute("SELECT asset_id, text, asset_version, source FROM knowledge_chunks WHERE migration_id = ? AND status = 'ACTIVE'", (migration_id,)).fetchall():
+        s = out.setdefault(r["asset_id"], {"chunks": 0, "chars": 0, "version": r["asset_version"], "source": r["source"]})
+        s["chunks"] += 1
+        s["chars"] += len(r["text"] or "")
+        s["version"] = max(str(s["version"] or ""), str(r["asset_version"] or "")) or None
+    return out
 
 
 def chunks_of(conn: sqlite3.Connection, asset_id: str, limit: int = 200) -> List[Dict[str, Any]]:

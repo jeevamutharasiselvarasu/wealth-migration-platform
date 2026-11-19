@@ -277,7 +277,7 @@ class _Conn:
         pass
 
 
-def _start(monkeypatch, form, runs=True):
+def _start(monkeypatch, form, runs=True, waves=True):
     """Call the stage 09 start endpoint with Data Factory faked; returns (redirect location, parameters sent to Data Factory or None)."""
     import asyncio
     import sqlite3
@@ -291,7 +291,7 @@ def _start(monkeypatch, form, runs=True):
     else:
         adf_runs.ensure_table(conn)
     man = {"version": "v1", "migrationSlug": "mig1", "rawFolder": "raw/x", "container": "c", "loadOrder": ["Household", "Account", "Position"],
-           "dependsOn": {"Account": ["Household"], "Position": ["Account"], "Household": []}}
+           "dependsOn": {"Account": ["Household"], "Position": ["Account"], "Household": []}, **({"waves": {"Household": 0, "Account": 1, "Position": 2}} if waves else {})}
     sent = {}
 
     class Req:
@@ -329,3 +329,10 @@ def test_rerunning_entities_is_refused_without_a_batch_or_for_unknown_entities(m
     assert params is None and "error=" in loc and "start+a+whole+batch+first" in loc
     loc, params = _start(monkeypatch, {"entities": ["Nope"]})
     assert params is None and "error=" in loc and "Nope" in loc
+
+
+def test_a_package_built_before_waves_neither_gets_the_entities_parameter_nor_an_entity_rerun(monkeypatch):
+    loc, params = _start(monkeypatch, {}, waves=False)
+    assert "Entities" not in params and params["BatchId"].startswith("B")  # the published pipeline of an older package has no such parameter
+    loc, params = _start(monkeypatch, {"entities": ["Account"]}, waves=False)
+    assert params is None and "error=" in loc and "built+before+entity+reruns" in loc

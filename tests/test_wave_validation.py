@@ -200,3 +200,18 @@ def test_failing_keys_show_the_source_file_and_row_when_they_could_be_traced():
     keys = [{"result_id": 1, "row_key": "H-9", "source_file": "raw/corecap/households.csv", "source_row": 42}, {"result_id": 1, "row_key": "H-10", "source_file": None, "source_row": None}]
     board = wv.assemble("B1", REGISTRY[:1], [_state("Household", "FAILED")], results, keys, [])
     assert board["waves"][0]["entities"][0]["checks"][0]["row_keys"] == ["H-9 (households.csv row 42)", "H-10"]
+
+
+def test_a_database_without_the_wave_tables_gets_guidance_not_the_sql_error(conn, monkeypatch):
+    _configured(conn, monkeypatch)
+
+    class NoTables(FakeDB):
+        def execute(self, sql, params=()):
+            raise Exception("(208, b\"Invalid object name 'xodus_ops.xodus_entity_registry'.\")")
+    with pytest.raises(ValueError, match="built before validation by wave") as e:
+        wv.read_board(conn, "mig1", "MIG-1", "B1", connect=lambda cfg, pw: NoTables([]))
+    assert "Generate a new package" in str(e.value) and "Invalid object name" not in str(e.value)
+    other = FakeDB([])
+    other.execute = lambda sql, params=(): (_ for _ in ()).throw(Exception("login failed"))
+    with pytest.raises(ValueError, match="login failed"):
+        wv.read_board(conn, "mig1", "MIG-1", "B1", connect=lambda cfg, pw: other)  # any other failure is still shown as it is

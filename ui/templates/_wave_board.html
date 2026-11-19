@@ -25,7 +25,7 @@
         <td class="border-b border-[#EEF2FA] p-2">{{ pill(e.status) }}{% if e.state %} <span class="text-[10px] text-[#5A6A88]">{{ e.state.stage }} · {{ e.state.updated_utc|string|truncate(19, True, '') }}</span>{% endif %}</td>
         <td class="border-b border-[#EEF2FA] p-2">{{ e.state.rows_written if e.state and e.state.rows_written is not none else '—' }}</td>
         <td class="border-b border-[#EEF2FA] p-2">{{ e.counts.PASS }} passed · {{ e.counts.FAIL }} failed · {{ e.counts.WARN }} review · {{ e.counts.WAIVED }} waived</td>
-        <td class="border-b border-[#EEF2FA] p-2">{% if can_decide_exception and e.state %}<form action="/api/data-plane/start" method="post"><input type="hidden" name="entities" value="{{ e.entity }}"><button class="btn g sm" {% if dp.running and dp.running.run %}disabled{% endif %} title="Rebuild only this entity inside the batch">Rerun</button></form>{% endif %}</td>
+        <td class="border-b border-[#EEF2FA] p-2">{% if can_decide_exception and e.state and dp.manifest and dp.manifest.waves %}<form action="/api/data-plane/start" method="post"><input type="hidden" name="entities" value="{{ e.entity }}"><button class="btn g sm" {% if dp.running and dp.running.run %}disabled{% endif %} title="Rebuild only this entity inside the batch">Rerun</button></form>{% endif %}</td>
       </tr>
       {% if e.checks %}
       <tr><td colspan="6" class="border-b border-[#EEF2FA] p-2">

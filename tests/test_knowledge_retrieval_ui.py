@@ -195,3 +195,21 @@ def test_marking_a_search_result_keeps_the_same_search_on_screen(app_env):
     assert 'name="return_q" value="account number"' in page
     other = app_env.call("analyst", "POST", "/api/knowledge/feedback", {"subject": "Account.X", "query": "q", "chunk_id": hit["chunk_id"], "verdict": "helpful", "return_to": "/discovery", "return_q": "ignored"})
     assert other.headers["location"].startswith("/discovery?notice=") and "q=" not in other.headers["location"]  # only the knowledge page keeps a search
+
+
+def test_documents_registered_before_search_existed_can_be_indexed_from_their_kept_text(app_env):
+    from tests.test_knowledge_ingestion import _workbook
+    _upload(app_env)  # a Markdown document keeps its text
+    app_env.call("analyst", "POST", "/api/knowledge/file-upload", {"category": "data_dictionary"}, {"file": ("dict.xlsx", _workbook(), "application/octet-stream")})  # a workbook does not
+    assert len(app_env.chunks()) == 2
+    app_env.call("analyst", "POST", "/api/knowledge/purge")  # now neither is searchable, like a document registered before phase 6
+    assert app_env.chunks() == {}
+    page = app_env.call("analyst", "GET", "/firm-knowledge").text
+    assert 'data-testid="index-existing"' in page and page.count("not indexed") >= 2
+    r = app_env.call("analyst", "POST", "/api/knowledge/index-existing")
+    msg = _loc(r)
+    assert "Indexed 1 document(s)" in msg and "dict.xlsx" in msg and "upload those again" in msg
+    stats = app_env.chunks()
+    assert len(stats) == 1 and list(stats)[0].endswith("DOC-001")  # the Markdown document is searchable again; the workbook is not
+    assert "Indexed 0 document(s)" in _loc(app_env.call("analyst", "POST", "/api/knowledge/index-existing"))  # nothing to do the second time
+    assert "may+not+perform" in app_env.call("viewer", "POST", "/api/knowledge/index-existing").headers["location"]

@@ -75,6 +75,16 @@ def _rows(rows: Any, names: List[str]) -> List[Dict[str, Any]]:
 def read_board(conn: sqlite3.Connection, migration_slug: str, migration_id: str, batch_id: str,
                connect: Callable[..., Any] = sql_target._default_connect) -> Dict[str, Any]:
     """Read the registry, entity states, findings, failing keys and waivers of one batch (read-only). Raises ValueError with a readable reason."""
+    try:
+        return _read_board(conn, migration_slug, migration_id, batch_id, connect)
+    except ValueError as exc:
+        if "Invalid object name" in str(exc) and "xodus_ops" in str(exc):  # the XODUS database predates this package's wave tables
+            raise ValueError("This package was built before validation by wave, so the XODUS database has no wave tables yet. Generate a new package (stage 07), "
+                             "merge its pull request, publish it and run the setup pipeline (stage 08); the next batch then validates wave by wave.") from exc
+        raise
+
+
+def _read_board(conn: sqlite3.Connection, migration_slug: str, migration_id: str, batch_id: str, connect: Callable[..., Any]) -> Dict[str, Any]:
     cfg = sql_target.get_config(conn)
     reg, st, res, keys, wv = sql_target.run(cfg, [
         ("SELECT [entity], [wave], [depends_on] FROM xodus_ops.xodus_entity_registry WHERE migration_slug = %s ORDER BY [wave], [entity]", (migration_slug,)),
