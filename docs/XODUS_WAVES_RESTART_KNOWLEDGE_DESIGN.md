@@ -80,6 +80,8 @@ The pipeline's SQL writes two tables the app reads (the XODUS login already has 
 
 App pages: a wave and entity board (status chips, counts, wave gate state), a drill-down per entity listing each check with its English text and SQL, and failing row keys with a link to the lineage of that row. It reuses the layout of the target validation page. Counts and keys only; no values are shown.
 
+Built in phase 4 (2026-11-19): `control_plane/services/wave_validation.py` reads the registry, entity state, findings, failing keys and waivers of the latest batch (read-only, one round trip) and `ui/templates/_wave_board.html` shows them on stages 09 and 10: waves in order, each with its entities' build state, finding counts, every finding with its status and failing keys, a "Rerun" button per entity and "Restart from wave N" (the wave and everything after it, through the entity-scoped run). A failed finding can be proposed as an exception by a Validation Specialist; a different Migration Analyst decides it, using the existing exception store (run id `WAVE:<batch>`). Approval writes the waiver to `xodus_ops.xodus_wave_waiver`; the decision is kept only if that write succeeded. The waiver takes effect when the wave is restarted and validated again. Not built: filling `source_file` and `source_row` on failing keys.
+
 ## 7. Validation rules in plain English or SQL
 
 Rule record: id, name, entity, layer (canonical or mirror), English text, SQL, severity (BLOCKING or WARN), status (DRAFT, PROPOSED, APPROVED, RETIRED), author, approver (never the author), version.

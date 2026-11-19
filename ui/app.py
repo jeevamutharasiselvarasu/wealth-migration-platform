@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, sta
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from control_plane.services import wave_validation
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
@@ -1976,6 +1977,63 @@ async def decide_target_validation_exception(request: Request, exception_id: str
     return _tv_redirect("notice", f"Exception {exception_id} {row['status'].lower()}.")
 
 
+def _wave_redirect(key: str, message: str, page: str = "/execution"):
+    page = page if page in ("/execution", "/validation-rules") else "/execution"
+    return RedirectResponse(url=f"{page}?{key}=" + quote_plus(message) + "#wave-board", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/wave-validation/exceptions")
+async def propose_wave_exception(request: Request, check_ref: str = Form(...), reason: str = Form(""), return_to: str = Form("/execution")):
+    """Propose that a failed blocking check of the latest batch be accepted. A different approver decides it; approval records a waiver for the pipeline."""
+    user = get_current_user(request)
+    if user["role"] not in VALIDATION_ROLES:
+        return _wave_redirect("error", "A Validation Specialist proposes exceptions.", return_to)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    state = _data_plane_state(migration_id)
+    man, run = state.get("manifest"), state.get("run")
+    if not man or not run or not run.get("batch_id"):
+        return _wave_redirect("error", "There is no batch to raise an exception on.", return_to)
+    conn = get_db_connection()
+    try:
+        try:
+            board = wave_validation.read_board(conn, man["migrationSlug"], migration_id, run["batch_id"])
+            if not wave_validation.failing_finding(board, check_ref):
+                raise ValueError("That finding does not exist in the latest batch, or it did not fail.")
+            eid = validation_scenarios.propose_exception(conn, migration_id, wave_validation.RUN_PREFIX + run["batch_id"], check_ref, reason, user["name"])
+        except ValueError as exc:
+            return _wave_redirect("error", str(exc), return_to)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("WAVE_EXCEPTION_PROPOSED", user, {"exception_id": eid, "batch_id": run["batch_id"], "check_ref": check_ref})
+    return _wave_redirect("notice", f"Exception {eid} proposed. A different Migration Analyst must decide it.", return_to)
+
+
+@app.post("/api/wave-validation/exceptions/{exception_id}/decision")
+async def decide_wave_exception(request: Request, exception_id: str, decision: str = Form(...), comments: str = Form(""), return_to: str = Form("/execution")):
+    """Decide a wave exception. Approval writes the waiver (xodus_wave_waiver) the validation procedure reads; the run is then restarted from the wave."""
+    user = get_current_user(request)
+    if user["role"] not in APPROVAL_ROLES:
+        return _wave_redirect("error", "A Migration Analyst decides exceptions.", return_to)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            row = validation_scenarios.decide_exception(conn, exception_id, decision.upper(), user["name"], comments)
+            if not str(row["run_id"]).startswith(wave_validation.RUN_PREFIX):
+                raise ValueError("That is not a wave exception.")
+            if row["status"] == "APPROVED":
+                wave_validation.record_waiver(conn, migration_id, str(row["run_id"])[len(wave_validation.RUN_PREFIX):], row["check_ref"], row["reason"], user["name"])
+        except ValueError as exc:
+            conn.rollback()  # the decision is kept only when the waiver was written
+            return _wave_redirect("error", str(exc), return_to)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("WAVE_EXCEPTION_" + row["status"], user, {"exception_id": exception_id, "check_ref": row["check_ref"]})
+    return _wave_redirect("notice", f"Exception {exception_id} {row['status'].lower()}." + (" The waiver is recorded; restart from the wave so the gate passes." if row["status"] == "APPROVED" else ""), return_to)
+
+
 @app.get("/validation-rules", response_class=HTMLResponse)
 async def validation_rules_page(request: Request, error: str = "", notice: str = ""):
     """Stage 10: the scenarios that extend the validation run, defined after the data plane has executed."""
@@ -1988,12 +2046,34 @@ async def execution_page(request: Request, error: str = "", notice: str = ""):
     return _validation_stage_view(request, "execution", error, notice)
 
 
+def _wave_exceptions(migration_id: str, dp: Dict[str, Any]) -> Dict[str, Any]:
+    """Exceptions proposed for the findings of the latest batch's waves, by finding reference."""
+    batch = ((dp or {}).get("run") or {}).get("batch_id")
+    if not batch or not (dp or {}).get("board"):
+        return {}
+    conn = get_db_connection()
+    try:
+        rows = validation_scenarios.list_exceptions(conn, migration_id, wave_validation.RUN_PREFIX + batch)
+        conn.commit()
+    finally:
+        conn.close()
+    return {r["check_ref"]: r for r in rows if str(r["check_ref"]).startswith(wave_validation.REF_PREFIX + "|")}
+
+
 def _stage_data_plane(migration_id: str, view: str) -> Dict[str, Any]:
     """Data-plane state for stages 09 and 10; the gate is read from the XODUS database only on stage 10 and never breaks the page."""
     try:
         dp = _data_plane_state(migration_id, refresh_runs=True)
     except Exception as exc:  # shown, never raised: the page still works without Azure
         return {"pkg": None, "error": str(exc)}
+    if dp.get("pkg") and dp.get("manifest") and dp.get("run") and dp["run"].get("batch_id"):  # what the pipeline's SQL found, wave by wave
+        conn = get_db_connection()
+        try:
+            dp["board"] = wave_validation.read_board(conn, dp["manifest"]["migrationSlug"], migration_id, dp["run"]["batch_id"])
+        except ValueError as exc:
+            dp["board_error"] = str(exc)
+        finally:
+            conn.close()
     if view == "rules" and dp.get("pkg") and dp.get("run") and dp["run"].get("batch_id"):
         conn = get_db_connection()
         try:
@@ -2133,7 +2213,8 @@ def _validation_stage_view(request: Request, view: str, error: str, notice: str)
             "scenarios": scenarios, "check_types": validation_scenarios.CHECK_TYPES, "exec_runs": runs, "recs_by_run": recs_by_run, "has_package": has_package,
             "exceptions": {e["check_ref"]: e for e in exceptions}, "can_decide_exception": user["role"] in APPROVAL_ROLES, "can_review_failures": user["role"] in APPROVAL_ROLES,
             "current_user_name": user["name"],
-            "dp": _stage_data_plane(str(migration_id), view),
+            "dp": (_dp := _stage_data_plane(str(migration_id), view)),
+            "wave_exceptions": _wave_exceptions(str(migration_id), _dp),
             "can_promote": user["role"] in APPROVAL_ROLES,
         }
     )

@@ -131,6 +131,8 @@ POST_POLICY = [
     (r"^/api/target-validation/exceptions$", VALIDATION_ROLES),
     (r"^/api/target-validation/signoff$", VALIDATION_ROLES),
     (r"^/api/target-validation/exceptions/[^/]+/decision$", APPROVAL_ROLES),
+    (r"^/api/wave-validation/exceptions$", VALIDATION_ROLES),
+    (r"^/api/wave-validation/exceptions/[^/]+/decision$", APPROVAL_ROLES),
     (r"^/api/validation/scenarios$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/(suggest|[^/]+/adopt)$", VALIDATION_ROLES),
     (r"^/api/validation/scenarios/[^/]+/retire$", VALIDATION_ROLES),

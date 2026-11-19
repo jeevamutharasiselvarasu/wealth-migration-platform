@@ -135,7 +135,7 @@
         {% endif %}
     </section>
     {% endif %}
-    {% if view == 'execution' and dp and dp.pkg %}{% include "_data_plane_run.html" %}{% endif %}
+    {% if view == 'execution' and dp and dp.pkg %}{% include "_data_plane_run.html" %}{% include "_wave_board.html" %}{% endif %}
     {% if view == 'execution' and not (dp and dp.pkg) %}
     <section class="card" data-testid="start-pipeline-card">
         <h3 style="font-size:16px">Start the Data Factory pipeline</h3>
@@ -210,6 +210,7 @@
     {% if not (dp and dp.pkg) %}<form id="rm-actions" class="hidden mt-2" action="/api/target-mapping/stage-canonical" method="post"><input type="hidden" name="return_to" value="execution"><button class="btn p sm" data-testid="rm-rewrite">Rewrite canonical files to stage/</button> <span class="text-[11px] text-[#41506B]">Then run the pipeline again in Data Factory.</span></form>{% endif %}
     {% endif %}
     {% if view == 'rules' %}
+    {% if dp and dp.pkg %}{% include "_wave_board.html" %}{% endif %}
     <section id="target-validation" class="card" data-testid="target-validation">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
