@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, sta
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from control_plane.services import wave_validation, validation_rules, knowledge_chunks, knowledge_sources, knowledge_index, retrieval_tuning, embeddings
+from control_plane.services import wave_validation, validation_rules, knowledge_chunks, knowledge_sources, knowledge_index, retrieval_tuning, embeddings, decision_model
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
@@ -1563,10 +1563,12 @@ async def firm_knowledge_studio(request: Request, notice: str = "", error: str =
         retrieval: Dict[str, Any] = {"embedder": embedder.name}
         try:
             if search["q"]:
-                search["hits"] = knowledge_index.retrieve(conn, migration_id, [search["q"]], embedder, k=5)[0]
+                search["hits"] = knowledge_index.retrieve(conn, migration_id, [search["q"]], embedder, k=5, min_score=embeddings.evidence_min_score(embedder) / 2)[0]
             retrieval.update(knowledge_index.feedback_counts(conn, migration_id))
             retrieval["readiness"] = retrieval_tuning.readiness(conn, migration_id, embedder)
             retrieval["models"] = retrieval_tuning.list_models(conn, migration_id)
+            retrieval["decisions"] = decision_model.readiness(conn, migration_id)
+            retrieval["decision_models"] = decision_model.list_models(conn, migration_id)
         except Exception as exc:  # noqa: BLE001  advisory panel: never break the page
             retrieval["error"] = str(exc)
         conn.commit()
@@ -1786,6 +1788,8 @@ def _source_stage_page(request: Request, stage_view: str, uploaded: str, notice:
             "selected_entities": state_store.get_source_upload_entities(),
             "in_scope_entities": in_scope_entities,
             "source_uploads": source_uploads, "cross_file": cross,
+            "file_evidence": _evidence_for_files(source_uploads) if stage_view == "discover" else {},
+            "can_give_feedback": user["role"] in DISCOVERY_ROLES,
             "uploaded_entity": uploaded,
             "notice": notice,
             "error": error,
@@ -1886,6 +1890,7 @@ async def agent_pipeline_view(request: Request, notice: str = "", error: str = "
             "mapping_suggestions": mapping_suggestions,
             "rule_hints": _rule_hints(mapping_suggestions),
             "evidence": _evidence_for(mapping_suggestions),
+            "likelihood": _likelihood_for(mapping_suggestions),
             "can_give_feedback": user["role"] in DISCOVERY_ROLES,
             "information_requests": [item for item in state_store.questionnaire_data.get("mapping_information_requests", []) if item.get("entity") in selected_scope and str(item.get("migration_id", active_migration_id)) == active_migration_id],
             "notice": notice,
@@ -4426,15 +4431,17 @@ def _rules_page(request: Request, notice: str = "", error: str = "", inferred=No
     for item in inferred or []:
         if item.get("recognised"):
             item["params_text"] = json.dumps(item["params"], sort_keys=True)
+    rule_sugs = _rule_suggestions() if user["role"] in DISCOVERY_ROLES else []
     return render_template_with_context(request, "transformation_rules.html", {
         "page_title": "Business rules", "user_name": user["name"], "user_role": user["role"],
+        "evidence": _evidence_for_rule_suggestions(rule_sugs), "can_give_feedback": user["role"] in DISCOVERY_ROLES,
         "rules": rules, "rule_types": transformation_rules.RULE_TYPES,
         "derivations": derivation_list, "derivable": derivable, "migration_id": migration_id,
         "builtin_rules": sorted(SchemaMapperAgent.SUPPORTED_APPROVED_TRANSFORMS),
         "date_formats": list(transformation_rules.DATE_FORMATS),
         "can_author": user["role"] in DISCOVERY_ROLES, "can_approve": user["role"] in APPROVAL_ROLES,
         "rule_assets": [d for d in state_store.firm_knowledge_docs if d.get("category") in ("business_rules", "transformation_rule") and d.get("full_text")],
-        "suggestions": _rule_suggestions() if user["role"] in DISCOVERY_ROLES else [],
+        "suggestions": rule_sugs,
         "inferred": inferred, "inferred_label": inferred_label, "inferred_source": inferred_source or {},
         "notice": notice, "error": error,
     })
@@ -6923,26 +6930,27 @@ async def import_web_link(request: Request, category: str = Form(...), url: str 
 
 
 def _suggestion_query(m: Dict[str, Any]) -> str:
-    return " ".join(str(x) for x in (m.get("entity_name"), "source field", m.get("source_field"), "canonical field", m.get("canonical_field") or "") if x)
+    # Only the distinguishing words: filler such as "field" or "canonical" appears in every document and would match everything.
+    return " ".join(str(x) for x in (m.get("entity_name"), m.get("source_field"), m.get("canonical_field") or "") if x)
 
 
-def _evidence_for(mapping_suggestions: List[Dict[str, Any]], limit: int = 40) -> Dict[str, Dict[str, Any]]:
-    """The two best-matching knowledge chunks for each pending mapping suggestion, keyed 'Entity|SOURCE_FIELD'. Advisory: a failure shows no evidence, never a broken page."""
-    if not mapping_suggestions:
+def _evidence(items: List[Dict[str, Any]], limit: int = 40) -> Dict[str, Dict[str, Any]]:
+    """The two best-matching knowledge chunks for each item {key, subject, query, entity (optional)}, keyed by the item's key. Advisory: a failure shows
+    no evidence, never a broken page."""
+    if not items:
         return {}
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
     out: Dict[str, Dict[str, Any]] = {}
     conn = get_db_connection()
     try:
         embedder = embeddings.get_embedder()
-        by_entity: Dict[str, List[Dict[str, Any]]] = {}
-        for m in mapping_suggestions[:limit]:
-            by_entity.setdefault(m["entity_name"], []).append(m)
+        by_entity: Dict[Optional[str], List[Dict[str, Any]]] = {}
+        for it in items[:limit]:
+            by_entity.setdefault(it.get("entity"), []).append(it)
         for entity, rows in by_entity.items():
-            queries = [_suggestion_query(m) for m in rows]
-            for m, q, hits in zip(rows, queries, knowledge_index.retrieve(conn, migration_id, queries, embedder, k=2, entity=entity)):
+            for it, hits in zip(rows, knowledge_index.retrieve(conn, migration_id, [r["query"] for r in rows], embedder, k=2, entity=entity, min_score=embeddings.evidence_min_score(embedder))):
                 if hits:
-                    out[f"{entity}|{str(m['source_field']).upper()}"] = {"query": q, "subject": f"{entity}.{m['source_field']}", "hits": hits}
+                    out[it["key"]] = {"query": it["query"], "subject": it["subject"], "hits": hits}
         conn.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Evidence retrieval failed: %s", exc)
@@ -6952,14 +6960,54 @@ def _evidence_for(mapping_suggestions: List[Dict[str, Any]], limit: int = 40) ->
     return out
 
 
-def _feedback_back(key: str, message: str, return_to: str = "/firm-knowledge", anchor: str = ""):
-    page = return_to if return_to in {"/discovery", "/firm-knowledge"} else "/firm-knowledge"
-    return RedirectResponse(url=f"{page}?{key}=" + quote_plus(message) + anchor, status_code=status.HTTP_303_SEE_OTHER)
+def _likelihood_for(mapping_suggestions: List[Dict[str, Any]]) -> Dict[str, float]:
+    """What this migration's past mapping decisions suggest about each pending suggestion (only when a decision model has earned its place). Advisory."""
+    if not mapping_suggestions:
+        return {}
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        out = decision_model.likelihood(conn, migration_id, embeddings.get_embedder(), mapping_suggestions)
+        conn.commit()
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Decision model unavailable: %s", exc)
+        return {}
+    finally:
+        conn.close()
+
+
+def _evidence_for(mapping_suggestions: List[Dict[str, Any]], limit: int = 40) -> Dict[str, Dict[str, Any]]:
+    """Evidence for each pending mapping suggestion, keyed 'Entity|SOURCE_FIELD'."""
+    return _evidence([{"key": f"{m['entity_name']}|{str(m['source_field']).upper()}", "subject": f"{m['entity_name']}.{m['source_field']}", "query": _suggestion_query(m),
+                       "entity": m["entity_name"]} for m in mapping_suggestions or []], limit)
+
+
+def _evidence_for_rule_suggestions(suggestions: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Evidence for each suggested transformation rule, keyed 'Entity|source_field'. The query is the field's name and the kind of rule, never sample values."""
+    return _evidence([{"key": f"{s['entity']}|{s['source_field']}", "subject": f"{s['entity']}.{s['source_field']} rule",
+                       "query": f"{s['entity']} {s['source_field']}", "entity": s["entity"]}
+                      for s in suggestions or []])
+
+
+def _evidence_for_files(source_uploads: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Evidence for each loaded file's entity classification, keyed by file id. The query is the file name and its column names, never rows."""
+    items = []
+    for f in source_uploads or []:
+        cols = [str(c) for c in (f.get("columns") or f.get("column_names") or [])][:25]
+        items.append({"key": str(f.get("file_id")), "subject": str(f.get("filename")), "query": f"{f.get('filename')} {' '.join(cols)}", "entity": None})
+    return _evidence(items)
+
+
+def _feedback_back(key: str, message: str, return_to: str = "/firm-knowledge", anchor: str = "", q: str = ""):
+    page = return_to if return_to in {"/discovery", "/firm-knowledge", "/transformation-rules"} else "/firm-knowledge"
+    keep = ("&q=" + quote_plus(q[:knowledge_index.MAX_QUERY])) if q and page == "/firm-knowledge" else ""
+    return RedirectResponse(url=f"{page}?{key}=" + quote_plus(message) + keep + (anchor or ("#retrieval" if keep else "")), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/knowledge/feedback")
 async def knowledge_feedback(request: Request, subject: str = Form(...), query: str = Form(...), chunk_id: str = Form(...), verdict: str = Form(...),
-                             return_to: str = Form("/firm-knowledge")):
+                             return_to: str = Form("/firm-knowledge"), return_q: str = Form("")):
     """A reviewer says whether a piece of retrieved evidence helped. It is training data for this migration's retrieval and names the chunk only."""
     user = get_current_user(request)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
@@ -6968,11 +7016,11 @@ async def knowledge_feedback(request: Request, subject: str = Form(...), query: 
         try:
             knowledge_index.record_feedback(conn, migration_id, subject, query, chunk_id, 1 if verdict == "helpful" else -1, user["name"])
         except ValueError as exc:
-            return _feedback_back("error", str(exc), return_to)
+            return _feedback_back("error", str(exc), return_to, q=return_q)
         conn.commit()
     finally:
         conn.close()
-    return _feedback_back("notice", "Thanks: recorded as " + ("helpful." if verdict == "helpful" else "not helpful."), return_to)
+    return _feedback_back("notice", "Thanks: recorded as " + ("helpful." if verdict == "helpful" else "not helpful."), return_to, q=return_q)
 
 
 @app.post("/api/knowledge/retrieval/tune")
@@ -7010,6 +7058,58 @@ async def retire_tuned_retrieval(request: Request, model_id: str = Form(...)):
         conn.close()
     _target_setup_audit("RETRIEVAL_TUNING_RETIRED", user, {"model_id": model_id})
     return _feedback_back("notice", "Back to untuned retrieval.", "/firm-knowledge", "#retrieval")
+
+
+@app.post("/api/knowledge/decision-model/train")
+async def train_decision_model(request: Request):
+    """Learn from this migration's approved and rejected mapping suggestions; the result only adds an advisory line and is used only if it beats the agent's own confidence."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            res = decision_model.train(conn, migration_id, user["name"], embeddings.get_embedder())
+        except ValueError as exc:
+            return _feedback_back("error", str(exc), "/firm-knowledge", "#decision-model")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("DECISION_MODEL_TRAINED", user, {"model_id": res["model_id"], "status": res["status"], "base_acc": res["base_acc"], "tuned_acc": res["tuned_acc"]})
+    verdict = "now shown beside pending suggestions" if res["status"] == "ACTIVE" else "not used because it did not clearly beat the agent's own confidence on the held-out decisions"
+    return _feedback_back("notice", f"{res['model_id']}: right on {round(res['tuned_acc'] * 100)}% of {res['n_eval']} held-out decisions (the agent's confidence alone: "
+                                    f"{round(res['base_acc'] * 100)}%): {verdict}.", "/firm-knowledge", "#decision-model")
+
+
+@app.post("/api/knowledge/decision-model/retire")
+async def retire_decision_model(request: Request, model_id: str = Form(...)):
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            decision_model.retire(conn, migration_id, model_id)
+        except ValueError as exc:
+            return _feedback_back("error", str(exc), "/firm-knowledge", "#decision-model")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("DECISION_MODEL_RETIRED", user, {"model_id": model_id})
+    return _feedback_back("notice", "The decision model is no longer shown.", "/firm-knowledge", "#decision-model")
+
+
+@app.post("/api/knowledge/purge")
+async def purge_search_data(request: Request):
+    """Delete this migration's search data: chunks, vectors, feedback and tuned retrieval. The documents stay registered but are no longer searchable."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        gone = knowledge_index.purge_migration(conn, migration_id)
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("KNOWLEDGE_SEARCH_DATA_DELETED", user, {"migration_id": migration_id, **gone})
+    return _feedback_back("notice", f"Deleted {gone['chunks']} chunk(s), {gone['feedback']} feedback mark(s) and {gone['models']} tuned retrieval version(s).", "/firm-knowledge", "#retrieval")
 
 
 @app.post("/api/knowledge/resync")

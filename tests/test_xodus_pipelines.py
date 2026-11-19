@@ -299,3 +299,19 @@ def test_code_lists_from_the_model_become_blocking_code_set_checks():
              "code_lists": {"custodian": ["SCHWAB", "TDA"]}}
     sql = _sql(build(codes=codes, depends={"Account": ["Household"]}))
     assert "N'VALUES_IN_CODE_SET'" in sql and "NOT IN (N'SCHWAB', N'TDA')" in sql
+
+
+def test_failing_keys_are_traced_to_the_source_file_and_row_through_the_canonical_key():
+    proc = _validate_sql(build(depends={"Account": ["Household"]}))
+    acct = proc.split("IF EXISTS (SELECT 1 FROM @scope WHERE [entity] = N'Account')")[1].split("IF EXISTS (SELECT 1 FROM @scope WHERE [entity] = N'Household')")[0]
+    keys = acct.split("N'KEYS_LOADED'")[1].split("SET @rid = SCOPE_IDENTITY();")[1].split(chr(10))[1]
+    assert "UPDATE k SET k.[source_file] = c.[xodus_source_file], k.[source_row] = c.[xodus_source_row]" in keys
+    assert "JOIN [xodus_canon].[mig00a1a6577b_Account] AS c ON CAST(c.[ACCT_NUM] AS nvarchar(400)) = k.[row_key] WHERE k.[result_id] = @rid" in keys
+    assert keys.index("INSERT INTO [xodus_ops].[xodus_validation_row_key]") < keys.index("UPDATE k SET")  # the keys exist before they are traced
+
+
+def test_a_warning_rule_with_a_keys_query_records_its_failing_keys_too():
+    rule = {"rule_id": "VR-W", "version": 1, "entity": "Account", "layer": "canonical", "name": "Rep code filled", "severity": "WARN",
+            "sql_text": "SELECT COUNT(*) FROM {canon:Account} c WHERE c.[REP_CODE] IS NULL", "keys_sql": "SELECT TOP (50) CAST(c.[ACCT_NUM] AS nvarchar(400)) FROM {canon:Account} c WHERE c.[REP_CODE] IS NULL"}
+    proc = _validate_sql(build(rules_approved=[rule]))
+    assert "IF @st IN (N'FAIL', N'WARN') BEGIN INSERT INTO @k ([k]) SELECT TOP (50) CAST(c.[ACCT_NUM]" in proc.split("N'RULE:VR-W'")[1]

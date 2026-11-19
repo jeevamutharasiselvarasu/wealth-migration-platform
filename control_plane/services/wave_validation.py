@@ -36,8 +36,9 @@ def assemble(batch_id: str, registry: List[Dict[str, Any]], states: List[Dict[st
     """The board: waves in order, each with its entities, their build state and findings. A wave passes when every entity is VALIDATED."""
     state_of = {s["entity"]: s for s in states}
     keys_of: Dict[Any, List[str]] = {}
-    for k in keys:
-        keys_of.setdefault(k["result_id"], []).append(str(k["row_key"]))
+    for k in keys:  # "key (file row n)" when the key could be traced to the source row it came from
+        where = f" ({str(k['source_file']).rsplit('/', 1)[-1]} row {k['source_row']})" if k.get("source_file") and k.get("source_row") is not None else ""
+        keys_of.setdefault(k["result_id"], []).append(str(k["row_key"]) + where)
     waiver_of = {check_ref(w["entity"], w["check_name"], w["table_name"], w["field_name"]): w for w in waivers}
     findings: Dict[str, List[Dict[str, Any]]] = {}
     for r in results:
@@ -81,14 +82,14 @@ def read_board(conn: sqlite3.Connection, migration_slug: str, migration_id: str,
          "WHERE migration_id = %s AND batch_id = %s", (migration_id, batch_id)),
         ("SELECT [result_id], [wave], [entity], [check_name], [table_name], [field_name], [status], [observed_count], [expected_count], [detail], [source], [executed_utc] "
          "FROM xodus_ops.xodus_validation_result WHERE migration_id = %s AND batch_id = %s ORDER BY [wave], [entity], [result_id]", (migration_id, batch_id)),
-        ("SELECT k.[result_id], k.[row_key] FROM xodus_ops.xodus_validation_row_key AS k JOIN xodus_ops.xodus_validation_result AS r ON r.[result_id] = k.[result_id] "
+        ("SELECT k.[result_id], k.[row_key], k.[source_file], k.[source_row] FROM xodus_ops.xodus_validation_row_key AS k JOIN xodus_ops.xodus_validation_result AS r ON r.[result_id] = k.[result_id] "
          "WHERE r.migration_id = %s AND r.batch_id = %s ORDER BY k.[key_id]", (migration_id, batch_id)),
         ("SELECT [entity], [check_name], [table_name], [field_name], [reason], [approved_by], [written_utc] FROM xodus_ops.xodus_wave_waiver "
          "WHERE migration_id = %s AND batch_id = %s", (migration_id, batch_id))], connect)
     return assemble(batch_id, _rows(reg, ["entity", "wave", "depends_on"]),
                     _rows(st, ["entity", "stage", "status", "rows_written", "last_run_id", "package_version", "updated_utc"]),
                     _rows(res, ["result_id", "wave", "entity", "check_name", "table_name", "field_name", "status", "observed_count", "expected_count", "detail", "source", "executed_utc"]),
-                    _rows(keys, ["result_id", "row_key"]),
+                    _rows(keys, ["result_id", "row_key", "source_file", "source_row"]),
                     _rows(wv, ["entity", "check_name", "table_name", "field_name", "reason", "approved_by", "written_utc"]))
 
 

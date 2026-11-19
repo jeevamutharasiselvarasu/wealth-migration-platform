@@ -139,6 +139,25 @@ def record_feedback(conn: sqlite3.Connection, migration_id: str, subject: str, q
     return fid
 
 
+def purge_migration(conn: sqlite3.Connection, migration_id: str) -> Dict[str, int]:
+    """Delete everything search keeps for one migration: its chunks, their vectors, the feedback reviewers gave and the tuned retrieval trained on it.
+    Platform knowledge is not touched. The documents stay registered but are no longer searchable; they cannot be re-indexed from here."""
+    from control_plane.services import retrieval_tuning
+    ensure_tables(conn)
+    retrieval_tuning.ensure_table(conn)
+    ids = [r["chunk_id"] for r in conn.execute("SELECT chunk_id FROM knowledge_chunks WHERE migration_id = ? AND scope = 'firm'", (migration_id,)).fetchall()]
+    for i in range(0, len(ids), 200):
+        part = ids[i:i + 200]
+        conn.execute(f"DELETE FROM knowledge_vectors WHERE chunk_id IN ({','.join('?' * len(part))})", part)
+    chunks = conn.execute("DELETE FROM knowledge_chunks WHERE migration_id = ? AND scope = 'firm'", (migration_id,)).rowcount
+    feedback = conn.execute("DELETE FROM knowledge_feedback WHERE migration_id = ?", (migration_id,)).rowcount
+    models = conn.execute("DELETE FROM retrieval_models WHERE migration_id = ?", (migration_id,)).rowcount
+    from control_plane.services import decision_model
+    decision_model.ensure_table(conn)
+    models += conn.execute("DELETE FROM decision_models WHERE migration_id = ?", (migration_id,)).rowcount
+    return {"chunks": chunks, "feedback": feedback, "models": models}
+
+
 def feedback_counts(conn: sqlite3.Connection, migration_id: str) -> Dict[str, int]:
     ensure_tables(conn)
     rows = conn.execute("SELECT verdict, COUNT(*) AS n FROM knowledge_feedback AS f WHERE migration_id = ? AND EXISTS "

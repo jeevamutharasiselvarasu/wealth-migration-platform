@@ -206,3 +206,30 @@ def test_an_adapter_is_only_used_with_the_embedder_it_was_trained_on(conn):
     rt.tune(conn, "M1", "Ann", emb)
     assert rt.active_adapter(conn, "M1", emb.name) is not None and rt.active_adapter(conn, "M1", "hashing-v1-384") is None
     assert rt.active_adapter(conn, "M2", emb.name) is None  # and only for the migration whose feedback trained it
+
+
+def test_purging_a_migration_deletes_its_search_data_and_leaves_everyone_elses(conn):
+    emb = Rotated()
+    _seed_feedback(conn, emb, 60)
+    rt.tune(conn, "M1", "Ann", emb)
+    _asset(conn, "M2", "other", ["Another migration's note about accounts."])
+    _asset(conn, "-", "plat", ["Platform note about accounts."], scope="platform")
+    gone = ki.purge_migration(conn, "M1")
+    assert gone == {"chunks": 60, "feedback": 60, "models": 1}
+    assert kc.stats(conn, "M1") == {} and rt.list_models(conn, "M1") == [] and ki.feedback_counts(conn, "M1") == {"helpful": 0, "not_helpful": 0}
+    assert conn.execute("SELECT COUNT(*) FROM knowledge_vectors WHERE chunk_id IN (SELECT chunk_id FROM knowledge_chunks WHERE migration_id = 'M1')").fetchone()[0] == 0
+    assert kc.stats(conn, "M2")["other"]["chunks"] == 1  # another migration's chunks remain
+    assert conn.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE scope = 'platform' AND status = 'ACTIVE'").fetchone()[0] == 1  # and so does the platform's
+    assert ki.purge_migration(conn, "M1") == {"chunks": 0, "feedback": 0, "models": 0}
+
+
+def test_each_embedder_has_its_own_evidence_threshold_which_the_environment_can_override(monkeypatch):
+    monkeypatch.delenv("XODUS_EVIDENCE_MIN_SCORE", raising=False)
+    assert embeddings.evidence_min_score(embeddings.HashingEmbedder()) == 0.2
+    assert embeddings.evidence_min_score(Rotated()) == 0.2  # an embedder that names no threshold gets the default
+    monkeypatch.setattr(embeddings.FastEmbedder, "evidence_min_score", 0.55, raising=False)
+    assert embeddings.FastEmbedder.evidence_min_score > embeddings.HashingEmbedder.evidence_min_score  # semantic models score unrelated text higher
+    monkeypatch.setenv("XODUS_EVIDENCE_MIN_SCORE", "0.35")
+    assert embeddings.evidence_min_score(embeddings.HashingEmbedder()) == 0.35
+    monkeypatch.setenv("XODUS_EVIDENCE_MIN_SCORE", "not a number")
+    assert embeddings.evidence_min_score(embeddings.HashingEmbedder()) == 0.2

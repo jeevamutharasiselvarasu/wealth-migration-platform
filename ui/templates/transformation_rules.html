@@ -69,6 +69,7 @@
           <span class="pill {% if sg.kind == 'EXISTING' %}approved{% else %}review{% endif %}">{{ rule_types[sg.rule_type].label }} · {{ sg.origin }}</span>
         </div>
         <p class="mt-1 text-xs text-[#41506B]">{{ sg.evidence }}</p>
+        {% from "_evidence.html" import evidence_panel %}{{ evidence_panel(evidence.get(sg.entity ~ '|' ~ sg.source_field), '/transformation-rules', can_give_feedback) }}
         {% if sg.kind == 'EXISTING' %}
         <p class="mt-1 text-[11px] text-[#5A6A88]">Use <span class="font-mono font-bold">{{ sg.expression }}</span> ({{ sg.status|lower }}){% if sg.status == 'DRAFT' %} once it is approved{% endif %} in the Transformation column of the Mapping page.</p>
         {% elif sg.exists %}

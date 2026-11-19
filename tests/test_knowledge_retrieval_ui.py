@@ -133,3 +133,65 @@ def test_the_search_panel_and_evidence_do_not_leak_another_migrations_knowledge(
     page = app_env.call("analyst", "GET", "/firm-knowledge?q=account+number+layout").text
     assert "secret-firm.md" not in page and "competing firm" not in page
     assert np.isclose(np.linalg.norm(embeddings.get_embedder().embed(["account"])[0]), 1.0)
+
+
+def test_deleting_a_migrations_search_data_needs_a_reviewer_and_keeps_the_documents(app_env):
+    doc = _upload(app_env)
+    assert app_env.chunks()
+    assert "may+not+perform" in app_env.call("viewer", "POST", "/api/knowledge/purge").headers["location"]
+    r = app_env.call("analyst", "POST", "/api/knowledge/purge")
+    assert "Deleted 2 chunk(s)" in _loc(r) and app_env.chunks() == {}
+    assert [d["id"] for d in app_env.store.firm_knowledge_docs] == [doc["id"]]  # the document is still registered
+    page = app_env.call("analyst", "GET", "/firm-knowledge").text
+    assert "not indexed" in page and 'data-testid="purge-search-data"' in page
+
+
+def test_evidence_is_offered_for_rule_suggestions_and_for_file_classification_too(app_env):
+    _upload(app_env, b"rules.md", b"# Custodian codes\nCustodianName is mapped to a custodian code with a value map: SCHWAB is 1.\n\n# Files\nThe accounts file amplify_accounts.csv holds one row per Account.\n")
+    rules = app_env.app._evidence_for_rule_suggestions([{"entity": "Account", "source_field": "CustodianName", "rule_type": "VALUE_MAP"}])
+    assert rules["Account|CustodianName"]["hits"][0]["citation"] == "Section: Custodian codes" and rules["Account|CustodianName"]["subject"] == "Account.CustodianName rule"
+    files = app_env.app._evidence_for_files([{"file_id": "F1", "filename": "amplify_accounts.csv", "columns": ["AccountNumber", "CustodianName"]}])
+    assert files["F1"]["hits"][0]["citation"] == "Section: Files" and files["F1"]["query"].startswith("amplify_accounts.csv AccountNumber")
+    assert app_env.app._evidence_for_rule_suggestions([]) == {} and app_env.app._evidence_for_files([]) == {}
+
+
+def test_the_evidence_macro_renders_for_every_kind_of_suggestion():
+    import ui.app as app_module
+    macro = app_module.templates.env.get_template("_evidence.html").module.evidence_panel
+    ev = {"subject": "Account.CustodianName rule", "query": "q", "hits": [{"chunk_id": "KC-1", "asset_name": "rules.md", "citation": "Section: Custodian codes", "score": 0.4, "snippet": "SCHWAB is 1"}]}
+    html = str(macro(ev, "/transformation-rules", True))
+    assert "rules.md" in html and "Section: Custodian codes" in html and 'name="return_to" value="/transformation-rules"' in html and "Helpful" in html
+    assert "Helpful" not in str(macro(ev, "/discovery", False)) and str(macro(None, "/discovery", True)).strip() == ""
+
+
+def test_the_decision_model_panel_and_routes_follow_the_same_rules_as_retrieval_tuning(app_env):
+    page = app_env.call("analyst", "GET", "/firm-knowledge").text
+    assert 'data-testid="decision-model"' in page and 'data-testid="train-decision-model"' in page and "needs 60, at least 15 of each, 15 held out" in page
+    few = app_env.call("analyst", "POST", "/api/knowledge/decision-model/train")
+    assert "error=" in few.headers["location"] and "Not enough decisions" in _loc(few) and few.headers["location"].endswith("#decision-model")
+    assert "may+not+perform" in app_env.call("viewer", "POST", "/api/knowledge/decision-model/train").headers["location"]
+    gone = app_env.call("analyst", "POST", "/api/knowledge/decision-model/retire", {"model_id": "DM-NOPE"})
+    assert "error=" in gone.headers["location"] and "not the active" in _loc(gone)
+
+
+def test_a_suggestion_that_matches_nothing_specific_gets_no_evidence_rather_than_filler_matches(app_env):
+    _upload(app_env)
+    assert app_env.app._evidence_for([{"entity_name": "Position", "source_field": "ZzqqCode", "canonical_field": "XxwwId"}]) == {}
+
+
+def test_marking_a_search_result_keeps_the_same_search_on_screen(app_env):
+    _upload(app_env)
+    c = _db(app_env)
+    try:
+        hit = ki.retrieve(c, app_env.mid, ["account number"], embeddings.get_embedder())[0][0]
+        c.commit()
+    finally:
+        c.close()
+    r = app_env.call("analyst", "POST", "/api/knowledge/feedback", {"subject": "Search", "query": "account number", "chunk_id": hit["chunk_id"], "verdict": "helpful",
+                                                                     "return_to": "/firm-knowledge", "return_q": "account number"})
+    loc = r.headers["location"]
+    assert loc.startswith("/firm-knowledge?notice=") and "&q=account+number" in loc and loc.endswith("#retrieval")
+    page = app_env.call("analyst", "GET", "/firm-knowledge?q=account+number").text
+    assert 'name="return_q" value="account number"' in page
+    other = app_env.call("analyst", "POST", "/api/knowledge/feedback", {"subject": "Account.X", "query": "q", "chunk_id": hit["chunk_id"], "verdict": "helpful", "return_to": "/discovery", "return_q": "ignored"})
+    assert other.headers["location"].startswith("/discovery?notice=") and "q=" not in other.headers["location"]  # only the knowledge page keeps a search

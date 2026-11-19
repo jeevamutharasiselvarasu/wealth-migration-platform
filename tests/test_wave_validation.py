@@ -193,3 +193,10 @@ def test_the_board_renders_failures_row_keys_restart_and_exception_forms(monkeyp
     assert "/api/wave-validation/exceptions/EXC-1/decision" in other
     assert "could not be read" in tpl.render(dp={"board_error": "no sql", "running": {}}, wave_exceptions={})
     assert "No entity has been built" in tpl.render(dp={"board": wv.assemble("B1", REGISTRY, [], [], [], []), "running": {}}, wave_exceptions={})
+
+
+def test_failing_keys_show_the_source_file_and_row_when_they_could_be_traced():
+    results = [_result(1, "Household", "KEYS_LOADED", "FAIL", "t", "HH")]
+    keys = [{"result_id": 1, "row_key": "H-9", "source_file": "raw/corecap/households.csv", "source_row": 42}, {"result_id": 1, "row_key": "H-10", "source_file": None, "source_row": None}]
+    board = wv.assemble("B1", REGISTRY[:1], [_state("Household", "FAILED")], results, keys, [])
+    assert board["waves"][0]["entities"][0]["checks"][0]["row_keys"] == ["H-9 (households.csv row 42)", "H-10"]

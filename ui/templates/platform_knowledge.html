@@ -50,15 +50,15 @@
     {% else %}<p class="mt-1 text-xs text-[#5A6A88]" data-testid="confluence-summary">Not connected.</p>{% endif %}
     {% if is_admin %}
     <form action="/api/platform-knowledge/sources/confluence" method="post" class="mt-2 grid gap-2 text-xs" style="max-width:720px" data-testid="confluence-connection-form">
-      <input name="base_url" required class="input" aria-label="Confluence address" placeholder="https://yourco.atlassian.net/wiki  (Cloud)  or  https://wiki.yourco.com  (Data Center)" value="{{ cf.base_url if cf else '' }}">
+      <label class="grid gap-1 font-semibold text-[#41506B]">Confluence address<input name="base_url" required class="input font-normal" aria-label="Confluence address" placeholder="https://yourco.atlassian.net/wiki  (Cloud)  or  https://wiki.yourco.com  (Data Center)" value="{{ cf.base_url if cf else '' }}"></label>
       <div class="flex flex-wrap gap-2">
-        <select name="auth" class="input" aria-label="Sign-in method"><option value="basic" {% if not cf or cf.auth == 'basic' %}selected{% endif %}>Account email + API token</option><option value="bearer" {% if cf and cf.auth == 'bearer' %}selected{% endif %}>Personal access token</option></select>
-        <input name="email" class="input" aria-label="Account email" placeholder="Account email (API token sign-in)" value="{{ cf.email if cf and cf.email else '' }}" style="min-width:240px">
-        <input name="token_env_var" class="input" aria-label="Name of the server variable that holds the token" placeholder="{{ sources.default_env }}" value="{{ cf.token_env_var if cf else '' }}" style="min-width:240px">
+        <label class="grid gap-1 font-semibold text-[#41506B]">Sign-in method<select name="auth" class="input font-normal" aria-label="Sign-in method"><option value="basic" {% if not cf or cf.auth == 'basic' %}selected{% endif %}>Account email + API token</option><option value="bearer" {% if cf and cf.auth == 'bearer' %}selected{% endif %}>Personal access token</option></select></label>
+        <label class="grid gap-1 font-semibold text-[#41506B]">Account email (API token only)<input name="email" class="input font-normal" aria-label="Account email" placeholder="svc@yourco.com" value="{{ cf.email if cf and cf.email else '' }}" style="min-width:240px"></label>
+        <label class="grid gap-1 font-semibold text-[#41506B]">Server variable holding the token<input name="token_env_var" class="input font-normal" aria-label="Name of the server variable that holds the token" placeholder="{{ sources.default_env }}" value="{{ cf.token_env_var if cf else '' }}" style="min-width:240px"></label>
       </div>
       <div class="flex flex-wrap gap-2">
-        <input name="allowed_spaces" required class="input" aria-label="Allowed spaces" placeholder="Allowed space keys, e.g. DATA, MIG" value="{{ cf.allowed_spaces|join(', ') if cf else '' }}" style="min-width:300px">
-        <input name="page_cap" type="number" min="1" max="500" class="input" aria-label="Page cap" value="{{ cf.page_cap if cf else 50 }}" style="width:110px">
+        <label class="grid gap-1 font-semibold text-[#41506B]">Allowed space keys<input name="allowed_spaces" required class="input font-normal" aria-label="Allowed spaces" placeholder="DATA, MIG" value="{{ cf.allowed_spaces|join(', ') if cf else '' }}" style="min-width:300px"></label>
+        <label class="grid gap-1 font-semibold text-[#41506B]">Page cap<input name="page_cap" type="number" min="1" max="500" class="input font-normal" aria-label="Page cap" value="{{ cf.page_cap if cf else 50 }}" style="width:110px"></label>
       </div>
       <div class="flex gap-2"><button class="btn p sm">Save Confluence settings</button></div>
     </form>
@@ -69,7 +69,7 @@
     <ul class="mt-1 text-xs" data-testid="web-domains">{% for d in sources.domains %}<li class="font-mono">{{ d.host }} <span class="text-[10px] text-[#5A6A88]">approved by {{ d.added_by }}</span>
       {% if is_admin %}<form action="/api/platform-knowledge/sources/domains/remove" method="post" class="inline"><input type="hidden" name="host" value="{{ d.host }}"><button class="btn g sm">Remove</button></form>{% endif %}</li>
       {% else %}<li class="text-[#5A6A88]">None approved yet.</li>{% endfor %}</ul>
-    {% if is_admin %}<form action="/api/platform-knowledge/sources/domains" method="post" class="mt-1 flex gap-2"><input name="host" required class="input" aria-label="Host to approve" placeholder="docs.example.com"><button class="btn p sm">Approve site</button></form>{% endif %}
+    {% if is_admin %}<form action="/api/platform-knowledge/sources/domains" method="post" class="mt-1 flex gap-2"><label class="grid gap-1 text-xs font-semibold text-[#41506B]">Host name to approve<input name="host" required class="input font-normal" aria-label="Host to approve" placeholder="docs.example.com"></label><button class="btn p sm self-end">Approve site</button></form>{% endif %}
   </section>
   {% if can_edit %}
   <section class="card" data-testid="pk-add">

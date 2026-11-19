@@ -385,7 +385,7 @@ _COUNT_TEXT = {
 }
 
 
-def _check_sql(p: Dict[str, Any]) -> str:
+def _check_sql(p: Dict[str, Any], lineage: Optional[tuple] = None) -> str:
     """One planned check as T-SQL that stores its finding (and, for a failure, the keys of up to 50 failing rows)."""
     kind, name = p["kind"], p["check"]
     lines = [f"SET @n = ({p['sql']});"]
@@ -415,12 +415,16 @@ def _check_sql(p: Dict[str, Any]) -> str:
                  f"{_lit(p.get('table') or '')}, {_lit(p.get('field') or '')}, @st, @n, @x, {detail}, {rid}, {src});")
     lines.append("SET @rid = SCOPE_IDENTITY();")
     if p.get("keys_sql"):
-        lines.append(f"IF @st = N'FAIL' BEGIN INSERT INTO @k ([k]) {p['keys_sql']}; "
-                     f"INSERT INTO [{OPS}].[xodus_validation_row_key] (result_id, row_key) SELECT @rid, [k] FROM @k; DELETE FROM @k; END;")
+        # lineage = (canonical table, key field): a failing key that is the canonical key also gets the file and row it was read from.
+        trace = (f" UPDATE k SET k.[source_file] = c.[xodus_source_file], k.[source_row] = c.[xodus_source_row] FROM [{OPS}].[xodus_validation_row_key] AS k "
+                 f"JOIN [{CANON}].[{lineage[0]}] AS c ON CAST(c.[{lineage[1]}] AS nvarchar(400)) = k.[row_key] WHERE k.[result_id] = @rid;" if lineage else "")
+        lines.append(f"IF @st IN (N'FAIL', N'WARN') BEGIN INSERT INTO @k ([k]) {p['keys_sql']}; "
+                     f"INSERT INTO [{OPS}].[xodus_validation_row_key] (result_id, row_key) SELECT @rid, [k] FROM @k; DELETE FROM @k;{trace} END;")
     return "\n".join(lines)
 
 
-def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str, int], rule_items: Optional[List[Dict[str, Any]]] = None) -> str:
+def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str, int], rule_items: Optional[List[Dict[str, Any]]] = None,
+                        lineage: Optional[Dict[str, tuple]] = None) -> str:
     """usp_validate_<slug>: the blocking checks of the entities of one wave (and, when given, only the selected ones), written to
     xodus_validation_result. A failed check is a finding, never an error: the gate reads the findings. A check that compares two entities runs
     in the child's wave, and only when the parent is in the same or an earlier wave."""
@@ -454,7 +458,7 @@ def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str,
         f"FROM @scope AS sc LEFT JOIN [{OPS}].[xodus_entity_state] AS st ON st.migration_id = @MigrationId AND st.batch_id = @BatchId AND st.[entity] = sc.[entity];",
     ]
     for entity in sorted(by_entity):
-        checks = "\n".join(_check_sql(p) for p in by_entity[entity])
+        checks = "\n".join(_check_sql(p, (lineage or {}).get(entity)) for p in by_entity[entity])
         body.append(f"IF EXISTS (SELECT 1 FROM @scope WHERE [entity] = {_lit(entity)})\nBEGIN\n" + "\n".join("    " + ln for ln in checks.split("\n")) + "\nEND;")
     body += [
         # An approved exception turns the matching failed finding into WAIVED, which the gate does not count.
@@ -774,7 +778,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         rule_items.append({"check": f"RULE:{r['rule_id']}", "entity": r["entity"], "table": "", "field": str(r["name"])[:200], "kind": "zero", "expected": None,
                            "sql": validation_rules.expand(r["sql_text"], s), "keys_sql": validation_rules.expand(r["keys_sql"], s) if r.get("keys_sql") else None,
                            "warn": r["severity"] == "WARN", "rule": {"rule_id": r["rule_id"], "version": r["version"], "name": r["name"], "severity": r["severity"]}})
-    per_migration.append(_validate_procedure(s, plan, waves, rule_items))
+    trace = {e: (c["table"], c["key"]) for e, c in canon_counts.items() if c.get("key")}  # failing keys are traced to their source rows through the canonical key
+    per_migration.append(_validate_procedure(s, plan, waves, rule_items, trace))
     objects["procedures"].append(f"{OPS}.usp_validate_{s}")
     mirrors: Dict[str, List[str]] = {}
     for t in live_tables:

@@ -8,10 +8,10 @@
   {% if can_run_validation %}
   <form action="/api/validation-rules" method="post" class="mt-3 grid gap-2 text-xs" data-testid="rule-form" style="max-width:760px">
     <div class="flex flex-wrap gap-2">
-      <select name="entity" class="input" aria-label="Entity the rule is about" required>{% for e in in_scope_entities %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select>
-      <select name="layer" class="input" aria-label="Layer"><option value="canonical">Canonical table</option><option value="mirror">Mirror table (SQL only)</option></select>
-      <select name="severity" class="input" aria-label="Severity"><option value="BLOCKING">Blocking (stops the run)</option><option value="WARN">Warning (reported only)</option></select>
-      <input name="name" required minlength="3" maxlength="80" placeholder="Rule name" aria-label="Rule name" class="input" style="min-width:240px">
+      <label class="grid gap-1 font-semibold text-[#41506B]">Entity<select name="entity" class="input font-normal" aria-label="Entity the rule is about" required>{% for e in in_scope_entities %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select></label>
+      <label class="grid gap-1 font-semibold text-[#41506B]">Checks the<select name="layer" class="input font-normal" aria-label="Layer"><option value="canonical">Canonical table</option><option value="mirror">Mirror table (SQL only)</option></select></label>
+      <label class="grid gap-1 font-semibold text-[#41506B]">If it fails<select name="severity" class="input font-normal" aria-label="Severity"><option value="BLOCKING">Blocking (stops the run)</option><option value="WARN">Warning (reported only)</option></select></label>
+      <label class="grid gap-1 font-semibold text-[#41506B]">Rule name<input name="name" required minlength="3" maxlength="80" placeholder="Account number filled" aria-label="Rule name" class="input font-normal" style="min-width:240px"></label>
     </div>
     <textarea name="english" rows="2" class="input" aria-label="Rule in English" placeholder="English, for example: every Account must have a matching Household on HH_ID"></textarea>
     <details><summary class="cursor-pointer">Or write SQL instead (leave the English empty)</summary>

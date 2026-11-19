@@ -284,6 +284,8 @@ def app_env(tmp_path, monkeypatch):
     import ui.app as app_module
     import ui.state as state_module
     from ui.state import WorkspaceStateStore
+    import control_plane.db as db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "knowledge.db")  # a database of its own: the real App_Data is never written by these tests
     monkeypatch.setattr(state_module, "SOURCE_UPLOAD_ROOT", tmp_path / "uploads")
     store = WorkspaceStateStore()
     store.questionnaire_data["migration_id"] = "MIG-K" + __import__("uuid").uuid4().hex[:8]

@@ -48,6 +48,8 @@ def _bucket(token: str, dim: int) -> int:
 
 
 class HashingEmbedder:
+    evidence_min_score = 0.2  # similarity below which a match is not shown as evidence (a lexical score: shared words only)
+
     def __init__(self, dim: int = HASH_DIM) -> None:
         self.dim = dim
         self.name = f"hashing-v1-{dim}"
@@ -69,6 +71,8 @@ class HashingEmbedder:
 
 
 class FastEmbedder:
+    evidence_min_score = 0.55  # a starting point for small BGE-style models, whose unrelated texts still score around 0.4: tune with XODUS_EVIDENCE_MIN_SCORE
+
     def __init__(self, model: str) -> None:
         try:
             from fastembed import TextEmbedding
@@ -86,6 +90,15 @@ class FastEmbedder:
         norms = np.linalg.norm(rows, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         return rows / norms
+
+
+def evidence_min_score(embedder) -> float:
+    """How similar a chunk must be to count as evidence. Scores of different embedders are not comparable, so each carries its own threshold; the
+    environment variable XODUS_EVIDENCE_MIN_SCORE overrides it."""
+    try:
+        return float(os.environ["XODUS_EVIDENCE_MIN_SCORE"])
+    except (KeyError, ValueError):
+        return float(getattr(embedder, "evidence_min_score", 0.2))
 
 
 _cached: Optional[object] = None
