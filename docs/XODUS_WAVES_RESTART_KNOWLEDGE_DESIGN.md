@@ -56,6 +56,14 @@ Validation findings can then name source file and row, not only the key. Everyth
 
 ## 5. Option 3: wave gates
 
+Built in phase 3 (2026-11-19), with these differences from the first draft:
+
+- `PL_XODUS_Source_To_Canonical` is gone. `PL_XODUS_Run` is Check_Scope, `PL_XODUS_Load_Raw`, then a sequential loop over waves calling `PL_XODUS_Wave` (parallel canonical build, parallel mirror build, `usp_xodus_validate_wave`, gate). Canonical and mirror are built wave by wave, so there is no longer one whole-mirror step in a full run (the whole-mirror procedure still exists).
+- The blocking checks are the same plan stage 10 builds (`target_validation.build_plan`), compiled to SQL in `usp_validate_<slug>` at package build time: row count against the raw file, key loaded and unique, required fields, duplicates resolved, code sets (the app now passes the model's code lists in the package inputs), type fit from the target spec, orphans (in the child's wave, only when the parent is in the same or an earlier wave), plus `ENTITY_BUILT` (an unbuilt or stale entity fails). Lengths, live NOT NULL columns and reference lists need the live schema, which only exists after the deployment check, so they stay in stage 10.
+- Findings: `xodus_validation_result` (column `observed_count` and `expected_count`, not `failing_count`) and `xodus_validation_row_key` (keys only, at most 50 per finding; the source file and row columns exist but are not filled yet).
+- Waivers: `xodus_wave_waiver` exists, the access script grants the platform INSERT on it, and the procedure marks matching failures WAIVED so the gate passes. Nothing in the application writes waivers yet (phase 4).
+- Entity state moves to VALIDATED or FAILED after each wave's checks.
+
 - Waves are the dependency levels already implied by `_entity_depends`. Entities in a wave run in parallel (`isSequential: false`, bounded `batchCount`) and are validated together.
 - New stable pipeline `PL_XODUS_Wave(Wave)`: build canonical for the wave, build mirror for the wave, `usp_xodus_validate_wave`, then an IfCondition. A FAIL on a BLOCKING check logs and fails the run; later waves do not start.
 - Per-entity results mean a failed entity can be rerun alone (section 4) while wave siblings that passed keep their state.

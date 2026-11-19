@@ -24,7 +24,7 @@ from control_plane.services.sql_package import _lit, _q, translate
 
 RAW, CANON, MIRROR, OPS, LANDING, REF = "xodus_raw", "xodus_canon", "xodus_mirror", "xodus_ops", "xodus_landing", "xodus_ref"
 LS_BLOB, LS_XODUS, LS_LIVE = "LS_BLOB", "LS_SQL_Target", "LS_SQL_Simplicity"
-STABLE_PIPELINES = ("PL_XODUS_Run", "PL_XODUS_Source_To_Canonical", "PL_XODUS_Load_Raw_File", "PL_XODUS_Canonical_Entity",
+STABLE_PIPELINES = ("PL_XODUS_Run", "PL_XODUS_Load_Raw", "PL_XODUS_Wave", "PL_XODUS_Load_Raw_File", "PL_XODUS_Canonical_Entity",
                     "PL_XODUS_Canonical_To_Mirror", "PL_XODUS_Promote")
 HEADER = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ .\-]{0,127}$")
 TRACE = ("[xodus_migration_id] nvarchar(64) NULL", "[xodus_batch_id] nvarchar(64) NULL", "[xodus_run_id] nvarchar(64) NULL",
@@ -133,6 +133,19 @@ WHERE m.[layer] = N'mirror'""")
                               "[entity] sysname NOT NULL, [stage] nvarchar(16) NOT NULL, [status] nvarchar(16) NOT NULL, [rows_written] bigint NULL, "
                               "[last_run_id] nvarchar(64) NULL, [row_hash_digest] char(64) NULL, [updated_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), "
                               "CONSTRAINT [UQ_xodus_entity_state] UNIQUE ([migration_id], [batch_id], [entity])",
+        # Blocking checks run inside the pipeline after each wave. One row per check and entity; the application reads these to show each entity's output.
+        "xodus_validation_result": "[result_id] bigint IDENTITY(1,1) NOT NULL PRIMARY KEY, [run_id] nvarchar(64) NOT NULL, [migration_id] nvarchar(64) NOT NULL, "
+                                   "[batch_id] nvarchar(64) NOT NULL, [wave] int NOT NULL, [entity] sysname NOT NULL, [check_name] nvarchar(64) NOT NULL, "
+                                   "[table_name] nvarchar(256) NOT NULL, [field_name] nvarchar(512) NOT NULL, [status] nvarchar(16) NOT NULL, "
+                                   "[observed_count] bigint NULL, [expected_count] bigint NULL, [detail] nvarchar(4000) NULL, [rule_id] nvarchar(64) NULL, "
+                                   "[source] nvarchar(16) NOT NULL DEFAULT N'BUILTIN', [executed_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()",
+        # Keys of the failing rows only (at most 50 per finding), never other values; the lineage columns are filled when the key can be traced to a source row.
+        "xodus_validation_row_key": "[key_id] bigint IDENTITY(1,1) NOT NULL PRIMARY KEY, [result_id] bigint NOT NULL, [row_key] nvarchar(400) NOT NULL, "
+                                    "[source_file] nvarchar(1024) NULL, [source_row] bigint NULL",
+        # An approved exception for a blocking check: the platform may INSERT here (like the promotion gate); the validation procedure marks the matching finding WAIVED.
+        "xodus_wave_waiver": "[waiver_id] bigint IDENTITY(1,1) NOT NULL PRIMARY KEY, [migration_id] nvarchar(64) NOT NULL, [batch_id] nvarchar(64) NOT NULL, "
+                             "[entity] sysname NOT NULL, [check_name] nvarchar(64) NOT NULL, [table_name] nvarchar(256) NOT NULL, [field_name] nvarchar(512) NOT NULL, "
+                             "[reason] nvarchar(1000) NOT NULL, [approved_by] nvarchar(256) NOT NULL, [written_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME()",
         "xodus_schema_version": "[migration_slug] nvarchar(32) NOT NULL, [component] nvarchar(32) NOT NULL, [version] nvarchar(64) NOT NULL, "
                                 "[deployed_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), CONSTRAINT [PK_xodus_schema_version] PRIMARY KEY ([migration_slug], [component])",
         "xodus_raw_files": "[migration_slug] nvarchar(32) NOT NULL, [seq] int NOT NULL, [container] nvarchar(63) NOT NULL, [folder] nvarchar(512) NOT NULL, "
@@ -205,6 +218,39 @@ BEGIN
     ELSE SELECT o.entity FROM [{OPS}].[xodus_load_order] AS o JOIN [{OPS}].[xodus_entity_registry] AS r ON r.migration_slug = o.migration_slug AND r.entity = o.entity
          WHERE o.migration_slug = @MigrationSlug AND r.mirror_tables <> N'' AND o.entity IN ({sel}) ORDER BY o.seq;
 END""")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_waves] @MigrationSlug nvarchar(32), @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- The waves to run, in order: all of them, or the waves the selected entities are in.
+    SELECT DISTINCT r.wave FROM [{OPS}].[xodus_entity_registry] AS r WHERE r.migration_slug = @MigrationSlug AND (@Entities = N'' OR r.entity IN ({sel})) ORDER BY r.wave;
+END""")
+    for name, extra in (("usp_xodus_wave_entities", ""), ("usp_xodus_wave_mirror_entities", " AND r.mirror_tables <> N''")):
+        b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[{name}] @MigrationSlug nvarchar(32), @Wave int, @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- The entities of one wave (siblings: none depends on another) that the run covers, in load order.
+    SELECT o.entity FROM [{OPS}].[xodus_load_order] AS o JOIN [{OPS}].[xodus_entity_registry] AS r ON r.migration_slug = o.migration_slug AND r.entity = o.entity
+        WHERE o.migration_slug = @MigrationSlug AND r.wave = @Wave{extra} AND (@Entities = N'' OR o.entity IN ({sel})) ORDER BY o.seq;
+END""")
+    b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_validate_wave]
+    @MigrationSlug nvarchar(32), @MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64), @Wave int, @Entities nvarchar(2000) = N''
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @MigrationSlug LIKE N'%[^a-z0-9]%' THROW 50001, N'Unsafe migration name.', 1;
+    DECLARE @proc nvarchar(300) = QUOTENAME(N'{OPS}') + N'.' + QUOTENAME(N'usp_validate_' + @MigrationSlug);
+    IF OBJECT_ID(@proc, N'P') IS NULL THROW 50002, N'The validation procedure for this migration is not deployed. Run the setup pipeline first.', 1;
+    DECLARE @sql nvarchar(400) = N'EXEC ' + @proc + N' @MigrationId = @m, @BatchId = @b, @RunId = @r, @Wave = @w, @Entities = @e';
+    EXEC sp_executesql @sql, N'@m nvarchar(64), @b nvarchar(64), @r nvarchar(64), @w int, @e nvarchar(2000)', @m = @MigrationId, @b = @BatchId, @r = @RunId, @w = @Wave, @e = @Entities;
+    -- The gate: one row, ok = 1 when no entity of the wave has a failed (and not waived) blocking check.
+    DECLARE @bad nvarchar(max) = (SELECT STRING_AGG(CONCAT(r.entity, N': ', r.check_name, CASE WHEN r.field_name <> N'' THEN CONCAT(N' (', r.field_name, N')') ELSE N'' END), N'; ')
+        FROM [{OPS}].[xodus_validation_result] AS r WHERE r.migration_id = @MigrationId AND r.batch_id = @BatchId AND r.wave = @Wave AND r.status = N'FAIL'
+          AND (@Entities = N'' OR r.entity IN ({sel})));
+    SELECT CASE WHEN @bad IS NULL THEN 1 ELSE 0 END AS ok,
+           CASE WHEN @bad IS NULL THEN CONCAT(N'Wave ', @Wave, N' passed.') ELSE LEFT(CONCAT(N'Wave ', @Wave, N' failed: ', @bad), 3900) END AS detail;
+END""")
     b.append(f"""CREATE OR ALTER PROCEDURE [{OPS}].[usp_xodus_live_tables] @MigrationSlug nvarchar(32)
 AS
 BEGIN
@@ -257,7 +303,7 @@ BEGIN
     SELECT @msg = @msg + s.entity + N' was built by another package version. ' FROM [{OPS}].[xodus_entity_state] AS s
         WHERE s.migration_id = @MigrationId AND s.batch_id = @BatchId AND ISNULL(s.package_version, N'') <> ISNULL(@version, N'');
     IF @msg <> N'' BEGIN SET @msg = LEFT(@msg + N'The package changed since this batch was built; run the whole batch again.', 2000); THROW 50006, @msg, 1; END;
-    SELECT @msg = @msg + e.entity + N' needs ' + p.parent + N' built in this batch first (it is stale or not built). ' FROM @sel AS e
+    SELECT @msg = @msg + e.entity + N' needs ' + p.parent + N' built in this batch first (it is stale, failed validation or not built). ' FROM @sel AS e
         JOIN [{OPS}].[xodus_entity_registry] AS r ON r.migration_slug = @MigrationSlug AND r.entity = e.entity
         CROSS APPLY (SELECT LTRIM(RTRIM(value)) AS parent FROM STRING_SPLIT(r.depends_on, N',') WHERE LTRIM(RTRIM(value)) <> N'') AS p
         WHERE p.parent NOT IN (SELECT entity FROM @sel)
@@ -319,6 +365,103 @@ BEGIN
     SELECT CASE WHEN @bad = N'' THEN 1 ELSE 0 END AS ok, CASE WHEN @bad = N'' THEN N'The mirror matches the signed-off counts.' ELSE @bad END AS detail;
 END""")
     return b
+
+
+# Wording of each blocking check's finding: (pass text, text after the count when it fails). Counts only, never values.
+_ZERO_TEXT = {
+    "KEYS_LOADED": ("Every canonical key is in the mirror table.", "canonical key(s) are missing from the mirror table."),
+    "TARGET_KEY_UNIQUE": ("No duplicate keys in the mirror table.", "duplicate key value(s) in the mirror table."),
+    "REQUIRED_NOT_BLANK": ("Populated in every mirror row.", "mirror row(s) have a blank value."),
+    "VALUES_FIT_TYPE": ("Every populated value converts to the live column's type.",
+                        "row(s) hold a value that does not convert to the live column's type; the promotion would fail on them."),
+    "VALUES_FIT_LENGTH": ("Every value fits the live column.", "row(s) are longer than the live column allows."),
+    "VALUES_IN_REFERENCE_LIST": ("Every populated value is in the target's reference list.", "row(s) hold a value that is not in the target's reference list."),
+    "DUPLICATES_RESOLVED": ("No two canonical records share this match value.", "match value(s) are still shared by more than one canonical record."),
+    "VALUES_IN_CODE_SET": ("Every populated value is a canonical code.", "canonical row(s) hold a value with no approved canonical code."),
+    "NO_ORPHANS": ("Every row points at an existing parent record.", "row(s) point at a parent record that is not in the mirror."),
+}
+_COUNT_TEXT = {
+    "STAGING_ROW_COUNT": "N'The canonical table holds '", "ROWS_LOADED": "N'The mirror table holds '",
+}
+
+
+def _check_sql(p: Dict[str, Any]) -> str:
+    """One planned check as T-SQL that stores its finding (and, for a failure, the keys of up to 50 failing rows)."""
+    kind, name = p["kind"], p["check"]
+    lines = [f"SET @n = ({p['sql']});"]
+    if p.get("expected_sql"):
+        lines.append(f"SET @x = ({p['expected_sql']});")
+    elif kind in ("equals", "at_least") and isinstance(p.get("expected"), int):
+        lines.append(f"SET @x = {p['expected']};")
+    else:
+        lines.append("SET @x = NULL;")
+    if kind == "equals":
+        status = "CASE WHEN @x IS NULL THEN N'WARN' WHEN @n = @x THEN N'PASS' ELSE N'FAIL' END"
+    elif kind == "at_least":
+        status = "CASE WHEN @x IS NULL THEN N'WARN' WHEN @n >= @x THEN N'PASS' ELSE N'FAIL' END"
+    else:
+        status = "CASE WHEN @n = 0 THEN N'PASS' ELSE N'FAIL' END"
+    if kind in ("equals", "at_least"):
+        what = "the source delivered " if name == "STAGING_ROW_COUNT" else "the canonical table holds "
+        detail = (f"CONCAT({_COUNT_TEXT[name]}, @n, N' row(s); {what}', ISNULL(CAST(@x AS nvarchar(30)), N'an unknown number of'), N'.')")
+    else:
+        ok, bad = _ZERO_TEXT[name]
+        detail = f"CASE WHEN @n = 0 THEN {_lit(ok)} ELSE CONCAT(@n, N' ', {_lit(bad)}) END"
+    lines.append(f"SET @st = {status};")
+    lines.append(f"INSERT INTO [{OPS}].[xodus_validation_result] (run_id, migration_id, batch_id, wave, entity, check_name, table_name, field_name, status, "
+                 f"observed_count, expected_count, detail, source) VALUES (@RunId, @MigrationId, @BatchId, @Wave, {_lit(p['entity'])}, {_lit(name)}, "
+                 f"{_lit(p.get('table') or '')}, {_lit(p.get('field') or '')}, @st, @n, @x, {detail}, N'BUILTIN');")
+    lines.append("SET @rid = SCOPE_IDENTITY();")
+    if p.get("keys_sql"):
+        lines.append(f"IF @st = N'FAIL' BEGIN INSERT INTO @k ([k]) {p['keys_sql']}; "
+                     f"INSERT INTO [{OPS}].[xodus_validation_row_key] (result_id, row_key) SELECT @rid, [k] FROM @k; DELETE FROM @k; END;")
+    return "\n".join(lines)
+
+
+def _validate_procedure(slug_: str, plan: List[Dict[str, Any]], waves: Dict[str, int]) -> str:
+    """usp_validate_<slug>: the blocking checks of the entities of one wave (and, when given, only the selected ones), written to
+    xodus_validation_result. A failed check is a finding, never an error: the gate reads the findings. A check that compares two entities runs
+    in the child's wave, and only when the parent is in the same or an earlier wave."""
+    by_entity: Dict[str, List[Dict[str, Any]]] = {}
+    for p in plan:
+        if p["kind"] not in ("equals", "at_least", "zero") or not p.get("sql"):
+            continue
+        if p["check"] == "NO_ORPHANS":  # 'column -> Parent.key': the parent is named in the field
+            parent = str(p["field"]).split("→", 1)[-1].strip().split(".")[0]
+            if waves.get(parent, 99) > waves.get(p["entity"], -1):
+                continue
+        by_entity.setdefault(p["entity"], []).append(p)
+    sel = "SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@Entities, N',') WHERE LTRIM(RTRIM(value)) <> N''"
+    body = [
+        "DECLARE @scope TABLE ([entity] sysname NOT NULL PRIMARY KEY);",
+        f"INSERT INTO @scope SELECT r.[entity] FROM [{OPS}].[xodus_entity_registry] AS r WHERE r.migration_slug = {_lit(slug_)} AND r.[wave] = @Wave "
+        f"AND (@Entities = N'' OR r.[entity] IN ({sel}));",
+        # Findings of the entities being validated are replaced (a rerun or a second validation never leaves old findings behind).
+        f"DELETE k FROM [{OPS}].[xodus_validation_row_key] AS k JOIN [{OPS}].[xodus_validation_result] AS r ON r.result_id = k.result_id "
+        "WHERE r.migration_id = @MigrationId AND r.batch_id = @BatchId AND r.[entity] IN (SELECT [entity] FROM @scope);",
+        f"DELETE FROM [{OPS}].[xodus_validation_result] WHERE migration_id = @MigrationId AND batch_id = @BatchId AND [entity] IN (SELECT [entity] FROM @scope);",
+        "DECLARE @n bigint, @x bigint, @st nvarchar(16), @rid bigint;",
+        "DECLARE @k TABLE ([k] nvarchar(400));",
+        f"INSERT INTO [{OPS}].[xodus_validation_result] (run_id, migration_id, batch_id, wave, entity, check_name, table_name, field_name, status, detail, source)\n"
+        "SELECT @RunId, @MigrationId, @BatchId, @Wave, sc.[entity], N'ENTITY_BUILT', N'', N'', "
+        "CASE WHEN st.[status] IS NULL OR st.[status] = N'STALE' THEN N'FAIL' ELSE N'PASS' END, "
+        "CASE WHEN st.[status] IS NULL THEN N'The entity was not built in this batch.' "
+        "WHEN st.[status] = N'STALE' THEN N'A parent was rebuilt after this entity; rebuild it.' ELSE N'Built in this batch.' END, N'BUILTIN'\n"
+        f"FROM @scope AS sc LEFT JOIN [{OPS}].[xodus_entity_state] AS st ON st.migration_id = @MigrationId AND st.batch_id = @BatchId AND st.[entity] = sc.[entity];",
+    ]
+    for entity in sorted(by_entity):
+        checks = "\n".join(_check_sql(p) for p in by_entity[entity])
+        body.append(f"IF EXISTS (SELECT 1 FROM @scope WHERE [entity] = {_lit(entity)})\nBEGIN\n" + "\n".join("    " + ln for ln in checks.split("\n")) + "\nEND;")
+    body += [
+        # An approved exception turns the matching failed finding into WAIVED, which the gate does not count.
+        f"UPDATE r SET r.[status] = N'WAIVED' FROM [{OPS}].[xodus_validation_result] AS r JOIN [{OPS}].[xodus_wave_waiver] AS w ON w.migration_id = r.migration_id "
+        "AND w.batch_id = r.batch_id AND w.[entity] = r.[entity] AND w.check_name = r.check_name AND w.table_name = r.table_name AND w.field_name = r.field_name "
+        "WHERE r.migration_id = @MigrationId AND r.batch_id = @BatchId AND r.[entity] IN (SELECT [entity] FROM @scope) AND r.[status] = N'FAIL';",
+        f"UPDATE st SET st.[status] = CASE WHEN EXISTS (SELECT 1 FROM [{OPS}].[xodus_validation_result] AS r WHERE r.migration_id = @MigrationId AND r.batch_id = @BatchId "
+        "AND r.[entity] = st.[entity] AND r.[status] = N'FAIL') THEN N'FAILED' ELSE N'VALIDATED' END, st.updated_utc = SYSUTCDATETIME() "
+        f"FROM [{OPS}].[xodus_entity_state] AS st WHERE st.migration_id = @MigrationId AND st.batch_id = @BatchId AND st.[entity] IN (SELECT [entity] FROM @scope) AND st.[status] <> N'STALE';",
+    ]
+    return _proc(f"[{OPS}].[usp_validate_{slug_}]", "@MigrationId nvarchar(64), @BatchId nvarchar(64), @RunId nvarchar(64), @Wave int, @Entities nvarchar(2000) = N''", body)
 
 
 def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[str, Any]], rules: Dict[str, Dict[str, Any]],
@@ -496,6 +639,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     # Canonical -> mirror: one mirror table per live table, filled by one procedure (all tables in one transaction).
     mirror_by_entity: Dict[str, List[str]] = {}
     live_tables: List[Dict[str, Any]] = []
+    checked: Dict[str, Dict[str, Any]] = {}  # entity -> what the blocking checks of its wave read (stage 10 builds the same shape from the live schema)
+    code_lists = (codes or {}).get("code_lists") or {}
     for entity in sorted({m["entity_name"] for m in approved_target}):
         reading["entity"] = entity
         mirror_body: List[str] = mirror_by_entity.setdefault(entity, [])
@@ -546,6 +691,24 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             mirror_body.append(f"EXEC [{OPS}].[usp_xodus_count] @MigrationId, @RunId, @BatchId, N'mirror', N'{MIRROR}', N'{mtable}';")
             key_cols = [c for c, m in zip(cols, trows) if sql_package._is_key_field(m["canonical_field"], entity)]
             types = {c: t for c, t in all_cols}
+            cn = canon_counts[entity]
+            ce = checked.setdefault(entity, {"staging_table": cn["table"], "expected_rows": None, "key": cn["key"], "tables": {}, "unmapped_required": []})
+            if len(cn["files"]) == 1:
+                ce["expected_sql"] = f"SELECT COUNT(*) FROM [{RAW}].[{cn['files'][0]}]"
+            if cn.get("xref"):
+                ce["expected_sql"] = f"SELECT COUNT(DISTINCT [survivor_key]) FROM [{CANON}].[{cn['xref']}]"
+                ce["resolution"] = cn.get("resolution") or []
+            coded_here = {f: cs for f, cs in (applied_codes.get(entity) or {}).items() if code_lists.get(cs)}
+            if coded_here:
+                ce["code_sets"] = {f: list(code_lists[cs]) for f, cs in coded_here.items()}
+            fmap = {f["name"]: f for f in body["fields"]}
+            ce["tables"][mtable] = {
+                "columns": {m["canonical_field"]: sql_package._ident(fmap[m["target_field"]]["column"]) for m in trows},
+                "required": [sql_package._ident(fmap[m["target_field"]]["column"]) for m in trows if fmap[m["target_field"]].get("required")],
+                "code_lists": {}, "max_lengths": {}, "row_key": "xodus_source_key",
+                "types": {sql_package._ident(fmap[m["target_field"]]["column"]): fmap[m["target_field"]]["type"] for m in trows
+                          if fmap[m["target_field"]].get("type") and str(fmap[m["target_field"]]["type"]).lower() not in
+                          ("string", "nvarchar", "varchar", "nchar", "char", "text", "ntext", "boolean", "bit")}}
             live_tables.append({"entity": entity, "live_table": table, "mirror_table": mtable, "columns": cols, "key_columns": key_cols,
                                 "all_columns": [c for c, _ in all_cols], "types": {c: types.get(c, "string") for c in cols}})
     if not live_tables:
@@ -585,6 +748,10 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     waves: Dict[str, int] = {}
     for entity in load_order:  # the load order already puts parents first; a parent that comes later (a cycle) is ignored
         waves[entity] = 1 + max([waves[d] for d in deps[entity] if d in waves], default=-1)
+    from control_plane.services import target_validation  # the checks of stage 10, planned over the XODUS canonical and mirror tables
+    plan = target_validation.build_plan(schema=MIRROR, staging_schema=CANON, entities=checked)
+    per_migration.append(_validate_procedure(s, plan, waves))
+    objects["procedures"].append(f"{OPS}.usp_validate_{s}")
     mirrors: Dict[str, List[str]] = {}
     for t in live_tables:
         mirrors.setdefault(t["entity"], []).append(t["mirror_table"])
@@ -664,6 +831,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
         "liveSchema": live_schema, "pipelines": list(STABLE_PIPELINES) + [f"PL_XODUS_Setup_{s}"], "setupPipeline": f"PL_XODUS_Setup_{s}",
         "linkedServices": [LS_BLOB, LS_XODUS, LS_LIVE], "rawFiles": [{"file": f["file_name"], "table": raw_names[f["file_name"]]} for f in raw_files],
         "rawFolder": folder, "container": container, "loadOrder": load_order, "waves": waves, "dependsOn": deps, "columnMapRows": len(lineage),
+        "waveChecks": {e: sorted({p["check"] for p in plan if p["entity"] == e and p["kind"] in ("equals", "at_least", "zero")}) for e in checked},
         "canonical": canon_counts, "liveTables": live_tables,
         "objects": objects, "provenance": provenance or {}, "deployed": False,
         "codeSets": ({"modelVersion": codes.get("model_version"), "coded": applied_codes, "sourceValues": len(codes.get("source_map") or []),
@@ -675,11 +843,12 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     out["README.txt"] = (
         f"XODUS data-plane package for {migration_id} (version {version}). Nothing was executed or deployed by XODUS.\n\n"
         "Pipelines (stable; they take the migration and batch as parameters):\n"
-        "  PL_XODUS_Run                 raw files -> canonical -> mirror for one batch (started by XODUS through the service principal)\n"
-        "  PL_XODUS_Source_To_Canonical loads every raw file, then builds each entity in the load order\n"
+        "  PL_XODUS_Run                 one batch: raw files, then wave by wave (started by XODUS through the service principal); Entities limits it to some entities\n"
+        "  PL_XODUS_Load_Raw            loads the raw files (or only those the selected entities read)\n"
+        "  PL_XODUS_Wave                one wave: its entities are built in parallel (canonical, mirror), then the blocking checks run as SQL; a failure stops the run\n"
         "  PL_XODUS_Load_Raw_File       one source file from Blob storage into its xodus_raw table, as received\n"
         "  PL_XODUS_Canonical_Entity    runs the entity's generated procedure (raw -> canonical)\n"
-        "  PL_XODUS_Canonical_To_Mirror canonical -> mirror of the live tables, one transaction\n"
+        "  PL_XODUS_Canonical_To_Mirror canonical -> mirror of the live tables, for one entity (or all, in one transaction)\n"
         "  PL_XODUS_Promote             after sign-off: checks the promotion gate, copies the mirror to Simplicity and merges into the live tables\n"
         f"  PL_XODUS_Setup_{s}   deploys this migration's SQL (run it after merging, before the first run and after every change)\n\n"
         f"Linked services needed in the factory (created by hand, managed identity): {LS_BLOB}, {LS_XODUS} (XODUS database), {LS_LIVE} (Simplicity database).\n"
@@ -742,11 +911,12 @@ def _exec(name: str, pipeline: str, params: Dict[str, Any], depends: Optional[Li
             "typeProperties": {"pipeline": _ref(pipeline, "PipelineReference"), "waitOnCompletion": True, "parameters": params}}
 
 
-def _lookup(name: str, proc: str, params: Dict[str, Any], depends: Optional[List[tuple]] = None, first_row: bool = False) -> Dict[str, Any]:
+def _lookup(name: str, proc: str, params: Dict[str, Any], depends: Optional[List[tuple]] = None, first_row: bool = False,
+            types: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     return {"name": name, "type": "Lookup", "dependsOn": [{"activity": a, "dependencyConditions": [c]} for a, c in (depends or [])],
             "policy": {"timeout": "0.00:30:00", "retry": 0},
             "typeProperties": {"source": {"type": "AzureSqlSource", "sqlReaderStoredProcedureName": f"[{OPS}].[{proc}]",
-                                          "storedProcedureParameters": {k: {"type": "String", "value": v} for k, v in params.items()}},
+                                          "storedProcedureParameters": {k: {"type": (types or {}).get(k, "String"), "value": v} for k, v in params.items()}},
                                "dataset": {"referenceName": "DS_XODUS_Sql", "type": "DatasetReference", "parameters": {"schema": OPS, "table": "xodus_run_log"}},
                                "firstRowOnly": first_row}}
 
@@ -763,21 +933,21 @@ def _pipelines(s: str, xodus_batches: List[str], live_batches: List[str]) -> Dic
     check = _script("Check_Scope", LS_XODUS, f"EXEC [{OPS}].[usp_xodus_check_scope] @MigrationSlug = @slug, @MigrationId = @mig, @BatchId = @batch, @Entities = @entities",
                     [("slug", "String", _p("MigrationSlug")), ("mig", "String", _p("MigrationId")), ("batch", "String", _p("BatchId")),
                      ("entities", "String", _p("Entities"))], [("Log_Start", "Succeeded")])
-    s2c = _exec("Run_Source_To_Canonical", "PL_XODUS_Source_To_Canonical", {**child, "Entities": _p("Entities")}, [("Log_OK_Check_Scope", "Succeeded")])
-    scope = _lookup("Get_Mirror_Scope", "usp_xodus_mirror_scope", {"MigrationSlug": _p("MigrationSlug"), "Entities": _p("Entities")},
-                    [("Run_Source_To_Canonical", "Succeeded")])
-    c2m = {"name": "Run_Canonical_To_Mirror", "type": "ForEach", "dependsOn": [{"activity": "Get_Mirror_Scope", "dependencyConditions": ["Succeeded"]}],
-           "typeProperties": {"items": _e("@activity('Get_Mirror_Scope').output.value"), "isSequential": True,
-                              "activities": [_exec("Run_Mirror", "PL_XODUS_Canonical_To_Mirror", {**child, "Entity": _e("@item().entity")})]}}
+    load = _exec("Run_Load_Raw", "PL_XODUS_Load_Raw", {**child, "Entities": _p("Entities")}, [("Log_OK_Check_Scope", "Succeeded")])
+    waves = _lookup("Get_Waves", "usp_xodus_waves", {"MigrationSlug": _p("MigrationSlug"), "Entities": _p("Entities")}, [("Run_Load_Raw", "Succeeded")])
+    # One wave after another (a wave's entities are siblings and run in parallel inside PL_XODUS_Wave); a failed gate stops the run before the next wave.
+    each_wave = {"name": "Run_Waves", "type": "ForEach", "dependsOn": [{"activity": "Get_Waves", "dependencyConditions": ["Succeeded"]}],
+                 "typeProperties": {"items": _e("@activity('Get_Waves').output.value"), "isSequential": True,
+                                    "activities": [_exec("Run_Wave", "PL_XODUS_Wave", {**child, "Wave": _e("@string(item().wave)"), "Entities": _p("Entities")})]}}
     acts = [start, *_guarded(check, "PL_XODUS_Run", "Check_Scope", "@pipeline().RunId"),
-            *_guarded(s2c, "PL_XODUS_Run", "Source_To_Canonical", "@pipeline().RunId"), scope,
-            *_guarded(c2m, "PL_XODUS_Run", "Canonical_To_Mirror", "@pipeline().RunId"),
-            _log("Log_Done", "PL_XODUS_Run", "Pipeline", "SUCCEEDED", [("Log_OK_Run_Canonical_To_Mirror", "Succeeded")], "@pipeline().RunId")]
+            *_guarded(load, "PL_XODUS_Run", "Load_Raw", "@pipeline().RunId"), waves,
+            *_guarded(each_wave, "PL_XODUS_Run", "Waves", "@pipeline().RunId"),
+            _log("Log_Done", "PL_XODUS_Run", "Pipeline", "SUCCEEDED", [("Log_OK_Run_Waves", "Succeeded")], "@pipeline().RunId")]
     for a in acts:  # a failed step also closes the run row as FAILED
         if a["name"].startswith("Log_Fail_"):
             a["typeProperties"]["scripts"][0]["parameters"][4]["value"] = "Pipeline"
-    p["PL_XODUS_Run"] = {"description": "One batch: source files -> canonical -> mirror, or (Entities set) only those entities rebuilt inside an existing batch. "
-                                        "Started by XODUS; never touches the live tables.",
+    p["PL_XODUS_Run"] = {"description": "One batch: raw files, then wave by wave (canonical, mirror, blocking validation), or (Entities set) only those entities "
+                                        "rebuilt inside an existing batch. Started by XODUS; never touches the live tables.",
                          "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "Entities", Entities=""), "activities": acts, "folder": {"name": "XODUS"}}
 
     scoped = {"MigrationSlug": _p("MigrationSlug"), "Entities": _p("Entities")}
@@ -786,13 +956,37 @@ def _pipelines(s: str, xodus_batches: List[str], live_batches: List[str]) -> Dic
                  "typeProperties": {"items": _e("@activity('Get_Raw_Files').output.value"), "isSequential": False, "batchCount": 4,
                                     "activities": [_exec("Load_Raw_File", "PL_XODUS_Load_Raw_File", {**pass_run, "Container": _e("@item().container"),
                                                          "Folder": _e("@item().folder"), "File": _e("@item().file_name"), "Table": _e("@item().raw_table")})]}}
-    order = _lookup("Get_Load_Order", "usp_xodus_load_order", scoped, [("Load_Each_Raw_File", "Succeeded")])
-    each_entity = {"name": "Build_Each_Entity", "type": "ForEach", "dependsOn": [{"activity": "Get_Load_Order", "dependencyConditions": ["Succeeded"]}],
-                   "typeProperties": {"items": _e("@activity('Get_Load_Order').output.value"), "isSequential": True,
-                                      "activities": [_exec("Build_Entity", "PL_XODUS_Canonical_Entity", {**pass_run, "Entity": _e("@item().entity")})]}}
-    p["PL_XODUS_Source_To_Canonical"] = {"description": "Loads the raw files of the migration (or of the selected entities), then builds each entity in the load order.",
-                                         "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId", "Entities", Entities=""),
-                                         "activities": [files, each_file, order, each_entity], "folder": {"name": "XODUS"}}
+    p["PL_XODUS_Load_Raw"] = {"description": "Loads the raw files of the migration (or only those the selected entities read) from Blob storage, as received.",
+                              "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId", "Entities", Entities=""),
+                              "activities": [files, each_file], "folder": {"name": "XODUS"}}
+
+    # One wave: its entities are siblings (none depends on another), so they are built in parallel; the blocking checks run as SQL on the
+    # tables just built, and a failed check stops the run here, before any entity that depends on this wave is built.
+    wave_scope = {"MigrationSlug": _p("MigrationSlug"), "Wave": _p("Wave"), "Entities": _p("Entities")}
+    wave_types = {"Wave": "Int32"}
+    get_entities = _lookup("Get_Wave_Entities", "usp_xodus_wave_entities", wave_scope, types=wave_types)
+    build_each = {"name": "Build_Each_Entity", "type": "ForEach", "dependsOn": [{"activity": "Get_Wave_Entities", "dependencyConditions": ["Succeeded"]}],
+                  "typeProperties": {"items": _e("@activity('Get_Wave_Entities').output.value"), "isSequential": False, "batchCount": 4,
+                                     "activities": [_exec("Build_Entity", "PL_XODUS_Canonical_Entity", {**pass_run, "Entity": _e("@item().entity")})]}}
+    get_mirrors = _lookup("Get_Wave_Mirror_Entities", "usp_xodus_wave_mirror_entities", wave_scope, [("Build_Each_Entity", "Succeeded")], types=wave_types)
+    mirror_each = {"name": "Build_Each_Mirror", "type": "ForEach", "dependsOn": [{"activity": "Get_Wave_Mirror_Entities", "dependencyConditions": ["Succeeded"]}],
+                   "typeProperties": {"items": _e("@activity('Get_Wave_Mirror_Entities').output.value"), "isSequential": False, "batchCount": 4,
+                                      "activities": [_exec("Build_Mirror", "PL_XODUS_Canonical_To_Mirror", {**pass_run, "Entity": _e("@item().entity")})]}}
+    validate = _lookup("Validate_Wave", "usp_xodus_validate_wave",
+                       {"MigrationSlug": _p("MigrationSlug"), "MigrationId": _p("MigrationId"), "BatchId": _p("BatchId"), "RunId": _p("RunId"),
+                        "Wave": _p("Wave"), "Entities": _p("Entities")}, [("Build_Each_Mirror", "Succeeded")], first_row=True, types=wave_types)
+    wave_step = _e("@concat('Wave ', pipeline().parameters.Wave)")
+    gate_wave = {"name": "Gate_Wave", "type": "IfCondition", "dependsOn": [{"activity": "Validate_Wave", "dependencyConditions": ["Succeeded"]}],
+                 "typeProperties": {"expression": _e("@not(equals(activity('Validate_Wave').output.firstRow.ok, 1))"),
+                                    "ifTrueActivities": [_log("Log_Wave_Failed", "PL_XODUS_Wave", wave_step, "FAILED", [],
+                                                              message="@activity('Validate_Wave').output.firstRow.detail"),
+                                                         {"name": "Fail_Wave", "type": "Fail", "dependsOn": [{"activity": "Log_Wave_Failed", "dependencyConditions": ["Succeeded"]}],
+                                                          "typeProperties": {"message": _e("@activity('Validate_Wave').output.firstRow.detail"), "errorCode": "XODUS_WAVE"}}]}}
+    p["PL_XODUS_Wave"] = {"description": "One wave: build its entities (canonical, then mirror) in parallel, run the blocking checks as SQL, and stop the run if any fails.",
+                          "parameters": _params("MigrationId", "MigrationSlug", "BatchId", "RunId", "Wave", "Entities", Entities=""),
+                          "activities": [get_entities, build_each, get_mirrors, mirror_each, validate, gate_wave,
+                                         _log("Log_Wave_OK", "PL_XODUS_Wave", wave_step, "SUCCEEDED", [("Gate_Wave", "Succeeded")])],
+                          "folder": {"name": "XODUS"}}
 
     copy = {"name": "Copy_Raw", "type": "Copy", "dependsOn": [], "policy": {"timeout": "0.02:00:00", "retry": 0},
             "inputs": [{"referenceName": "DS_XODUS_RawFile", "type": "DatasetReference",

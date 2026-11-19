@@ -3,7 +3,7 @@
 --
 -- Data Factory (managed identity): the setup pipeline creates and replaces the XODUS objects (xodus_raw, xodus_canon, xodus_mirror,
 -- xodus_ops) and the run pipelines write data and run the generated procedures.
--- XODUS platform login: reads everything (run log, counts, catalog) and may INSERT into one table only, the promotion gate.
+-- XODUS platform login: reads everything (run log, counts, catalog, validation findings) and may INSERT into two tables only: the promotion gate and the wave waiver.
 
 IF USER_ID(N'<adf_factory_name>') IS NULL
     CREATE USER [<adf_factory_name>] FROM EXTERNAL PROVIDER;
@@ -23,8 +23,17 @@ IF OBJECT_ID(N'xodus_ops.xodus_promotion_gate', N'U') IS NULL
         [signed_off_utc] nvarchar(64) NOT NULL, [counts_json] nvarchar(max) NOT NULL, [written_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
 GO
 
+-- The wave waiver table (an approved exception for a blocking check), created here for the same reason; also never dropped.
+IF OBJECT_ID(N'xodus_ops.xodus_wave_waiver', N'U') IS NULL
+    CREATE TABLE [xodus_ops].[xodus_wave_waiver] ([waiver_id] bigint IDENTITY(1,1) NOT NULL PRIMARY KEY, [migration_id] nvarchar(64) NOT NULL,
+        [batch_id] nvarchar(64) NOT NULL, [entity] sysname NOT NULL, [check_name] nvarchar(64) NOT NULL, [table_name] nvarchar(256) NOT NULL,
+        [field_name] nvarchar(512) NOT NULL, [reason] nvarchar(1000) NOT NULL, [approved_by] nvarchar(256) NOT NULL,
+        [written_utc] datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
+GO
+
 IF USER_ID(N'<xodus_sql_login>') IS NULL
     CREATE USER [<xodus_sql_login>] FOR LOGIN [<xodus_sql_login>];
 ALTER ROLE db_datareader ADD MEMBER [<xodus_sql_login>];
 GRANT INSERT ON [xodus_ops].[xodus_promotion_gate] TO [<xodus_sql_login>];
+GRANT INSERT ON [xodus_ops].[xodus_wave_waiver] TO [<xodus_sql_login>];
 GO

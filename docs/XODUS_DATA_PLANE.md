@@ -20,8 +20,9 @@ by one transaction inside Simplicity.
 
 ## Pipelines (stable; parameters MigrationId, MigrationSlug, BatchId)
 
-- `PL_XODUS_Run`: Source_To_Canonical, then Canonical_To_Mirror. Started by XODUS through the service principal.
-- `PL_XODUS_Source_To_Canonical`: loads every raw file (`xodus_ops.xodus_raw_files`), then builds each entity in `xodus_ops.xodus_load_order` (Household before Client and Account).
+- `PL_XODUS_Run`: checks the scope, loads the raw files, then runs one wave after another. Started by XODUS through the service principal. Optional `Entities` reruns only those entities inside the latest batch.
+- `PL_XODUS_Load_Raw`: loads the raw files (`xodus_ops.xodus_raw_files`), or only those the selected entities read.
+- `PL_XODUS_Wave`: one wave (the entities at one dependency level, `xodus_ops.xodus_entity_registry`; none depends on another). Builds them in parallel (canonical, then mirror), then runs the blocking checks as SQL (`usp_validate_<mig>`, findings in `xodus_ops.xodus_validation_result` with failing row keys in `xodus_validation_row_key`). A failed check, unless waived (`xodus_wave_waiver`), fails the run before the next wave starts.
 - `PL_XODUS_Load_Raw_File`, `PL_XODUS_Canonical_Entity`, `PL_XODUS_Canonical_To_Mirror`: one step each, logged.
 - `PL_XODUS_Promote`: gate check, copy to landing, merge into live, record the result.
 - `PL_XODUS_Setup_<mig>`: deploys this migration's SQL (the only pipeline that changes with the source).

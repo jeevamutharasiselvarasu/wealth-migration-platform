@@ -76,7 +76,7 @@ def test_pipeline_shape_logging_and_gate():
     files = build()["files"]
     run = json.loads(files["pipeline/PL_XODUS_Run.json"])["properties"]
     names = [a["name"] for a in run["activities"]]
-    assert names[:2] == ["Log_Start", "Check_Scope"] and "Run_Source_To_Canonical" in names and "Fail_Run_Canonical_To_Mirror" in names and names[-1] == "Log_Done"
+    assert names[:2] == ["Log_Start", "Check_Scope"] and "Run_Load_Raw" in names and "Run_Waves" in names and "Fail_Run_Waves" in names and names[-1] == "Log_Done"
     load = json.loads(files["pipeline/PL_XODUS_Load_Raw_File.json"])["properties"]["activities"]
     assert "additionalColumns" not in load[0]["typeProperties"]["source"]  # Data Factory refuses them on these sink datasets
     stamp = next(a for a in load if a["name"] == "Stamp_Trace")
@@ -183,18 +183,39 @@ def test_a_scoped_run_rebuilds_only_the_selected_entities():
     assert run["parameters"]["Entities"] == {"type": "string", "defaultValue": ""}  # empty = the whole batch
     acts = {a["name"]: a for a in run["activities"]}
     assert "usp_xodus_check_scope" in acts["Check_Scope"]["typeProperties"]["scripts"][0]["text"]
-    assert acts["Run_Source_To_Canonical"]["dependsOn"][0]["activity"] == "Log_OK_Check_Scope"  # nothing is built before the scope is checked
-    assert acts["Run_Source_To_Canonical"]["typeProperties"]["parameters"]["Entities"] == {"value": "@pipeline().parameters.Entities", "type": "Expression"}
-    mirror = acts["Run_Canonical_To_Mirror"]
-    assert mirror["type"] == "ForEach" and mirror["typeProperties"]["isSequential"] is True and acts["Get_Mirror_Scope"]["type"] == "Lookup"
-    assert mirror["typeProperties"]["activities"][0]["typeProperties"]["parameters"]["Entity"]["value"] == "@item().entity"
-    s2c = json.loads(files["pipeline/PL_XODUS_Source_To_Canonical.json"])["properties"]
-    by_name = {a["name"]: a for a in s2c["activities"]}
-    for lookup in ("Get_Raw_Files", "Get_Load_Order"):
-        assert by_name[lookup]["typeProperties"]["source"]["storedProcedureParameters"]["Entities"]["value"]["value"] == "@pipeline().parameters.Entities"
+    assert acts["Run_Load_Raw"]["dependsOn"][0]["activity"] == "Log_OK_Check_Scope"  # nothing is loaded before the scope is checked
+    assert acts["Run_Load_Raw"]["typeProperties"]["parameters"]["Entities"] == {"value": "@pipeline().parameters.Entities", "type": "Expression"}
+    load = json.loads(files["pipeline/PL_XODUS_Load_Raw.json"])["properties"]
+    assert load["parameters"]["Entities"]["defaultValue"] == ""
+    assert next(a for a in load["activities"] if a["name"] == "Get_Raw_Files")["typeProperties"]["source"]["storedProcedureParameters"]["Entities"]["value"]["value"] == "@pipeline().parameters.Entities"
     c2m = json.loads(files["pipeline/PL_XODUS_Canonical_To_Mirror.json"])["properties"]
     assert c2m["parameters"]["Entity"]["defaultValue"] == ""
     assert "@Entity = @entity" in next(a for a in c2m["activities"] if a["name"] == "Build_Mirror")["typeProperties"]["scripts"][0]["text"]
+
+
+def test_the_run_goes_wave_by_wave_and_a_failed_gate_stops_it():
+    files = build(depends={"Account": ["Household"]})["files"]
+    run = {a["name"]: a for a in json.loads(files["pipeline/PL_XODUS_Run.json"])["properties"]["activities"]}
+    waves = run["Run_Waves"]
+    assert waves["type"] == "ForEach" and waves["typeProperties"]["isSequential"] is True  # one wave after another
+    assert run["Get_Waves"]["typeProperties"]["source"]["sqlReaderStoredProcedureName"] == "[xodus_ops].[usp_xodus_waves]"
+    inner = waves["typeProperties"]["activities"][0]
+    assert inner["typeProperties"]["pipeline"]["referenceName"] == "PL_XODUS_Wave" and inner["typeProperties"]["parameters"]["Wave"]["value"] == "@string(item().wave)"
+    assert run["Log_Done"]["dependsOn"][0]["activity"] == "Log_OK_Run_Waves"
+    wave = json.loads(files["pipeline/PL_XODUS_Wave.json"])["properties"]
+    by = {a["name"]: a for a in wave["activities"]}
+    order = [a["name"] for a in wave["activities"]]
+    assert order.index("Get_Wave_Entities") < order.index("Build_Each_Entity") < order.index("Build_Each_Mirror") < order.index("Validate_Wave") < order.index("Gate_Wave")
+    assert by["Build_Each_Entity"]["typeProperties"]["isSequential"] is False  # siblings build in parallel
+    assert by["Get_Wave_Entities"]["typeProperties"]["source"]["storedProcedureParameters"]["Wave"]["type"] == "Int32"
+    assert by["Validate_Wave"]["typeProperties"]["firstRowOnly"] is True
+    gate = by["Gate_Wave"]
+    assert "firstRow.ok" in gate["typeProperties"]["expression"]["value"] and gate["typeProperties"]["ifTrueActivities"][-1]["type"] == "Fail"
+    assert by["Log_Wave_OK"]["dependsOn"][0]["activity"] == "Gate_Wave"  # the next wave only starts after the gate passed
+    for a in wave["activities"]:  # control activities are never nested in each other
+        if a["type"] == "IfCondition":
+            assert all(x["type"] not in ("ForEach", "IfCondition") for x in a["typeProperties"]["ifTrueActivities"])
+    assert json.loads(files["pipeline/PL_XODUS_Wave.json"])["properties"]["parameters"]["Wave"] == {"type": "string"}
 
 
 def test_scoped_procedures_and_entity_state_in_the_sql():
@@ -214,7 +235,7 @@ def test_scoped_procedures_and_entity_state_in_the_sql():
     assert "SET status = N'STALE'" in state and "package_version = @version" in state
     # the scope check refuses what would leave the batch inconsistent
     check = sql.split("CREATE OR ALTER PROCEDURE [xodus_ops].[usp_xodus_check_scope]")[1].split("\nEND")[0]
-    for text in ("is not an entity of this migration", "has not been built yet", "built by another package version", "built in this batch first (it is stale or not built)"):
+    for text in ("is not an entity of this migration", "has not been built yet", "built by another package version", "built in this batch first (it is stale, failed validation or not built)"):
         assert text in check
     assert "IF @Entities = N'' RETURN;" in check  # a whole-batch run has nothing to check
 
@@ -228,3 +249,53 @@ def test_registry_source_files_include_lookup_files_and_only_earlier_parents():
     row = sql.split("INSERT INTO [xodus_ops].[xodus_entity_registry]")[1].split(";")[0]
     assert "N'Account', 1, N'Household', N'mig00a1a6577b_corecap_accounts,mig00a1a6577b_corecap_households'" in row  # the lookup file is loaded for Account too
     assert "N'Household', 0, N''" in row
+
+
+def _validate_sql(pkg):
+    sql = _sql(pkg)
+    return sql.split("CREATE OR ALTER PROCEDURE [xodus_ops].[usp_validate_mig00a1a6577b]")[1].split("COMMIT TRANSACTION")[0]
+
+
+def test_blocking_checks_run_as_sql_per_entity_and_write_findings_and_failing_keys():
+    pkg = build(depends={"Account": ["Household"]})
+    sql = _sql(pkg)
+    for table in ("xodus_validation_result", "xodus_validation_row_key", "xodus_wave_waiver"):
+        assert f"CREATE TABLE [xodus_ops].[{table}]" in sql
+    proc = _validate_sql(pkg)
+    assert "r.[wave] = @Wave" in proc and "@Entities = N''" in proc  # only the wave's entities (and the selected ones)
+    assert "DELETE FROM [xodus_ops].[xodus_validation_result]" in proc  # a rerun replaces the entity's findings
+    assert "N'ENTITY_BUILT'" in proc and "N'STALE' THEN N'FAIL'" in proc  # a stale or unbuilt entity is a finding
+    acct = proc.split("IF EXISTS (SELECT 1 FROM @scope WHERE [entity] = N'Account')")[1].split("IF EXISTS (SELECT 1 FROM @scope WHERE [entity] = N'Household')")[0]
+    for check in ("STAGING_ROW_COUNT", "KEYS_LOADED", "TARGET_KEY_UNIQUE", "REQUIRED_NOT_BLANK"):
+        assert f"N'{check}'" in acct
+    assert "SET @n = (SELECT COUNT(*) FROM [xodus_canon].[mig00a1a6577b_Account]);" in acct
+    assert "SET @x = (SELECT COUNT(*) FROM [xodus_raw].[mig00a1a6577b_corecap_accounts]);" in acct  # compared with what the raw file delivered
+    assert "INSERT INTO @k ([k]) SELECT TOP (50)" in acct and "INSERT INTO [xodus_ops].[xodus_validation_row_key]" in acct  # keys of failing rows, never values
+    assert "N'WAIVED'" in proc and "xodus_wave_waiver" in proc  # an approved exception turns a failure into WAIVED
+    assert "THEN N'FAILED' ELSE N'VALIDATED'" in proc  # the entity's state follows its findings
+    assert pkg["manifest"]["waveChecks"]["Account"] == ["KEYS_LOADED", "REQUIRED_NOT_BLANK", "STAGING_ROW_COUNT", "TARGET_KEY_UNIQUE"]
+
+
+def test_the_gate_reads_failures_and_the_dispatcher_refuses_an_undeployed_migration():
+    sql = _sql(build())
+    gate = sql.split("CREATE OR ALTER PROCEDURE [xodus_ops].[usp_xodus_validate_wave]")[1].split(chr(10) + "END")[0]
+    assert "THROW 50002" in gate and "usp_validate_" in gate and "r.status = N'FAIL'" in gate  # WAIVED and WARN do not stop a wave
+    assert "AS ok" in gate and "STRING_AGG" in gate
+    for proc in ("usp_xodus_waves", "usp_xodus_wave_entities", "usp_xodus_wave_mirror_entities"):
+        assert f"CREATE OR ALTER PROCEDURE [xodus_ops].[{proc}]" in sql
+    assert "r.mirror_tables <> N''" in sql.split("usp_xodus_wave_mirror_entities")[1]  # an entity with no mirror table is not built twice
+
+
+def test_an_orphan_check_runs_in_the_childs_wave_and_only_when_the_parent_is_not_later():
+    plan = [{"check": "NO_ORPHANS", "entity": "Account", "table": "t", "field": "HH → Household.HH", "sql": "SELECT 1", "kind": "zero", "expected": None, "keys_sql": None},
+            {"check": "NO_ORPHANS", "entity": "Household", "table": "t", "field": "ADV → Advisor.ADV", "sql": "SELECT 1", "kind": "zero", "expected": None, "keys_sql": None}]
+    proc = xp._validate_procedure("m1", plan, {"Household": 0, "Account": 1, "Advisor": 1})
+    assert "N'Account'" in proc  # Household (wave 0) is an earlier parent
+    assert "N'Household'" not in proc.split("N'ENTITY_BUILT'")[1].split("N'WAIVED'")[0]  # its parent Advisor is in a later wave: left to stage 10
+
+
+def test_code_lists_from_the_model_become_blocking_code_set_checks():
+    codes = {"coded": {"Account": {"CUSTODIAN_CODE": "custodian"}}, "source_map": [], "target_map": [], "target_system": "Simplicity",
+             "code_lists": {"custodian": ["SCHWAB", "TDA"]}}
+    sql = _sql(build(codes=codes, depends={"Account": ["Household"]}))
+    assert "N'VALUES_IN_CODE_SET'" in sql and "NOT IN (N'SCHWAB', N'TDA')" in sql

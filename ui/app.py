@@ -4841,7 +4841,8 @@ def _xodus_code_inputs(migration_id: str) -> Dict[str, Any]:
         system = (target_connector.spec(conn) or {}).get("target_system") or ""
         out = {"coded": canonical_model.coded_fields(model), "source_map": code_mappings.approved_source_map(conn, migration_id),
                "target_map": code_mappings.target_map(conn, system) if system else [], "target_system": system,
-               "model_version": (rel or {}).get("version") or model.get("version")}
+               "model_version": (rel or {}).get("version") or model.get("version"),
+               "code_lists": {cs: canonical_model.codes(model, cs) for cs in (model.get("code_sets") or {})}}  # the pipeline's blocking checks use them
         conn.commit()
     finally:
         conn.close()
