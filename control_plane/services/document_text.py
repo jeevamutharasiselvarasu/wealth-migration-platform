@@ -76,5 +76,22 @@ def pdf_text(content: bytes) -> str:
         raise ValueError("The file is not a readable PDF.") from exc
 
 
+def pdf_pages(content: bytes) -> List[str]:
+    """The text of each page (for citing a page number)."""
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise ValueError("PDF reading needs the pypdf package; install requirements.txt.") from exc
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        if reader.is_encrypted:
+            raise ValueError("Encrypted PDF files cannot be read.")
+        return [(page.extract_text() or "").strip() for page in reader.pages]
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("The file is not a readable PDF.") from exc
+
+
 def extract(suffix: str, content: bytes) -> str:
     return {".docx": docx_text, ".pptx": pptx_text, ".pdf": pdf_text}[suffix](content)

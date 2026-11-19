@@ -664,7 +664,7 @@ class WorkspaceStateStore:
         summary = ("Extracted " + str(len(columns)) + " column names: " + ", ".join(map(str, columns[:20])) if columns else "Extracted " + str(len(lines)) + " non-empty knowledge lines.")
         rules = [line for line in lines if any(token in line.lower() for token in ("mapping", "canonical", "transform", "rule:", "source field", "target field"))][:12]
         doc_record = {
-            "id": f"DOC-{len(self.firm_knowledge_docs) + 1:03d}",
+            "id": "DOC-%03d" % (1 + max([int(str(d.get("id", "DOC-0")).split("-")[-1]) for d in self.firm_knowledge_docs if str(d.get("id", "")).split("-")[-1].isdigit()] or [0])),
             "filename": Path(filename).name,
             "category": category,
             "size_bytes": len(content_bytes),

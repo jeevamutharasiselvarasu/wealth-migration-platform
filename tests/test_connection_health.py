@@ -112,6 +112,6 @@ def test_every_outside_connection_goes_through_the_shared_retry():
 
     root = Path(__file__).resolve().parents[1] / "control_plane"
     for rel, marker in {"services/azure_connection.py": "connection_health.http_request", "services/git_connection.py": "connection_health.http_request",
-                        "services/confluence_source.py": "connection_health.http_request", "services/sql_target.py": "connection_health.retry",
+                        "services/confluence_source.py": "connection_health.http_request", "services/knowledge_sources.py": "connection_health.http_request", "services/sql_target.py": "connection_health.retry",
                         "services/blob_source.py": "connection_health.tracked", "mssql_compat.py": "connection_health"}.items():
         assert marker in (root / rel).read_text(encoding="utf-8"), rel

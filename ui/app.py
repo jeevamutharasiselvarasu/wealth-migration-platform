@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, sta
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from control_plane.services import wave_validation, validation_rules
+from control_plane.services import wave_validation, validation_rules, knowledge_chunks, knowledge_sources
 
 from ui.auth import session_mgr
 from ui.work_queue import build_queue
@@ -1550,8 +1550,17 @@ async def dashboard_overview(request: Request):
 
 
 @app.get("/firm-knowledge", response_class=HTMLResponse)
-async def firm_knowledge_studio(request: Request):
+async def firm_knowledge_studio(request: Request, notice: str = "", error: str = ""):
     user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        chunk_stats = {k.split(":", 1)[-1]: v for k, v in knowledge_chunks.stats(conn, migration_id).items() if k.startswith(migration_id + ":")}
+        cf = knowledge_sources.get_config(conn)
+        domains = [d["host"] for d in knowledge_sources.list_domains(conn)]
+        conn.commit()
+    finally:
+        conn.close()
     return render_template_with_context(
         request=request,
         template_name="firm_knowledge.html",
@@ -1561,7 +1570,9 @@ async def firm_knowledge_studio(request: Request):
             "user_role": user["role"],
             "can_edit_knowledge": user["role"] in DISCOVERY_ROLES,
             "form": state_store.questionnaire_data,
-            "docs": state_store.firm_knowledge_docs
+            "docs": state_store.firm_knowledge_docs,
+            "chunk_stats": chunk_stats, "notice": notice, "error": error, "web_domains": domains,
+            "confluence_connected": bool(cf and cf["status"] == "CONNECTED"), "confluence_spaces": (cf or {}).get("allowed_spaces", []),
         }
     )
 
@@ -1574,17 +1585,84 @@ async def platform_knowledge_page(request: Request, notice: str = "", error: str
     try:
         assets = platform_knowledge.list_all(conn)
         viewing = {"asset_id": view, "text": platform_knowledge.text_of(conn, view)} if view else None
+        sources = {"confluence": knowledge_sources.get_config(conn), "domains": knowledge_sources.list_domains(conn), "default_env": knowledge_sources.DEFAULT_TOKEN_ENV}
         conn.commit()
     finally:
         conn.close()
     return render_template_with_context(request, "platform_knowledge.html", {
         "page_title": "Platform knowledge", "user_name": user["name"], "user_role": user["role"], "assets": assets,
         "categories": platform_knowledge.CATEGORIES, "can_edit": user["role"] in PLATFORM_KNOWLEDGE_ROLES,
-        "viewing": viewing, "notice": notice, "error": error})
+        "viewing": viewing, "notice": notice, "error": error, "sources": sources, "is_admin": user["role"] in PLATFORM_ROLES})
 
 
-def _pk_redirect(key: str, message: str):
-    return RedirectResponse(url=f"/platform-knowledge?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+def _pk_redirect(key: str, message: str, anchor: str = ""):
+    return RedirectResponse(url=f"/platform-knowledge?{key}=" + quote_plus(message) + anchor, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/platform-knowledge/sources/confluence")
+async def save_confluence_connection(request: Request):
+    """Platform Admin: where Confluence is and how to sign in. The token is never entered here, only the name of the server variable that holds it."""
+    user = get_current_user(request)
+    form = await request.form()
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = knowledge_sources.save_config(conn, user["name"], {k: str(form.get(k, "")) for k in ("base_url", "auth", "email", "token_env_var", "allowed_spaces", "page_cap")})
+        except ValueError as exc:
+            return _pk_redirect("error", str(exc), "#sources")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("CONFLUENCE_CONNECTION_SAVED", user, {"base_url": cfg["base_url"], "spaces": cfg["allowed_spaces"]})
+    return _pk_redirect("notice", "Confluence settings saved. Test the connection next.", "#sources")
+
+
+@app.post("/api/platform-knowledge/sources/confluence/test")
+async def test_confluence_connection(request: Request):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            cfg = knowledge_sources.test_connection(conn)
+        except ValueError as exc:
+            return _pk_redirect("error", str(exc), "#sources")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("CONFLUENCE_CONNECTION_TESTED", user, {"status": cfg["status"]})
+    return _pk_redirect("notice" if cfg["status"] == "CONNECTED" else "error", cfg["check_detail"], "#sources")
+
+
+@app.post("/api/platform-knowledge/sources/domains")
+async def add_web_domain(request: Request, host: str = Form(...)):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            host = knowledge_sources.add_domain(conn, user["name"], host)
+        except ValueError as exc:
+            return _pk_redirect("error", str(exc), "#sources")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("WEB_SOURCE_APPROVED", user, {"host": host})
+    return _pk_redirect("notice", f"{host} approved as a web source.", "#sources")
+
+
+@app.post("/api/platform-knowledge/sources/domains/remove")
+async def remove_web_domain(request: Request, host: str = Form(...)):
+    user = get_current_user(request)
+    conn = get_db_connection()
+    try:
+        try:
+            knowledge_sources.remove_domain(conn, host)
+        except ValueError as exc:
+            return _pk_redirect("error", str(exc), "#sources")
+        conn.commit()
+    finally:
+        conn.close()
+    _target_setup_audit("WEB_SOURCE_REMOVED", user, {"host": host})
+    return _pk_redirect("notice", f"{host} removed from the approved web sources.", "#sources")
 
 
 @app.post("/api/platform-knowledge")
@@ -1595,6 +1673,12 @@ async def add_platform_knowledge(request: Request, category: str = Form(...), fi
     try:
         try:
             rec = platform_knowledge.add(conn, file.filename or "", category, content, user["name"])
+            try:  # the document is searchable too; one that cannot be cut into chunks is still kept
+                parts = knowledge_chunks.chunks_for_file(rec["name"], content)
+                knowledge_chunks.index_asset(conn, migration_id="-", scope="platform", asset_id=rec["asset_id"], asset_name=rec["name"], source="file", source_ref=rec["name"],
+                                             version=knowledge_chunks.version_of(content), chunks=parts["chunks"], entity_names=list(_canonical_field_lists()))
+            except ValueError:
+                pass
         except ValueError as exc:
             return _pk_redirect("error", str(exc))
         conn.commit()
@@ -1611,6 +1695,7 @@ async def retire_platform_knowledge(request: Request, asset_id: str):
     try:
         try:
             platform_knowledge.retire(conn, asset_id)
+            knowledge_chunks.retire_asset(conn, asset_id)
         except ValueError as exc:
             return _pk_redirect("error", str(exc))
         conn.commit()
@@ -6651,6 +6736,60 @@ async def get_mcl_run_lineage(mcl_run_id: str):
     })
 
 
+def _chunk_asset_id(migration_id: str, doc_id: Any) -> str:
+    return f"{migration_id}:{doc_id}"
+
+
+def _index_firm_asset(migration_id: str, doc: Dict[str, Any], *, content: Optional[bytes] = None, text: Optional[str] = None, source: str,
+                      source_ref: str, version: str) -> str:
+    """Cut the asset into chunks and store them for search. Never raises: an asset that cannot be cut is still registered, with the reason as its note."""
+    try:
+        parts = knowledge_chunks.chunks_for_file(doc["filename"], content) if content is not None else knowledge_chunks.chunks_for_text(text or "")
+    except ValueError as exc:
+        return str(exc)
+    conn = get_db_connection()
+    try:
+        knowledge_chunks.index_asset(conn, migration_id=migration_id, scope="firm", asset_id=_chunk_asset_id(migration_id, doc["id"]), asset_name=doc["filename"],
+                                     source=source, source_ref=source_ref, version=version, chunks=parts["chunks"], entity_names=list(_canonical_field_lists()))
+        conn.commit()
+    finally:
+        conn.close()
+    return parts["note"]
+
+
+def _retire_firm_chunks(migration_id: str, doc_id: Any) -> None:
+    conn = get_db_connection()
+    try:
+        knowledge_chunks.retire_asset(conn, _chunk_asset_id(migration_id, doc_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _remove_firm_doc(migration_id: str, doc: Dict[str, Any], by: str) -> None:
+    state_store.firm_knowledge_docs[:] = [d for d in state_store.firm_knowledge_docs if str(d.get("id")) != str(doc.get("id"))]
+    publish_event("KNOWLEDGE_ASSET_REMOVED", migration_id, "knowledge_asset", str(doc.get("id")),
+                  {"filename": doc.get("filename"), "category": doc.get("category"), "removed_by": by}, by)
+    _retire_firm_chunks(migration_id, doc.get("id"))
+
+
+def _register_text_asset(migration_id: str, category: str, title: str, text: str, source: str, extra: Dict[str, Any], replaces: Optional[Dict[str, Any]], by: str) -> Dict[str, Any]:
+    """A page read from the web or Confluence becomes a knowledge asset (Markdown text). A page already imported is replaced, never duplicated."""
+    safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", title).strip()[:80] or source + "-page"
+    doc = state_store.add_firm_file(f"{safe}.md", category, text.encode("utf-8"))
+    doc.update(extra)
+    doc["indexing_note"] = _index_firm_asset(migration_id, doc, text=text, source=source, source_ref=str(extra.get("source_url", "")), version=str(extra.get("source_version", "")))
+    if replaces:
+        _remove_firm_doc(migration_id, replaces, by)
+    publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", str(doc["id"]), {**doc, "source": source}, "knowledge-curator")
+    return doc
+
+
+def _knowledge_back(key: str, message: str, destination: str = "/firm-knowledge"):
+    destination = destination if destination in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
+    return RedirectResponse(url=f"{destination}?{key}=" + quote_plus(message), status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/api/knowledge/file-upload")
 async def upload_firm_file(
     category: str = Form(...),
@@ -6665,6 +6804,7 @@ async def upload_firm_file(
     try:
         doc_record = state_store.add_firm_file(filename, category, content)
         migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+        doc_record["indexing_note"] = _index_firm_asset(migration_id, doc_record, content=content, source="file", source_ref=filename, version=knowledge_chunks.version_of(content))
         publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", str(doc_record["id"]),
                       doc_record, "knowledge-curator")
     except ValueError as exc:
@@ -6684,31 +6824,113 @@ async def remove_firm_knowledge_asset(request: Request):
     if not doc:
         return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
     migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-    state_store.firm_knowledge_docs[:] = [d for d in state_store.firm_knowledge_docs if str(d.get("id")) != doc_id]
-    publish_event("KNOWLEDGE_ASSET_REMOVED", migration_id, "knowledge_asset", doc_id,
-                  {"filename": doc.get("filename"), "category": doc.get("category"), "removed_by": user["name"]}, user["name"])
+    _remove_firm_doc(migration_id, doc, user["name"])
     return RedirectResponse(url="/firm-knowledge", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _import_confluence(migration_id: str, category: str, pages: List[Dict[str, Any]], by: str) -> Dict[str, int]:
+    """Register Confluence pages: a page already imported is skipped when its Confluence version is unchanged, replaced when it changed."""
+    counts = {"added": 0, "updated": 0, "unchanged": 0}
+    for page in pages:
+        old = next((d for d in state_store.firm_knowledge_docs if d.get("source") == "confluence" and d.get("source_page_id") == page["page_id"]), None)
+        if old and str(old.get("source_version")) == page["version"]:
+            counts["unchanged"] += 1
+            continue
+        _register_text_asset(migration_id, category, page["title"], page["text"], "confluence",
+                             {"source": "confluence", "source_url": page["url"], "source_page_id": page["page_id"], "source_version": page["version"], "source_space": page["space"]}, old, by)
+        counts["updated" if old else "added"] += 1
+    return counts
 
 
 @app.post("/api/knowledge/confluence")
 async def import_confluence_page(
+    request: Request,
     category: str = Form(...),
     link: str = Form(...),
+    mode: str = Form("page"),
     return_to: str = Form("/firm-knowledge"),
 ):
-    """Read one Confluence Cloud page with the server's read-only token and register it as a knowledge asset."""
-    destination = return_to if return_to in {"/migration-setup", "/firm-knowledge"} else "/firm-knowledge"
+    """Import from Confluence: one page, a page with its children, or a whole space. Uses the connection a Platform Admin set up; a
+    server with only the older CONFLUENCE_EMAIL / CONFLUENCE_API_TOKEN settings can still import single Cloud pages."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
     try:
-        page = confluence_source.fetch_page(link)
-        safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", page["title"]).strip()[:80] or "confluence-page"
-        doc_record = state_store.add_firm_file(f"{safe}.md", category, page["text"].encode("utf-8"))
-        doc_record["source_url"] = page["url"]
-        migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
-        publish_event("KNOWLEDGE_ASSET_REGISTERED", migration_id, "knowledge_asset", str(doc_record["id"]),
-                      {**doc_record, "source": "confluence"}, "knowledge-curator")
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
+        connected = knowledge_sources.is_connected(conn)
+        pages: List[Dict[str, Any]] = []
+        truncated = False
+        try:
+            if connected:
+                found = knowledge_sources.fetch_pages(conn, link, mode)
+                pages, truncated = found["pages"], found["truncated"]
+            else:
+                if mode != "page":
+                    raise ValueError("Confluence is not connected. Ask a Platform Admin to connect it (Platform knowledge, Knowledge sources).")
+                try:
+                    page = confluence_source.fetch_page(link)
+                except confluence_source.ConfluenceError as exc:
+                    raise ValueError(str(exc) + " A Platform Admin can connect Confluence under Platform knowledge, Knowledge sources.") from exc
+                pages = [{"page_id": page.get("page_id", ""), "title": page["title"], "text": page["text"], "url": page["url"], "space": "", "version": page.get("version", "")}]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        conn.commit()
+    finally:
+        conn.close()
+    counts = _import_confluence(migration_id, category, pages, user["name"])
+    _target_setup_audit("KNOWLEDGE_CONFLUENCE_IMPORTED", user, {"mode": mode, "pages": len(pages), **counts})
+    return _knowledge_back("notice", f"Confluence: {counts['added']} added, {counts['updated']} updated, {counts['unchanged']} unchanged." + (" Stopped at the page cap." if truncated else ""), return_to)
+
+
+@app.post("/api/knowledge/web-link")
+async def import_web_link(request: Request, category: str = Form(...), url: str = Form(...), return_to: str = Form("/firm-knowledge")):
+    """Read an approved https page (a Platform Admin approves hosts) and register it as a knowledge asset."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    conn = get_db_connection()
+    try:
+        try:
+            page = knowledge_sources.fetch_web(conn, url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        conn.commit()
+    finally:
+        conn.close()
+    old = next((d for d in state_store.firm_knowledge_docs if d.get("source") == "web" and d.get("source_url") == page["url"]), None)
+    if old and old.get("source_version") == page["version"]:
+        return _knowledge_back("notice", "That page is already imported and has not changed.", return_to)
+    _register_text_asset(migration_id, category, page["title"], page["text"], "web", {"source": "web", "source_url": page["url"], "source_version": page["version"]}, old, user["name"])
+    _target_setup_audit("KNOWLEDGE_WEB_IMPORTED", user, {"url": page["url"]})
+    return _knowledge_back("notice", f"{page['title']} imported" + (" (replacing the earlier copy)." if old else "."), return_to)
+
+
+@app.post("/api/knowledge/resync")
+async def resync_knowledge_asset(request: Request, doc_id: str = Form(...)):
+    """Read an imported web or Confluence page again: nothing changes unless the page did."""
+    user = get_current_user(request)
+    migration_id = str(state_store.questionnaire_data.get("migration_id", "MIG-UNCONFIGURED"))
+    doc = next((d for d in state_store.firm_knowledge_docs if str(d.get("id")) == doc_id), None)
+    if not doc or doc.get("source") not in ("confluence", "web") or not doc.get("source_url"):
+        return _knowledge_back("error", "Only an imported web or Confluence page can be read again.")
+    conn = get_db_connection()
+    try:
+        try:
+            if doc["source"] == "confluence":
+                pages = knowledge_sources.fetch_pages(conn, doc["source_url"], "page")["pages"]
+                page = {"title": pages[0]["title"], "text": pages[0]["text"], "url": pages[0]["url"], "version": pages[0]["version"],
+                        "extra": {"source": "confluence", "source_page_id": pages[0]["page_id"], "source_space": pages[0]["space"]}}
+            else:
+                web = knowledge_sources.fetch_web(conn, doc["source_url"])
+                page = {**web, "extra": {"source": "web"}}
+        except ValueError as exc:
+            return _knowledge_back("error", str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+    if str(doc.get("source_version")) == page["version"]:
+        return _knowledge_back("notice", f"{doc['filename']} has not changed.")
+    _register_text_asset(migration_id, doc.get("category", "data_dictionary"), page["title"], page["text"], doc["source"],
+                         {**page["extra"], "source_url": page["url"], "source_version": page["version"]}, doc, user["name"])
+    return _knowledge_back("notice", f"{page['title']} changed and was imported again.")
 
 
 @app.post("/api/pipeline/run")

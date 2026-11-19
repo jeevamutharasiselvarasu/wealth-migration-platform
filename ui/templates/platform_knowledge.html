@@ -38,6 +38,39 @@
     {% else %}<p class="fh">That asset was not found or has been retired.</p>{% endif %}
   </section>
   {% endif %}
+  <section class="card" id="sources" data-testid="knowledge-sources">
+    <h3 style="font-size:16px">Knowledge sources <span class="font-mono text-[10px] font-normal text-sky-800">SET BY A PLATFORM ADMIN</span></h3>
+    <p class="fh">Where migrations may read knowledge from besides uploads. Nothing secret is entered here: the Confluence token lives in a server environment variable and only its name is saved.</p>
+    {% set cf = sources.confluence %}
+    <h4 class="mt-3 text-xs font-bold">Confluence</h4>
+    {% if cf %}<p class="mt-1 text-xs" data-testid="confluence-summary">{{ cf.base_url }} · {{ 'API token' if cf.auth == 'basic' else 'personal access token' }}{% if cf.email %} ({{ cf.email }}){% endif %} · spaces {{ cf.allowed_spaces|join(', ') }} · up to {{ cf.page_cap }} pages ·
+      <span class="pill {{ 'approved' if cf.status == 'CONNECTED' else ('failed' if cf.status == 'FAILED' else 'review') }}">{{ cf.status }}</span>
+      {% if not cf.token_present %}<span class="pill failed">token variable {{ cf.token_env_var }} is empty on the server</span>{% endif %}
+      {% if cf.check_detail %}<br><span class="text-[10px] text-[#5A6A88]">{{ cf.check_detail }}</span>{% endif %}</p>
+    {% else %}<p class="mt-1 text-xs text-[#5A6A88]" data-testid="confluence-summary">Not connected.</p>{% endif %}
+    {% if is_admin %}
+    <form action="/api/platform-knowledge/sources/confluence" method="post" class="mt-2 grid gap-2 text-xs" style="max-width:720px" data-testid="confluence-connection-form">
+      <input name="base_url" required class="input" aria-label="Confluence address" placeholder="https://yourco.atlassian.net/wiki  (Cloud)  or  https://wiki.yourco.com  (Data Center)" value="{{ cf.base_url if cf else '' }}">
+      <div class="flex flex-wrap gap-2">
+        <select name="auth" class="input" aria-label="Sign-in method"><option value="basic" {% if not cf or cf.auth == 'basic' %}selected{% endif %}>Account email + API token</option><option value="bearer" {% if cf and cf.auth == 'bearer' %}selected{% endif %}>Personal access token</option></select>
+        <input name="email" class="input" aria-label="Account email" placeholder="Account email (API token sign-in)" value="{{ cf.email if cf and cf.email else '' }}" style="min-width:240px">
+        <input name="token_env_var" class="input" aria-label="Name of the server variable that holds the token" placeholder="{{ sources.default_env }}" value="{{ cf.token_env_var if cf else '' }}" style="min-width:240px">
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <input name="allowed_spaces" required class="input" aria-label="Allowed spaces" placeholder="Allowed space keys, e.g. DATA, MIG" value="{{ cf.allowed_spaces|join(', ') if cf else '' }}" style="min-width:300px">
+        <input name="page_cap" type="number" min="1" max="500" class="input" aria-label="Page cap" value="{{ cf.page_cap if cf else 50 }}" style="width:110px">
+      </div>
+      <div class="flex gap-2"><button class="btn p sm">Save Confluence settings</button></div>
+    </form>
+    {% if cf %}<form action="/api/platform-knowledge/sources/confluence/test" method="post" class="mt-1"><button class="btn g sm" data-testid="test-confluence">Test the connection</button></form>{% endif %}
+    {% else %}<p class="fh">A Platform Admin connects Confluence and chooses the allowed spaces.</p>{% endif %}
+    <h4 class="mt-4 text-xs font-bold">Approved web sites</h4>
+    <p class="fh">A web link can be imported only from a host listed here (its subdomains count). https only; the host must resolve to a public address.</p>
+    <ul class="mt-1 text-xs" data-testid="web-domains">{% for d in sources.domains %}<li class="font-mono">{{ d.host }} <span class="text-[10px] text-[#5A6A88]">approved by {{ d.added_by }}</span>
+      {% if is_admin %}<form action="/api/platform-knowledge/sources/domains/remove" method="post" class="inline"><input type="hidden" name="host" value="{{ d.host }}"><button class="btn g sm">Remove</button></form>{% endif %}</li>
+      {% else %}<li class="text-[#5A6A88]">None approved yet.</li>{% endfor %}</ul>
+    {% if is_admin %}<form action="/api/platform-knowledge/sources/domains" method="post" class="mt-1 flex gap-2"><input name="host" required class="input" aria-label="Host to approve" placeholder="docs.example.com"><button class="btn p sm">Approve site</button></form>{% endif %}
+  </section>
   {% if can_edit %}
   <section class="card" data-testid="pk-add">
     <h3 style="font-size:16px">Add platform knowledge</h3>

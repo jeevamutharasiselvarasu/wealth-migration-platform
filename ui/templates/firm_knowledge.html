@@ -3,6 +3,8 @@
 {% block content %}
 <div class="page" style="padding-block:0">
   {% include "_setup_tabs.html" %}
+  {% if notice %}<div class="ins" data-testid="knowledge-notice">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="exc" style="background:var(--bad-bg);color:var(--bad);border-left-color:var(--bad)" role="alert">{{ error }}</div>{% endif %}
     <div class="ph">
         <div>
             <div class="ey dm">Governance inputs · Firm knowledge</div>
@@ -40,21 +42,35 @@
                         <option value="business_rules">Business Rules (migration-specific, .md/.txt)</option>
                         <option value="transformation_rule">Transferable Source-to-Canonical Rule (.md/.txt)</option><option value="source_analysis">Current System / Source Analysis</option><option value="mapping_reference">Reusable Mapping Reference</option>
                     </select>
+                    <p class="text-[10px] text-[#5A6A88]" data-testid="cell-content-warning">Spreadsheet and CSV cell content is read and stored so it can be searched: attach data dictionaries and mapping specifications, not client data. PDF, Word, PowerPoint, Markdown, text and JSON are read as text.</p>
                     <input type="file" name="file" aria-label="Knowledge asset file" accept=".md,.txt,.csv,.tsv,.json,.xlsx,.xlsm,.xls,.docx,.pptx,.pdf" required class="input w-full" style="font-size:12px">
                     <button type="submit" class="btn g sm" style="width:100%;justify-content:center">
                         Attach Data Asset
                     </button>
                 </fieldset></form>
-                <form action="/api/knowledge/confluence" method="POST" class="space-y-2"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-2 border-0 p-0">
+                <form action="/api/knowledge/confluence" method="POST" class="space-y-2" data-testid="confluence-form"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-2 border-0 p-0">
                     <select name="category" aria-label="Confluence page category" class="input w-full" style="font-size:12px;text-overflow:ellipsis">
                         <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
                         <option value="business_rules">Business Rules</option>
                         <option value="source_analysis">Current System / Source Analysis</option>
                         <option value="mapping_reference">Reusable Mapping Reference</option>
                     </select>
-                    <input type="url" name="link" aria-label="Confluence page link" placeholder="https://yourco.atlassian.net/wiki/spaces/KEY/pages/12345/Title" required class="input w-full" style="font-size:12px">
-                    <button type="submit" class="btn g sm" style="width:100%;justify-content:center">Import Confluence page</button>
-                    <p class="text-[10px] text-[#5A6A88]">Read-only. Uses the server's Confluence token; one page per link.</p>
+                    <select name="mode" aria-label="What to import" class="input w-full" style="font-size:12px"><option value="page">This page</option><option value="children">This page and the pages below it</option><option value="space">The whole space</option></select>
+                    <input type="url" name="link" aria-label="Confluence link" placeholder="https://yourco.atlassian.net/wiki/spaces/KEY/pages/12345/Title" required class="input w-full" style="font-size:12px">
+                    <button type="submit" class="btn g sm" style="width:100%;justify-content:center">Import from Confluence</button>
+                    {% if confluence_connected %}<p class="text-[10px] text-[#5A6A88]" data-testid="confluence-status">Connected. Read-only. Allowed spaces: {{ confluence_spaces|join(', ') }}. A page imported again changes nothing unless it changed in Confluence.</p>
+                    {% else %}<p class="text-[10px] text-[#5A6A88]" data-testid="confluence-status">Confluence is not connected. Ask a Platform Admin to connect it (Platform knowledge, Knowledge sources); until then only single pages can be read with the server's older token setting.</p>{% endif %}
+                </fieldset></form>
+                <form action="/api/knowledge/web-link" method="POST" class="space-y-2" data-testid="web-link-form"><fieldset {% if not can_edit_knowledge %}disabled{% endif %} class="m-0 min-w-0 space-y-2 border-0 p-0">
+                    <select name="category" aria-label="Web page category" class="input w-full" style="font-size:12px;text-overflow:ellipsis">
+                        <option value="data_dictionary">Source Data Dictionary / Schema Contract</option>
+                        <option value="business_rules">Business Rules</option>
+                        <option value="source_analysis">Current System / Source Analysis</option>
+                        <option value="mapping_reference">Reusable Mapping Reference</option>
+                    </select>
+                    <input type="url" name="url" aria-label="Web page link" placeholder="https://docs.example.com/guide" required class="input w-full" style="font-size:12px">
+                    <button type="submit" class="btn g sm" style="width:100%;justify-content:center">Import web page</button>
+                    <p class="text-[10px] text-[#5A6A88]">{% if web_domains %}Approved sites: {{ web_domains|join(', ') }}.{% else %}No web site is approved yet. Ask a Platform Admin to approve the sites you need.{% endif %} https only; HTML, text, Markdown and PDF.</p>
                 </fieldset></form>
 
                 <div class="space-y-1.5 max-h-64 overflow-y-auto">
@@ -62,6 +78,8 @@
                     <div class="bg-[#f8fafc] p-2 rounded-lg border border-[#e2e8f0] text-[10px] flex justify-between items-center">
                         <span class="font-mono text-blue-700 font-semibold truncate max-w-[140px]">{{ doc.filename }}</span>
                         <span class="text-[#5a6a88]">{{ doc.category }}</span>
+                        {% set st = chunk_stats.get(doc.id|string) %}<span class="text-[#8a97b2]" data-testid="doc-chunks">{% if st %}{{ st.chunks }} chunk(s){% elif doc.indexing_note %}not searchable: {{ doc.indexing_note }}{% else %}not indexed{% endif %}{% if doc.source in ('confluence', 'web') %} · {{ doc.source }}{% endif %}</span>
+                        {% if can_edit_knowledge and doc.source in ('confluence', 'web') and doc.source_url %}<form action="/api/knowledge/resync" method="post" class="m-0"><input type="hidden" name="doc_id" value="{{ doc.id }}"><button class="btn g sm" title="Read the page again; nothing changes unless it did">Re-sync</button></form>{% endif %}
                         {% if can_edit_knowledge %}<form action="/api/knowledge/remove" method="post" data-confirm="Remove {{ doc.filename }} from this migration? Rules already inferred from it stay in the rule register." class="m-0"><input type="hidden" name="doc_id" value="{{ doc.id }}"><button type="submit" class="btn g sm" aria-label="Remove {{ doc.filename }}">Remove</button></form>{% endif %}
                     </div>
                     {% endfor %}
