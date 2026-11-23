@@ -30,7 +30,7 @@
   <div class="hub">
     {% if not platform_only %}
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Workspace configuration</h3><span class="pill {{ 'approved' if configured else 'review' }}">{{ 'Saved' if configured else 'Needs setup' }}</span></div>
-      <p class="fh">Source firm, target system, canonical version, entities in scope and source access.</p>
+      <p class="fh">Source firm, target system, entities in scope and source access.</p>
       <a class="btn p sm" href="/migration-setup">Open configuration →</a></section>
     {% endif %}
     <section class="card hcard"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><h3 style="margin:0">Target system</h3><span class="pill {{ 'approved' if target_confirmed else 'review' }}">{{ 'Confirmed' if target_confirmed else 'Not confirmed' }}</span></div>

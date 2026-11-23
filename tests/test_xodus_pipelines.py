@@ -316,3 +316,17 @@ def test_a_warning_rule_with_a_keys_query_records_its_failing_keys_too():
             "sql_text": "SELECT COUNT(*) FROM {canon:Account} c WHERE c.[REP_CODE] IS NULL", "keys_sql": "SELECT TOP (50) CAST(c.[ACCT_NUM] AS nvarchar(400)) FROM {canon:Account} c WHERE c.[REP_CODE] IS NULL"}
     proc = _validate_sql(build(rules_approved=[rule]))
     assert "IF @st IN (N'FAIL', N'WARN') BEGIN INSERT INTO @k ([k]) SELECT TOP (50) CAST(c.[ACCT_NUM]" in proc.split("N'RULE:VR-W'")[1]
+
+
+def test_an_entity_read_from_several_files_still_has_an_expected_row_count():
+    """Account read from two files used to report 'the source delivered an unknown number of rows': its expected count is the distinct keys across the files plus the rows without a key."""
+    import copy
+    ents = copy.deepcopy(ENTITIES)
+    ents["Account"]["files"] = ["corecap_accounts.csv", "corecap_accounts_extra.csv"]
+    ents["Account"]["mappings"]["AcctNo"] = {"canonical_field": "ACCT_NUM", "expression": "DIRECT_COPY"}
+    raw = RAW + [{"file_name": "corecap_accounts_extra.csv", "columns": ["AcctNo"]}]
+    sql = build(entities=ents, raw_files=raw)["files"]["sql/xodus_mig00a1a6577b.sql"]
+    assert "SET @x = (SELECT (SELECT COUNT(*) FROM (SELECT" in sql  # a derived table, not a CTE: it runs inside SET @x = (...)
+    assert " UNION SELECT " in sql and "IS NULL)" in sql and "WITH f0 AS" not in sql.split("SET @x = (SELECT (SELECT COUNT(*) FROM (SELECT")[1].split(";")[0]
+    one = build()["files"]["sql/xodus_mig00a1a6577b.sql"]
+    assert "UNION SELECT" not in one.split("SET @x = (SELECT COUNT(*) FROM [xodus_raw]")[1].split(";")[0]  # a single file keeps its plain count

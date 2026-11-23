@@ -19,7 +19,7 @@
     <h3 style="font-size:16px">Target adapter</h3>
     {% if adapter.latest %}<p class="fh">The Platform Admin confirmed adapter version <b>{{ adapter.latest.version }}</b> for this target ({{ adapter.latest.fields }} field(s)). Adopting it sets those mappings from the adapter; this migration then reviews only the fields the adapter leaves open.{% if adapter.adopted %} This migration adopted version <b>{{ adapter.adopted.version }}</b> ({{ adapter.adopted.adopted_by }}, {{ adapter.adopted.adopted_utc[:10] }}).{% endif %}</p>
       {% if can_review and (not adapter.adopted or adapter.adopted.version < adapter.latest.version) %}<form action="/api/target-mapping/adopt-adapter" method="post" class="mt-2"><button class="btn p sm" data-testid="adopt-adapter">Adopt adapter version {{ adapter.latest.version }}</button></form>{% endif %}
-    {% else %}<p class="fh">No adapter is confirmed for this target yet; map each field here. The Platform Admin confirms the adapter under Platform setup → Target adapter, and later migrations reuse it.</p>{% endif %}
+    {% else %}<p class="fh">The target model is confirmed. No adapter (a saved set of mappings for this target) has been published yet, so map each field here. The Platform Admin can publish one under Platform setup → Target adapter for later migrations to reuse.</p>{% endif %}
   </section>{% endif %}
   <p class="d" style="margin:0">Approved source→canonical mappings available: {{ approved_source_mappings }}.</p>
 

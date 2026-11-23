@@ -524,6 +524,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
     for entity in load_order:
         reading["entity"] = entity
         e = entities[entity]
+        expected_multi: Optional[str] = None  # the rows several files should give once joined on the key (see below)
         sql_package._ident(entity)
         ctable = f"{s}_{entity}"
         cfields = list(dict.fromkeys(e["canonical_fields"]))
@@ -589,6 +590,11 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                 # The first file (in the entity's order) that holds the key supplies the row's source file and row id.
                 src_file = "COALESCE(" + ", ".join(f"f{i}.[xodus_src_file]" for i in keyed) + ")" if len(keyed) > 1 else f"f{keyed[0]}.[xodus_src_file]"
                 src_row = "COALESCE(" + ", ".join(f"f{i}.[xodus_src_row]" for i in keyed) + ")" if len(keyed) > 1 else f"f{keyed[0]}.[xodus_src_row]"
+                # What those files should give: each distinct key once, plus every row that has no key. A derived table, not a CTE: it runs inside SET @x = (...).
+                key_src = [(raw_names[fn], per_file[i][key]) for i, fn in enumerate(files) if i in keyed]
+                distinct = " UNION ".join(f"SELECT {x} AS k FROM [{RAW}].[{r}] AS s WHERE s.[xodus_batch_id] = @BatchId AND {x} IS NOT NULL" for r, x in key_src)
+                nokey = " + ".join(f"(SELECT COUNT(*) FROM [{RAW}].[{r}] AS s WHERE s.[xodus_batch_id] = @BatchId AND {x} IS NULL)" for r, x in key_src)
+                expected_multi = f"SELECT (SELECT COUNT(*) FROM ({distinct}) AS u) + {nokey}"
                 select = (f"WITH {', '.join(selects)}, k AS ({keys})\nINSERT INTO [{CANON}].[{ctable}] ({', '.join(_q(c) for c in mapped)}, [xodus_source_file], [xodus_source_row], [xodus_batch_id], [xodus_run_id])\n"
                           f"SELECT {', '.join(cols)}, {src_file}, {src_row}, @BatchId, @RunId FROM k {joins}\nUNION ALL {unkeyed};")
         derive = []
@@ -644,7 +650,7 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
                                    [f"TRUNCATE TABLE [{CANON}].[{ctable}];", select] + derive + [log]))
         objects["procedures"].append(f"{CANON}.usp_canon_{s}_{entity}")
         canon_counts[entity] = {"table": ctable, "files": [raw_names[f] for f in files], "key": key, "xref": resolved.get(entity),
-                                "resolution": e.get("resolution") or [], "derived": derived}
+                                "resolution": e.get("resolution") or [], "derived": derived, "expected_multi": expected_multi}
 
     # Canonical -> mirror: one mirror table per live table, filled by one procedure (all tables in one transaction).
     mirror_by_entity: Dict[str, List[str]] = {}
@@ -705,6 +711,8 @@ def build(migration_id: str, spec: Dict[str, Any], approved_target: List[Dict[st
             ce = checked.setdefault(entity, {"staging_table": cn["table"], "expected_rows": None, "key": cn["key"], "tables": {}, "unmapped_required": []})
             if len(cn["files"]) == 1:
                 ce["expected_sql"] = f"SELECT COUNT(*) FROM [{RAW}].[{cn['files'][0]}]"
+            elif cn.get("expected_multi"):
+                ce["expected_sql"] = cn["expected_multi"]
             if cn.get("xref"):
                 ce["expected_sql"] = f"SELECT COUNT(DISTINCT [survivor_key]) FROM [{CANON}].[{cn['xref']}]"
                 ce["resolution"] = cn.get("resolution") or []
